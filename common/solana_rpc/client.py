@@ -1,0 +1,311 @@
+from __future__ import annotations
+
+import asyncio
+import itertools
+import logging
+import typing as tp
+from dataclasses import dataclass
+from typing import TypeVar, Sequence, Union
+
+import solders.account_decoder as _acct
+import solders.rpc.config as _cfg
+import solders.rpc.errors as _err
+import solders.rpc.requests as _req
+import solders.rpc.responses as _resp
+import solders.transaction_status as _tx
+
+from .errors import SolRpcError
+from ..http.utils import HttpURL
+from ..jsonrpc.client import HttpClient
+from ..solana.account import SolAccountModel
+from ..solana.alt_program import SolRpcAltInfo
+from ..solana.block import SolRpcBlockInfo
+from ..solana.commit_level import SolCommit
+from ..solana.hash import SolBlockHash
+from ..solana.pubkey import SolPubKey
+from ..solana.signature import SolTxSig, SolRpcTxSigInfo
+from ..solana.transaction import SolTx
+from ..solana.transaction_meta import (
+    SolRpcTxSlotInfo,
+    SolRpcErrorInfo,
+    SolRpcExtErrorInfo,
+    SolRpcTxFieldErrorCode,
+    SolRpcSendTxErrorInfo,
+    SolRpcNodeUnhealthyErrorInfo,
+    SolRpcInvalidParamErrorInfo,
+)
+from ..utils.cached import ttl_cached_method
+
+_SolRpcResp = TypeVar("_SolRpcResp", bound=_resp.RPCResult)
+
+_SoldersAcctInfoCfg = _cfg.RpcAccountInfoConfig
+_SoldersAcctEnc = _acct.UiAccountEncoding
+_SoldersDataSliceCfg = _acct.UiDataSliceConfig
+
+_SoldersRpcCtxCfg = _cfg.RpcContextConfig
+_SoldersBlockCfg = _cfg.RpcBlockConfig
+
+_SoldersTxSigCfg = _cfg.RpcSignaturesForAddressConfig
+
+_SoldersTxCfg = _cfg.RpcTransactionConfig
+_SoldersTxEnc = _tx.UiTransactionEncoding
+_SoldersTxDet = _tx.TransactionDetails
+
+_SoldersRpcReq = _req.Body
+_SoldersGetVer = _req.GetVersion
+_SoldersGetBalance = _req.GetBalance
+_SoldersGetAcctInfo = _req.GetAccountInfo
+_SoldersGetAcctInfoList = _req.GetMultipleAccounts
+_SoldersGetSlotList = _req.GetBlocks
+_SoldersGetFirstSlot = _req.GetFirstAvailableBlock
+_SoldersGetSlot = _req.GetSlot
+_SoldersGetBlock = _req.GetBlock
+_SoldersGetBlockCommit = _req.GetBlockCommitment
+_SoldersGetLatestBlockhash = _req.GetLatestBlockhash
+_SoldersGetTxSigForAddr = _req.GetSignaturesForAddress
+_SoldersGetTx = _req.GetTransaction
+_SoldersGetRentBalance = _req.GetMinimumBalanceForRentExemption
+
+_SoldersGetVerResp = _resp.GetVersionResp
+_SoldersGetBalanceResp = _resp.GetBalanceResp
+_SoldersGetAcctInfoResp = _resp.GetAccountInfoResp
+_SoldersGetAcctInfoListResp = _resp.GetMultipleAccountsResp
+_SoldersGetSlotListResp = _resp.GetBlocksResp
+_SoldersGetFirstSlotResp = _resp.GetFirstAvailableBlockResp
+_SoldersGetSlotResp = _resp.GetSlotResp
+_SoldersGetBlockResp = _resp.GetBlockResp
+_SoldersGetBlockCommitResp = _resp.GetBlockCommitmentResp
+_SoldersGetLatestBlockhashResp = _resp.GetLatestBlockhashResp
+_SoldersGetTxSigForAddrResp = _resp.GetSignaturesForAddressResp
+_SoldersGetTxResp = _resp.GetTransactionResp
+_SoldersGetRentBalanceResp = _resp.GetMinimumBalanceForRentExemptionResp
+
+_SoldersSendTxCfg = _cfg.RpcSendTransactionConfig
+_SoldersSendTx = _req.SendRawTransaction
+_SoldersSendTxResp = _resp.SendTransactionResp
+_SoldersPreflightError = _err.SendTransactionPreflightFailureMessage
+_SoldersNodeUnhealthyError = _err.NodeUnhealthyMessage
+
+_LOG = logging.getLogger(__name__)
+
+SolRpcSendTxResultInfo = Union[
+    SolTxSig,
+    SolRpcSendTxErrorInfo,
+    SolRpcNodeUnhealthyErrorInfo,
+    SolRpcInvalidParamErrorInfo,
+]
+
+
+@dataclass(frozen=True)
+class SolBlockStatus:
+    slot: int
+    commit: SolCommit
+
+    @staticmethod
+    def new_empty(slot: int) -> SolBlockStatus:
+        return SolBlockStatus(slot=slot, commit=SolCommit.Processed)
+
+
+class SolClient(HttpClient):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.set_timeout_sec(self._cfg.sol_timeout_sec)
+
+        self._id = itertools.count()
+
+        url_list = tuple([HttpURL(url) for url in self._cfg.sol_url_list])
+        self.connect(base_url_list=url_list)
+
+    def _get_next_id(self) -> int:
+        return next(self._id)
+
+    async def _send_request(self, request: _SoldersRpcReq, parser: type[_SolRpcResp]) -> _SolRpcResp:
+        req_json = request.to_json()
+
+        resp_json = await self._send_post_request(req_json)
+        resp = parser.from_json(resp_json)
+        if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
+            raise SolRpcError(resp)
+        elif isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
+            raise SolRpcError(resp)
+
+        return resp
+
+    @ttl_cached_method(ttl_sec=60)
+    async def get_version(self) -> str:
+        req = _SoldersGetVer(self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetVerResp)
+        return "Solana/v" + resp.value.solana_core
+
+    async def get_balance(self, address: SolPubKey, commit=SolCommit.Confirmed) -> int:
+        cfg = _SoldersRpcCtxCfg(commit.to_rpc_commit(), None)
+        req = _SoldersGetBalance(address, cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetBalanceResp)
+        return resp.value
+
+    async def get_account(
+        self,
+        address: SolPubKey,
+        size: int | None = None,
+        commit=SolCommit.Confirmed,
+    ) -> SolAccountModel | None:
+        data_slice = None if not size else _SoldersDataSliceCfg(0, size)
+        cfg = _SoldersAcctInfoCfg(
+            _SoldersAcctEnc.Base64,
+            data_slice=data_slice,
+            commitment=commit.to_rpc_commit(),
+        )
+        req = _SoldersGetAcctInfo(address, cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetAcctInfoResp)
+        return SolAccountModel.from_raw(address, resp.value)
+
+    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolRpcAltInfo | None:
+        acct_info = await self.get_account(address, commit=commit)
+        return SolRpcAltInfo.from_bytes(address, acct_info.data) if acct_info else None
+
+    async def get_account_list(
+        self,
+        address_list: Sequence[SolPubKey],
+        size: int | None = None,
+        commit=SolCommit.Confirmed,
+    ) -> tuple[SolAccountModel, ...]:
+        data_slice = None if not size else _SoldersDataSliceCfg(0, size)
+        cfg = _SoldersAcctInfoCfg(
+            _SoldersAcctEnc.Base64,
+            data_slice=data_slice,
+            commitment=commit.to_rpc_commit(),
+        )
+        req = _SoldersGetAcctInfoList(address_list, cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetAcctInfoListResp)
+        return tuple([SolAccountModel.from_raw(addr, raw) for addr, raw in zip(address_list, resp.value)])
+
+    async def get_slot_list(self, start_slot: int, stop_slot, commit=SolCommit.Confirmed) -> tuple[int, ...]:
+        req = _SoldersGetSlotList(start_slot, stop_slot, commit.to_rpc_commit(), self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetSlotListResp)
+        return tuple(resp.value)
+
+    async def get_slot(self, commit=SolCommit.Confirmed) -> int:
+        cfg = _SoldersRpcCtxCfg(commitment=commit.to_rpc_commit())
+        req = _SoldersGetSlot(cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetSlotResp)
+        return resp.value
+
+    async def get_first_slot(self) -> int:
+        req = _SoldersGetFirstSlot(self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetFirstSlotResp)
+        _LOG.debug("first available slot: %s", resp.value)
+        return resp.value
+
+    async def get_block(self, slot: int, commit=SolCommit.Confirmed) -> SolRpcBlockInfo:
+        cfg = _SoldersBlockCfg(
+            _SoldersTxEnc.Base64,
+            transaction_details=_SoldersTxDet.Full,
+            rewards=False,
+            commitment=commit.to_rpc_commit(),
+            max_supported_transaction_version=0,
+        )
+        req = _SoldersGetBlock(slot, cfg, self._get_next_id())
+        try:
+            resp = await self._send_request(req, _SoldersGetBlockResp)
+        except SolRpcError as exc:
+            _LOG.debug("error on get block %s: %s", slot, exc.message, extra=self._msg_filter)
+            return SolRpcBlockInfo.new_empty(slot, commit=commit)
+        return SolRpcBlockInfo.from_raw(resp.value, slot=slot, commit=commit)
+
+    async def get_blockhash(self, slot: int) -> SolBlockHash:
+        block = await self.get_block(slot)
+        return block.block_hash
+
+    async def get_block_status(self, slot: int) -> SolBlockStatus:
+        finalized_block = await self.get_block(slot, SolCommit.Finalized)
+        if not finalized_block.is_empty:
+            return SolBlockStatus(slot, SolCommit.Finalized)
+
+        req = _SoldersGetBlockCommit(slot, SolCommit.Confirmed.to_rpc_commit())
+        resp = await self._send_request(req, _SoldersGetBlockCommitResp)
+
+        voted_stake = sum(resp.value.commitment or [0])
+        total_stake = resp.value.total_stake
+        if (voted_stake * 100 / total_stake) > 66.6667:
+            return SolBlockStatus(slot, SolCommit.Safe)
+
+        return SolBlockStatus(slot, SolCommit.Confirmed)
+
+    async def _get_latest_blockhash(self, commit=SolCommit.Confirmed) -> _SoldersGetLatestBlockhashResp:
+        cfg = _SoldersRpcCtxCfg(commitment=commit.to_rpc_commit())
+        req = _SoldersGetLatestBlockhash(cfg, self._get_next_id())
+        return await self._send_request(req, _SoldersGetLatestBlockhashResp)
+
+    async def get_recent_slot(self, commit=SolCommit.Confirmed) -> int:
+        resp = await self._get_latest_blockhash(commit)
+        return resp.context.slot
+
+    async def get_recent_blockhash(self, commit=SolCommit.Confirmed) -> SolBlockHash:
+        resp = await self._get_latest_blockhash(commit)
+        return SolBlockHash.from_raw(resp.value.blockhash)
+
+    async def get_tx_sig_list(
+        self,
+        address: SolPubKey,
+        limit: int,
+        commit=SolCommit.Confirmed,
+    ) -> tuple[SolRpcTxSigInfo, ...]:
+        cfg = _SoldersTxSigCfg(limit=limit, commitment=commit.to_rpc_commit())
+        req = _SoldersGetTxSigForAddr(address, cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetTxSigForAddrResp)
+        return tuple(resp.value)
+
+    async def get_tx(self, tx_sig: SolTxSig, commit=SolCommit.Confirmed) -> SolRpcTxSlotInfo | None:
+        cfg = _SoldersTxCfg(
+            _SoldersTxEnc.Base64,
+            commitment=commit.to_rpc_commit(),
+            max_supported_transaction_version=0,
+        )
+        req = _SoldersGetTx(tx_sig, cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetTxResp)
+        return resp.value
+
+    async def get_tx_list(
+        self,
+        tx_sig_list: Sequence[SolTxSig],
+        commit=SolCommit.Confirmed,
+    ) -> tuple[SolRpcTxSlotInfo | None, ...]:
+        if not tx_sig_list:
+            return tuple()
+        tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit) for tx_sig in tx_sig_list])
+        return tuple(tx_list)
+
+    async def send_tx(self, tx: SolTx, skip_preflight: bool) -> SolRpcSendTxResultInfo | None:
+        cfg = _SoldersSendTxCfg(
+            skip_preflight=skip_preflight,
+            preflight_commitment=SolCommit.Processed.to_rpc_commit(),
+        )
+        req = _SoldersSendTx(tx.serialize(), cfg, self._get_next_id())
+        try:
+            resp = await self._send_request(req, _SoldersSendTxResp)
+            return SolTxSig.from_raw(resp.value)
+        except SolRpcError as exc:
+            if isinstance(exc.rpc_data, _SoldersNodeUnhealthyError):
+                return exc.rpc_data.data
+            elif isinstance(exc.rpc_data, SolRpcInvalidParamErrorInfo):
+                return exc.rpc_data
+            elif isinstance(exc.rpc_data, _SoldersPreflightError):
+                if exc.rpc_data.data.err == SolRpcTxFieldErrorCode.AlreadyProcessed:
+                    return tx.sig
+                return exc.rpc_data.data
+            raise
+
+    async def send_tx_list(
+        self,
+        tx_list: Sequence[SolTx],
+        skip_preflight: bool,
+    ) -> tuple[SolRpcSendTxResultInfo | None, ...]:
+        if not tx_list:
+            return tuple()
+        tx_sig_list = await asyncio.gather(*[self.send_tx(tx, skip_preflight) for tx in tx_list])
+        return tuple(tx_sig_list)
+
+    async def get_rent_balance_for_size(self, size: int, commit=SolCommit.Confirmed) -> int:
+        req = _SoldersGetRentBalance(size, commit.to_rpc_commit(), self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetRentBalanceResp)
+        return resp.value

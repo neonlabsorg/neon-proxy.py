@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+import logging
+
+from .gas_limit_calculator import NpGasLimitCalculator
+from .np_account_api import NpAccountApi
+from .np_block_transaction_api import NpBlockTxApi
+from .np_call_api import NpCallApi
+from .np_execute_transaction_api import NpExecTxApi
+from .np_gas_price import NpGasPriceApi
+from .np_get_logs_api import NpGetLogsApi
+from .np_version_api import NpVersionApi
+from .server_abc import NeonProxyAbc
+from .transaction_validator import NpTxValidator
+
+_LOG = logging.getLogger(__name__)
+
+
+class NeonProxy(NeonProxyAbc):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.listen(host="0.0.0.0", port=9090)
+        self.set_process_cnt(self._cfg.proxy_process_cnt)
+        self.set_worker_cnt(self._cfg.proxy_worker_cnt)
+
+        self._gas_limit_calc = NpGasLimitCalculator(self)
+        self._tx_validator = NpTxValidator(self)
+
+        self._add_api(NpVersionApi(self))
+        self._add_api(NpBlockTxApi(self))
+        self._add_api(NpGasPriceApi(self))
+        self._add_api(NpCallApi(self))
+        self._add_api(NpAccountApi(self))
+        self._add_api(NpGetLogsApi(self))
+
+        if self._cfg.enable_send_tx_api:
+            self._add_api(NpExecTxApi(self))

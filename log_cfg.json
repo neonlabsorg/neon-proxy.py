@@ -1,0 +1,49 @@
+{
+    "version": 1,
+    "handlers": {
+        "standard": {
+            "class": "logging.StreamHandler",
+            "level": "DEBUG",
+            "formatter": "json",
+            "filters": ["context_filter"]
+        }
+    },
+    "filters": {
+        "context_filter": {
+            "()": "common.utils.json_logger.ContextFilter"
+        }
+    },
+    "formatters": {
+        "json": {
+          "format": "%(message)s",
+          "class": "common.utils.json_logger.JSONFormatter"
+        }
+    },
+    "loggers": {
+        "proxy": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
+        "indexer": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
+        "common": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
+        "tests": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
+        "": {
+            "level": "INFO",
+            "handlers": ["standard"],
+            "propagate": false
+        }
+    }
+}
