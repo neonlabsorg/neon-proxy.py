@@ -70,6 +70,8 @@ COPY --from=neon_test_invoke_program \
     /opt/neon_test_invoke_program-keypair.json \
     /spl/bin/
 
+COPY test-operator-keypairs/id.json /root/.config/solana/
+
 COPY . .
 ARG PROXY_REVISION
 RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'"$PROXY_REVISION"'/g' ./common/config/constants.py
