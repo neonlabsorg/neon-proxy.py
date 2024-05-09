@@ -12,7 +12,7 @@ ln -s /opt/neon-proxy/test-operator-keypairs/id?*.json /root/.config/solana/
 
 /spl/bin/create-test-accounts.sh 1
 
-export NUM_ACCOUNTS=30
+export NUM_ACCOUNTS=28
 /spl/bin/create-test-accounts.sh $NUM_ACCOUNTS &
 
 proxy/run-proxy.sh

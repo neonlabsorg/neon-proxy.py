@@ -44,7 +44,7 @@ CoreApiResultField = Annotated[CoreApiResultCode, PlainValidator(CoreApiResultCo
 class CoreApiResp(BaseModel):
     result: CoreApiResultField
     error: str = None
-    value: dict | list[dict] | str
+    value: dict | list[dict] | str | list[int]
     logs: list[dict] = Field(default_factory=list)
 
 

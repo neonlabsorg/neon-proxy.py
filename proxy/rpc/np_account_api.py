@@ -48,7 +48,12 @@ class NpAccountApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::Account"
 
     @NeonProxyApi.method(name="eth_getTransactionCount")
-    async def get_tx_cnt(self, ctx: HttpRequestCtx, address: EthAddressField, block_tag: RpcBlockRequest) -> HexUIntField:
+    async def get_tx_cnt(
+        self,
+        ctx: HttpRequestCtx,
+        address: EthAddressField,
+        block_tag: RpcBlockRequest,
+    ) -> HexUIntField:
         block = await self.get_block_by_tag(block_tag)
         chain_id = self.get_chain_id(ctx)
         acct = NeonAccount.from_raw(address, chain_id)
@@ -80,23 +85,34 @@ class NpAccountApi(NeonProxyApi):
         return acct.balance
 
     @NeonProxyApi.method(name="eth_getCode")
-    async def get_code(self, ctx: HttpRequestCtx, address: EthAddressField, block_tag: RpcBlockRequest) -> EthBinStrField:
+    async def get_code(
+        self,
+        ctx: HttpRequestCtx,
+        address: EthAddressField,
+        block_tag: RpcBlockRequest,
+    ) -> EthBinStrField:
         block = await self.get_block_by_tag(block_tag)
         chain_id = self.get_chain_id(ctx)
-        neon_acct = NeonAccount(address, chain_id)
+        neon_acct = NeonAccount.from_raw(address, chain_id)
         resp = await self._core_api_client.get_neon_contract(neon_acct, block)
         return resp.code
 
     @NeonProxyApi.method(name="eth_getStorageAt")
     async def get_storage_at(
-        self, address: EthAddressField, position: HexUIntField, block_tag: RpcBlockRequest
+        self,
+        address: EthAddressField,
+        position: HexUIntField,
+        block_tag: RpcBlockRequest,
     ) -> EthZeroHash32Field:
         block = await self.get_block_by_tag(block_tag)
         return await self._core_api_client.get_storage_at(address, position, block)
 
     @NeonProxyApi.method(name="neon_getAccount")
     async def get_neon_account(
-        self, ctx: HttpRequestCtx, address: EthAddressField, block_tag: RpcBlockRequest
+        self,
+        ctx: HttpRequestCtx,
+        address: EthAddressField,
+        block_tag: RpcBlockRequest,
     ) -> _NeonRpcAccountResp:
         block = await self.get_block_by_tag(block_tag)
         chain_id = self.get_chain_id(ctx)

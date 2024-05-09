@@ -44,9 +44,9 @@ class SimpleAppDataClient(HttpClient):
             resp_json = await self._send_post_request(req_json, path=method_path)
             return _parse_resp(resp_json)
 
-        def _parse_resp(response_json: str) -> _RespType:
+        def _parse_resp(resp_json: str) -> _RespType:
             try:
-                return _RespType.from_json(response_json)
+                return _RespType.from_json(resp_json)
             except BaseException as exc:
                 raise BadRespError(exc)
 

@@ -110,14 +110,12 @@ class CoreApiClient(SimpleAppDataClient):
         req = NeonAccountListRequest.from_raw(account_list, self._get_slot(block))
         resp = await self._get_neon_account_list(req)
         if resp.error:
-            _LOG.error(
-                log_msg(
-                    "get error on reading balance accounts {Accounts}: {Error}",
-                    Accounts=account_list,
-                    Error=resp.error,
-                ),
-                extra=self._msg_filter,
+            msg = log_msg(
+                "get error on reading balance accounts {Accounts}: {Error}",
+                Accounts=account_list,
+                Error=resp.error,
             )
+            _LOG.error(msg, extra=self._msg_filter)
             return tuple([NeonAccountModel.new_empty(acct) for acct in account_list])
 
         return tuple([NeonAccountModel.from_dict(data, account=a) for a, data in zip(account_list, resp.value)])
@@ -135,10 +133,10 @@ class CoreApiClient(SimpleAppDataClient):
         resp = await self._get_neon_contract(req)
         return NeonContractModel.from_dict(resp.value[0], account=account)
 
-    async def get_storage_at(self, contract: EthAddress, position: int, block: NeonBlockHdrModel | None) -> EthHash32:
-        req = NeonStorageAtRequest(contract=contract, position=position, slot=self._get_slot(block))
+    async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
+        req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
         resp = await self._get_storage_at(req)
-        return EthHash32.from_raw(resp.value)
+        return EthHash32.from_raw(bytes(resp.value))
 
     async def emulate(
         self,
@@ -237,8 +235,8 @@ class CoreApiClient(SimpleAppDataClient):
 
     def _check_emulator_result(self, resp: EmulatorResp) -> None:
         if resp.exit_code == EmulatorExitCode.Revert:
-            revert_data = resp.result
-            _LOG.debug("got revert call emulated result with data: %s", revert_data)
+            revert_data = resp.result.to_string()[2:]
+            _LOG.debug("got reverted result with data: %s", revert_data)
             result_value = self._decode_revert_message(revert_data)
             if not result_value:
                 raise EthError(code=3, message="execution reverted", data="0x" + revert_data)
