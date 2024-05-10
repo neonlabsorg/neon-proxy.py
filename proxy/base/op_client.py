@@ -12,8 +12,8 @@ from .op_api import (
     OpGetResourceRequest,
     OpFreeResourceRequest,
     OpResourceResp,
-    OpSolTokenAddressModel,
-    OpGetSolTokenAddressRequest,
+    OpTokenSolAddressModel,
+    OpGetTokenSolAddressRequest,
     OpSignSolTxListRequest,
     OpSolTxListResp,
 )
@@ -32,9 +32,10 @@ class OpResourceClient(AppDataClient):
         resp = await self._free_resource(req)
         return resp.result
 
-    async def get_sol_token_address(self, tx_id: str, owner: SolPubKey, chain_id: int) -> OpSolTokenAddressModel:
-        req = OpGetSolTokenAddressRequest(tx_id=tx_id, owner=owner, chain_id=chain_id)
-        return await self._get_sol_token_address(req)
+    async def get_token_sol_address(self, tx_id: str, owner: SolPubKey, chain_id: int) -> SolPubKey:
+        req = OpGetTokenSolAddressRequest(tx_id=tx_id, owner=owner, chain_id=chain_id)
+        resp = await self._get_token_sol_address(req)
+        return resp.token_sol_address
 
     async def sign_sol_tx_list(self, tx_id: str, owner: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
         model_list = [SolTxModel.from_raw(tx) for tx in tx_list]
@@ -48,8 +49,8 @@ class OpResourceClient(AppDataClient):
     @AppDataClient.method(name="freeOperatorResource")
     async def _free_resource(self, request: OpFreeResourceRequest) -> OpResourceResp: ...
 
-    @AppDataClient.method(name="getSolanaTokenAddress")
-    async def _get_sol_token_address(self, request: OpGetSolTokenAddressRequest) -> OpSolTokenAddressModel: ...
+    @AppDataClient.method(name="getOperatorTokenAddress")
+    async def _get_token_sol_address(self, request: OpGetTokenSolAddressRequest) -> OpTokenSolAddressModel: ...
 
     @AppDataClient.method(name="signSolanaTransactionList")
     async def _sign_sol_tx_list(self, request: OpSignSolTxListRequest) -> OpSolTxListResp: ...

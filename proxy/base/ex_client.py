@@ -12,11 +12,11 @@ class ExecutorClient(AppDataClient):
     async def exec_tx(self, tx: MpTxModel, resource: OpResourceModel) -> ExecTxResp:
         return await self._exec_tx(ExecTxRequest(tx=tx, resource=resource))
 
-    async def exec_stuck_tx(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> ExecTxResp:
-        return await self._exec_stuck_tx(ExecStuckTxRequest(stuck_tx=stuck_tx, resource=resource))
+    async def complete_stuck_tx(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> ExecTxResp:
+        return await self._complete_stuck_tx(ExecStuckTxRequest(stuck_tx=stuck_tx, resource=resource))
 
-    @AppDataClient.method(name="executeTransaction")
+    @AppDataClient.method(name="executeNeonTransaction")
     async def _exec_tx(self, request: ExecTxRequest) -> ExecTxResp: ...
 
-    @AppDataClient.method(name="executeStuckTransaction")
-    async def _exec_stuck_tx(self, request: ExecStuckTxRequest) -> ExecTxResp: ...
+    @AppDataClient.method(name="completeStuckNeonTransaction")
+    async def _complete_stuck_tx(self, request: ExecStuckTxRequest) -> ExecTxResp: ...

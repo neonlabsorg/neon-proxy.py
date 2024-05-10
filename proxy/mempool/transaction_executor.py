@@ -37,12 +37,9 @@ class MpTxExecutor(MempoolComponent):
         self._completed_task_list: list[asyncio.Task] = list()
 
     async def start(self) -> None:
-        evm_cfg = await self._server.get_evm_cfg()
-
-        await asyncio.gather(
-            self._tx_dict.start(),
-            self._stuck_tx_dict.start(self._db, evm_cfg.default_chain_id),
-        )
+        await self._tx_dict.start()
+        if not self._cfg.mp_skip_stuck_tx:
+            await self._stuck_tx_dict.start(self._db),
         self._tx_exec_task = asyncio.create_task(self._tx_exec_loop())
 
     async def close(self) -> None:
@@ -75,8 +72,6 @@ class MpTxExecutor(MempoolComponent):
             if not (result := tx_schedule.add_tx(tx, state_tx_cnt)):
                 return MpTxResp(code=MpTxRespCode.UnknownChainID, state_tx_cnt=None)
             elif result.code == MpTxRespCode.Success:
-                # TODO: stat
-                # self._stat_client.commit_tx_add()
                 self._tx_dict.add_tx(tx)
 
             return result
@@ -125,7 +120,7 @@ class MpTxExecutor(MempoolComponent):
         # this gas-price is used only for sorting,
         #  without this increasing
         #  the tx will be in the bottom of the execution queue,
-        #  and will be never executed
+        #  and as a result, it will be never executed
         tx.set_gas_price(token.suggested_gas_price * 2)
         return None
 
@@ -154,30 +149,37 @@ class MpTxExecutor(MempoolComponent):
                 if task_list:
                     await asyncio.gather(*task_list)
 
+                # TODO: add statistics
+
             except BaseException as exc:
                 _LOG.error("error on process schedule", exc_info=exc)
 
     async def _acquire_stuck_tx(self) -> bool:
-        while stuck_tx := self._stuck_tx_dict.peek_tx():
-            with logging_context(tx=stuck_tx.tx_id):
-                if tx := self._tx_dict.get_tx_by_hash(stuck_tx.neon_tx_hash):
-                    result = self._call_tx_schedule(stuck_tx.chain_id, MpTxSchedule.drop_tx, tx.from_address, tx.nonce)
-                    if not result:
-                        self._stuck_tx_dict.skip_tx(stuck_tx)
-                        continue
-                    self._tx_dict.done_tx(tx.neon_tx_hash)
+        if self._cfg.mp_skip_stuck_tx:
+            return False
 
-                resource = await self._op_client.get_resource(stuck_tx.tx_id, None)
-                if resource.is_empty:
-                    break
+        if not (stuck_tx := self._stuck_tx_dict.peek_tx()):
+            return False
 
-                tx_hash = stuck_tx.neon_tx_hash
-                assert tx_hash not in self._exec_task_dict
+        with logging_context(tx=stuck_tx.tx_id):
+            if tx := self._tx_dict.get_tx_by_hash(stuck_tx.neon_tx_hash):
+                result = self._call_tx_schedule(tx.chain_id, MpTxSchedule.drop_tx, tx.from_address, tx.nonce)
+                if not result:
+                    self._stuck_tx_dict.skip_tx(stuck_tx)
+                    return True
+                self._tx_dict.done_tx(tx.neon_tx_hash)
 
-                self._stuck_tx_dict.acquire_tx(stuck_tx)
-                self._exec_task_dict[tx_hash] = asyncio.create_task(self._exec_stuck_tx(stuck_tx, resource))
-            return True
-        return False
+            resource = await self._op_client.get_resource(stuck_tx.tx_id, None)
+            if resource.is_empty:
+                return False
+
+            tx_hash = stuck_tx.neon_tx_hash
+            assert tx_hash not in self._exec_task_dict
+
+            self._stuck_tx_dict.acquire_tx(stuck_tx)
+            self._exec_task_dict[tx_hash] = asyncio.create_task(self._exec_stuck_tx(stuck_tx, resource))
+
+        return True
 
     async def _exec_stuck_tx(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> None:
         with logging_context(tx=stuck_tx.tx_id):
@@ -185,10 +187,10 @@ class MpTxExecutor(MempoolComponent):
 
     async def _exec_stuck_tx_impl(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> None:
         try:
-            resp = await self._exec_client.exec_stuck_tx(stuck_tx, resource)
+            resp = await self._exec_client.complete_stuck_tx(stuck_tx, resource)
         except BaseException as exc:
             resp = ExecTxResp(code=ExecTxRespCode.Failed)
-            _LOG.error("error on send stuck tx to executor", exc_info=exc)
+            _LOG.error("error on send stuck NeonTx to executor", exc_info=exc)
 
         msg = log_msg(
             "done stuck tx {StuckTx}, result {Result}, time {TimeMS} msec",
@@ -205,7 +207,7 @@ class MpTxExecutor(MempoolComponent):
         if resp.code == ExecTxRespCode.BadResource:
             is_good_resource = False
             self._stuck_tx_dict.cancel_tx(stuck_tx)
-        elif resp.code in ExecTxRespCode.Failed:
+        elif resp.code == ExecTxRespCode.Failed:
             self._stuck_tx_dict.fail_tx(stuck_tx)
         elif resp.code == ExecTxRespCode.Done:
             self._stuck_tx_dict.done_tx(stuck_tx)
@@ -260,14 +262,21 @@ class MpTxExecutor(MempoolComponent):
             resp = await self._exec_client.exec_tx(tx, resource)
         except BaseException as exc:
             resp = ExecTxResp(code=ExecTxRespCode.Failed)
-            _LOG.error("error on send tx to executor", exc_info=exc)
+            _LOG.error("error on send NeonTx to executor", exc_info=exc)
         else:
-            proc_msec = tx.process_time_msec
-            msg = log_msg("done tx {Tx}, result {Result}, time {TimeMS} msec", Tx=tx, Result=resp, TimeMS=proc_msec)
-            if resp.code == ExecTxRespCode.Done:
-                _LOG.debug(msg)
-            else:
+            msg = log_msg(
+                "done tx {Tx}, result {Result}, time {TimeMS} msec",
+                Tx=tx,
+                Result=resp,
+                TimeMS=tx.process_time_msec,
+            )
+            if resp.code == ExecTxRespCode.Failed:
                 _LOG.warning(msg)
+            else:
+                _LOG.debug(msg)
+
+        if resp.code not in (ExecTxRespCode.BadResource, ExecTxRespCode.NonceTooHigh):
+            self._tx_dict.done_tx(tx.neon_tx_hash)
 
         is_good_resource = True
         if resp.code == ExecTxRespCode.BadResource:
@@ -277,13 +286,10 @@ class MpTxExecutor(MempoolComponent):
             action = MpTxSchedule.cancel_tx
         elif resp.code in (ExecTxRespCode.Failed, ExecTxRespCode.NonceTooLow):
             action = MpTxSchedule.fail_tx
-            self._tx_dict.done_tx(tx.neon_tx_hash)
         elif resp.code == ExecTxRespCode.Done:
             action = MpTxSchedule.done_tx
-            self._tx_dict.done_tx(tx.neon_tx_hash)
         else:
             action = MpTxSchedule.fail_tx
-            self._tx_dict.done_tx(tx.neon_tx_hash)
             _LOG.error("unknown exec response code %s", resp)
 
         self._call_tx_schedule(tx.chain_id, action, tx, resp.state_tx_cnt)

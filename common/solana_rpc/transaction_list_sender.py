@@ -321,15 +321,15 @@ class SolTxListSender:
             return self.to_string()
 
     def _is_already_finalized(self) -> bool:
-        """The Neon tx is finalized"""
+        """The NeonTx is finalized"""
         if result := SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict:
-            _LOG.debug("neon tx is already finalized")
+            _LOG.debug("NeonTx is already finalized")
         return result
 
     def _get_tx_list_for_send(self) -> None:
         self._tx_list.clear()
 
-        # no errors and resending, because the Neon tx is finalized
+        # no errors and resending, because the NeonTx is finalized
         if self._is_already_finalized():
             return
 

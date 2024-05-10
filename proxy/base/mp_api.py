@@ -81,21 +81,27 @@ class MpTxModel(BaseModel):
 class MpStuckTxModel(BaseModel):
     neon_tx_hash: EthTxHashField
     holder_address: SolPubKeyField
-    alt_address_list: tuple[SolPubKeyField, ...]
+    alt_address_list: list[SolPubKeyField]
 
     start_time_nsec: int
 
     @classmethod
-    def from_dict(cls, data: dict, *, def_chain_id: int = 0) -> Self:
-        if def_chain_id:
-            return cls(
-                neon_tx_hash=data["neon_tx_hash"],
-                holder_address=data["holder_address"],
-                alt_address_list=tuple(),
-                start_time_nsec=time.monotonic_ns(),
-            )
+    def from_db(cls, data: dict) -> Self:
+        return cls(
+            neon_tx_hash=data["neon_tx_hash"],
+            holder_address=data["holder_address"],
+            alt_address_list=list(),
+            start_time_nsec=time.monotonic_ns(),
+        )
 
-        return BaseModel.from_dict(data)
+    @classmethod
+    def from_raw(cls, neon_tx_hash: EthTxHash, holder_address: SolPubKeyField) -> Self:
+        return cls(
+            neon_tx_hash=neon_tx_hash,
+            holder_address=holder_address,
+            alt_address_list=list(),
+            start_time_nsec=time.monotonic_ns(),
+        )
 
     @cached_method
     def to_string(self) -> str:
@@ -103,7 +109,7 @@ class MpStuckTxModel(BaseModel):
 
     @cached_property
     def tx_id(self) -> str:
-        return self.neon_tx_hash.to_bytes()[:4].hex()
+        return self.neon_tx_hash.to_bytes()[:4].hex() + ":stuck"
 
     @property
     def process_time_msec(self) -> float:

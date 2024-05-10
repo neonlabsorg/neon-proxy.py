@@ -54,8 +54,8 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
 
         holder = await self._get_holder_account()
         if holder.status == HolderAccountStatus.Active:
-            if holder.neon_tx_sig != self._ctx.neon_tx_hash:
-                raise StuckTxError(holder.neon_tx_hash, holder.chain_id, holder.address)
+            if holder.neon_tx_hash != self._ctx.neon_tx_hash:
+                raise StuckTxError(holder.neon_tx_hash, holder.address)
 
     async def _get_holder_account(self) -> HolderAccountModel:
         holder = await self._ctx.core_api_client.get_holder_account(self._ctx.holder_address)

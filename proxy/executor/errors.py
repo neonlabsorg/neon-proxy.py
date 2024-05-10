@@ -12,10 +12,9 @@ class BadResourceError(Exception):
 
 
 class StuckTxError(Exception):
-    def __init__(self, neon_tx_hash: EthTxHash, chain_id: int, address: SolPubKey) -> None:
+    def __init__(self, neon_tx_hash: EthTxHash, address: SolPubKey) -> None:
         super().__init__()
         self._neon_tx_hash = neon_tx_hash
-        self._chain_id = chain_id
         self._address = address
 
     @property
@@ -23,16 +22,12 @@ class StuckTxError(Exception):
         return self._neon_tx_hash
 
     @property
-    def chain_id(self) -> int:
-        return self._chain_id
-
-    @property
     def address(self) -> SolPubKey:
         return self._address
 
     @cached_method
     def to_string(self) -> str:
-        return f"Holder {self._neon_tx_hash} contains stuck tx {self._neon_tx_hash}:{hex(self._chain_id)}"
+        return f"Holder {self._neon_tx_hash} contains stuck tx {self._neon_tx_hash}"
 
     def __str__(self) -> str:
         return self.to_string()

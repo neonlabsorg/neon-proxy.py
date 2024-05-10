@@ -7,6 +7,7 @@ from collections import deque
 from typing import Sequence, Final
 
 from common.config.constants import ONE_BLOCK_SEC
+from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, HolderAccountStatus, NeonAccountStatus
@@ -121,18 +122,18 @@ class OpResourceMng(OpResourceComponent):
                 _LOG.debug("disable resource: %s", op_resource)
                 op_signer.disabled_holder_list.append(op_holder)
 
-    def get_sol_token_address(self, owner: SolPubKey, chain_id: int) -> SolPubKey:
+    def get_token_address(self, owner: SolPubKey, chain_id: int) -> tuple[EthAddress, SolPubKey]:
         with logging_context(opkey=self._opkey(owner)):
             if not (op_signer := self._find_op_signer(owner)):
                 _LOG.error("error on trying to find owner of token address %s:%s", owner, chain_id)
-                return SolPubKey.default()
+                return EthAddress.default(), SolPubKey.default()
 
-            sol_token_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
-            if sol_token_addr.is_empty:
+            token_sol_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
+            if token_sol_addr.is_empty:
                 _LOG.error("error on trying to find token address %s for absent chain_id %s", owner, chain_id)
             else:
-                _LOG.debug("got token_address %s for %s:%s", sol_token_addr, owner, hex(chain_id))
-        return sol_token_addr
+                _LOG.debug("got token_address %s for %s:%s", token_sol_addr, owner, hex(chain_id))
+        return op_signer.eth_address, token_sol_addr
 
     async def sign_tx_list(self, payer: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
         with logging_context(opkey=self._opkey(payer)):

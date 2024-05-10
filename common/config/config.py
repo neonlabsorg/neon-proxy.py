@@ -112,6 +112,7 @@ class Config:
     mp_eviction_timeout_sec_name: Final[str] = "MEMPOOL_EVICTION_TIMEOUT_SEC"
     mp_gas_price_min_window_name: Final[str] = "MEMPOOL_GAS_PRICE_MINUTE_WINDOW"
     mp_cache_life_sec_name: Final[str] = "MEMPOOL_CACHE_LIFE_SEC"
+    mp_skip_stuck_tx_name: Final[str] = "MEMPOOL_SKIP_STUCK_TRANSACTIONS"
     # Transaction execution settings
     retry_on_fail_name: Final[str] = "RETRY_ON_FAIL"
     commit_timeout_sec_name: Final[str] = "COMMIT_TIMEOUT_SEC"
@@ -460,6 +461,10 @@ class Config:
     def mp_cache_life_sec(self) -> int:
         return self._env_num(self.mp_cache_life_sec_name, 30 * self._1min, 15, self._1hour)
 
+    @cached_property
+    def mp_skip_stuck_tx(self) -> bool:
+        return self._env_bool(self.mp_skip_stuck_tx_name, False)
+
     ########################
     # Neon Core API settings
 
@@ -785,6 +790,7 @@ class Config:
             self.mp_eviction_timeout_sec_name: self.mp_eviction_timeout_sec,
             self.mp_gas_price_min_window_name: self.mp_gas_price_min_window,
             self.mp_cache_life_sec_name: self.mp_cache_life_sec,
+            self.mp_skip_stuck_tx_name: self.mp_skip_stuck_tx,
             # Neon Core API settings
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,
             # Postgres DB settings

@@ -9,8 +9,8 @@ from ..base.op_api import (
     OpResourceModel,
     OpResourceResp,
     OpFreeResourceRequest,
-    OpGetSolTokenAddressRequest,
-    OpSolTokenAddressModel,
+    OpGetTokenSolAddressRequest,
+    OpTokenSolAddressModel,
 )
 
 
@@ -33,7 +33,7 @@ class OpAcquireResourceApi(OpResourceApi):
             return OpResourceResp(result=True)
 
     @OpResourceApi.method(name="getOperatorTokenAddress")
-    def get_token_address(self, request: OpGetSolTokenAddressRequest) -> OpSolTokenAddressModel:
+    def get_token_address(self, request: OpGetTokenSolAddressRequest) -> OpTokenSolAddressModel:
         with logging_context(tx=request.tx_id):
-            owner_token_addr = self._op_resource_mng.get_sol_token_address(request.owner, request.chain_id)
-            return OpSolTokenAddressModel(owner=request.owner, token_sol_address=owner_token_addr)
+            eth_addr, token_sol_addr = self._op_resource_mng.get_token_address(request.owner, request.chain_id)
+            return OpTokenSolAddressModel(owner=request.owner, eth_address=eth_addr, token_sol_address=token_sol_addr)

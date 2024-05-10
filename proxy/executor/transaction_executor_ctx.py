@@ -31,12 +31,12 @@ _LOG = logging.getLogger(__name__)
 
 
 class NeonExecTxCtx(ExecutorComponent):
-    def __init__(self, server: ExecutorServerAbc, tx_request: ExecTxRequest | ExecStuckTxRequest) -> None:
+    def __init__(self, server: ExecutorServerAbc, tx_request: ExecTxRequest | ExecStuckTxRequest, *, chain_id: int = 0):
         super().__init__(server)
         self._tx_request = tx_request
         self._token_sol_addr = tx_request.resource.token_sol_address
 
-        self._chain_id: int | None = None
+        self._chain_id: int = tx_request.tx.chain_id if isinstance(tx_request, ExecTxRequest) else chain_id
         self._evm_step_cnt_per_iter: int | None = 0
 
         self._uniq_idx = itertools.count()
@@ -69,7 +69,9 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
-        return OpTxListSigner(self._tx_request.tx.tx_id, self.payer, self._op_client)
+        req = self._tx_request
+        tx_id = req.tx.tx_id if isinstance(req, ExecTxRequest) else req.stuck_tx.tx_id
+        return OpTxListSigner(tx_id, self.payer, self._op_client)
 
     @cached_property
     def sol_tx_list_sender(self) -> SolTxListSender:
@@ -180,9 +182,9 @@ class NeonExecTxCtx(ExecutorComponent):
         prog = NeonProg(payer).init_holder_address(self.holder_address)
 
         assert not self._token_sol_addr.is_empty
-        prog.init_token_address(self._tx_request.resource.token_sol_address)
+        prog.init_token_address(self._token_sol_addr)
 
-        if isinstance(self._tx_request, ExecTxRequest):
+        if not self.is_stuck_tx:
             eth_rlp_tx = self._tx_request.tx.eth_tx_data.to_bytes()
         else:
             eth_rlp_tx = bytes()
@@ -205,7 +207,7 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @property
     def holder_address(self) -> SolPubKey:
-        if isinstance(self._tx_request, ExecStuckTxRequest):
+        if self.is_stuck_tx:
             return self._tx_request.stuck_tx.holder_address
         return self._tx_request.resource.holder_address
 
@@ -216,29 +218,19 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:
-        if isinstance(self._tx_request, ExecStuckTxRequest):
+        if self.is_stuck_tx:
             return self._tx_request.stuck_tx.neon_tx_hash
         return self._tx_request.tx.neon_tx_hash
 
     @cached_property
     def has_chain_id(self) -> bool:
-        if isinstance(self._tx_request, ExecStuckTxRequest):
+        if self.is_stuck_tx:
             return True
         return self._tx_request.tx.neon_tx.has_chain_id
 
-    @cached_property
+    @property
     def chain_id(self) -> int:
-        assert not self.is_stuck_tx
-        return self._tx_request.tx.chain_id
-
-    def set_chain_id(self, value: int) -> None:
-        assert self.is_stuck_tx
-        assert value
-        assert not self._chain_id  # chain-id can be change only 1 time
-
-        self._chain_id = value
-        # clear the checking on stuck-tx in the chain_id-property
-        object.__setattr__(self, "chain_id", value)
+        return self._chain_id
 
     @cached_property
     def sender(self) -> NeonAccount:

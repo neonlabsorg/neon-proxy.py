@@ -16,7 +16,6 @@ _LOG = logging.getLogger(__name__)
 
 class MpStuckTxDict:
     def __init__(self) -> None:
-        self._def_chain_id = 0
         self._tx_dict: dict[EthTxHash, MpStuckTxModel] = dict()
         self._processing_tx_dict: dict[EthTxHash, MpStuckTxModel] = dict()
 
@@ -24,14 +23,13 @@ class MpStuckTxDict:
         self._stop_event = asyncio.Event()
         self._scan_stuck_tx_task: asyncio.Task | None = None
 
-    async def start(self, db: IndexerDbClient, default_chain_id: int) -> None:
-        self._def_chain_id = default_chain_id
+    async def start(self, db: IndexerDbClient) -> None:
         self._db = db
         self._scan_stuck_tx_task = asyncio.create_task(self._scan_stuck_tx_loop())
 
     async def close(self) -> None:
-        self._stop_event.set()
         if self._scan_stuck_tx_task:
+            self._stop_event.set()
             await self._scan_stuck_tx_task
 
     @property
@@ -43,10 +41,7 @@ class MpStuckTxDict:
         return len(self._processing_tx_dict)
 
     def peek_tx(self) -> MpStuckTxModel | None:
-        for stuck_tx in self._tx_dict.values():
-            return stuck_tx
-
-        return None
+        return next(iter(self._tx_dict.values()), None)
 
     def acquire_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._pop_tx(stuck_tx)
@@ -101,11 +96,11 @@ class MpStuckTxDict:
 
         tx_dict: dict[EthTxHash, MpStuckTxModel] = dict()
         for data in src_tx_list:
-            stuck_tx = MpStuckTxModel.from_dict(data, def_chain_id=self._def_chain_id)
+            stuck_tx = MpStuckTxModel.from_db(data)
             if stuck_tx.neon_tx_hash in self._processing_tx_dict:
                 continue
             elif stuck_tx.neon_tx_hash not in self._tx_dict:
                 _LOG.debug(log_msg("found external stuck tx {StuckTx}", StuckTx=stuck_tx))
 
             tx_dict[stuck_tx.neon_tx_hash] = stuck_tx
-        self._external_tx_dict = tx_dict
+        self._tx_dict = tx_dict

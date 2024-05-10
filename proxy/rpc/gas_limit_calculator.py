@@ -23,8 +23,8 @@ _LOG = logging.getLogger(__name__)
 
 
 class NpGasLimitCalculator(NeonProxyComponent):
-    _oz_gas_limit = 30_000  # openzeppelin size check
-    _min_gas_limit = 25_000  # minimal gas limit for neon txs
+    _oz_gas_limit = 30_000  # openzeppelin gas-limit check
+    _min_gas_limit = 25_000  # minimal gas limit for NeonTx: start (10k), execute (10k), finalization (5k)
     _u64_max = int.from_bytes(bytes([0xFF] * 8), "big")
 
     # These values aren't used on real network, they are used only to generate temporary data

@@ -50,6 +50,9 @@ class IterativeTxStrategy(BaseTxStrategy):
             if (exit_code := await self._decode_neon_tx_return()) is not None:
                 return exit_code
 
+            if not self._ctx.is_stuck_tx:
+                raise StuckTxError(self._ctx.neon_tx_hash, self._ctx.holder_address)
+
             _LOG.debug("no receipt -> execute additional iterations...")
             await self._emulate_and_send_tx_list()
 
@@ -63,10 +66,12 @@ class IterativeTxStrategy(BaseTxStrategy):
         return None
 
     async def _emulate_and_send_tx_list(self) -> bool:
-        if self._ctx.cfg.calc_cu_limit_usage:
+        if self._ctx.is_stuck_tx:
+            iter_info = self._get_stuck_evm_step_cnt()
+        elif self._ctx.cfg.calc_cu_limit_usage:
             iter_info = await self._calc_evm_step_cnt()
         else:
-            iter_info = self._get_default_evm_step_cnt()
+            iter_info = self._get_def_evm_step_cnt()
 
         tx_list: list[SolTx] = [
             self._build_tx(is_finalized=iter_info.is_finalized, step_cnt=iter_info.step_cnt)
@@ -129,9 +134,9 @@ class IterativeTxStrategy(BaseTxStrategy):
         _LOG.debug("use default %s EVM steps, %s iterations", step_cnt, iter_cnt)
         return self._IterInfo(False, step_cnt, iter_cnt)
 
-    def _get_default_evm_step_cnt(self) -> _IterInfo:
-        total_step_cnt = self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt + 1
+    def _get_def_evm_step_cnt(self) -> _IterInfo:
         step_cnt_iter = self._ctx.evm_step_cnt_per_iter
+        total_step_cnt = self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt + 1
 
         if not total_step_cnt:
             _LOG.debug("just 1 finalization iteration")
@@ -150,6 +155,10 @@ class IterativeTxStrategy(BaseTxStrategy):
             iter_cnt,
         )
         return self._IterInfo(False, step_cnt_iter, iter_cnt)
+
+    def _get_stuck_evm_step_cnt(self) -> _IterInfo:
+        _LOG.debug("just 1 finalization iteration for stuck NeonTx")
+        return self._IterInfo(True, self._ctx.evm_step_cnt_per_iter, 1)
 
     @dataclass(frozen=True)
     class _IterInfo:
@@ -206,14 +215,13 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     async def _is_finalized_holder(self) -> bool:
         holder = await self._get_holder_acct()
-        _LOG.debug("holder %s", holder)
         if holder.status == HolderAccountStatus.Finalized:
             if holder.neon_tx_hash == self._ctx.neon_tx_hash:
                 _LOG.warning("holder %s has finalized tag", holder.address)
                 return True
         elif holder.status == HolderAccountStatus.Active:
             if holder.neon_tx_hash != self._ctx.neon_tx_hash:
-                raise StuckTxError(holder.neon_tx_hash, holder.chain_id, holder.address)
+                raise StuckTxError(holder.neon_tx_hash, holder.address)
             _LOG.debug("holder %s has %s completed EVM steps", holder.address, holder.evm_step_cnt)
             self._completed_evm_step_cnt = holder.evm_step_cnt
         else:

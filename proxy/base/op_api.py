@@ -62,13 +62,13 @@ class OpResourceModel(BaseModel):
         return self.owner.is_empty
 
 
-class OpGetSolTokenAddressRequest(BaseModel):
+class OpGetTokenSolAddressRequest(BaseModel):
     tx_id: str
     owner: SolPubKeyField
     chain_id: int
 
 
-class OpSolTokenAddressModel(BaseModel):
+class OpTokenSolAddressModel(BaseModel):
     owner: SolPubKeyField
     eth_address: EthAddressField
     token_sol_address: SolPubKeyField
