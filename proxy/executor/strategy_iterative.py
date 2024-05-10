@@ -59,7 +59,16 @@ class IterativeTxStrategy(BaseTxStrategy):
         raise SolNoMoreRetriesError()
 
     async def cancel(self) -> ExecTxRespCode | None:
-        if (await self._recheck_tx_list(self._cancel_name)) or (await self._send_tx_list([self._build_cancel_tx()])):
+        if await self._recheck_tx_list(self._cancel_name):
+            # cancel is completed
+            return ExecTxRespCode.Failed
+
+        holder = await self._get_holder_acct()
+        if (holder.status != HolderAccountModel.Status.Active) or (holder.neon_tx_hash != self._ctx.neon_tx_hash):
+            _LOG.debug("holder %s doesn't contain %s NeonTx", holder.address, self._ctx.neon_tx_hash)
+            return ExecTxRespCode.Failed
+
+        if await self._send_tx_list([self._build_cancel_tx()]):
             return ExecTxRespCode.Failed
 
         _LOG.error("no!? cancel tx")
@@ -94,12 +103,32 @@ class IterativeTxStrategy(BaseTxStrategy):
             _LOG.debug("just 1 finalization iteration")
             return self._IterInfo(True, step_cnt_iter, 1)
 
-        max_used_cu_limit: Final[int] = int(self._cu_limit * 0.8)  # 80% of the maximum
+        max_used_cu_limit: Final[int] = int(self._cu_limit * 0.85)  # 85% of the maximum
         max_iter_cnt: Final[int] = max((total_step_cnt + step_cnt_iter - 1) // step_cnt_iter, 1)
         mult_factor: Final[int] = max_iter_cnt * 2
         step_cnt = total_step_cnt
 
-        for retry in range(5):  # only 5? attempts for calculations
+        # 5? attempts looks enough for evm steps calculations:
+        #   1 attempt:
+        #      - emulate the whole NeonTx in 1 iteration with the huge CU-limit
+        #      - get the total-CU-usage for the whole NeonTx
+        #      - divide the total-CU-usage on 85% of CU-limit of SolTx
+        #      - get the number of iterations
+        #      - divide the total-EVM-steps on the number of iterations
+        #
+        #   2 attempt:
+        #      - emulate the divided iterations
+        #      - get the maximum-CU-usage in 1 iteration
+        #      - if the maximum-CU-usage is less-or-equal to 85%-CU-limit, return it
+        #      - divide the maximum-CU-usage on 85%-CU-limit
+        #      - decrease EVM-steps on 10% if EVM-steps are equal to the last value
+        #
+        #   3 attempt logic is the same with 2 attempt
+        #      ....
+        #
+        # so, it looks enough to run 5 iterations for EVM steps prediction...
+
+        for retry in range(5):
             exec_iter_cnt = (total_step_cnt // step_cnt) + (1 if (total_step_cnt % step_cnt) else 0)
             # remove 1 iteration for finalization
             wrap_iter_cnt = max((self._ctx.wrap_iter_cnt - 1) if (not self._completed_evm_step_cnt) else 0, 0)
@@ -167,11 +196,13 @@ class IterativeTxStrategy(BaseTxStrategy):
         iter_cnt: int
 
     async def _validate(self) -> bool:
+        # fmt: off
         return (
             self._validate_not_stuck_tx() and
             self._validate_no_sol_call() and
             self._validate_has_chain_id()
         )
+        # fmt: on
 
     def _build_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolLegacyTx:
         step_cnt = step_cnt or self._def_evm_step_cnt
