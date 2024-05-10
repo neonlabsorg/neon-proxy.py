@@ -12,7 +12,7 @@ from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
-from common.solana_rpc.alt_builder import SolAltTxBuilder, SolAltTxSet
+from common.solana_rpc.alt_builder import SolAltTxBuilder
 from .strategy_base import BaseTxPrepStage
 
 _LOG = logging.getLogger(__name__)
@@ -66,6 +66,8 @@ class AltTxPrepStage(BaseTxPrepStage):
         self.build_tx(legacy_tx, [test_alt_info]).validate(SolSigner.fake())  # <- SolTxSize?
         return True
 
+    # protected:
+
     @property
     def _alt_info_list(self) -> list[SolAltInfo]:
         return list(self._alt_info_dict.values())
@@ -103,7 +105,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         if alt_info.is_exist:
             _LOG.debug("use existing ALT %s ", alt_info.address)
         else:
-            _LOG.debug("use new ALT %s", alt_info.address)
+            _LOG.debug("create new ALT %s", alt_info.address)
 
     def _extend_alt_info(self, actual_alt_info: SolAltInfo, alt_info_list: Sequence[SolAltInfo]) -> SolAltInfo:
         for alt_info in alt_info_list:
@@ -136,10 +138,7 @@ def alt_strategy(cls):
             return await super().prep_before_emulate()
 
         async def _validate(self) -> bool:
-            return (
-                self._validate_account_list_len() and
-                await cls._validate(self)
-            )
+            return self._validate_account_list_len() and await cls._validate(self)
 
         def _validate_account_list_len(self) -> bool:
             len_account_meta_list = self._ctx.len_account_meta_list + NeonProg.BaseAccountCnt
@@ -154,11 +153,11 @@ def alt_strategy(cls):
             with self._ctx.test_mode():
                 return self._alt_stage.validate_v0_tx_size(self._build_legacy_tx())
 
-        def _build_legacy_tx(self) -> SolLegacyTx:
-            return cls._build_tx(self)
+        def _build_legacy_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolLegacyTx:
+            return cls._build_tx(self, is_finalized=is_finalized, step_cnt=step_cnt)
 
-        def _build_tx(self) -> SolV0Tx:
-            return self._alt_stage.build_tx(self._build_legacy_tx())
+        def _build_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolV0Tx:
+            return self._alt_stage.build_tx(self._build_legacy_tx(is_finalized=is_finalized, step_cnt=step_cnt))
 
         def _build_cancel_tx(self) -> SolV0Tx:
             return self._alt_stage.build_tx(cls._build_cancel_tx(self))

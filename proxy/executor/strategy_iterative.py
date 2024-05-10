@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from typing import Final
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon_rpc.api import HolderAccountModel, HolderAccountStatus
@@ -31,12 +33,16 @@ class IterativeTxStrategy(BaseTxStrategy):
         # Apply priority fee only in iterative transactions
         return self._ctx.cfg.cu_price
 
+    @property
+    def _def_evm_step_cnt(self) -> int:
+        return self._ctx.evm_step_cnt_per_iter
+
     async def execute(self) -> ExecTxRespCode:
         assert self.is_valid
 
         if not await self._recheck_tx_list(self.name):
             if not self._ctx.is_stuck_tx:
-                await self._send_tx_list(self._build_execute_tx_list())
+                await self._emulate_and_send_tx_list()
 
         # Not enough iterations, try `retry_on_fail` times to complete the Neon Tx
         retry_on_fail = self._ctx.cfg.retry_on_fail
@@ -45,44 +51,124 @@ class IterativeTxStrategy(BaseTxStrategy):
                 return exit_code
 
             _LOG.debug("no receipt -> execute additional iterations...")
-            await self._send_tx_list(self._build_execute_tx_list())
+            await self._emulate_and_send_tx_list()
 
         raise SolNoMoreRetriesError()
 
     async def cancel(self) -> ExecTxRespCode | None:
-        if (await self._recheck_tx_list(self._cancel_name)) or (await self._send_tx_list(self._build_cancel_tx_list())):
+        if (await self._recheck_tx_list(self._cancel_name)) or (await self._send_tx_list([self._build_cancel_tx()])):
             return ExecTxRespCode.Failed
 
         _LOG.error("no!? cancel tx")
         return None
 
-    def _build_execute_tx_list(self) -> list[SolTx]:
-        if self._completed_evm_step_cnt:
-            evm_step_cnt = self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt
-            iter_cnt = max(evm_step_cnt // self._ctx.evm_step_cnt_per_iter, 1)
+    async def _emulate_and_send_tx_list(self) -> bool:
+        if self._ctx.cfg.calc_cu_limit_usage:
+            iter_info = await self._calc_evm_step_cnt()
         else:
-            iter_cnt = self._ctx.iter_cnt
+            iter_info = self._get_default_evm_step_cnt()
 
-        tx_list: list[SolTx] = [self._build_tx() for _ in range(iter_cnt)]
+        tx_list: list[SolTx] = [
+            self._build_tx(is_finalized=iter_info.is_finalized, step_cnt=iter_info.step_cnt)
+            for _ in range(iter_info.iter_cnt)
+        ]
+        return await self._send_tx_list(tx_list)
+
+    async def _calc_evm_step_cnt(self) -> _IterInfo:
+        step_cnt_iter = self._ctx.evm_step_cnt_per_iter
+        total_step_cnt = self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt + 1
 
         _LOG.debug(
-            "%s iterations: %s total EVM steps, %s completed EVM steps, %s EVM steps per iteration",
-            len(tx_list),
+            "%s total EVM steps, %s completed EVM steps, %s EVM steps per iteration",
             self._ctx.total_evm_step_cnt,
             self._completed_evm_step_cnt,
-            self._ctx.evm_step_cnt_per_iter,
+            step_cnt_iter,
         )
 
-        return tx_list
+        if not total_step_cnt:
+            _LOG.debug("just 1 finalization iteration")
+            return self._IterInfo(True, step_cnt_iter, 1)
+
+        max_used_cu_limit: Final[int] = int(self._cu_limit * 0.8)  # 80% of the maximum
+        max_iter_cnt: Final[int] = max((total_step_cnt + step_cnt_iter - 1) // step_cnt_iter, 1)
+        mult_factor: Final[int] = max_iter_cnt * 2
+        step_cnt = total_step_cnt
+
+        for retry in range(5):  # only 5? attempts for calculations
+            exec_iter_cnt = (total_step_cnt // step_cnt) + (1 if (total_step_cnt % step_cnt) else 0)
+            # remove 1 iteration for finalization
+            wrap_iter_cnt = max((self._ctx.wrap_iter_cnt - 1) if (not self._completed_evm_step_cnt) else 0, 0)
+            iter_cnt = wrap_iter_cnt + exec_iter_cnt
+
+            tx_list: list[SolTx] = [self._build_tx(is_finalized=True, step_cnt=step_cnt) for _ in range(iter_cnt)]
+
+            emul_tx_list = await self._emulate_tx_list(tx_list, mult_factor=mult_factor)
+            used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
+            success_iter_cnt = len(filter(lambda x: not x.meta.error, emul_tx_list))
+            _LOG.debug(
+                "retry %d, got %d compute units for %d EVM steps per iteration, %d iterations, %d success iterations",
+                retry + 1,
+                used_cu_limit,
+                step_cnt,
+                exec_iter_cnt,
+                success_iter_cnt,
+            )
+
+            if max_used_cu_limit > used_cu_limit:
+                _LOG.debug("use %s EVM steps, %s iterations", step_cnt, success_iter_cnt)
+                return self._IterInfo(False, step_cnt, success_iter_cnt)
+
+            ratio = min(max_used_cu_limit / used_cu_limit, 0.9)  # decrease in 10% in any case
+            new_step_cnt = max(step_cnt * ratio, step_cnt_iter)
+            if new_step_cnt == step_cnt:
+                break
+            step_cnt = new_step_cnt
+
+        step_cnt = self._def_evm_step_cnt
+        iter_cnt = self._ctx.wrap_iter_cnt + max_iter_cnt - 1
+        _LOG.debug("use default %s EVM steps, %s iterations", step_cnt, iter_cnt)
+        return self._IterInfo(False, step_cnt, iter_cnt)
+
+    def _get_default_evm_step_cnt(self) -> _IterInfo:
+        total_step_cnt = self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt + 1
+        step_cnt_iter = self._ctx.evm_step_cnt_per_iter
+
+        if not total_step_cnt:
+            _LOG.debug("just 1 finalization iteration")
+            return self._IterInfo(True, step_cnt_iter, 1)
+
+        exec_iter_cnt = max((total_step_cnt + step_cnt_iter - 1) // step_cnt_iter, 1)
+        # remove 1 iteration for finalization
+        wrap_iter_cnt = max((self._ctx.wrap_iter_cnt - 1) if (not self._completed_evm_step_cnt) else 0, 0)
+        iter_cnt = exec_iter_cnt + wrap_iter_cnt
+
+        _LOG.debug(
+            "%s total EVM steps, %s completed EVM steps, %s EVM steps per iteration, %s iterations",
+            self._ctx.total_evm_step_cnt,
+            self._completed_evm_step_cnt,
+            step_cnt_iter,
+            iter_cnt,
+        )
+        return self._IterInfo(False, step_cnt_iter, iter_cnt)
+
+    @dataclass(frozen=True)
+    class _IterInfo:
+        is_finalized: bool
+        step_cnt: int
+        iter_cnt: int
 
     async def _validate(self) -> bool:
-        return self._validate_not_stuck_tx() and self._validate_no_sol_call() and self._validate_has_chain_id()
+        return (
+            self._validate_not_stuck_tx() and
+            self._validate_no_sol_call() and
+            self._validate_has_chain_id()
+        )
 
-    def _build_tx(self) -> SolLegacyTx:
-        evm_step_cnt = self._ctx.evm_step_cnt_per_iter
+    def _build_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolLegacyTx:
+        step_cnt = step_cnt or self._def_evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
-        return self._build_cu_tx(prog.make_tx_step_from_data_ix(evm_step_cnt, uniq_idx))
+        return self._build_cu_tx(prog.make_tx_step_from_data_ix(is_finalized, step_cnt, uniq_idx))
 
     def _build_cancel_tx(self) -> SolLegacyTx:
         prog = self._ctx.neon_prog
@@ -117,9 +203,6 @@ class IterativeTxStrategy(BaseTxStrategy):
             return ExecTxRespCode.Failed
 
         return None
-
-    def _build_cancel_tx_list(self) -> list[SolTx]:
-        return [self._build_cancel_tx()]
 
     async def _is_finalized_holder(self) -> bool:
         holder = await self._get_holder_acct()

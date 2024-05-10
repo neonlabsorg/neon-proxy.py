@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import logging
+from typing import Final
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.transaction_list_sender import SolTxSendState
-from ..base.ex_api import ExecTxRespCode
 from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
+from ..base.ex_api import ExecTxRespCode
 
 _LOG = logging.getLogger(__name__)
 
@@ -25,41 +26,64 @@ class SimpleTxStrategy(BaseTxStrategy):
         assert self.is_valid
 
         if not await self._recheck_tx_list(self.name):
-            await self._send_tx_list(self._build_tx_list())
+            await self._emulate_and_send_tx_list()
 
         tx_send_state_list = self._ctx.sol_tx_list_sender.tx_state_list
-        tx_state = tx_send_state_list[0]
         status = SolTxSendState.Status
 
-        if tx_state.status == status.GoodReceipt:
-            if not (sol_neon_ix := self._find_sol_neon_ix(tx_state)):
-                _LOG.warning("no!? NeonTx instruction in %s", tx_state.tx)
-                return ExecTxRespCode.Failed
-            elif not sol_neon_ix.neon_tx_return.is_empty:
-                _LOG.debug("found NeonTx-Return in %s", tx_state.tx)
-                return ExecTxRespCode.Done
-            else:
-                _LOG.warning("truncated!? NeonTx-Return in %s", tx_state.tx)
-                return ExecTxRespCode.Failed
+        for tx_state in tx_send_state_list:
+            if tx_state.status == status.GoodReceipt:
+                if not (sol_neon_ix := self._find_sol_neon_ix(tx_state)):
+                    _LOG.warning("no!? NeonTx instruction in %s", tx_state.tx)
+                    return ExecTxRespCode.Failed
+                elif not sol_neon_ix.neon_tx_return.is_empty:
+                    _LOG.debug("found NeonTx-Return in %s", tx_state.tx)
+                    return ExecTxRespCode.Done
+                else:
+                    _LOG.warning("truncated!? NeonTx-Return in %s", tx_state.tx)
+                    return ExecTxRespCode.Failed
 
-        _LOG.debug("no!? NeonTx-Return in %s(%s), try next strategy...", tx_state.tx, tx_state.status.name)
+        _LOG.debug("no!? NeonTx-Return, try next strategy...")
         raise WrongStrategyError()
 
     async def cancel(self) -> None:
-        _LOG.debug("canceling of simple NeonTx, force to switch to next strategy...")
+        _LOG.debug("canceling of a simple NeonTx...")
         return None
 
-    def _build_tx_list(self) -> list[SolLegacyTx]:
-        return [self._build_tx()]
+    async def _emulate_and_send_tx_list(self) -> bool:
+        tx_list = tuple([self._build_tx()])
 
-    def _build_tx(self) -> SolLegacyTx:
+        # TODO: wait for fix in core-api
+        if self._ctx.cfg.calc_cu_limit_usage:
+            emul_tx_list = await self._emulate_tx_list(tx_list)
+            used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
+
+            # let's decrease the available cu-limit on 5% percents
+            safe_cu_limit_add: Final[int] = int(self._cu_limit * 0.05)
+            total_used_cu_limit = max(used_cu_limit + safe_cu_limit_add, self._cu_limit)
+
+            if total_used_cu_limit > self._cu_limit:
+                _LOG.debug(
+                    "got %s(+%s) compute units for %s EVM steps, and it's bigger than the upper limit %s",
+                    used_cu_limit,
+                    safe_cu_limit_add,
+                    self._ctx.total_evm_step_cnt,
+                    self._cu_limit,
+                )
+                raise WrongStrategyError()
+            _LOG.debug("got %s compute units for %s EVM steps", used_cu_limit, self._ctx.total_evm_step_cnt)
+
+        return await self._send_tx_list(tx_list)
+
+    def _build_tx(self, **kwargs) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix())
 
     async def _validate(self) -> bool:
         return (
-            self._validate_not_stuck_tx() and
-            self._validate_no_sol_call() and
-            self._validate_has_chain_id()
+            self._validate_not_stuck_tx()
+            and self._validate_no_sol_call()
+            and self._validate_has_chain_id()
+            and self._validate_no_resize_iter()
         )
 
 

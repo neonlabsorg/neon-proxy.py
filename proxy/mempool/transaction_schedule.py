@@ -587,8 +587,8 @@ class MpTxSchedule:
         if pool := self._find_sender_pool(sender):
             _LOG.debug(log_msg("find pool {Sender} with {TxCnt} txs", Sender=pool, TxCnt=pool.tx_cnt))
         else:
-            _LOG.debug(log_msg("create new pool {Sender}", Sender=pool))
             pool = _SenderTxPool(sender, self._chain_id)
+            _LOG.debug(log_msg("create new pool {Sender}", Sender=pool))
         return pool
 
     def _get_sender_pool(self, sender: EthAddress) -> _SenderTxPool:
@@ -722,7 +722,7 @@ class MpTxSchedule:
         threshold: Final[int] = int(time.time()) - eviction_timeout_sec
         msg = log_msg(
             "clear mempool {ChainID} with {TxCnt}({PendingTxCnt} txs by heartbeat below {Threshold} sec",
-            Threashold=threshold,
+            Threshold=threshold,
             **self._info(),
         )
         _LOG.debug(msg)

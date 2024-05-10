@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import ClassVar, Union
 
-from typing_extensions import Self
-
 import solders.account as _acct
-from pydantic import Field, AliasChoices
+from pydantic import Field
+from typing_extensions import Self
 
 from .pubkey import SolPubKey, SolPubKeyField
 from ..utils.pydantic import Base64Field, BaseModel
@@ -19,11 +18,7 @@ class SolAccountModel(BaseModel):
     data: Base64Field
     owner: SolPubKeyField
     executable: bool = Field(default=False)
-    rent_epoch: int = Field(
-        0,
-        validation_alias=AliasChoices("rentEpoch", "rent_epoch"),
-        serialization_alias="rentEpoch",
-    )
+    rent_epoch: int = Field(default=0, alias="rentEpoch")
 
     _default: ClassVar[SolAccountModel | None] = None
 
@@ -51,7 +46,7 @@ class SolAccountModel(BaseModel):
                 data=raw.data,
                 owner=raw.owner,
                 executable=raw.executable,
-                rent_epoch=raw.rent_epoch,
+                rentEpoch=raw.rent_epoch,
             )
         raise ValueError(f"Wrong input type: {type(raw).__name__}")
 

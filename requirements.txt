@@ -24,4 +24,3 @@ rusty-rlp==0.4.0
 singleton-decorator==1.0.0
 typing-extensions==4.11.0
 strenum==0.4.15
-construct==2.10.70

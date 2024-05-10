@@ -11,7 +11,7 @@ from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.api import EmulatorResp, HolderAccountModel
+from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.alt_program import SolAltID
 from common.solana.cb_program import SolCbProg
@@ -20,48 +20,24 @@ from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
 from common.solana_rpc.client import SolClient
-from common.solana_rpc.transaction_list_sender import SolTxListSender
+from common.solana_rpc.transaction_list_sender import SolTxListSender, SolTxListSigner
 from common.solana_rpc.ws_client import SolWatchTxSession
-from common.utils.cached import cached_property, cached_method
+from common.utils.cached import cached_property, cached_method, reset_cached_method
+from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
-from ..base.op_client import OpResourceClient
 
 _LOG = logging.getLogger(__name__)
 
 
-class NeonExecTxCtx:
-    class _TestMode:
-        def __init__(self, ctx: NeonExecTxCtx) -> None:
-            self._ctx = ctx
-
-        def __enter__(self) -> Self:
-            self._ctx._test_mode = True
-            return self
-
-        def __exit__(self, exc_type, exc_val: BaseException, exc_tb) -> Self:
-            self._ctx._test_mode = False
-            if exc_val:
-                raise
-            return self
-
-    def __init__(
-        self,
-        cfg: Config,
-        sol_client: SolClient,
-        core_api_client: CoreApiClient,
-        op_client: OpResourceClient,
-        tx_request: ExecTxRequest | ExecStuckTxRequest,
-    ):
-        self._cfg = cfg
-        self._sol_client = sol_client
-        self._core_api_client = core_api_client
-        self._op_resource_client = op_client
-        self._op_client = op_client
+class NeonExecTxCtx(ExecutorComponent):
+    def __init__(self, server: ExecutorServerAbc, tx_request: ExecTxRequest | ExecStuckTxRequest) -> None:
+        super().__init__(server)
         self._tx_request = tx_request
         self._token_sol_addr = tx_request.resource.token_sol_address
 
         self._chain_id: int | None = None
+        self._evm_step_cnt_per_iter: int | None = 0
 
         self._uniq_idx = itertools.count()
         self._alt_id_set: set[SolAltID] = set()
@@ -69,9 +45,15 @@ class NeonExecTxCtx:
         self._has_completed_receipt = False
 
         self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
-        self._emulator_resp: EmulatorResp | None = None
+        self._emulator_resp: EmulNeonCallResp | None = None
 
         self._test_mode = False
+
+    async def get_evm_cfg(self) -> EvmConfigModel:
+        evm_cfg = await self._server.get_evm_cfg()
+        self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
+        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
+        return evm_cfg
 
     @property
     def cfg(self) -> Config:
@@ -86,10 +68,13 @@ class NeonExecTxCtx:
         return self._core_api_client
 
     @cached_property
+    def sol_tx_list_signer(self) -> SolTxListSigner:
+        return OpTxListSigner(self._tx_request.tx.tx_id, self.payer, self._op_client)
+
+    @cached_property
     def sol_tx_list_sender(self) -> SolTxListSender:
         watch_session = SolWatchTxSession(self._cfg, self._sol_client)
-        tx_list_signer = OpTxListSigner(self._tx_request.tx.tx_id, self.payer, self._op_client)
-        return SolTxListSender(self._cfg, watch_session, tx_list_signer)
+        return SolTxListSender(self._cfg, watch_session, self.sol_tx_list_signer)
 
     @property
     def len_account_meta_list(self) -> int:
@@ -97,28 +82,39 @@ class NeonExecTxCtx:
 
     @property
     def account_key_list(self) -> tuple[SolPubKey, ...]:
+        return self._get_account_key_list()
+
+    @reset_cached_method
+    def _get_account_key_list(self) -> tuple[SolPubKey, ...]:
         return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
 
-    def set_emulator_result(self, resp: EmulatorResp) -> None:
+    def set_emulator_result(self, resp: EmulNeonCallResp) -> None:
         assert not self.is_stuck_tx
+
+        _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
 
         # sort accounts in a predictable order
         acct_meta_list = tuple(sorted(resp.sol_account_meta_list, key=lambda m: bytes(m.pubkey)))
         if acct_meta_list == self._acct_meta_list:
             _LOG.debug("emulator result contains the same %d accounts", len(resp.raw_meta_list))
         else:
+            self._get_account_key_list.reset_cache(self)
             self._acct_meta_list = acct_meta_list
             self._neon_prog.init_account_meta_list(self._acct_meta_list)
             self._test_neon_prog.init_account_meta_list(self._acct_meta_list)
             _LOG.debug("emulator result contains %d accounts: %s", len(resp.raw_meta_list), self._FmtAcctMeta(self))
 
         self._emulator_resp = resp
+        self._calc_total_evm_step_cnt.reset_cache(self)
+        self._calc_total_iter_cnt.reset_cache(self)
+        self._calc_wrap_iter_cnt.reset_cache(self)
+        self._calc_resize_iter_cnt.reset_cache(self)
 
     def set_holder_account(self, holder: HolderAccountModel) -> None:
         assert self.is_stuck_tx
         assert holder.neon_tx_hash == self.neon_tx_hash
 
-        # don't! sort accounts, use order from the holder
+        # !don't! sort accounts, use order from the holder
         acct_meta_list = tuple(
             map(lambda x: SolAccountMeta(x, is_signer=False, is_writable=True), holder.account_key_list)
         )
@@ -151,6 +147,20 @@ class NeonExecTxCtx:
 
     def test_mode(self) -> _TestMode:
         return self._TestMode(self)
+
+    class _TestMode:
+        def __init__(self, ctx: NeonExecTxCtx) -> None:
+            self._ctx = ctx
+
+        def __enter__(self) -> Self:
+            self._ctx._test_mode = True
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb) -> Self:
+            self._ctx._test_mode = False
+            if exc_val:
+                raise
+            return self
 
     @property
     def neon_prog(self) -> NeonProg:
@@ -240,30 +250,60 @@ class NeonExecTxCtx:
 
     @property
     def evm_step_cnt_per_iter(self) -> int:
-        return 500
+        return self._evm_step_cnt_per_iter
 
     @property
     def total_evm_step_cnt(self) -> int:
-        if isinstance(self._tx_request, ExecStuckTxRequest):
+        return self._calc_total_evm_step_cnt()
+
+    @reset_cached_method
+    def _calc_total_evm_step_cnt(self) -> int:
+        if self.is_stuck_tx:
             assert not self._emulator_resp
-            _LOG.debug("stuck-tx -> no information about emulation")
-            return 500
+            _LOG.debug("stuck-tx -> no information about emulated evm steps")
+            return self._evm_step_cnt_per_iter
 
         assert self._emulator_resp
-        assert self._emulator_resp.evm_step_cnt > 0
         return self._emulator_resp.evm_step_cnt
 
     @property
-    def iter_cnt(self) -> int:
+    def total_iter_cnt(self) -> int:
+        return self._calc_total_iter_cnt()
+
+    @reset_cached_method
+    def _calc_total_iter_cnt(self) -> int:
         assert not self.is_stuck_tx
         assert self._emulator_resp
-        assert self._emulator_resp.iter_cnt > 0
+
         return self._emulator_resp.iter_cnt
+
+    @property
+    def wrap_iter_cnt(self) -> int:
+        return self._calc_wrap_iter_cnt()
+
+    @reset_cached_method
+    def _calc_wrap_iter_cnt(self) -> int:
+        evm_step_cnt = self._evm_step_cnt_per_iter
+        exec_iter_cnt = (self.total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt
+        iter_cnt = self.total_iter_cnt - exec_iter_cnt
+        assert iter_cnt >= 0
+        return iter_cnt
+
+    @property
+    def resize_iter_cnt(self) -> int:
+        return self._calc_resize_iter_cnt()
+
+    @reset_cached_method
+    def _calc_resize_iter_cnt(self) -> int:
+        iter_cnt = self.wrap_iter_cnt - 2  # 1 begin + 1 end
+        assert iter_cnt >= 0
+        return iter_cnt
 
     @property
     def has_external_solana_call(self) -> bool:
         assert not self.is_stuck_tx
         assert self._emulator_resp
+
         return self._emulator_resp.external_solana_call
 
     @property

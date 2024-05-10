@@ -16,11 +16,11 @@ class HolderTxStrategy(IterativeTxStrategy):
     async def _validate(self) -> bool:
         return self._validate_has_chain_id()
 
-    def _build_tx(self) -> SolLegacyTx:
-        evm_step_cnt = self._ctx.evm_step_cnt_per_iter
+    def _build_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolLegacyTx:
+        step_cnt = step_cnt or self._def_evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
-        return self._build_cu_tx(prog.make_tx_step_from_account_ix(evm_step_cnt, uniq_idx))
+        return self._build_cu_tx(prog.make_tx_step_from_account_ix(is_finalized, step_cnt, uniq_idx))
 
 
 @alt_strategy

@@ -14,26 +14,30 @@ from .api import (
     NeonAccountModel,
     HolderAccountRequest,
     NeonAccountListRequest,
-    EmulatorResp,
-    EmulatorRequest,
-    EmulatorTxModel,
-    EmulatorExitCode,
+    EmulNeonCallResp,
+    EmulNeonCallRequest,
+    EmulNeonCallModel,
+    EmulNeonCallExitCode,
     NeonStorageAtRequest,
     NeonContractRequest,
     NeonContractModel,
-    EmulatorSolAccount,
+    EmulAccountModel,
+    EmulSolTxListResp,
+    EmulSolTxInfo,
+    EmulSolTxListRequest,
 )
 from ..config.config import Config
 from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
-from ..ethereum.hash import EthAddressField, EthAddress, EthHash32
+from ..ethereum.hash import EthAddress, EthHash32
 from ..neon.account import NeonAccount
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
-from ..neon.transaction_model import NeonTxModel
 from ..simple_app_data.client import SimpleAppDataClient
 from ..solana.account import SolAccountModel
+from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
+from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
 from ..utils.cached import cached_method, ttl_cached_method
 from ..utils.json_logger import log_msg
@@ -138,69 +142,57 @@ class CoreApiClient(SimpleAppDataClient):
         resp = await self._get_storage_at(req)
         return EthHash32.from_raw(bytes(resp.value))
 
-    async def emulate(
+    async def emulate_neon_call(
         self,
         evm_cfg: EvmConfigModel,
-        from_address: EthAddressField,
-        to_address: EthAddressField,
-        value: int,
-        data: bytes,
-        gas_limit: int | None,
-        gas_price: int | None,
-        chain_id: int,
-        preload_sol_address_list: tuple[SolPubKey, ...],
-        sol_account_dict: dict[SolPubKey, SolAccountModel | None],
+        call: EmulNeonCallModel,
+        *,
         check_result: bool,
-        block: NeonBlockHdrModel | None,
-    ) -> EmulatorResp:
-        req = EmulatorRequest(
-            tx=EmulatorTxModel(
-                from_address=from_address,
-                to_address=to_address,
-                value=value,
-                data=data,
-                gas_limit=gas_limit,
-                gas_price=gas_price,
-                chain_id=chain_id,
-            ),
+        preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
+        sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
+        block: NeonBlockHdrModel | None = None,
+    ) -> EmulNeonCallResp:
+        emu_acct_dict = dict()
+        if sol_account_dict:
+            emu_acct_dict = {addr: EmulAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
+
+        req = EmulNeonCallRequest(
+            call=call,
             evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
             token_list=tuple(evm_cfg.token_list),
             preload_sol_address_list=preload_sol_address_list,
-            sol_account_dict={addr: EmulatorSolAccount.from_raw(raw) for addr, raw in sol_account_dict.items()},
+            sol_account_dict=emu_acct_dict,
             slot=self._get_slot(block),
         )
-        resp = await self._emulate(req)
+
+        resp = await self._emulate_neon_call(req)
         if resp.error:
             raise EthError(resp.error)
-        resp = EmulatorResp.from_dict(resp.value)
+
+        resp = EmulNeonCallResp.from_dict(resp.value)
         if check_result:
             self._check_emulator_result(resp)
         return resp
 
-    async def emulate_tx(
+    async def emulate_sol_tx_list(
         self,
-        evm_cfg: EvmConfigModel,
-        neon_tx: NeonTxModel,
-        chain_id: int,
-        preload_sol_address_list: tuple[SolPubKey, ...],
-        sol_account_dict: dict[SolPubKey, SolAccountModel | None],
-        check_result: bool,
-        block: NeonBlockHdrModel | None,
-    ) -> EmulatorResp:
-        return await self.emulate(
-            evm_cfg,
-            neon_tx.from_address,
-            neon_tx.to_address,
-            neon_tx.value,
-            neon_tx.call_data,
-            neon_tx.gas_limit,
-            neon_tx.gas_price,
-            chain_id,
-            preload_sol_address_list=preload_sol_address_list,
-            sol_account_dict=sol_account_dict,
-            check_result=check_result,
-            block=block,
+        cu_limit: int,
+        account_cnt_limit: int,
+        blockhash: SolBlockHash,
+        tx_list: Sequence[SolTx],
+    ) -> tuple[EmulSolTxInfo, ...]:
+        req = EmulSolTxListRequest(
+            cu_limit=cu_limit,
+            account_cnt_limit=account_cnt_limit,
+            verify=False,
+            blockhash=blockhash.to_bytes(),
+            tx_list=tuple(map(lambda tx: tx.to_bytes(), tx_list)),
         )
+
+        resp = await self._emulate_sol_tx_list(req)
+        resp = EmulSolTxListResp.from_dict(resp.value)
+
+        return tuple([EmulSolTxInfo(tx, meta) for tx, meta in zip(tx_list, resp.meta_list)])
 
     @SimpleAppDataClient.method(name="config")
     async def _get_evm_cfg(self) -> CoreApiResp: ...
@@ -221,7 +213,10 @@ class CoreApiClient(SimpleAppDataClient):
     async def _get_storage_at(self, request: NeonStorageAtRequest) -> CoreApiResp: ...
 
     @SimpleAppDataClient.method(name="emulate")
-    async def _emulate(self, request: EmulatorRequest) -> CoreApiResp: ...
+    async def _emulate_neon_call(self, request: EmulNeonCallRequest) -> CoreApiResp: ...
+
+    @SimpleAppDataClient.method(name="simulate_solana")
+    async def _emulate_sol_tx_list(self, request: EmulSolTxListRequest) -> CoreApiResp: ...
 
     @ttl_cached_method(ttl_sec=60)
     async def _get_evm_exec_addr(self) -> SolPubKey:
@@ -233,17 +228,17 @@ class CoreApiClient(SimpleAppDataClient):
         prog = BpfLoader2ProgModel.from_data(acct.data)
         return prog.exec_address
 
-    def _check_emulator_result(self, resp: EmulatorResp) -> None:
-        if resp.exit_code == EmulatorExitCode.Revert:
-            revert_data = resp.result.to_string()[2:]
+    def _check_emulator_result(self, resp: EmulNeonCallResp) -> None:
+        if resp.exit_code == EmulNeonCallExitCode.Revert:
+            revert_data = resp.result.to_string()
             _LOG.debug("got reverted result with data: %s", revert_data)
-            result_value = self._decode_revert_message(revert_data)
-            if not result_value:
-                raise EthError(code=3, message="execution reverted", data="0x" + revert_data)
-            else:
-                raise EthError(code=3, message="execution reverted: " + result_value, data="0x" + revert_data)
 
-        if resp.exit_code != EmulatorExitCode.Succeed:
+            if not (result_value := self._decode_revert_message(revert_data[2:])):  # remove 0x
+                raise EthError(code=3, message="execution reverted", data=revert_data)
+            else:
+                raise EthError(code=3, message="execution reverted: " + result_value, data=revert_data)
+
+        if resp.exit_code != EmulNeonCallExitCode.Succeed:
             _LOG.debug("got failed emulate exit code: %s", resp.exit_code)
             raise EthError(code=3, message=resp.exit_code)
 
@@ -252,8 +247,7 @@ class CoreApiClient(SimpleAppDataClient):
         if not data:
             return None
 
-        data_len = len(data)
-        if data_len < 8:
+        if (data_len := len(data)) < 8:
             raise EthError(code=3, message=f"Too less bytes to decode revert signature: {data_len}", data=data)
 
         if data[:8] == "4e487b71":  # keccak256("Panic(uint256)")

@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Sequence, Final
 
 from typing_extensions import Self
 
 from .client import SolClient
+from ..config.constants import ONE_BLOCK_SEC
 from ..solana.alt_info import SolAltInfo
-from ..solana.alt_program import SolAltProg
+from ..solana.alt_program import SolAltProg, SolAltAccountInfo
 from ..solana.cb_program import SolCbProg
 from ..solana.commit_level import SolCommit
 from ..solana.errors import SolAltContentError
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_legacy import SolLegacyTx
+
+_LOG = logging.getLogger(__name__)
 
 
 class SolAltTxSet:
@@ -37,6 +41,8 @@ class SolAltTxSet:
 class SolAltTxBuilder:
     _create_name: Final[str] = "CreateLookupTable"
     _extend_name: Final[str] = "ExtendLookupTable"
+    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
+    _wait_period: Final[int] = int(3 * ONE_BLOCK_SEC / _wait_sec)
 
     def __init__(self, sol_client: SolClient, owner: SolPubKey, cu_price: int) -> None:
         self._sol_client = sol_client
@@ -124,7 +130,20 @@ class SolAltTxBuilder:
             alt_info_list = tuple([alt_info_list])
 
         for alt_info in alt_info_list:
-            alt_acct_info = await self._sol_client.get_alt_account(alt_info.address)
-            if alt_acct_info is None:
+            alt_acct: SolAltAccountInfo | None = None
+
+            for _ in range(self._wait_period):
+                alt_acct = await self._sol_client.get_alt_account(alt_info.address)
+                last_slot = await self._sol_client.get_slot(SolCommit.Confirmed)
+
+                if alt_acct and (alt_acct.last_extended_slot < last_slot):
+                    break
+
+                await asyncio.sleep(self._wait_sec)
+
+            if not alt_acct:
+                _LOG.debug("ALT %s isn't ready for using", alt_info.address)
                 raise SolAltContentError(alt_info.address, "cannot read lookup table")
-            alt_info.update_from_account(alt_acct_info)
+
+            _LOG.debug("ALT %s contains %s accounts", alt_info.address, len(alt_acct.account_key_list))
+            alt_info.update_from_account(alt_acct)

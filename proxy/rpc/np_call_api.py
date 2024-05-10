@@ -11,7 +11,7 @@ from common.ethereum.hash import EthAddressField, EthHash32Field
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.api import EmulatorAccountModel, EmulatorResp
+from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, EmulNeonCallModel
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField, RootModel
 from .api import RpcCallRequest, RpcBlockRequest, RpcNeonCallRequest
@@ -45,12 +45,12 @@ class _RpcSolanaAccountModel(BaseJsonRpcModel):
     isLegacy: bool
 
     @classmethod
-    def from_raw(cls, raw: _RpcSolanaAccountModel | EmulatorAccountModel | None) -> Self | None:
+    def from_raw(cls, raw: _RpcSolanaAccountModel | EmulAccountMetaModel | None) -> Self | None:
         if raw is None:
             return None
         elif isinstance(raw, _RpcSolanaAccountModel):
             return raw
-        elif isinstance(raw, EmulatorAccountModel):
+        elif isinstance(raw, EmulAccountMetaModel):
             return cls(pubkey=raw.pubkey, isWritable=raw.is_writable, isLegacy=raw.is_legacy)
         raise ValueError(f"Wrong input type: {type(raw).__name__}")
 
@@ -68,12 +68,12 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
     solanaAccounts: tuple[_RpcSolanaAccountModel, ...]
 
     @classmethod
-    def from_raw(cls, raw: _RpcEmulatorResp | EmulatorResp | None) -> Self | None:
+    def from_raw(cls, raw: _RpcEmulatorResp | EmulNeonCallResp | None) -> Self | None:
         if raw is None:
             return None
         elif isinstance(raw, _RpcEmulatorResp):
             return raw
-        elif isinstance(raw, EmulatorResp):
+        elif isinstance(raw, EmulNeonCallResp):
             return cls(
                 exitCode=raw.exit_code,
                 externalSolanaCall=raw.external_solana_call,
@@ -111,17 +111,9 @@ class NpCallApi(NeonProxyApi):
         _ = object_state
         block = await self.get_block_by_tag(block_tag)
         evm_cfg = await self.get_evm_cfg()
-        resp = await self._core_api_client.emulate(
+        resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            call.fromAddress,
-            call.toAddress,
-            call.value,
-            call.data,
-            call.gas,
-            call.gasPrice,
-            chain_id,
-            preload_sol_address_list=tuple(),
-            sol_account_dict=dict(),
+            call.to_emulation_call(chain_id),
             check_result=True,
             block=block,
         )
@@ -139,7 +131,7 @@ class NpCallApi(NeonProxyApi):
             raise EthWrongChainIdError()
 
         block = await self.get_block_by_tag(block_tag)
-        return await self._gas_limit_calc.estimate(call, chain_id, None, block)
+        return await self._gas_limit_calc.estimate(call.to_emulation_call(chain_id), dict(), block)
 
     @NeonProxyApi.method(name="neon_estimateGas")
     async def neon_estimate_gas(
@@ -154,7 +146,7 @@ class NpCallApi(NeonProxyApi):
             raise EthWrongChainIdError()
 
         block = await self.get_block_by_tag(block_tag)
-        return await self._gas_limit_calc.estimate(call, chain_id, neon_call, block)
+        return await self._gas_limit_calc.estimate(call.to_emulation_call(chain_id), neon_call.sol_account_dict, block)
 
     @NeonProxyApi.method(name="neon_emulate")
     async def neon_emulate(
@@ -171,13 +163,11 @@ class NpCallApi(NeonProxyApi):
 
         neon_tx = NeonTxModel.from_raw(raw_signed_tx)
 
-        resp = await self._core_api_client.emulate_tx(
+        resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            neon_tx,
-            chain_id,
-            preload_sol_address_list=tuple(),
-            sol_account_dict=neon_call.sol_account_dict,
+            EmulNeonCallModel.from_neon_tx(neon_tx, chain_id),
             check_result=True,
+            sol_account_dict=neon_call.sol_account_dict,
             block=block,
         )
         return _RpcEmulatorResp.from_raw(resp)

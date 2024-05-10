@@ -7,7 +7,8 @@ from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.api import EvmConfigModel, EmulatorResp
+from common.neon_rpc.api import EvmConfigModel, EmulNeonCallResp, EmulNeonCallModel
+from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
 from common.solana.errors import SolTxSizeError
@@ -16,7 +17,6 @@ from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
-from .api import RpcCallRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyComponent
 
 _LOG = logging.getLogger(__name__)
@@ -38,24 +38,16 @@ class NpGasLimitCalculator(NeonProxyComponent):
 
     async def estimate(
         self,
-        call: RpcCallRequest,
-        chain_id: int,
-        neon_call: RpcNeonCallRequest | None,
+        call: EmulNeonCallModel,
+        sol_account_dict: dict[SolPubKey, SolAccountModel],
         block: NeonBlockHdrModel = None,
     ) -> int:
         evm_cfg = await self.get_evm_cfg()
-        resp = await self._core_api_client.emulate(
+        resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            call.fromAddress,
-            call.toAddress,
-            call.value,
-            call.data,
-            call.gas,
-            call.gasPrice,
-            chain_id,
-            preload_sol_address_list=tuple(),
-            sol_account_dict=neon_call.sol_account_dict if neon_call else dict(),
+            call,
             check_result=True,
+            sol_account_dict=sol_account_dict,
             block=block,
         )
         execution_cost = resp.used_gas
@@ -75,7 +67,7 @@ class NpGasLimitCalculator(NeonProxyComponent):
 
         return total_cost
 
-    def _tx_size_cost(self, evm_cfg: EvmConfigModel, call: RpcCallRequest, resp: EmulatorResp) -> int:
+    def _tx_size_cost(self, evm_cfg: EvmConfigModel, call: EmulNeonCallModel, resp: EmulNeonCallResp) -> int:
         eth_tx = self._eth_tx_from_call(call)
         sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
 
@@ -83,7 +75,7 @@ class NpGasLimitCalculator(NeonProxyComponent):
             sol_tx.sign(self._payer)
             sol_tx.serialize()  # <- there will be exception about size
 
-            if call.toAddress.is_empty:  # deploy case
+            if call.to_address.is_empty:  # deploy case
                 pass
             elif resp.used_gas < self._oz_gas_limit:
                 return 0
@@ -95,12 +87,12 @@ class NpGasLimitCalculator(NeonProxyComponent):
         return self._holder_tx_cost(evm_cfg, eth_tx.to_bytes())
 
     @classmethod
-    def _eth_tx_from_call(cls, call: RpcCallRequest) -> EthTx:
+    def _eth_tx_from_call(cls, call: EmulNeonCallModel) -> EthTx:
         return EthTx(
             nonce=cls._u64_max,
             gas_price=cls._u64_max,
-            gas_limit=call.gas,
-            to_address=call.toAddress.to_bytes(),
+            gas_limit=call.gas_limit,
+            to_address=call.to_address.to_bytes(),
             value=call.value or 1,
             call_data=call.data.to_bytes(),
             v=245022934 * 1024 + 35,
@@ -115,17 +107,19 @@ class NpGasLimitCalculator(NeonProxyComponent):
         neon_prog.init_token_address(self._token_sol_addr)
         return neon_prog
 
-    def _sol_tx_from_eth_tx(self, eth_tx: EthTx, resp: EmulatorResp) -> SolLegacyTx:
+    def _sol_tx_from_eth_tx(self, eth_tx: EthTx, resp: EmulNeonCallResp) -> SolLegacyTx:
+        cb_prog = self._cb_prog
         ix_list = [
-            self._cb_prog.make_heap_size_ix(),
-            self._cb_prog.make_cu_limit_ix(),
+            cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize),
+            cb_prog.make_cu_limit_ix(cb_prog.MaxCuLimit),
         ]
         if self._cfg.cu_price > 0:
-            ix_list.append(self._cb_prog.make_cu_price_ix(self._cfg.cu_price))
+            ix_list.append(cb_prog.make_cu_price_ix(self._cfg.cu_price))
 
-        self._neon_prog.init_neon_tx(EthTxHash.from_raw(eth_tx.neon_tx_hash), eth_tx.to_bytes())
-        self._neon_prog.init_account_meta_list(resp.sol_account_meta_list)
-        ix_list.append(self._neon_prog.make_tx_step_from_data_ix(self._cfg.max_emulate_evm_step_cnt, 1))
+        neon_prog = self._neon_prog
+        neon_prog.init_neon_tx(EthTxHash.from_raw(eth_tx.neon_tx_hash), eth_tx.to_bytes())
+        neon_prog.init_account_meta_list(resp.sol_account_meta_list)
+        ix_list.append(neon_prog.make_tx_step_from_data_ix(False, self._cfg.max_emulate_evm_step_cnt, 101))
 
         sol_tx = SolLegacyTx(name="Estimate", ix_list=tuple(ix_list))
         sol_tx.recent_block_hash = SolBlockHash.fake()
@@ -135,7 +129,7 @@ class NpGasLimitCalculator(NeonProxyComponent):
     def _holder_tx_cost(cls, evm_cfg: EvmConfigModel, eth_tx_rlp: bytes) -> int:
         return ((len(eth_tx_rlp) // evm_cfg.holder_msg_size) + 1) * 5000
 
-    def _alt_cost(self, resp: EmulatorResp) -> int:
+    def _alt_cost(self, resp: EmulNeonCallResp) -> int:
         """
         Costs for:
          - create

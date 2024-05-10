@@ -7,13 +7,13 @@ import solders.message as _msg
 import solders.transaction as _tx
 from typing_extensions import Self
 
-from .signer import SolSigner
 from .alt_info import SolAltInfo
 from .alt_list_filter import SolAltListFilter
 from .errors import SolAltError
 from .instruction import SolTxIx
 from .pubkey import SolPubKey
 from .signature import SolTxSig
+from .signer import SolSigner
 from .transaction import SolTx
 from ..utils.pydantic import BaseModel, Base64Field
 

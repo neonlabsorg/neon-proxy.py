@@ -70,8 +70,8 @@ class SolPubKey(_SoldersPubKey):
         return cls(_SoldersPubKey.create_program_address(seeds, prog_id).__bytes__())
 
     @classmethod
-    def find_program_address(cls, seeds: Sequence[bytes], prog_id: _SoldersPubKey) -> tuple[Self, int]:
-        base_key, nonce = _SoldersPubKey.find_program_address(seeds, prog_id)
+    def find_program_address(cls, seed_list: Sequence[bytes], prog_id: _SoldersPubKey) -> tuple[Self, int]:
+        base_key, nonce = _SoldersPubKey.find_program_address(seed_list, prog_id)
         return cls(base_key.__bytes__()), nonce
 
     @property

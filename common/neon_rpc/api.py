@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Annotated, Final, Sequence, ClassVar
 
 from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer
@@ -12,10 +13,14 @@ from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress
 from ..neon.account import NeonAccount, NeonAccountField
 from ..neon.neon_program import NeonEvmProtocol
+from ..neon.transaction_model import NeonTxModel
 from ..solana.account import SolAccountModel
+from ..solana.cb_program import SolCbProg
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
-from ..utils.cached import cached_property
+from ..solana.transaction import SolTx
+from ..utils.cached import cached_property, cached_method
+from ..utils.format import bytes_to_hex
 from ..utils.pydantic import NullIntField, HexUIntField, BytesField, DecIntField, BaseModel
 
 _LOG = logging.getLogger(__name__)
@@ -457,26 +462,47 @@ class CoreApiBuildModel(BaseModel):
     version_control: _VersionModel
 
 
-_EmulatorTxDataField = Annotated[
-    EthBinStr,
-    PlainValidator(EthBinStr.from_raw),
-    PlainSerializer(lambda v: v.to_string()[2:] or None),
+class EmulHexStr(EthBinStr):
+    @cached_method
+    def _to_string(self) -> str:
+        return bytes_to_hex(self._data, prefix="")
+
+    def to_string(self, default: str | None = "") -> str | None:
+        return super().to_string(default=default)
+
+
+EmulHexStrField = Annotated[
+    EmulHexStr,
+    PlainValidator(EmulHexStr.from_raw),
+    PlainSerializer(lambda v: v.to_string() or None),
 ]
 
 
-class EmulatorTxModel(BaseModel):
+class EmulNeonCallModel(BaseModel):
     from_address: EthZeroAddressField = Field(serialization_alias="from")
     to_address: EthAddressField = Field(serialization_alias="to")
     value: HexUIntField
-    data: _EmulatorTxDataField
+    data: EmulHexStrField
     gas_limit: HexUIntField | None
     gas_price: HexUIntField | None
     chain_id: int
 
+    @classmethod
+    def from_neon_tx(cls, tx: NeonTxModel, chain_id: int) -> Self:
+        return cls(
+            from_address=tx.from_address,
+            to_address=tx.to_address,
+            value=tx.value,
+            data=tx.call_data.to_bytes(),
+            gas_limit=tx.gas_limit,
+            gas_price=tx.gas_price,
+            chain_id=chain_id
+        )
 
-class EmulatorSolAccount(BaseModel):
+
+class EmulAccountModel(BaseModel):
     lamports: int
-    data: _EmulatorTxDataField
+    data: EmulHexStrField
     owner: SolPubKeyField
     executable: bool
     rent_epoch: int
@@ -495,25 +521,25 @@ class EmulatorSolAccount(BaseModel):
         )
 
 
-class EmulatorRequest(BaseModel):
-    tx: EmulatorTxModel
+class EmulNeonCallRequest(BaseModel):
+    call: EmulNeonCallModel = Field(serialization_alias="tx")
     evm_step_limit: int = Field(serialization_alias="step_limit")
     token_list: tuple[TokenModel, ...] = Field(serialization_alias="chains")
     preload_sol_address_list: tuple[SolPubKeyField, ...] = Field(serialization_alias="accounts")
-    sol_account_dict: dict[SolPubKeyField, EmulatorSolAccount | None] | None = Field(
+    sol_account_dict: dict[SolPubKeyField, EmulAccountModel | None] | None = Field(
         serialization_alias="solana_overrides"
     )
     slot: int | None
 
 
-class EmulatorExitCode(StrEnum):
+class EmulNeonCallExitCode(StrEnum):
     Revert = "revert"
     Succeed = "succeed"
     StepLimitExceeded = "step limit exceeded"
     Unknown = "unknown"
 
     @classmethod
-    def from_raw(cls, value: str | EmulatorExitCode) -> Self:
+    def from_raw(cls, value: str | EmulNeonCallExitCode) -> Self:
         if isinstance(value, cls):
             return value
 
@@ -525,10 +551,10 @@ class EmulatorExitCode(StrEnum):
             return cls.Unknown
 
 
-EmulatorExitCodeField = Annotated[EmulatorExitCode, PlainValidator(EmulatorExitCode.from_raw)]
+EmulNeonCallExitCodeField = Annotated[EmulNeonCallExitCode, PlainValidator(EmulNeonCallExitCode.from_raw)]
 
 
-class EmulatorAccountModel(BaseModel):
+class EmulAccountMetaModel(BaseModel):
     pubkey: SolPubKeyField
     is_writable: bool
     is_legacy: bool
@@ -537,8 +563,8 @@ class EmulatorAccountModel(BaseModel):
         return SolAccountMeta(pubkey=self.pubkey, is_writable=self.is_writable, is_signer=False)
 
 
-class EmulatorResp(BaseModel):
-    exit_code: EmulatorExitCodeField = Field(validation_alias="exit_status")
+class EmulNeonCallResp(BaseModel):
+    exit_code: EmulNeonCallExitCodeField = Field(validation_alias="exit_status")
     external_solana_call: bool
     revert_before_solana_call: bool = Field(validation_alias="reverts_before_solana_calls")
     revert_after_solana_call: bool = Field(validation_alias="reverts_after_solana_calls")
@@ -548,8 +574,52 @@ class EmulatorResp(BaseModel):
     used_gas: int
     iter_cnt: int = Field(alias="iterations")
 
-    raw_meta_list: list[EmulatorAccountModel] = Field(validation_alias="solana_accounts", default_factory=list)
+    raw_meta_list: list[EmulAccountMetaModel] = Field(validation_alias="solana_accounts", default_factory=list)
+
+    def model_post_init(self, _ctx) -> None:
+        if self.iter_cnt <= 0:
+            raise ValueError(f"Emulator result contains bad number of iterations: {self.iter_cnt}")
+        if self.evm_step_cnt <= 0:
+            raise ValueError(f"Emulator result contains bad number of EVM steps: {self.evm_step_cnt}")
+        # if self.used_gas <= 0:
+        #     raise ValueError(f"Emulator result contains bad used gas: {self.used_gas}")
 
     @cached_property
     def sol_account_meta_list(self) -> tuple[SolAccountMeta, ...]:
         return tuple([a.to_sol_account_meta() for a in self.raw_meta_list])
+
+
+class EmulSolTxListRequest(BaseModel):
+    cu_limit: int = Field(serialization_alias="compute_units")
+    account_cnt_limit: int = Field(serialization_alias="account_limit")
+    verify: bool
+    blockhash: EmulHexStrField
+    tx_list: tuple[EmulHexStrField, ...] = Field(serialization_alias="transactions")
+
+
+class EmulSolTxMetaModel(BaseModel):
+    error: dict | None
+    log_list: list[str] = Field(default_factory=list, validation_alias="logs")
+    used_cu_limit: int = Field(validation_alias="executed_units")
+
+    _error: ClassVar[EmulSolTxMetaModel | None] = None
+
+    @classmethod
+    def new_error(cls) -> Self:
+        if not cls._error:
+            cls._error = cls(
+                error={"message": "Unknown"},
+                logs=list(),
+                executed_units=SolCbProg.MaxCuLimit
+            )
+        return cls._error
+
+
+class EmulSolTxListResp(BaseModel):
+    meta_list: list[EmulSolTxMetaModel] = Field(validation_alias="transactions")
+
+
+@dataclass(frozen=True)
+class EmulSolTxInfo:
+    tx: SolTx
+    meta: EmulSolTxMetaModel

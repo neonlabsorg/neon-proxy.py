@@ -24,6 +24,9 @@ class ExecutorComponent(BaseProxyComponent):
     def _op_client(self) -> OpResourceClient:
         return self._server._op_client  # noqa
 
+    async def get_evm_cfg(self) -> EvmConfigModel:
+        return self._server.get_evm_cfg()
+
 
 class ExecutorApi(ExecutorComponent, AppDataApi):
     def __init__(self, server: ExecutorServerAbc) -> None:
@@ -49,6 +52,4 @@ class ExecutorServerAbc(BaseProxyServer):
 
     @ttl_cached_method(ttl_sec=1)
     async def get_evm_cfg(self) -> EvmConfigModel:
-        evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
-        return evm_cfg
+        return await self._mp_client.get_evm_cfg()

@@ -13,14 +13,15 @@ from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
 from ..solana.pubkey import SolPubKey
 from ..solana.sys_program import SolSysProg
+from ..utils.cached import reset_cached_method
 
 _LOG = logging.getLogger(__name__)
 
 
 class NeonEvmProtocol(IntEnum):
     Unknown = -1
-    v1004 = 1004
-    v1011 = 1011
+    v1004 = 1004  # 1.4  -> 1.004
+    v1011 = 1011  # 1.11 -> 1.011
 
 
 SUPPORTED_VERSION_SET = frozenset([NeonEvmProtocol.v1011])
@@ -85,8 +86,7 @@ class NeonProg:
         self._payer = payer
         self._token_sol_address = SolPubKey.default()
         self._holder_address = SolPubKey.default()
-        self._simple_acct_meta_list: list[SolAccountMeta] = list()
-        self._iter_acct_meta_list: list[SolAccountMeta] = list()
+        self._acct_meta_list: list[SolAccountMeta] = list()
         self._eth_rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
         self._treasury_pool_index_buf = bytes()
@@ -99,6 +99,11 @@ class NeonProg:
         cls._treasury_pool_cnt = treasury_pool_cnt
         cls._treasury_pool_seed = treasury_pool_seed
         cls._protocol_version = protocol_version
+
+    @classmethod
+    def validate_protocol(cls) -> None:
+        if cls._protocol_version not in SUPPORTED_VERSION_SET:
+            raise EthError(f"NeonProxy doesn't support the EVM protocol {cls._protocol_version}")
 
     def init_token_address(self, token_sol_address: SolPubKey) -> Self:
         self._token_sol_address = token_sol_address
@@ -116,20 +121,18 @@ class NeonProg:
         treasury_pool_index = base_index % self._treasury_pool_cnt
         self._treasury_pool_index_buf = treasury_pool_index.to_bytes(4, "little")
         self._treasury_pool_account, _ = SolPubKey.find_program_address(
-            (self._treasury_pool_seed, self._treasury_pool_index_buf), self.ID
+            seed_list=(
+                self._treasury_pool_seed,
+                self._treasury_pool_index_buf,
+            ),
+            prog_id=self.ID,
         )
         return self
 
     def init_account_meta_list(self, account_meta_list: Sequence[SolAccountMeta]) -> Self:
-        self._simple_acct_meta_list = list(account_meta_list)
-        self._iter_acct_meta_list = [
-            SolAccountMeta(src.pubkey, src.is_signer, is_writable=True) for src in account_meta_list
-        ]
+        self._acct_meta_list = list(account_meta_list)
+        self._get_writable_acct_meta_list.reset_cache(self)
         return self
-
-    @property
-    def operator_account(self) -> SolPubKey:
-        return self._payer
 
     @property
     def holder_msg(self) -> bytes:
@@ -225,36 +228,28 @@ class NeonProg:
     def make_tx_exec_from_data_solana_call_ix(self) -> SolTxIx:
         return self._make_tx_exec_from_data_ix(NeonEvmIxCode.TxExecFromDataSolanaCall)
 
-    def _make_tx_exec_from_data_ix(self, ix_code: NeonEvmIxCode) -> SolTxIx:
-        self.validate_protocol()
-
-        ix_data_list = (
-            ix_code.value.to_bytes(1, byteorder="little"),
-            self._treasury_pool_index_buf,
-            self._eth_rlp_tx,
-        )
-        acct_meta_list = [
-            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self._treasury_pool_account, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
-        ] + self._simple_acct_meta_list
-
-        return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
-
     def make_tx_exec_from_account_ix(self) -> SolTxIx:
         ix_data_list = (
             NeonEvmIxCode.TxExecFromAccount.value.to_bytes(1, byteorder="little"),
             self._treasury_pool_index_buf,
         )
-        return self._make_holder_ix(bytes().join(ix_data_list), self._simple_acct_meta_list)
+        return self._make_holder_ix(bytes().join(ix_data_list), self._acct_meta_list)
 
     def make_tx_exec_from_account_solana_call_ix(self) -> SolTxIx:
         ix_data_list = (
             NeonEvmIxCode.TxExecFromAccountSolanaCall.value.to_bytes(1, byteorder="little"),
             self._treasury_pool_index_buf,
         )
-        return self._make_holder_ix(bytes().join(ix_data_list), self._simple_acct_meta_list)
+        return self._make_holder_ix(bytes().join(ix_data_list), self._acct_meta_list)
+
+    def make_tx_step_from_account_ix(self, is_finalized: bool, step_cnt: int, index: int) -> SolTxIx:
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccount, is_finalized, step_cnt, index, None)
+
+    def make_tx_step_from_account_no_chain_id_ix(self, is_finalized: bool, step_cnt: int, index: int) -> SolTxIx:
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccountNoChainId, is_finalized, step_cnt, index, None)
+
+    def make_tx_step_from_data_ix(self, is_finalized: bool, step_cnt: int, index: int) -> SolTxIx:
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, is_finalized, step_cnt, index, self._eth_rlp_tx)
 
     def make_cancel_ix(self) -> SolTxIx:
         self.validate_protocol()
@@ -268,18 +263,41 @@ class NeonProg:
             SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
-        ] + self._iter_acct_meta_list
+        ] + self._writable_acct_meta_list
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 
-    def make_tx_step_from_data_ix(self, step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, step_cnt, index, self._eth_rlp_tx)
+    # protected:
 
-    def _make_tx_step_ix(self, ix_code: NeonEvmIxCode, neon_step_cnt: int, index: int, data: bytes | None) -> SolTxIx:
+    def _make_tx_exec_from_data_ix(self, ix_code: NeonEvmIxCode) -> SolTxIx:
+        self.validate_protocol()
+
         ix_data_list = (
             ix_code.value.to_bytes(1, byteorder="little"),
             self._treasury_pool_index_buf,
-            neon_step_cnt.to_bytes(4, byteorder="little"),
+            self._eth_rlp_tx,
+        )
+        acct_meta_list = [
+            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=self._treasury_pool_account, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
+        ] + self._acct_meta_list
+
+        return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
+
+    def _make_tx_step_ix(
+        self,
+        ix_code: NeonEvmIxCode,
+        is_finalized: bool,
+        step_cnt: int,
+        index: int,
+        data: bytes | None,
+    ) -> SolTxIx:
+        ix_data_list = (
+            ix_code.value.to_bytes(1, byteorder="little"),
+            self._treasury_pool_index_buf,
+            step_cnt.to_bytes(4, byteorder="little"),
             index.to_bytes(4, byteorder="little"),
         )
 
@@ -287,7 +305,7 @@ class NeonProg:
         if data is not None:
             ix_data += data
 
-        return self._make_holder_ix(ix_data, self._iter_acct_meta_list)
+        return self._make_holder_ix(ix_data, self._writable_acct_meta_list if is_finalized else self._acct_meta_list)
 
     def _make_holder_ix(self, ix_data: bytes, acct_meta_list: list[SolAccountMeta]) -> SolTxIx:
         self.validate_protocol()
@@ -302,13 +320,10 @@ class NeonProg:
 
         return SolTxIx(program_id=self.ID, data=ix_data, accounts=tuple(acct_meta_list))
 
-    def make_tx_step_from_account_ix(self, neon_step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccount, neon_step_cnt, index, None)
+    @property
+    def _writable_acct_meta_list(self) -> list[SolAccountMeta]:
+        return self._get_writable_acct_meta_list()
 
-    def make_tx_step_from_account_no_chain_id_ix(self, neon_step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccountNoChainId, neon_step_cnt, index, None)
-
-    @classmethod
-    def validate_protocol(cls) -> None:
-        if cls._protocol_version not in SUPPORTED_VERSION_SET:
-            raise EthError(f"NeonProxy doesn't support the EVM protocol {cls._protocol_version}")
+    @reset_cached_method
+    def _get_writable_acct_meta_list(self) -> list[SolAccountMeta]:
+        return list(map(lambda x: SolAccountMeta(x.pubkey, x.is_signer, is_writable=True), self._acct_meta_list))

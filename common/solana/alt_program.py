@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import math
+import base64
+import logging
 from enum import IntEnum
 from typing import Final, Sequence
 
 import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
-from construct import Bytes, Int8ul, Int16ul, Int32ul, Int64ul
-from construct import Struct
 from typing_extensions import Self
 
 from .instruction import SolTxIx
 from .pubkey import SolPubKey, SolPubKeyField
+from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
+
+_LOG = logging.getLogger(__name__)
 
 
 class SolAltIxCode(IntEnum):
@@ -47,7 +49,7 @@ class SolAltProg:
 
     def derive_lookup_table_address(self, recent_slot: int) -> SolAltID:
         addr, nonce = SolPubKey.find_program_address(
-            seeds=(
+            seed_list=(
                 self._owner.to_bytes(),
                 recent_slot.to_bytes(8, "little"),
             ),
@@ -100,44 +102,24 @@ class SolAltProg:
         )
 
 
-class SolRpcAltInfo:
-    _Layout = Struct(
-        "type" / Int32ul,  # noqa
-        "deactivation_slot" / Int64ul,  # noqa
-        "last_extended_slot" / Int64ul,  # noqa
-        "last_extended_slot_start_index" / Int8ul,  # noqa
-        "has_authority" / Int8ul,  # noqa
-        "authority" / Bytes(32),  # noqa
-        "padding" / Int16ul,  # noqa
-    )
-    _empty_slot = 2**64 - 1
-
+class SolAltAccountInfo:
     def __init__(self, address: SolPubKey, data: bytes | None) -> None:
         self._addr = address
-        self._deactivation_slot: int | None = 0
-        self._owner = SolPubKey.default()
-        self._acct_key_list: tuple[SolPubKey, ...] = tuple()
+        self._meta: _alt.LookupTableMeta | None = None
+        self._addr_list_data = bytes()
 
-        if len(data) < self._Layout.sizeof():
+        if len(data) < _alt.LOOKUP_TABLE_META_SIZE:
+            _LOG.error("ALT %s doesn't have a meta, len %s", address, len(data))
             return
 
-        layout = self._Layout.parse(data)
-        offset = self._Layout.sizeof()
-
-        if (len(data) - offset) % SolPubKey.LENGTH:
+        addr_list_len = len(data) - _alt.LOOKUP_TABLE_META_SIZE
+        if addr_list_len % SolPubKey.LENGTH:
+            _LOG.error("ALT %s addresses list has bad length %s", address, addr_list_len)
             return
-        addr_len = math.ceil((len(data) - offset) / SolPubKey.LENGTH)
-        acct_key_list = list()
-        for _ in range(addr_len):
-            key = SolPubKey.from_bytes(data[offset : offset + SolPubKey.LENGTH])
-            offset += SolPubKey.LENGTH
-            acct_key_list.append(key)
 
-        if layout.has_authority:
-            self._owner = SolPubKey.from_bytes(layout.authority)
-
-        self._deactivation_slot = None if layout.deactivation_slot == self._empty_slot else layout.deactivation_slot
-        self._acct_key_list = tuple(acct_key_list)
+        # skip 4 bytes of type of lookup table
+        self._meta = _alt.LookupTableMeta.from_bytes(data[4:])
+        self._addr_list_data = data[_alt.LOOKUP_TABLE_META_SIZE:]
 
     @classmethod
     def from_bytes(cls, address: SolPubKey, data: bytes | None) -> Self:
@@ -145,16 +127,34 @@ class SolRpcAltInfo:
 
     @property
     def is_empty(self) -> bool:
-        return not self._acct_key_list
+        return not self._meta
 
     @property
     def address(self) -> SolPubKey:
         return self._addr
 
-    @property
+    @cached_property
     def owner(self) -> SolPubKey:
-        return self._owner
+        return SolPubKey.from_raw(getattr(self._meta, "authority", None)) if self._meta else SolPubKey.default()
+
+    @cached_property
+    def account_key_list(self) -> tuple[SolPubKey, ...]:
+        # tried solders, but _alt.AddressLookupTable doesn't work...
+        offset = 0
+        acct_key_cnt = len(self._addr_list_data) // SolPubKey.LENGTH
+        acct_key_list = list()
+        for _ in range(acct_key_cnt):
+            key = SolPubKey.from_bytes(self._addr_list_data[offset:offset + SolPubKey.LENGTH])
+            offset += SolPubKey.LENGTH
+            acct_key_list.append(key)
+
+        self._addr_list_data = bytes()
+        return tuple(acct_key_list)
 
     @property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
-        return self._acct_key_list
+    def last_extended_slot(self) -> int:
+        return self._meta.last_extended_slot if self._meta else 0
+
+    @property
+    def deactivation_slot(self) -> int:
+        return self._meta.deactivation_slot if self._meta else 0

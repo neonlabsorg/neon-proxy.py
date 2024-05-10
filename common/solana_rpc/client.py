@@ -18,7 +18,7 @@ from .errors import SolRpcError
 from ..http.utils import HttpURL
 from ..jsonrpc.client import HttpClient
 from ..solana.account import SolAccountModel
-from ..solana.alt_program import SolRpcAltInfo
+from ..solana.alt_program import SolAltAccountInfo
 from ..solana.block import SolRpcBlockInfo
 from ..solana.commit_level import SolCommit
 from ..solana.hash import SolBlockHash
@@ -159,9 +159,9 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetAcctInfoResp)
         return SolAccountModel.from_raw(address, resp.value)
 
-    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolRpcAltInfo | None:
+    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo | None:
         acct_info = await self.get_account(address, commit=commit)
-        return SolRpcAltInfo.from_bytes(address, acct_info.data) if acct_info else None
+        return SolAltAccountInfo.from_bytes(address, acct_info.data) if acct_info else None
 
     async def get_account_list(
         self,

@@ -18,7 +18,14 @@ from pythclient.solana import (
 )
 from strenum import StrEnum
 
-from .constants import NEON_EVM_PROGRAM_ID, ONE_BLOCK_SEC, MIN_FINALIZE_SEC, DEFAULT_TOKEN_NAME, SOL_PACKET_SIZE
+from .constants import (
+    NEON_EVM_PROGRAM_ID,
+    ONE_BLOCK_SEC,
+    MIN_FINALIZE_SEC,
+    DEFAULT_TOKEN_NAME,
+    SOL_PACKET_SIZE,
+    CHAIN_TOKEN_NAME,
+)
 from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
 from ..utils.cached import cached_property, cached_method
@@ -110,6 +117,7 @@ class Config:
     commit_timeout_sec_name: Final[str] = "COMMIT_TIMEOUT_SEC"
     commit_level_name: Final[str] = "COMMIT_LEVEL"
     max_tx_account_cnt_name: Final[str] = "MAX_TX_ACCOUNT_COUNT"
+    calc_cu_limit_usage_name: Final[str] = "CALCULATE_CU_LIMIT_USAGE"
     # Gas price settings
     pyth_url_name: Final[str] = "PYTH_URL"
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
@@ -509,6 +517,10 @@ class Config:
     def max_tx_account_cnt(self) -> int:
         return self._env_num(self.max_tx_account_cnt_name, 64, 20, 256)
 
+    @cached_property
+    def calc_cu_limit_usage(self) -> bool:
+        return self._env_bool(self.calc_cu_limit_usage_name, False)
+
     #####################
     # Gas-Price settings
 
@@ -753,6 +765,7 @@ class Config:
             "MINIMAL_FINALIZATION_SEC": MIN_FINALIZE_SEC,
             "SOLANA_PACKET_SIZE": SOL_PACKET_SIZE,
             "DEFAULT_TOKEN_NAME": DEFAULT_TOKEN_NAME,
+            "CHAIN_TOKEN_NAME": CHAIN_TOKEN_NAME,
             self.sol_url_name: self.sol_url_list,
             self.sol_ws_url_name: self.sol_ws_url_list,
             self.sol_timeout_sec_name: self.sol_timeout_sec,
@@ -786,6 +799,7 @@ class Config:
             self.commit_timeout_sec_name: self.commit_timeout_sec,
             self.commit_level_name: self.commit_type,
             self.max_tx_account_cnt_name: self.max_tx_account_cnt,
+            self.calc_cu_limit_usage_name: self.calc_cu_limit_usage,
             # Gas price settings
             self.pyth_url_name: self.pyth_url_list,
             self.pyth_ws_url_name: self.pyth_ws_url_list,

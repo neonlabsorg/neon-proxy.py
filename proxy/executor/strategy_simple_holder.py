@@ -13,7 +13,7 @@ class SimpleHolderTxStrategy(SimpleTxStrategy):
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(WriteHolderTxPrepStage(*args, **kwargs))
 
-    def _build_tx(self) -> SolLegacyTx:
+    def _build_tx(self, **kwargs) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_account_ix())
 
 

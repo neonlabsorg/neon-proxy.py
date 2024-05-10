@@ -56,6 +56,7 @@ class _Server:
 
         new_env = dict(
             RUST_LOG=log_level,
+            RUST_BACKTRACE="full",
             SOLANA_URL=self._solana_url,
             NEON_API_LISTENER_ADDR=self._host,
             COMMITMENT="recent",

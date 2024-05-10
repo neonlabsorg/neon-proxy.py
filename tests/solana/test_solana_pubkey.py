@@ -31,7 +31,7 @@ class TestSolPubKey(unittest.TestCase):
         self.assertIsInstance(key.to_bytes(), bytes)
         self.assertIsInstance(key.to_string(), str)
 
-    def test_create_program_address(self):
+    def test_create_prog_address(self):
         seeds = [b"seed1", b"seed2", b"seed3"]
         prog_id = SolPubKey.new_unique()
         program_address = SolPubKey.create_program_address(seeds, prog_id)

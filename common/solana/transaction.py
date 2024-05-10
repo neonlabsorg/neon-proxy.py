@@ -22,13 +22,13 @@ SolTxMessageInfo = Union[_msg.Message, _msg.MessageV0]
 
 
 class SolTx(abc.ABC):
-    def __init__(self, name: str, ix_list: Sequence[SolTxIx]) -> None:
+    def __init__(self, name: str, ix_list: Sequence[SolTxIx], *, blockhash: SolBlockHash | None = None) -> None:
         self._name = name
         self._is_signed = False
         self._is_cloned = False
 
         self._solders_legacy_tx: _SoldersLegacyTx
-        self._build_legacy_tx(recent_blockhash=None, ix_list=ix_list)
+        self._build_legacy_tx(recent_blockhash=blockhash, ix_list=ix_list)
 
     def to_string(self) -> str:
         try:
@@ -94,6 +94,10 @@ class SolTx(abc.ABC):
         if len(result) > SOL_PACKET_SIZE:
             raise SolTxSizeError(len(result), SOL_PACKET_SIZE)
         return result
+
+    def to_bytes(self) -> bytes:
+        """Serialization which ignores signing and size"""
+        return self._serialize()
 
     def sign(self, signer: SolSigner) -> None:
         self._sign(signer)

@@ -74,7 +74,7 @@ class _RpcLogListRequest(BaseJsonRpcModel):
 
 
 class NpGetLogsApi(NeonProxyApi):
-    name: ClassVar[str] = "NeonRPC::GetLogs"
+    name: ClassVar[str] = "NeonRPC::TransactionLogs"
 
     @NeonProxyApi.method(name="eth_getLogs")
     async def get_eth_logs(self, params: _RpcLogListRequest) -> tuple[RpcEthTxEventModel, ...]:

@@ -48,7 +48,7 @@ class EthBinStr:
 
     @cached_method
     def _to_string(self) -> str:
-        return bytes_to_hex(self._data)
+        return bytes_to_hex(self._data, prefix="0x")
 
     def to_string(self, default: str | None = null_str) -> str | None:
         return self._to_string() if self._data else default

@@ -8,7 +8,7 @@ from .pubkey import SolPubKey, SolPubKeyField
 from .transaction_legacy import SolLegacyTx
 from .errors import SolAltContentError
 from .alt_list_filter import SolAltListFilter
-from .alt_program import SolAltID, SolRpcAltInfo
+from .alt_program import SolAltID, SolAltAccountInfo
 from ..utils.pydantic import BaseModel
 
 
@@ -94,10 +94,11 @@ class SolAltInfo:
         self._acct_key_set.difference_update(account_key_list)
         return old_len != len(self._acct_key_set)
 
-    def update_from_account(self, alt_account_info: SolRpcAltInfo) -> None:
+    def update_from_account(self, alt_account_info: SolAltAccountInfo) -> None:
         if self._ident.address != alt_account_info.address:
             raise SolAltContentError(
-                self.address, f"trying to update account list from another lookup table {alt_account_info.address}"
+                self.address,
+                f"trying to update account list from another lookup table {alt_account_info.address}",
             )
 
         self._acct_key_set = set(alt_account_info.account_key_list)

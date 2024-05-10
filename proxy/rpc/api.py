@@ -17,6 +17,7 @@ from common.ethereum.hash import (
 )
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.evm_log_decoder import NeonTxEventModel
+from common.neon_rpc.api import EmulNeonCallModel
 from common.solana.account import SolAccountModel
 from common.solana.pubkey import SolPubKeyField
 from common.solana.signature import SolTxSigField
@@ -130,6 +131,17 @@ class RpcCallRequest(BaseJsonRpcModel):
                 data=EthBinStr.default(),
             )
         return cls._default
+
+    def to_emulation_call(self, chain_id: int) -> EmulNeonCallModel:
+        return EmulNeonCallModel(
+            from_address=self.fromAddress,
+            to_address=self.toAddress,
+            value=self.value,
+            data=self.data.to_bytes(),
+            gas_limit=self.gas,
+            gas_price=self.gasPrice,
+            chain_id=chain_id
+        )
 
 
 class RpcNeonCallRequest(BaseJsonRpcModel):

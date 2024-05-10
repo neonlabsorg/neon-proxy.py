@@ -8,6 +8,7 @@ from typing import ClassVar
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.neon_program import NeonProg
+from common.neon_rpc.api import EmulNeonCallModel
 from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
     SolCbExceededError,
@@ -75,17 +76,13 @@ class NeonTxExecApi(ExecutorApi):
         HolderTxStrategy,
         #     + alt + holder
         AltHolderTxStrategy,
-        # without-chain-id
-        #     + holder
-        NoChainIdTxStrategy,
-        #     + alt + holder
-        AltNoChainIdTxStrategy,
     ]
 
     @BaseProxyApi.method(name="executeTransaction")
     async def exec_tx(self, tx_request: ExecTxRequest) -> ExecTxResp:
         with logging_context(tx=tx_request.tx.tx_id):
-            ctx = NeonExecTxCtx(self._cfg, self._sol_client, self._core_api_client, self._op_client, tx_request)
+            ctx = NeonExecTxCtx(self._server, tx_request)
+
             exit_code = await self._execute_tx(ctx)
             state_tx_cnt = await self._get_state_tx_cnt(ctx)
             return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
@@ -104,8 +101,9 @@ class NeonTxExecApi(ExecutorApi):
                 _LOG.debug("skip strategy %s: %s", strategy.name, strategy.validation_error_msg)
                 continue
 
-            _LOG.debug("Use strategy %s", strategy.name)
+            _LOG.debug("use strategy %s", strategy.name)
             if (exit_code := await self._execute_strategy(ctx, strategy)) is not None:
+                _LOG.debug("strategy %s returned %s ", strategy.name, exit_code.name)
                 return exit_code
 
         _LOG.warning("didn't find a strategy for execution, NeonTx is too big for execution?")
@@ -148,7 +146,7 @@ class NeonTxExecApi(ExecutorApi):
                 return await self._cancel_tx(strategy)
 
             except SolError as exc:
-                _LOG.debug("simple error, let's repeat attempt: %s", str(exc), extra=self._msg_filter)
+                _LOG.debug("simple error, let's repeat the attempt: %s", str(exc), extra=self._msg_filter)
 
             except BaseException as exc:
                 _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter)
@@ -169,21 +167,18 @@ class NeonTxExecApi(ExecutorApi):
                 return None
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
-        evm_cfg = await self._server.get_evm_cfg()
-        resp = await self._core_api_client.emulate_tx(
+        evm_cfg = await ctx.get_evm_cfg()
+
+        resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            ctx.neon_tx,
-            ctx.chain_id,
-            preload_sol_address_list=ctx.account_key_list,
-            sol_account_dict=dict(),
+            EmulNeonCallModel.from_neon_tx(ctx.neon_tx, ctx.chain_id),
             check_result=False,
-            block=None,
         )
         acct_meta_cnt = NeonProg.BaseAccountCnt + len(resp.raw_meta_list)
         if acct_meta_cnt > self._cfg.max_tx_account_cnt:
             if not ctx.has_good_sol_tx_receipt:
                 raise TxAccountCntTooHighError(acct_meta_cnt, self._cfg.max_tx_account_cnt)
-            # it's a bad idea to block the tx execution by additional accounts in a Solana txs
+            # it's a bad idea to block the tx execution by additional accounts in Solana txs
             #  so don't change the list of accounts if there is a good receipt
         else:
             ctx.set_emulator_result(resp)

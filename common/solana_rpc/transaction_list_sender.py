@@ -258,8 +258,8 @@ class SolTxListSender:
                     _LOG.debug("flash bad blockhash: %s for tx %s", tx.recent_blockhash, tx)
                     tx.set_recent_blockhash(None)
 
-            if tx.recent_blockhash:
-                _LOG.debug("skip signing, tx %s has blockhash %s", tx, tx.recent_blockhash)
+            if tx.is_signed:
+                _LOG.debug("skip signing for %s", tx)
                 signed_tx_list.append(tx)
                 continue
 
