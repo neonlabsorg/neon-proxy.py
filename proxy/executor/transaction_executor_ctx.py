@@ -23,20 +23,31 @@ from common.solana_rpc.client import SolClient
 from common.solana_rpc.transaction_list_sender import SolTxListSender, SolTxListSigner
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
-from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
+from ..base.op_client import OpResourceClient
 
 _LOG = logging.getLogger(__name__)
 
 
-class NeonExecTxCtx(ExecutorComponent):
-    def __init__(self, server: ExecutorServerAbc, tx_request: ExecTxRequest | ExecStuckTxRequest, *, chain_id: int = 0):
-        super().__init__(server)
+class NeonExecTxCtx:
+    def __init__(
+        self,
+        cfg: Config,
+        sol_client: SolClient,
+        core_api_client: CoreApiClient,
+        op_client: OpResourceClient,
+        tx_request: ExecTxRequest | ExecStuckTxRequest,
+    ) -> None:
+        self._cfg = cfg
+        self._sol_client = sol_client
+        self._core_api_client = core_api_client
+        self._op_client = op_client
+
         self._tx_request = tx_request
         self._token_sol_addr = tx_request.resource.token_sol_address
 
-        self._chain_id: int = tx_request.tx.chain_id if isinstance(tx_request, ExecTxRequest) else chain_id
+        self._chain_id: int = tx_request.tx.chain_id if isinstance(tx_request, ExecTxRequest) else None
         self._evm_step_cnt_per_iter: int | None = 0
 
         self._uniq_idx = itertools.count()
@@ -49,11 +60,18 @@ class NeonExecTxCtx(ExecutorComponent):
 
         self._test_mode = False
 
-    async def get_evm_cfg(self) -> EvmConfigModel:
-        evm_cfg = await self._server.get_evm_cfg()
+    def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
         NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
-        return evm_cfg
+        return self
+
+    def set_chain_id(self, value: int) -> None:
+        self._chain_id = value
+
+    @cached_property
+    def tx_id(self) -> str:
+        req = self._tx_request
+        return req.tx.tx_id if isinstance(req, ExecTxRequest) else req.stuck_tx.tx_id
 
     @property
     def cfg(self) -> Config:
@@ -69,9 +87,7 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
-        req = self._tx_request
-        tx_id = req.tx.tx_id if isinstance(req, ExecTxRequest) else req.stuck_tx.tx_id
-        return OpTxListSigner(tx_id, self.payer, self._op_client)
+        return OpTxListSigner(self.tx_id, self.payer, self._op_client)
 
     @cached_property
     def sol_tx_list_sender(self) -> SolTxListSender:

@@ -30,6 +30,10 @@ class EthNonceTooLowError(EthError):
         self._tx_nonce = tx_nonce
         self._state_tx_cnt = state_tx_cnt
 
+    @property
+    def state_tx_cnt(self) -> int:
+        return self._state_tx_cnt
+
     @classmethod
     def raise_if_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str = _empty_sender) -> None:
         if state_tx_cnt > tx_nonce:

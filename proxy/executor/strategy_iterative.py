@@ -50,9 +50,6 @@ class IterativeTxStrategy(BaseTxStrategy):
             if (exit_code := await self._decode_neon_tx_return()) is not None:
                 return exit_code
 
-            if not self._ctx.is_stuck_tx:
-                raise StuckTxError(self._ctx.neon_tx_hash, self._ctx.holder_address)
-
             _LOG.debug("no receipt -> execute additional iterations...")
             await self._emulate_and_send_tx_list()
 
@@ -198,9 +195,9 @@ class IterativeTxStrategy(BaseTxStrategy):
     async def _validate(self) -> bool:
         # fmt: off
         return (
-            self._validate_not_stuck_tx() and
-            self._validate_no_sol_call() and
-            self._validate_has_chain_id()
+            self._validate_not_stuck_tx()
+            and self._validate_no_sol_call()
+            and self._validate_has_chain_id()
         )
         # fmt: on
 
@@ -252,7 +249,9 @@ class IterativeTxStrategy(BaseTxStrategy):
                 return True
         elif holder.status == HolderAccountStatus.Active:
             if holder.neon_tx_hash != self._ctx.neon_tx_hash:
-                raise StuckTxError(holder.neon_tx_hash, holder.address)
+                # strange case, because the holder was tested on the start...
+                raise StuckTxError(holder)
+
             _LOG.debug("holder %s has %s completed EVM steps", holder.address, holder.evm_step_cnt)
             self._completed_evm_step_cnt = holder.evm_step_cnt
         else:

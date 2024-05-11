@@ -1,13 +1,8 @@
-import logging
-
 from common.neon.neon_program import NeonEvmIxCode
-from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
+from common.neon_rpc.api import HolderAccountStatus
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
-from .errors import BadResourceError, StuckTxError
 from .strategy_base import BaseTxPrepStage
-
-_LOG = logging.getLogger(__name__)
 
 
 class WriteHolderTxPrepStage(BaseTxPrepStage):
@@ -49,16 +44,4 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
         return [tx_list]
 
     async def update_after_emulate(self) -> None:
-        if self._ctx.is_stuck_tx:
-            return
-
-        holder = await self._get_holder_account()
-        if holder.status == HolderAccountStatus.Active:
-            if holder.neon_tx_hash != self._ctx.neon_tx_hash:
-                raise StuckTxError(holder.neon_tx_hash, holder.address)
-
-    async def _get_holder_account(self) -> HolderAccountModel:
-        holder = await self._ctx.core_api_client.get_holder_account(self._ctx.holder_address)
-        if holder.status not in (HolderAccountStatus.Finalized, HolderAccountStatus.Active, HolderAccountStatus.Holder):
-            raise BadResourceError(f"Holder account {holder.address} has bad tag: {holder.status}")
-        return holder
+        pass

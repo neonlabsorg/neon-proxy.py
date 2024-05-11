@@ -1,4 +1,5 @@
 from common.ethereum.hash import EthTxHash
+from common.neon_rpc.api import HolderAccountModel
 from common.solana.pubkey import SolPubKey
 from common.utils.cached import cached_method
 
@@ -12,10 +13,10 @@ class BadResourceError(Exception):
 
 
 class StuckTxError(Exception):
-    def __init__(self, neon_tx_hash: EthTxHash, address: SolPubKey) -> None:
+    def __init__(self, holder: HolderAccountModel) -> None:
         super().__init__()
-        self._neon_tx_hash = neon_tx_hash
-        self._address = address
+        self._neon_tx_hash = holder.neon_tx_hash
+        self._address = holder.address
 
     @property
     def neon_tx_hash(self) -> EthTxHash:
@@ -27,7 +28,7 @@ class StuckTxError(Exception):
 
     @cached_method
     def to_string(self) -> str:
-        return f"Holder {self._neon_tx_hash} contains stuck tx {self._neon_tx_hash}"
+        return f"Holder {self._address} contains stuck tx {self._neon_tx_hash}"
 
     def __str__(self) -> str:
         return self.to_string()
