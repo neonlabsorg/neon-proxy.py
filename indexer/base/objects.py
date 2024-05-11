@@ -1293,7 +1293,7 @@ class NeonIndexedBlockInfo:
 
     def _check_stuck_alts(self, cfg: Config) -> None:
         slot = self.slot
-        stuck_slot = slot - cfg.alt_freeing_depth * 4
+        stuck_slot = slot - cfg.alt_freeing_depth
         if stuck_slot < 0:
             return
 

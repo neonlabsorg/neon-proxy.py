@@ -383,7 +383,7 @@ class MpTxSchedule:
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self._update_state_cnt_task = asyncio.create_task(self._update_state_tx_cnt_loop())
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         self._stop_event.set()
 
         if self._heartbeat_task:

@@ -68,9 +68,9 @@ class MempoolServerAbc(BaseProxyServer, abc.ABC):
     async def on_server_stop(self) -> None:
         await asyncio.gather(
             super().on_server_stop(),
-            self._db.close(),
-            self._exec_client.close(),
-            self._op_client.close(),
+            self._db.stop(),
+            self._exec_client.stop(),
+            self._op_client.stop(),
         )
 
     @ttl_cached_method(ttl_sec=1)

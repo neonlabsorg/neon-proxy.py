@@ -19,7 +19,7 @@ from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
-from common.utils.cached import cached_property
+from common.utils.cached import cached_property, reset_cached_method
 from common.utils.json_logger import log_msg, logging_context
 from .key_info import OpSignerInfo, OpHolderInfo
 from .server_abc import OpResourceComponent
@@ -32,7 +32,7 @@ _LOG = logging.getLogger(__name__)
 class OpResourceMng(OpResourceComponent):
     _activate_sleep_sec: Final[float] = ONE_BLOCK_SEC * 16
     _show_error_period: Final[int] = 5 * 60 // _activate_sleep_sec  # each 5 minutes
-    _show_warn_period: Final[int] = 1 * 60 // _activate_sleep_sec  # each 1 minutes
+    _show_warn_period: Final[int] = 1 * 60 // _activate_sleep_sec  # ~ each 1 minutes
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -66,7 +66,7 @@ class OpResourceMng(OpResourceComponent):
         self._holder_size = self._cfg.holder_size
         self._holder_balance = await self._sol_client.get_rent_balance_for_size(self._holder_size)
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         self._stop_event.set()
         if self._refresh_signer_task:
             await self._refresh_signer_task
@@ -138,7 +138,7 @@ class OpResourceMng(OpResourceComponent):
     async def sign_tx_list(self, payer: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
         with logging_context(opkey=self._opkey(payer)):
             if not (op_signer := self._find_op_signer(payer)):
-                _LOG.error("error on trying to find payer %s to sign tx list", payer)
+                _LOG.error("error on trying to find payer %s to sign the tx-list", payer)
                 return tuple(tx_list)
 
             tx_signer = OpTxListSigner(signer=op_signer.signer)
@@ -148,8 +148,11 @@ class OpResourceMng(OpResourceComponent):
                     self._disabled_signer_dict[op_signer.owner] = op_signer
 
             tx_list = await tx_signer.sign_tx_list(tx_list)
-            _LOG.debug("sign tx list: %s", tx_list)
+            _LOG.debug("done sign the tx-list: %s", tx_list)
         return tx_list
+
+    def get_signer_key_list(self) -> tuple[SolPubKey, ...]:
+        return self._get_signer_key_list()
 
     def _find_op_signer(self, owner: SolPubKey) -> OpSignerInfo | None:
         if not (op_signer := self._active_signer_dict.get(owner, None)):
@@ -174,8 +177,8 @@ class OpResourceMng(OpResourceComponent):
 
     async def _refresh_signer_list(self) -> None:
         signer_list = await self._server.get_signer_list()
-        if len(signer_list) >= 96:
-            _LOG.warning("secret list is too long, holder creation can be slow %s", len(signer_list))
+        if len(signer_list) >= 64:
+            _LOG.warning("secret list is too long, holder checking can be slow %s", len(signer_list))
 
         new_signer_list: list[SolSigner] = list()
         rm_act_signer_set = set(self._active_signer_dict.keys())
@@ -512,3 +515,12 @@ class OpResourceMng(OpResourceComponent):
         except BaseException as exc:
             _LOG.warning("error on execute transaction", exc_info=exc, extra=self._msg_filter)
             return False
+
+    @reset_cached_method
+    def _get_signer_key_list(self) -> tuple[SolPubKey, ...]:
+        key_set = set(
+            list(self._active_signer_dict.keys()) +
+            list(self._deactivated_signer_dict.keys()) +
+            list(self._disabled_signer_dict.keys())
+        )
+        return tuple(key_set)

@@ -16,6 +16,8 @@ from .op_api import (
     OpGetTokenSolAddressRequest,
     OpSignSolTxListRequest,
     OpSolTxListResp,
+    OpGetSignerKeyListRequest,
+    OpSignerKeyListResp,
 )
 
 
@@ -24,24 +26,29 @@ class OpResourceClient(AppDataClient):
         super().__init__(*args, **kwargs)
         self.connect(host="127.0.0.1", port=self._cfg.op_resource_port, path=OP_RESOURCE_ENDPOINT)
 
-    async def get_resource(self, tx_id: str, chain_id: int | None) -> OpResourceModel:
-        return await self._get_resource(OpGetResourceRequest(tx_id=tx_id, chain_id=chain_id))
+    async def get_resource(self, req_id: dict, chain_id: int | None) -> OpResourceModel:
+        return await self._get_resource(OpGetResourceRequest(req_id=req_id, chain_id=chain_id))
 
-    async def free_resource(self, tx_id: str, is_good_resource: bool, resource: OpResourceModel) -> bool:
-        req = OpFreeResourceRequest(tx_id=tx_id, is_good=is_good_resource, resource=resource)
+    async def free_resource(self, req_id: dict, is_good_resource: bool, resource: OpResourceModel) -> bool:
+        req = OpFreeResourceRequest(req_id=req_id, is_good=is_good_resource, resource=resource)
         resp = await self._free_resource(req)
         return resp.result
 
-    async def get_token_sol_address(self, tx_id: str, owner: SolPubKey, chain_id: int) -> SolPubKey:
-        req = OpGetTokenSolAddressRequest(tx_id=tx_id, owner=owner, chain_id=chain_id)
+    async def get_token_sol_address(self, req_id: dict, owner: SolPubKey, chain_id: int) -> SolPubKey:
+        req = OpGetTokenSolAddressRequest(req_id=req_id, owner=owner, chain_id=chain_id)
         resp = await self._get_token_sol_address(req)
         return resp.token_sol_address
 
-    async def sign_sol_tx_list(self, tx_id: str, owner: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
+    async def sign_sol_tx_list(self, req_id: dict, owner: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
         model_list = [SolTxModel.from_raw(tx) for tx in tx_list]
-        req = OpSignSolTxListRequest(tx_id=tx_id, owner=owner, tx_list=model_list)
+        req = OpSignSolTxListRequest(req_id=req_id, owner=owner, tx_list=model_list)
         resp = await self._sign_sol_tx_list(req)
         return tuple([model.tx for model in resp.tx_list])
+
+    async def get_signer_key_list(self, req_id: dict) -> tuple[SolPubKey, ...]:
+        req = OpGetSignerKeyListRequest(req_id=req_id)
+        resp = await self._get_signer_key_list(req)
+        return tuple(resp.signer_key_list)
 
     @AppDataClient.method(name="getOperatorResource")
     async def _get_resource(self, request: OpGetResourceRequest) -> OpResourceModel: ...
@@ -54,3 +61,6 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="signSolanaTransactionList")
     async def _sign_sol_tx_list(self, request: OpSignSolTxListRequest) -> OpSolTxListResp: ...
+
+    @AppDataClient.method(name="getSignerKeyList")
+    async def _get_signer_key_list(self, request: OpGetSignerKeyListRequest) -> OpSignerKeyListResp: ...

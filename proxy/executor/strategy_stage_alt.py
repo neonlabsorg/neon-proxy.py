@@ -103,7 +103,7 @@ class AltTxPrepStage(BaseTxPrepStage):
 
         self._alt_info_dict[alt_info.address] = alt_info
         if alt_info.is_exist:
-            _LOG.debug("use existing ALT %s ", alt_info.address)
+            _LOG.debug("use existing ALT %s", alt_info.address)
         else:
             _LOG.debug("create new ALT %s", alt_info.address)
 

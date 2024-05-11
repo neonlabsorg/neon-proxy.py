@@ -66,11 +66,11 @@ class CoreApiClient(SimpleAppDataClient):
 
             # Load the header of the executable account to get the deployed slot
             min_size = BpfLoader2ExecModel.minimum_size
-            acct_info = await self._sol_client.get_account(exec_addr, min_size)
-            if acct_info.is_empty:
+            acct = await self._sol_client.get_account(exec_addr, min_size)
+            if acct.is_empty:
                 raise ValueError(f"Account {exec_addr} doesn't exists")
 
-            exec_info = BpfLoader2ExecModel.from_data(acct_info.data)
+            exec_info = BpfLoader2ExecModel.from_data(acct.data)
 
             # Don't try to update EVM config, if we have the same version of the executable account
             if exec_info.deployed_slot == self._evm_cfg.deployed_slot:

@@ -53,6 +53,6 @@ class NeonIndexerApp:
             indexer = Indexer(self._cfg, self._sol_client, self._core_api_client, db)
             await indexer.start()
 
-            await db_conn.close()
+            await db_conn.stop()
         except BaseException as exc:
             _LOG.error("error on Indexer run", exc_info=exc, extra=self._msg_filter)

@@ -77,7 +77,7 @@ class DbConnection:
         self._is_connected = True
         self._is_connected_task = asyncio.get_event_loop().create_task(self._is_connected_loop())
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         self._is_stopped = True
         self._is_close_conn_event.set()
         await self._is_connected_task

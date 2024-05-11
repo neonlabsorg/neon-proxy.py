@@ -65,13 +65,11 @@ class NeonExecTxCtx:
         NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
         return self
 
-    def set_chain_id(self, value: int) -> None:
-        self._chain_id = value
-
     @cached_property
-    def tx_id(self) -> str:
-        req = self._tx_request
-        return req.tx.tx_id if isinstance(req, ExecTxRequest) else req.stuck_tx.tx_id
+    def req_id(self) -> dict:
+        if isinstance(self._tx_request, ExecTxRequest):
+            return dict(tx=self._tx_request.tx.tx_id)
+        return dict(tx=self._tx_request.stuck_tx.tx_id, is_stuck=True)
 
     @property
     def cfg(self) -> Config:
@@ -87,7 +85,7 @@ class NeonExecTxCtx:
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
-        return OpTxListSigner(self.tx_id, self.payer, self._op_client)
+        return OpTxListSigner(self.req_id, self.payer, self._op_client)
 
     @cached_property
     def sol_tx_list_sender(self) -> SolTxListSender:
@@ -240,13 +238,18 @@ class NeonExecTxCtx:
 
     @cached_property
     def has_chain_id(self) -> bool:
+        assert self._chain_id
         if self.is_stuck_tx:
             return True
         return self._tx_request.tx.neon_tx.has_chain_id
 
     @property
     def chain_id(self) -> int:
+        assert self._chain_id
         return self._chain_id
+
+    def set_chain_id(self, value: int) -> None:
+        self._chain_id = value
 
     @cached_property
     def sender(self) -> NeonAccount:

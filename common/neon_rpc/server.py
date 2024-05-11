@@ -47,7 +47,7 @@ class _Server:
         self._process = process = Process(target=self._run)
         process.start()
 
-    def close(self) -> None:
+    def stop(self) -> None:
         self._process.kill()
         self._process.join()
 
@@ -56,7 +56,6 @@ class _Server:
 
         new_env = dict(
             RUST_LOG=log_level,
-            RUST_BACKTRACE="full",
             SOLANA_URL=self._solana_url,
             NEON_API_LISTENER_ADDR=self._host,
             COMMITMENT="recent",
@@ -112,6 +111,6 @@ class CoreApiServer:
         for instance in self._instance_list:
             instance.start()
 
-    def close(self) -> None:
+    def stop(self) -> None:
         for instance in self._instance_list:
-            instance.close()
+            instance.stop()

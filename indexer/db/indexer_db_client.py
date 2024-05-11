@@ -63,8 +63,8 @@ class IndexerDbClient:
         await self._db_conn.start()
         await asyncio.gather(*[db.start() for db in self._db_list])
 
-    async def close(self) -> None:
-        await self._db_conn.close()
+    async def stop(self) -> None:
+        await self._db_conn.stop()
 
     async def get_earliest_slot(self) -> int:
         return await self._constant_db.get_int(None, self.start_slot_name, 0)

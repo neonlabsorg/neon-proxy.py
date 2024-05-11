@@ -158,11 +158,11 @@ class NeonProxyAbc(JsonRpcServer):
 
     async def on_server_stop(self) -> None:
         await asyncio.gather(
-            self._gas_tank.close(),
-            self._mp_client.close(),
-            self._core_api_client.close(),
-            self._sol_client.close(),
-            self._db.close(),
+            self._gas_tank.stop(),
+            self._mp_client.stop(),
+            self._core_api_client.stop(),
+            self._sol_client.stop(),
+            self._db.stop(),
         )
 
     def _add_api(self, api: NeonProxyApi) -> Self:

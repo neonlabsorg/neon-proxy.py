@@ -112,6 +112,7 @@ class Config:
     mp_eviction_timeout_sec_name: Final[str] = "MEMPOOL_EVICTION_TIMEOUT_SEC"
     mp_gas_price_min_window_name: Final[str] = "MEMPOOL_GAS_PRICE_MINUTE_WINDOW"
     mp_cache_life_sec_name: Final[str] = "MEMPOOL_CACHE_LIFE_SEC"
+    mp_exec_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_COUNT"
     mp_skip_stuck_tx_name: Final[str] = "MEMPOOL_SKIP_STUCK_TRANSACTIONS"
     # Transaction execution settings
     retry_on_fail_name: Final[str] = "RETRY_ON_FAIL"
@@ -462,6 +463,10 @@ class Config:
         return self._env_num(self.mp_cache_life_sec_name, 30 * self._1min, 15, self._1hour)
 
     @cached_property
+    def mp_exec_cnt(self) -> int:
+        return self._env_num(self.mp_exec_cnt_name, max(os.cpu_count() // 2, 1), 1, os.cpu_count() * 2)
+
+    @cached_property
     def mp_skip_stuck_tx(self) -> bool:
         return self._env_bool(self.mp_skip_stuck_tx_name, False)
 
@@ -501,7 +506,7 @@ class Config:
 
     @cached_property
     def pg_conn_cnt(self) -> int:
-        return self._env_num(self.pg_conn_cnt_name, os.cpu_count(), 16)
+        return self._env_num(self.pg_conn_cnt_name, max(os.cpu_count() // 2, 1), 5, os.cpu_count() * 2)
 
     #################################
     # Transaction execution settings
@@ -687,7 +692,7 @@ class Config:
 
     @cached_property
     def alt_freeing_depth(self) -> int:
-        return self._env_num(self.alt_freeing_depth_name, 512 + 16, 512, 1024)
+        return self._env_num(self.alt_freeing_depth_name, 512 + 32 * 3, 512, 1024)
 
     @cached_property
     def metrics_log_skip_cnt(self) -> int:
@@ -790,6 +795,7 @@ class Config:
             self.mp_eviction_timeout_sec_name: self.mp_eviction_timeout_sec,
             self.mp_gas_price_min_window_name: self.mp_gas_price_min_window,
             self.mp_cache_life_sec_name: self.mp_cache_life_sec,
+            self.mp_exec_cnt_name: self.mp_exec_cnt,
             self.mp_skip_stuck_tx_name: self.mp_skip_stuck_tx,
             # Neon Core API settings
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,

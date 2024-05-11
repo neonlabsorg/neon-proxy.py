@@ -90,10 +90,10 @@ class NeonProxyApp:
             self._mp_server.start()
             self._proxy_server.start()
 
-            self._mp_server.close()
-            self._op_server.close()
-            self._exec_server.close()
-            self._core_api_server.close()
+            self._mp_server.stop()
+            self._op_server.stop()
+            self._exec_server.stop()
+            self._core_api_server.stop()
             return 0
 
         except BaseException as exc:

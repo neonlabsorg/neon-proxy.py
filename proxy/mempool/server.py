@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from .alt_loader import SolAltLoader
 from .gas_price_calculator import MpGasPriceCalculator
 from .mp_evm_config_api import MpEvmCfgApi
 from .mp_gas_price_api import MpGasPriceApi
@@ -21,6 +22,7 @@ class MempoolServer(MempoolServerAbc):
 
         self._gas_price_calc = MpGasPriceCalculator(self)
         self._tx_executor = MpTxExecutor(self)
+        self._sol_stuck_alt_loader = SolAltLoader(self)
 
         self._add_api(MpEvmCfgApi(self))
         self._add_api(MpGasPriceApi(self))
@@ -31,12 +33,14 @@ class MempoolServer(MempoolServerAbc):
         await asyncio.gather(
             self._gas_price_calc.start(),
             self._tx_executor.start(),
+            self._sol_stuck_alt_loader.start(),
         )
 
     async def on_server_stop(self) -> None:
         await asyncio.gather(
-            self._gas_price_calc.close(),
-            self._tx_executor.close(),
+            self._gas_price_calc.stop(),
+            self._tx_executor.stop(),
+            self._sol_stuck_alt_loader.stop(),
             super().on_server_stop(),
         )
 

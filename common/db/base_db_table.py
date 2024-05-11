@@ -68,7 +68,7 @@ class BaseDbTable:
 
         self._insert_row_query = await self._db.sql_to_query(insert_row_sql)
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         pass
 
     async def _insert_row(self, ctx: DbTxCtx, record: DbRecordType | dict) -> None:

@@ -38,7 +38,7 @@ class MpTxDict:
     async def start(self) -> None:
         self._clear_task = asyncio.create_task(self._clear_loop())
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         self._stop_event.set()
         if self._clear_task:
             await self._clear_task
@@ -47,6 +47,7 @@ class MpTxDict:
         return neon_tx_hash in self._tx_hash_dict
 
     def add_tx(self, tx: MpTxModel) -> None:
+        _LOG.debug("add tx %s to tx-cache", tx)
         self._tx_hash_dict[tx.neon_tx_hash] = tx
         self._sender_nonce_dict[SenderNonce.from_raw(tx)] = tx
 
@@ -69,10 +70,10 @@ class MpTxDict:
     async def _clear_loop(self) -> None:
         next_item_sec = 0
         base_sleep_sec: Final[int] = self._clear_time_sec // 10
-        with logging_context(ctx="mp-clear-txs"):
+        with logging_context(ctx="mp-clear-tx-cache"):
             while True:
                 with contextlib.suppress(asyncio.TimeoutError):
-                    sleep_sec = next_item_sec if next_item_sec else base_sleep_sec
+                    sleep_sec = (next_item_sec - int(time.monotonic())) if next_item_sec else base_sleep_sec
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break
@@ -80,7 +81,7 @@ class MpTxDict:
                 try:
                     next_item_sec = await self._clear()
                 except BaseException as exc:
-                    _LOG.error("error on clearing cached txs", exc_info=exc)
+                    _LOG.error("error on clearing tx-cache", exc_info=exc)
 
     async def _clear(self) -> int:
         if not self._tx_queue:
@@ -91,6 +92,6 @@ class MpTxDict:
             item = self._tx_queue.popleft()
             self._tx_hash_dict.pop(item.tx.neon_tx_hash, None)
             self._sender_nonce_dict.pop(SenderNonce.from_raw(item.tx), None)
-            _LOG.debug("remove %s from cache", item.tx)
+            _LOG.debug("remove %s from tx-cache", item.tx)
 
         return self._tx_queue[0].start_time_sec + self._clear_time_sec + 1 if self._tx_queue else 0

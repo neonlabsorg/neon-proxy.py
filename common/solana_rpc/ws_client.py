@@ -46,6 +46,7 @@ _WsMsgType = _ws.WSMsgType
 _WsSendData = Union[_SoldersSubTxSig, _SoldersUnsubTxSig]
 
 
+# Solders doesn't have this event...
 class _SoldersUnsubResult(BaseModel):
     jsonrpc: Literal["2.0"]
     id: int

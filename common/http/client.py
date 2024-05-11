@@ -52,12 +52,12 @@ class HttpClient:
         return self
 
     async def __aexit__(self, *_exc_info) -> None:
-        await self.close()
+        await self.stop()
 
     async def start(self) -> None:
         pass
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         if self.session:
             await self.session.close()
 

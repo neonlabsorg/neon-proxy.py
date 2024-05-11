@@ -42,13 +42,13 @@ class MpTxExecutor(MempoolComponent):
             await self._stuck_tx_dict.start(self._db),
         self._tx_exec_task = asyncio.create_task(self._tx_exec_loop())
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         self._stop_event.set()
         self._exec_event.set()
 
         task_list = (
-            [self._stuck_tx_dict.close(), self._tx_dict.close(), self._tx_exec_task]
-            + [schedule.close() for schedule in self._tx_schedule_dict.values()]
+            [self._stuck_tx_dict.stop(), self._tx_dict.stop(), self._tx_exec_task]
+            + [schedule.stop() for schedule in self._tx_schedule_dict.values()]
             + self._completed_task_list
         )
         for task in self._exec_task_dict.values():
@@ -169,7 +169,7 @@ class MpTxExecutor(MempoolComponent):
                     return True
                 self._tx_dict.done_tx(tx.neon_tx_hash)
 
-            resource = await self._op_client.get_resource(stuck_tx.tx_id, None)
+            resource = await self._op_client.get_resource(dict(tx=stuck_tx.tx_id, is_stuck=True), None)
             if resource.is_empty:
                 return False
 
@@ -215,7 +215,7 @@ class MpTxExecutor(MempoolComponent):
             _LOG.error("unknown exec response code %s", resp)
             self._stuck_tx_dict.fail_tx(stuck_tx)
 
-        await self._op_client.free_resource(stuck_tx.tx_id, is_good_resource, resource)
+        await self._op_client.free_resource(dict(tx=stuck_tx.tx_id, is_stuck=True), is_good_resource, resource)
         if task := self._exec_task_dict.pop(stuck_tx.neon_tx_hash, None):
             self._completed_task_list.append(task)
         else:
@@ -233,8 +233,7 @@ class MpTxExecutor(MempoolComponent):
             self._tx_schedule_idx += 1
             if not tx_schedule.tx_cnt:
                 continue
-
-            if not (token := gas_price.chain_dict.get(tx_schedule.chain_id, None)):
+            elif not (token := gas_price.chain_dict.get(tx_schedule.chain_id, None)):
                 _LOG.warning("unknown chainID: 0x%x", tx_schedule.chain_id)
                 continue
 
@@ -243,7 +242,7 @@ class MpTxExecutor(MempoolComponent):
                 continue
             assert tx.neon_tx_hash not in self._exec_task_dict
 
-            resource = await self._op_client.get_resource(tx.tx_id, tx.chain_id)
+            resource = await self._op_client.get_resource(dict(tx=tx.tx_id), tx.chain_id)
             if resource.is_empty:
                 break
 
@@ -293,7 +292,7 @@ class MpTxExecutor(MempoolComponent):
             _LOG.error("unknown exec response code %s", resp)
 
         self._call_tx_schedule(tx.chain_id, action, tx, resp.state_tx_cnt)
-        await self._op_client.free_resource(tx.tx_id, is_good_resource, resource)
+        await self._op_client.free_resource(dict(tx=tx.tx_id), is_good_resource, resource)
 
         if task := self._exec_task_dict.pop(tx.neon_tx_hash, None):
             self._completed_task_list.append(task)

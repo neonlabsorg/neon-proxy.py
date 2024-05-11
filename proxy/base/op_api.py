@@ -12,12 +12,12 @@ OP_RESOURCE_ENDPOINT = "/api/v1/resource/"
 
 
 class OpGetResourceRequest(BaseModel):
-    tx_id: str
+    req_id: dict
     chain_id: int | None
 
 
 class OpFreeResourceRequest(BaseModel):
-    tx_id: str
+    req_id: dict
     is_good: bool
     resource: OpResourceModel
 
@@ -49,7 +49,7 @@ class OpResourceModel(BaseModel):
 
     @cached_method
     def to_string(self) -> str:
-        return f"{self.owner}:{self.resource_id}:{self.token_sol_address}"
+        return f"{self.owner}:{self.resource_id}"
 
     def __str__(self) -> str:
         return self.to_string()
@@ -63,7 +63,7 @@ class OpResourceModel(BaseModel):
 
 
 class OpGetTokenSolAddressRequest(BaseModel):
-    tx_id: str
+    req_id: dict
     owner: SolPubKeyField
     chain_id: int
 
@@ -75,10 +75,18 @@ class OpTokenSolAddressModel(BaseModel):
 
 
 class OpSignSolTxListRequest(BaseModel):
-    tx_id: str
+    req_id: dict
     owner: SolPubKeyField
     tx_list: list[SolTxModel]
 
 
 class OpSolTxListResp(BaseModel):
     tx_list: list[SolTxModel]
+
+
+class OpGetSignerKeyListRequest(BaseModel):
+    req_id: dict
+
+
+class OpSignerKeyListResp(BaseModel):
+    signer_key_list: list[SolPubKeyField]

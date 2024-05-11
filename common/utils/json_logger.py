@@ -46,7 +46,7 @@ def _get_root_path_len() -> int:
 _SKIP_ROOTPATH_LEN = _get_root_path_len()
 _BASE_ROOTPATH = __file__[:_SKIP_ROOTPATH_LEN]
 # fmt: off
-_CLEF_LOG_FORMAT = os.environ.get("CLEF_LOG_FORMAT", "NO").upper() in (
+_CLEF_LOG_FORMAT = os.environ.get("LOG_CLEF_FORMAT", "NO").upper() in (
     "YES", "ON", "TRUE", "1",
 )
 # fmt: on

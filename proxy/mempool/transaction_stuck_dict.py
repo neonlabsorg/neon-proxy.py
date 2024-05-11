@@ -27,7 +27,7 @@ class MpStuckTxDict:
         self._db = db
         self._scan_stuck_tx_task = asyncio.create_task(self._scan_stuck_tx_loop())
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         if self._scan_stuck_tx_task:
             self._stop_event.set()
             await self._scan_stuck_tx_task

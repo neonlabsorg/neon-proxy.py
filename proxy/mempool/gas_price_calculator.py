@@ -72,7 +72,7 @@ class MpGasPriceCalculator(MempoolComponent):
         self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
         self._update_gas_price_task = asyncio.create_task(self._update_gas_price_loop())
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         self._stop_event.set()
         if self._update_pyth_acct_task:
             await self._update_pyth_acct_task

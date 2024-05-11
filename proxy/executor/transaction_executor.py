@@ -7,7 +7,7 @@ import logging
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.api import EmulNeonCallModel, HolderAccountModel, HolderAccountStatus
+from common.neon_rpc.api import EmulNeonCallModel, HolderAccountStatus
 from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
     SolCbExceededError,
@@ -115,7 +115,7 @@ class NeonTxExecutor(ExecutorComponent):
         ctx.set_chain_id(holder.chain_id)
 
         # request the token address (based on chain-id) for receiving payments from user
-        token_sol_addr = await self._op_client.get_token_sol_address(ctx.tx_id, ctx.payer, ctx.chain_id)
+        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
         ctx.set_holder_account(holder)
 
@@ -140,7 +140,7 @@ class NeonTxExecutor(ExecutorComponent):
 
             _LOG.debug("use strategy %s", strategy.name)
             if (exit_code := await self._exec_neon_tx(ctx, strategy, has_emul_result)) is not None:
-                _LOG.debug("got result %s from strategy %s", exit_code.name, strategy.name)
+                _LOG.debug("done strategy %s with result %s", strategy.name, exit_code.name)
                 return exit_code
             has_emul_result = False
 

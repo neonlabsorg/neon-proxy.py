@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import itertools
 import logging
 import typing as tp
@@ -148,7 +149,7 @@ class SolClient(HttpClient):
         address: SolPubKey,
         size: int | None = None,
         commit=SolCommit.Confirmed,
-    ) -> SolAccountModel | None:
+    ) -> SolAccountModel:
         data_slice = None if not size else _SoldersDataSliceCfg(0, size)
         cfg = _SoldersAcctInfoCfg(
             _SoldersAcctEnc.Base64,
@@ -160,8 +161,8 @@ class SolClient(HttpClient):
         return SolAccountModel.from_raw(address, resp.value)
 
     async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo | None:
-        acct_info = await self.get_account(address, commit=commit)
-        return SolAltAccountInfo.from_bytes(address, acct_info.data) if acct_info else None
+        acct = await self.get_account(address, commit=commit)
+        return SolAltAccountInfo.from_bytes(address, acct.data)
 
     async def get_account_list(
         self,

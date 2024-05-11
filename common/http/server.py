@@ -106,7 +106,7 @@ class HttpServer(abc.ABC):
         _stop_process_pool(process_pool)
         _LOG.info("Server(pid=%d) is stopped", self._pid)
 
-    def close(self, wait_sec: float = 1.0) -> None:
+    def stop(self, wait_sec: float = 1.0) -> None:
         pid = os.getpid()
         _LOG.info("received stop event in the process: %d", pid)
 

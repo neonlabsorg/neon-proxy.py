@@ -55,7 +55,7 @@ class TestApiServer(JsonRpcServer):
 
         @JsonRpcApi.method(name="json_stopServer")
         async def stop_server(self) -> str:
-            self.server.close()
+            self.server.stop()
             return "Server stopped"
 
     def __init__(self, cfg: Config) -> None:
@@ -79,7 +79,7 @@ class ServerProcess:
         self._process.start()
 
     def stop(self):
-        self._server.close()
+        self._server.stop()
         self._process.kill()
 
     def _run(self):
@@ -118,7 +118,7 @@ class TestJsonRpcProtocol(unittest.IsolatedAsyncioTestCase):
         self._api_client.set_timeout_sec(1).set_max_retry_cnt(3)
 
     async def asyncTearDown(self):
-        await self._api_client.close()
+        await self._api_client.stop()
         self._server_process.stop()
 
     async def test_jsonrpc(self):

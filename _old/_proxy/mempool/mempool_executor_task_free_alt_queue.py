@@ -158,12 +158,12 @@ class MPExecutorFreeALTQueueTask(MPExecutorBaseTask):
         return self._free_alt_list(
             mp_req.alt_info_list,
             'DeactivateLookupTable',
-            lambda ix_builder, table_account: ix_builder.make_deactivate_lookup_table_ix(table_account)
+            lambda ix_builder, table_account: ix_builder.make_deactivate_alt_ix(table_account)
         )
 
     def close_alt_list(self, mp_req: MPCloseALTListRequest) -> MPALTListResult:
         return self._free_alt_list(
             mp_req.alt_info_list,
             'CloseLookupTable',
-            lambda ix_builder, table_account: ix_builder.make_close_lookup_table_ix(table_account)
+            lambda ix_builder, table_account: ix_builder.make_close_alt_ix(table_account)
         )

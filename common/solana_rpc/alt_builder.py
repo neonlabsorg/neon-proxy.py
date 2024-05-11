@@ -72,7 +72,7 @@ class SolAltTxBuilder:
         return self._build_alt_info(legacy_tx, recent_slot)
 
     def _build_alt_info(self, legacy_tx: SolLegacyTx, recent_slot: int) -> SolAltInfo:
-        alt_ident = self._alt_prog.derive_lookup_table_address(recent_slot)
+        alt_ident = self._alt_prog.derive_alt_address(recent_slot)
         alt_info = SolAltInfo.from_legacy_tx(alt_ident, legacy_tx)
         return alt_info
 
@@ -85,7 +85,7 @@ class SolAltTxBuilder:
             ix_list = list()
             if self._cu_price:
                 ix_list.append(self._cb_prog.make_cu_price_ix(self._cu_price))
-            ix_list.append(self._alt_prog.make_create_lookup_table_ix(alt_info.ident))
+            ix_list.append(self._alt_prog.make_create_alt_ix(alt_info.ident))
 
             create_alt_tx = SolLegacyTx(name=self._create_name, ix_list=tuple(ix_list))
             create_alt_tx_list.append(create_alt_tx)
@@ -101,7 +101,7 @@ class SolAltTxBuilder:
             ix_list = list()
             if self._cu_price:
                 ix_list.append(self._cb_prog.make_cu_price_ix(self._cu_price))
-            ix_list.append(self._alt_prog.make_extend_lookup_table_ix(alt_info.ident, acct_list_part))
+            ix_list.append(self._alt_prog.make_extend_alt_ix(alt_info.ident, acct_list_part))
             tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
             extend_alt_tx_list.append(tx)
 

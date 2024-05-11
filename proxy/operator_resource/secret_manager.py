@@ -18,7 +18,7 @@ class OpSecretMng(OpResourceComponent):
     async def start(self) -> None:
         pass
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         pass
 
     async def get_signer_list(self) -> tuple[SolSigner, ...]:

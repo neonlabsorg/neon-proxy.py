@@ -18,7 +18,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class SolAltTxIxCollector:
-    _block_step_cnt = 300
+    _block_step_cnt = (512 + 32 * 3) // 2  # 512 blocks for ALT closing, 32 blocks for finalization
 
     def __init__(self, cfg: Config, sol_client: SolClient):
         self._cfg = cfg
@@ -75,7 +75,7 @@ class SolAltTxIxCollector:
 
     async def _get_tx_sig_list(self, ctx: _Ctx) -> tuple[SolTxSig, ...]:
         last_slot = ctx.alt_info.last_sol_ix_slot
-        rpc_tx_sig_list = await self._sol_client.get_tx_sig_list(ctx.alt_info.address, 1000, SolCommit.Finalized)
+        rpc_tx_sig_list = await self._sol_client.get_tx_sig_list(ctx.alt_info.address, 128, SolCommit.Finalized)
         return tuple([SolTxSig.from_raw(rpc_sig.signature) for rpc_sig in rpc_tx_sig_list if rpc_sig.slot > last_slot])
 
     @staticmethod

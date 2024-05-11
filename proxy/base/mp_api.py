@@ -109,7 +109,7 @@ class MpStuckTxModel(BaseModel):
 
     @cached_property
     def tx_id(self) -> str:
-        return self.neon_tx_hash.to_bytes()[:4].hex() + ":stuck"
+        return self.neon_tx_hash.to_bytes()[:4].hex()
 
     @property
     def process_time_msec(self) -> float:

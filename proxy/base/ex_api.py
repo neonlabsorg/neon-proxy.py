@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import PlainValidator, PlainSerializer
 
+from common.ethereum.hash import EthTxHashField
+from common.solana.alt_program import SolAltID
 from common.utils.pydantic import BaseModel
 from .mp_api import MpTxModel, MpStuckTxModel
 from .op_api import OpResourceModel
@@ -40,3 +42,17 @@ ExecTxRespCodeField = Annotated[
 class ExecTxResp(BaseModel):
     code: ExecTxRespCodeField
     state_tx_cnt: int = 0
+
+
+class NeonAltModel(BaseModel):
+    neon_tx_hash: EthTxHashField
+    sol_alt_id: SolAltID
+
+
+class DestroyAltListRequest(BaseModel):
+    req_id: dict
+    alt_list: list[NeonAltModel]
+
+
+class DestroyAltListResp(BaseModel):
+    result: bool

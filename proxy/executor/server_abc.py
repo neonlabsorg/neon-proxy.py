@@ -4,7 +4,6 @@ from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config
-from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient

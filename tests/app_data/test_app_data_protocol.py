@@ -48,7 +48,7 @@ class TestApi(AppDataApi):
 
     @AppDataApi.method(name="stopServer")
     async def stop_server(self) -> StopServerResp:
-        self.server.close()
+        self.server.stop()
         return StopServerResp(message="Server is going to stop")
 
 
@@ -72,7 +72,7 @@ class ServerProcess:
         self._process.start()
 
     def stop(self):
-        self._server.close()
+        self._server.stop()
         self._process.kill()
 
     def _run(self):
@@ -99,7 +99,7 @@ class TestAppDataProtocol(unittest.IsolatedAsyncioTestCase):
         self._api_client.connect(host=HOST, port=PORT, path=ENDPOINT).set_timeout_sec(1).set_max_retry_cnt(3)
 
     async def asyncTearDown(self):
-        await self._api_client.close()
+        await self._api_client.stop()
         self._server_process.stop()
 
     async def test_app_data_server(self):

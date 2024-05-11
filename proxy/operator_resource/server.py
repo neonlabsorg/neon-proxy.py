@@ -3,6 +3,7 @@ import asyncio
 from common.solana.signer import SolSigner
 from .op_lock_resource_api import OpAcquireResourceApi
 from .op_sign_transaction_api import OpSignTxApi
+from .op_signer_key_api import OpSignerKeyApi
 from .resource_manager import OpResourceMng
 from .secret_manager import OpSecretMng
 from .server_abc import OpResourceServerAbc
@@ -21,6 +22,7 @@ class OpResourceServer(OpResourceServerAbc):
 
         self._add_api(OpAcquireResourceApi(self))
         self._add_api(OpSignTxApi(self))
+        self._add_api(OpSignerKeyApi(self))
 
     async def on_server_start(self) -> None:
         await asyncio.gather(
@@ -32,8 +34,8 @@ class OpResourceServer(OpResourceServerAbc):
     async def on_server_stop(self) -> None:
         await asyncio.gather(
             super().on_server_stop(),
-            self._op_secret_mng.close(),
-            self._op_resource_mng.close(),
+            self._op_secret_mng.stop(),
+            self._op_resource_mng.stop(),
         )
 
     async def get_signer_list(self) -> tuple[SolSigner, ...]:
