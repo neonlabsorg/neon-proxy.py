@@ -6,12 +6,12 @@ from typing import Sequence, Final, Union
 import solders.message as _msg
 import solders.transaction as _tx
 
-from .signer import SolSigner
 from .errors import SolTxSizeError
 from .hash import SolBlockHash
 from .instruction import SolAccountMeta, SolTxIx
 from .pubkey import SolPubKey
 from .signature import SolTxSig
+from .signer import SolSigner
 from ..utils.cached import reset_cached_method
 
 SOL_PACKET_SIZE: Final[int] = 1280 - 40 - 8

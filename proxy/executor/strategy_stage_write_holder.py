@@ -29,7 +29,7 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
         holder_msg_offset = 0
         holder_msg = neon_prog.holder_msg
 
-        holder_msg_size = 900
+        holder_msg_size = 930
         while len(holder_msg):
             holder_msg_part, holder_msg = holder_msg[:holder_msg_size], holder_msg[holder_msg_size:]
 
