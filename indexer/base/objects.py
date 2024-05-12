@@ -1018,7 +1018,7 @@ class NeonIndexedBlockInfo:
     def add_alt_ix(self, alt_info: NeonIndexedAltInfo, alt_ix: SolNeonAltIxModel) -> None:
         self._sol_tx_cost_list.append(alt_ix.sol_tx_cost)
         self._sol_alt_ix_list.append(alt_ix)
-        alt_info.set_last_ix_slot(alt_ix.slot, alt_ix.sol_signer)
+        alt_info.set_last_ix_slot(alt_ix.slot, alt_ix.sol_tx_cost.sol_signer)
 
     def iter_stuck_neon_holder(self) -> Iterator[NeonIndexedHolderInfo]:
         # assert self._is_stuck_completed
@@ -1217,7 +1217,7 @@ class NeonIndexedBlockInfo:
             stat.sol_tx_cnt += 1
 
             sol_spent = sol_alt_ix.sol_tx_cost.sol_spent
-            if sol_alt_ix.sol_tx_cost.sol_operator in cfg.op_key_set:
+            if sol_alt_ix.sol_tx_cost.sol_signer in cfg.op_key_set:
                 stat.op_sol_spent += sol_spent
         return tx_stat_dict
 

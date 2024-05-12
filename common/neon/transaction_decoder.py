@@ -22,7 +22,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class SolNeonTxIxMetaModel(BaseModel):
-    sol_tx_sig: SolPubKeyField
+    sol_tx_sig: SolTxSigField
     slot: int
     sol_ix_idx: int
     sol_inner_ix_idx: int | None
@@ -60,7 +60,6 @@ class SolNeonAltIxModel(BaseModel):
     sol_ix_idx: int
     sol_inner_ix_idx: int | None
     is_success: bool
-    sol_signer: SolPubKeyField
     sol_tx_cost: SolTxCostModel
 
     alt_ix_code: SolAltIxCode
@@ -84,7 +83,6 @@ class SolNeonAltIxModel(BaseModel):
             slot=tx.slot,
             sol_ix_idx=tx_ix.sol_ix_idx,
             sol_inner_ix_idx=tx_ix.sol_inner_ix_idx,
-            sol_signer=tx.sol_signer,
             sol_tx_cost=tx.sol_tx_cost,
             is_success=tx_ix.is_success,
             alt_ix_code=alt_ix_code,

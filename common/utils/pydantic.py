@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from typing import Annotated, Any
 
+import base58
 from pydantic import (
     BaseModel as _PydanticBaseModel,
     RootModel as _PydanticRootModel,
@@ -195,3 +196,26 @@ def _bytes_to_base64(value: bytes | None) -> str:
 
 
 Base64Field = Annotated[bytes, PlainValidator(_base64_to_bytes), PlainSerializer(_bytes_to_base64, return_type=str)]
+
+
+# Allows: None | base58 | b"..." |
+def _base58_to_bytes(value: str | bytes | bytearray | None) -> bytes:
+    if not value:
+        return bytes()
+    elif isinstance(value, str):
+        try:
+            return base58.b58decode(value)
+        except (BaseException,):
+            raise ValueError("Wrong input type")
+    elif isinstance(value, (bytes, bytearray)):
+        return bytes(value)
+    raise ValueError(f"Wrong input type: {type(value).__name__}")
+
+
+def _bytes_to_base58(value: bytes | None) -> str:
+    if not value:
+        return ""
+    return str(base58.b58encode(value), "utf-8")
+
+
+Base58Field = Annotated[bytes, PlainValidator(_base58_to_bytes), PlainSerializer(_bytes_to_base58, return_type=str)]

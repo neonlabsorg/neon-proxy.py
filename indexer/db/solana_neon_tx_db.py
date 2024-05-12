@@ -47,7 +47,8 @@ class SolNeonTxDb(HistoryDbTable):
             """;
             SELECT DISTINCT 
                 {column_list},
-                c.operator, c.sol_spent
+                c.operator, 
+                c.sol_spent
             FROM 
                 {table_name} a
             INNER JOIN 
@@ -58,9 +59,9 @@ class SolNeonTxDb(HistoryDbTable):
                 {cost_table_name} AS c
                 ON c.sol_sig = a.sol_sig
             WHERE 
-                a.neon_tx_hash = {neon_tx_hash}
+                a.neon_sig = {neon_tx_hash}
             ORDER BY 
-                a.block_slot, a.neon_total_gas_used, a.idx, a.inner_idx
+                a.block_slot, a.neon_total_gas_used, a.sol_sig, a.idx, a.inner_idx
             """
         ).format(
             table_name=self._table_name,
@@ -99,9 +100,16 @@ class SolNeonTxDb(HistoryDbTable):
         return tuple(sol_sig_list)
 
     async def get_sol_ix_list_by_neon_tx_hash(
-        self, ctx: DbTxCtx, neon_tx_hash: EthTxHash
+        self,
+        ctx: DbTxCtx,
+        neon_tx_hash: EthTxHash,
     ) -> tuple[SolNeonTxIxMetaModel, ...]:
-        rec_list = await self._fetch_all(ctx, self._select_query, _ByNeonTxSig(neon_tx_hash.to_string()))
+        rec_list = await self._fetch_all(
+            ctx,
+            self._select_query,
+            _ByNeonTxSig(neon_tx_hash.to_string()),
+            record_type=_RecordWithCost,
+        )
         return tuple([rec.to_sol_neon_ix() for rec in rec_list])
 
 
@@ -157,11 +165,11 @@ class _RecordWithCost(_Record):
             slot=self.block_slot,
             sol_ix_idx=self.idx,
             sol_inner_ix_idx=self.inner_idx,
-            operator=self.operator,
             is_success=self.is_success,
             neon_tx_hash=self.neon_sig,
+            neon_ix_code=self.ix_code,
             neon_tx_ix_miner=self.neon_miner,
-            neon_tx_ix_step_cnt=self.neon_step_cnt,
+            neon_step_cnt=self.neon_step_cnt,
             neon_total_step_cnt=self.neon_total_step_cnt,
             neon_gas_used=self.neon_gas_used,
             neon_total_gas_used=self.neon_total_gas_used,
@@ -173,7 +181,7 @@ class _RecordWithCost(_Record):
                 sol_tx_sig=self.sol_sig,
                 slot=self.block_slot,
                 is_success=self.is_success,
-                operator=self.operator,
+                sol_signer=self.operator,
                 sol_spent=self.sol_spent,
             ),
         )

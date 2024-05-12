@@ -202,7 +202,7 @@ class SolTxCostModel(BaseModel):
     slot: int
     is_success: bool
 
-    sol_operator: SolPubKeyField
+    sol_signer: SolPubKeyField
     sol_spent: int
 
     @classmethod
@@ -217,7 +217,7 @@ class SolTxCostModel(BaseModel):
             sol_tx_sig=tx.sol_tx_sig,
             slot=tx.slot,
             is_success=tx.is_success,
-            sol_operator=tx.sol_signer,
+            sol_signer=tx.sol_signer,
             sol_spent=(pre_balance - post_balance),
         )
 

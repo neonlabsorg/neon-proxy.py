@@ -29,6 +29,6 @@ class _Record:
         return cls(
             sol_sig=sol_cost.sol_tx_sig.to_string(),
             block_slot=sol_cost.slot,
-            operator=sol_cost.sol_operator.to_string(),
+            operator=sol_cost.sol_signer.to_string(),
             sol_spent=sol_cost.sol_spent,
         )

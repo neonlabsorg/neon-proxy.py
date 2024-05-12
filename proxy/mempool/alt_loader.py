@@ -7,6 +7,7 @@ from typing import Final
 
 from common.ethereum.hash import EthTxHash
 from common.solana.alt_program import SolAltID
+from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context, log_msg
 from .server_abc import MempoolComponent
@@ -47,6 +48,11 @@ class SolAltLoader(MempoolComponent):
                     _LOG.error("unexpected error on scan stuck ALTs", exc_info=exc, extra=self._msg_filter)
 
     async def _scan_stuck_alt(self) -> None:
+        stuck_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        stuck_slot -= self._cfg.alt_freeing_depth
+        if stuck_slot < 0:
+            return
+
         _, alt_data_list = await self._db.get_stuck_neon_alt_list()
         new_alt_set: set[SolPubKey] = set()
         stuck_alt_list: list[NeonAltModel] = list()
@@ -59,6 +65,10 @@ class SolAltLoader(MempoolComponent):
         op_key_set = set(await self._op_client.get_signer_key_list(req_id))
 
         for data in alt_data_list:
+            slot = int(data["slot"])
+            if slot > stuck_slot:
+                continue
+
             owner = SolPubKey.from_raw(data["operator"])
             if owner.is_empty:
                 # indexer didn't find a owner of the ALT

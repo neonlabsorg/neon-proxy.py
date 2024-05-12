@@ -23,14 +23,14 @@ class _RpcVersionResp(BaseJsonRpcModel):
 
 
 class _RpcNeonEvmParamResp(BaseJsonRpcModel):
-    neonAccountSeedVersion: HexUIntField | None
-    neonMaxEvmStepsInLastIteration: HexUIntField | None
-    neonMinEvmStepsInIteration: HexUIntField | None
-    neonGasLimitMultiplierNoChainId: HexUIntField | None
-    neonHolderMessageSize: HexUIntField | None
-    neonPaymentToTreasury: HexUIntField | None
-    neonStorageEntriesInContractAccount: HexUIntField | None
-    neonTreasuryPoolCount: HexUIntField | None
+    neonAccountSeedVersion: int | None
+    neonMaxEvmStepsInLastIteration: int | None
+    neonMinEvmStepsInIteration: int | None
+    neonGasLimitMultiplierNoChainId: int | None
+    neonHolderMessageSize: int | None
+    neonPaymentToTreasury: int | None
+    neonStorageEntriesInContractAccount: int | None
+    neonTreasuryPoolCount: int | None
     neonTreasuryPoolSeed: str | None
     neonEvmProgramId: SolPubKeyField
 

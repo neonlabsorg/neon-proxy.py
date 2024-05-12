@@ -22,13 +22,10 @@ class EthCommit(StrEnum):
         except (BaseException,):
             raise ValueError(f"Wrong commitment level {tag}")
 
-    def to_string(self) -> str:
-        return self.__str__()
-
 
 # Type for Pydantic, it doesn't do anything, only annotates rules for serialization and deserialization
 EthCommitField = Annotated[
     EthCommit,
     PlainValidator(EthCommit.from_raw),
-    PlainSerializer(lambda v: v.to_string(), return_type=str),
+    PlainSerializer(lambda v: v.value, return_type=str),
 ]

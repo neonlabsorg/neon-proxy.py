@@ -174,7 +174,11 @@ class RpcEthTxEventModel(BaseJsonRpcModel):
 
     @classmethod
     def from_raw(cls, event: NeonTxEventModel) -> Self:
-        return cls(
+        return cls(**cls._to_dict(event))
+
+    @staticmethod
+    def _to_dict(event: NeonTxEventModel) -> dict:
+        return dict(
             address=event.address,
             data=event.data,
             topics=event.topic_list,
@@ -188,9 +192,9 @@ class RpcEthTxEventModel(BaseJsonRpcModel):
 
 
 class RpcNeonTxEventModel(RpcEthTxEventModel):
-    neonSolanaSignature: SolTxSigField
-    neonInstructionIndex: int
-    neonInnerInstructionIndex: int | None
+    solanaTransactionSignature: SolTxSigField
+    solanaInstructionIndex: int
+    solanaInnerInstructionIndex: int | None
     neonEventType: str
     neonEventLevel: int
     neonEventOrder: int
@@ -200,18 +204,10 @@ class RpcNeonTxEventModel(RpcEthTxEventModel):
     @classmethod
     def from_raw(cls, event: NeonTxEventModel) -> Self:
         return cls(
-            address=event.address,
-            data=event.data,
-            topics=event.topic_list,
-            blockHash=event.block_hash,
-            blockNumber=event.slot,
-            transactionHash=event.neon_tx_hash,
-            transactionIndex=event.neon_tx_idx,
-            logIndex=event.block_log_idx,
-            transactionLogIndex=event.neon_tx_log_idx,
-            neonSolanaSignature=event.sol_tx_sig,
-            neonInstructionIndex=event.sol_ix_idx,
-            neonInnerInstructionIndex=event.sol_inner_ix_idx,
+            **cls._to_dict(event),
+            solanaTransactionSignature=event.sol_tx_sig,
+            solanaInstructionIndex=event.sol_ix_idx,
+            solanaInnerInstructionIndex=event.sol_inner_ix_idx,
             neonEventType=event.event_type.name,
             neonEventLevel=event.event_level,
             neonEventOrder=event.event_order,

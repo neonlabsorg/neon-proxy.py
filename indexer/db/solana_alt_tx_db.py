@@ -7,6 +7,7 @@ from typing_extensions import Self
 from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQueryBody
 from common.ethereum.hash import EthTxHash
 from common.neon.transaction_decoder import SolNeonAltIxModel
+from common.solana.alt_program import SolAltIxCode
 from common.solana.signature import SolTxSig
 from common.solana.transaction_decoder import SolTxCostModel
 from ..base.history_db import HistoryDbTable
@@ -84,7 +85,10 @@ class SolAltTxDb(HistoryDbTable):
         neon_tx_hash: EthTxHash,
     ) -> tuple[SolNeonAltIxModel, ...]:
         rec_list = await self._fetch_all(
-            ctx, self._select_query, _ByNeonTxSig(neon_tx_hash.to_string()), record_type=_RecordWithCost
+            ctx,
+            self._select_query,
+            _ByNeonTxSig(neon_tx_hash.to_string()),
+            record_type=_RecordWithCost,
         )
         return tuple([rec.to_alt_model() for rec in rec_list])
 
@@ -139,15 +143,14 @@ class _RecordWithCost(_Record):
             sol_ix_idx=self.idx,
             sol_inner_ix_idx=self.inner_idx,
             is_success=self.is_success,
-            sol_signer=self.operator,
             sol_tx_cost=SolTxCostModel(
                 sol_tx_sig=self.sol_sig,
                 slot=self.block_slot,
                 is_success=self.is_success,
-                operator=self.operator,
+                sol_signer=self.operator,
                 sol_spent=self.sol_spent,
             ),
-            ix_code=self.ix_code,
+            alt_ix_code=SolAltIxCode(self.ix_code),
             alt_address=self.alt_address,
             neon_tx_hash=self.neon_sig,
         )

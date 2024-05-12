@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import ClassVar, Final
+from dataclasses import dataclass
+from typing import ClassVar, Final, Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, PlainValidator
+from strenum import StrEnum
 from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField
@@ -21,15 +23,38 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.account import NeonAccount
 from common.neon.block import NeonBlockHdrModel
+from common.neon.neon_program import NeonEvmIxCode
+from common.neon.transaction_decoder import SolNeonAltIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
+from common.solana.alt_program import SolAltIxCode
 from common.solana.commit_level import SolCommit
+from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig
-from common.utils.pydantic import HexUIntField, HexUInt256Field, HexUInt8Field
-from .api import RpcBlockRequest, RpcEthTxEventModel
+from common.utils.pydantic import HexUIntField, HexUInt256Field, HexUInt8Field, Base58Field
+from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
 
 _LOG = logging.getLogger(__name__)
+
+
+class _RpcNeonTxReceiptDetail(StrEnum):
+    Eth = "ethereum"
+    Neon = "neon"
+    SolTxList = "solanaTransactionList"
+
+    @classmethod
+    def from_raw(cls, tag: str | _RpcNeonTxReceiptDetail) -> Self:
+        if isinstance(tag, _RpcNeonTxReceiptDetail):
+            return tag
+
+        try:
+            return cls(tag)
+        except (BaseException,):
+            raise ValueError(f"Should be one of: {cls.Neon}, {cls.Eth}, {cls.SolTxList}")
+
+
+_RpcNeonTxReceiptDetailField = Annotated[_RpcNeonTxReceiptDetail, PlainValidator(_RpcNeonTxReceiptDetail.from_raw)]
 
 
 class _RpcTxResp(BaseJsonRpcModel):
@@ -86,7 +111,7 @@ class _RpcTxResp(BaseJsonRpcModel):
         )
 
 
-class _RpcTxReceiptResp(BaseJsonRpcModel):
+class _RpcEthTxReceiptResp(BaseJsonRpcModel):
     transactionHash: EthTxHashField
     transactionIndex: HexUIntField
     txType: HexUIntField = Field(serialization_alias="type")
@@ -100,13 +125,21 @@ class _RpcTxReceiptResp(BaseJsonRpcModel):
     contractAddress: EthAddressField
     status: HexUIntField
     logsBloom: HexUInt256Field
-    logs: tuple[RpcEthTxEventModel, ...]
+    logs: tuple[RpcNeonTxEventModel | RpcEthTxEventModel, ...]
 
     @classmethod
     def from_raw(cls, neon_tx_meta: NeonTxMetaModel) -> Self:
-        tx = neon_tx_meta.neon_tx
         rcpt = neon_tx_meta.neon_tx_rcpt
         return cls(
+            **cls._to_dict(neon_tx_meta),
+            logs=tuple([RpcEthTxEventModel.from_raw(e) for e in rcpt.event_list if not e.is_hidden]),
+        )
+
+    @staticmethod
+    def _to_dict(neon_tx_meta: NeonTxMetaModel) -> dict:
+        tx = neon_tx_meta.neon_tx
+        rcpt = neon_tx_meta.neon_tx_rcpt
+        return dict(
             transactionHash=tx.neon_tx_hash,
             transactionIndex=rcpt.neon_tx_idx,
             txType=tx.tx_type,
@@ -120,8 +153,235 @@ class _RpcTxReceiptResp(BaseJsonRpcModel):
             contractAddress=tx.contract,
             status=rcpt.status,
             logsBloom=rcpt.log_bloom,
-            logs=tuple([RpcEthTxEventModel.from_raw(e) for e in rcpt.event_list if not e.is_hidden]),
         )
+
+
+class _RpcNeonCostModel(BaseJsonRpcModel):
+    neonOperatorAddress: SolPubKeyField
+    solanaLamportsSpent: int
+    neonAlanIncome: int
+
+
+@dataclass
+class _RpcNeonCostDraft:
+    neonOperatorAddress: SolPubKeyField
+    solanaLamportsSpent: int = 0
+    neonAlanIncome: int = 0
+
+    def to_clean_copy(self) -> _RpcNeonCostModel:
+        return _RpcNeonCostModel.model_validate(self, from_attributes=True)
+
+
+class _RpcNeonIxModel(BaseJsonRpcModel):
+    solanaProgram: Literal["NeonEVM"] = "NeonEVM"
+    solanaInstructionIndex: int
+    solanaInnerInstructionIndex: int | None
+    svmHeapSizeLimit: int
+    svmCyclesLimit: int
+    svmCyclesUsed: int
+    neonInstructionCode: HexUIntField
+    neonInstructionName: str
+    neonEvmSteps: int
+    neonTotalEvmSteps: int
+    neonGasUsed: int
+    neonTotalGasUsed: int
+    neonAlanIncome: int
+    neonMiner: EthAddressField
+    neonLogs: tuple[RpcNeonTxEventModel, ...]
+
+    @classmethod
+    def from_raw(cls, neon_tx_meta: NeonTxMetaModel, ix_meta: SolNeonTxIxMetaModel) -> Self:
+        tx = neon_tx_meta.neon_tx
+        rcpt = neon_tx_meta.neon_tx_rcpt
+
+        log_list = [
+            RpcNeonTxEventModel.from_raw(event)
+            for event in rcpt.event_list
+            if (event.sol_tx_sig, event.sol_ix_idx, (event.sol_inner_ix_idx or 0))
+            == (ix_meta.sol_tx_sig, ix_meta.sol_ix_idx, (ix_meta.sol_inner_ix_idx or 0))
+        ]
+        neon_income = ix_meta.neon_gas_used * tx.gas_price
+
+        return cls(
+            solanaInstructionIndex=ix_meta.sol_ix_idx,
+            solanaInnerInstructionIndex=ix_meta.sol_inner_ix_idx,
+            svmHeapSizeLimit=ix_meta.heap_size,
+            svmCyclesLimit=ix_meta.cu_limit,
+            svmCyclesUsed=ix_meta.used_cu_limit,
+            neonInstructionCode=ix_meta.neon_ix_code,
+            neonInstructionName=NeonEvmIxCode(ix_meta.neon_ix_code).name,
+            neonEvmSteps=ix_meta.neon_step_cnt,
+            neonTotalEvmSteps=ix_meta.neon_total_step_cnt,
+            neonGasUsed=ix_meta.neon_gas_used,
+            neonTotalGasUsed=ix_meta.neon_total_gas_used,
+            neonAlanIncome=neon_income,
+            neonMiner=ix_meta.neon_tx_ix_miner,
+            neonLogs=tuple(log_list),
+        )
+
+
+class _RpcAltIxModel(BaseJsonRpcModel):
+    solanaProgram: Literal["AddressLookupTable"] = "AddressLookupTable"
+    solanaInstructionIndex: int
+    solanaInnerInstructionIndex: int | None
+    lookupTableInstructionCode: int
+    lookupTableInstructionName: str
+    lookupTableAddress: SolPubKeyField
+
+    @classmethod
+    def from_raw(cls, raw: SolNeonAltIxModel) -> Self:
+        return cls(
+            solanaInstructionIndex=raw.sol_ix_idx,
+            solanaInnerInstructionIndex=raw.sol_inner_ix_idx,
+            lookupTableInstructionCode=int(raw.alt_ix_code),
+            lookupTableInstructionName=raw.alt_ix_code.name,
+            lookupTableAddress=raw.alt_address,
+        )
+
+
+class _RpcSolReceiptModel(BaseJsonRpcModel):
+    solanaTransactionSignature: SolTxSigField
+    solanaTransactionIsSuccess: bool
+    solanaBlockSlot: int
+    solanaLamportsSpent: int
+    neonOperatorAddress: SolPubKeyField
+    solanaInstructions: list[_RpcNeonIxModel | _RpcAltIxModel]
+
+
+@dataclass
+class _RpcSolReceiptDraft:
+    solanaTransactionSignature: SolTxSig
+    solanaTransactionIsSuccess: bool
+    solanaBlockSlot: int
+    solanaLamportsSpent: int
+    neonOperatorAddress: SolPubKey
+    solanaInstructions: list[_RpcNeonIxModel | _RpcAltIxModel]
+
+    @classmethod
+    def from_raw(cls, raw: SolNeonAltIxModel | SolNeonTxIxMetaModel) -> Self:
+        return cls(
+            solanaTransactionSignature=raw.sol_tx_sig,
+            solanaTransactionIsSuccess=raw.is_success,
+            solanaBlockSlot=raw.slot,
+            solanaLamportsSpent=raw.sol_tx_cost.sol_spent,
+            neonOperatorAddress=raw.sol_tx_cost.sol_signer,
+            solanaInstructions=list(),
+        )
+
+    def to_clean_copy(self) -> _RpcSolReceiptModel:
+        return _RpcSolReceiptModel.model_validate(self, from_attributes=True)
+
+
+class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
+    solanaBlockHash: Base58Field
+    solanaCompleteTransactionSignature: SolTxSigField
+    solanaCompleteInstructionIndex: int
+    solanaCompleteInnerInstructionIndex: int | None
+    neonRawTransaction: EthBinStrField
+    neonIsCompleted: bool
+    neonIsCanceled: bool
+    solanaTransactions: tuple[_RpcSolReceiptModel, ...]
+    neonCosts: tuple[_RpcNeonCostModel, ...]
+
+    @classmethod
+    def from_raw(
+        cls,
+        neon_tx_meta: NeonTxMetaModel,
+        *,
+        detail: _RpcNeonTxReceiptDetail = _RpcNeonTxReceiptDetail.Eth,
+        sol_meta_list: tuple[SolNeonTxIxMetaModel, ...] = tuple(),
+        alt_meta_list: tuple[SolNeonAltIxModel, ...] = tuple(),
+    ) -> _RpcEthTxReceiptResp | Self:
+        if detail == _RpcNeonTxReceiptDetail.Eth:
+            return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
+
+        tx = neon_tx_meta.neon_tx
+        rcpt = neon_tx_meta.neon_tx_rcpt
+        if detail == _RpcNeonTxReceiptDetail.Neon:
+            log_list = tuple([RpcNeonTxEventModel.from_raw(e) for e in rcpt.event_list])
+            sol_tx_list, neon_cost_list = tuple(), tuple()
+        else:
+            log_list = tuple()
+            sol_tx_list, neon_cost_list = cls._to_sol_receipt_list(neon_tx_meta, sol_meta_list, alt_meta_list)
+
+        return cls(
+            **cls._to_dict(neon_tx_meta),
+            solanaBlockHash=rcpt.block_hash.to_bytes(),
+            solanaCompleteTransactionSignature=rcpt.sol_tx_sig,
+            solanaCompleteInstructionIndex=rcpt.sol_ix_idx,
+            solanaCompleteInnerInstructionIndex=rcpt.sol_inner_ix_idx,
+            neonRawTransaction=tx.to_rlp_tx(),
+            neonIsCompleted=rcpt.is_completed,
+            neonIsCanceled=rcpt.is_canceled,
+            logs=log_list,
+            solanaTransactions=sol_tx_list,
+            neonCosts=neon_cost_list,
+        )
+
+    @staticmethod
+    def _to_sol_receipt_list(
+        neon_tx_meta: NeonTxMetaModel,
+        sol_meta_list: tuple[SolNeonTxIxMetaModel, ...],
+        alt_meta_list: tuple[SolNeonAltIxModel, ...],
+    ) -> tuple[tuple[_RpcSolReceiptModel, ...], tuple[_RpcNeonCostModel, ...]]:
+        rcpt_list: list[_RpcSolReceiptModel] = list()
+        cost_dict: dict[SolPubKey, _RpcNeonCostDraft] = dict()
+        cost: _RpcNeonCostDraft | None = None
+        rcpt: _RpcSolReceiptDraft | None = None
+
+        def _update_list(_ix_meta: SolNeonTxIxMetaModel | SolNeonAltIxModel) -> None:
+            nonlocal rcpt
+            nonlocal cost
+
+            if rcpt and (rcpt.solanaTransactionSignature != _ix_meta.sol_tx_sig):
+                rcpt_list.append(rcpt.to_clean_copy())
+                rcpt = None
+
+            if not rcpt:
+                rcpt = _RpcSolReceiptDraft.from_raw(_ix_meta)
+
+                sol_signer = _ix_meta.sol_tx_cost.sol_signer
+                if not (rcpt_cost := cost_dict.get(sol_signer, None)):
+                    rcpt_cost = _RpcNeonCostDraft(sol_signer)
+                    cost_dict[sol_signer] = rcpt_cost
+
+                rcpt_cost.solanaLamportsSpent += _ix_meta.sol_tx_cost.sol_spent
+                cost = rcpt_cost
+
+        def _add_neon_ix(_ix_meta: SolNeonTxIxMetaModel) -> None:
+            _update_list(_ix_meta)
+            ix = _RpcNeonIxModel.from_raw(neon_tx_meta, _ix_meta)
+            rcpt.solanaInstructions.append(ix)
+            cost.neonAlanIncome += ix.neonAlanIncome
+
+        # logic of ordering is the same with neon_getSolanaTransactionByNeonTransaction
+
+        last_pos = -2 if len(sol_meta_list) > 1 else -1
+        sol_meta_iter, last_meta_list = iter(sol_meta_list[:last_pos]), sol_meta_list[last_pos:]
+        alt_meta_iter = iter(alt_meta_list)
+
+        sol_meta, alt_meta = next(sol_meta_iter, None), next(alt_meta_iter, None)
+        while sol_meta or alt_meta:
+            if alt_meta:
+                if sol_meta and sol_meta.slot < alt_meta.slot:
+                    _add_neon_ix(sol_meta)
+                    sol_meta = next(sol_meta_iter, None)
+                else:
+                    _update_list(alt_meta)
+                    rcpt.solanaInstructions.append(_RpcAltIxModel.from_raw(alt_meta))
+                    alt_meta = next(alt_meta_iter, None)
+            elif sol_meta:
+                _add_neon_ix(sol_meta)
+                sol_meta = next(sol_meta_iter, None)
+
+        for sol_meta in last_meta_list:
+            _add_neon_ix(sol_meta)
+
+        if rcpt:
+            rcpt_list.append(rcpt.to_clean_copy())
+
+        cost_list = tuple(map(lambda x: x.to_clean_copy(), iter(cost_dict.values())))
+        return tuple(rcpt_list), cost_list
 
 
 class _RpcBlockResp(BaseJsonRpcModel):
@@ -227,14 +487,10 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcTxResp.from_raw(meta)
 
     @NeonProxyApi.method(name="eth_getTransactionReceipt")
-    async def get_tx_receipt(self, neon_tx_hash: EthTxHashField) -> _RpcTxReceiptResp | None:
+    async def get_tx_receipt(self, neon_tx_hash: EthTxHashField) -> _RpcEthTxReceiptResp | None:
         if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(neon_tx_hash)):
             return None
-        return _RpcTxReceiptResp.from_raw(neon_tx_meta)
-
-    @NeonProxyApi.method(name="neon_getTransactionReceipt")
-    def get_neon_tx_receipt(self) -> str:
-        return "neon_getTransactionReceipt"
+        return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockNumberAndIndex")
     async def get_tx_by_block_number_idx(self, block_tag: RpcBlockRequest, index: HexUIntField) -> _RpcTxResp | None:
@@ -363,3 +619,24 @@ class NpBlockTxApi(NeonProxyApi):
             _LOG.warning("unexpected error on decode SolanaTx", exc_info=exc)
 
         return sig_list
+
+    @NeonProxyApi.method(name="neon_getTransactionReceipt")
+    async def get_neon_tx_receipt(
+        self,
+        neon_tx_hash: EthTxHashField,
+        detail: _RpcNeonTxReceiptDetailField,
+    ) -> _RpcNeonTxReceiptResp | _RpcEthTxReceiptResp | None:
+        if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(neon_tx_hash)):
+            return None
+
+        alt_meta_list: tuple[SolNeonAltIxModel, ...] = tuple()
+        sol_meta_list: tuple[SolNeonTxIxMetaModel, ...] = tuple()
+        if detail == _RpcNeonTxReceiptDetail.SolTxList:
+            alt_meta_list = await self._db.get_alt_ix_list_by_neon_tx_hash(neon_tx_hash)
+            sol_meta_list = await self._db.get_sol_ix_list_by_neon_tx_hash(neon_tx_hash)
+        return _RpcNeonTxReceiptResp.from_raw(
+            neon_tx_meta,
+            detail=detail,
+            alt_meta_list=alt_meta_list,
+            sol_meta_list=sol_meta_list,
+        )
