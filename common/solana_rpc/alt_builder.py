@@ -85,6 +85,7 @@ class SolAltTxBuilder:
             ix_list = list()
             if self._cu_price:
                 ix_list.append(self._cb_prog.make_cu_price_ix(self._cu_price))
+            ix_list.append(self._cb_prog.make_cu_limit_ix(10_000))
             ix_list.append(self._alt_prog.make_create_alt_ix(alt_info.ident))
 
             create_alt_tx = SolLegacyTx(name=self._create_name, ix_list=tuple(ix_list))
@@ -101,6 +102,7 @@ class SolAltTxBuilder:
             ix_list = list()
             if self._cu_price:
                 ix_list.append(self._cb_prog.make_cu_price_ix(self._cu_price))
+            ix_list.append(self._cb_prog.make_cu_limit_ix(10_000))
             ix_list.append(self._alt_prog.make_extend_alt_ix(alt_info.ident, acct_list_part))
             tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
             extend_alt_tx_list.append(tx)
