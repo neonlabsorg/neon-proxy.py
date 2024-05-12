@@ -198,10 +198,7 @@ class MpTxExecutor(MempoolComponent):
             Result=resp,
             TimeMS=stuck_tx.process_time_msec,
         )
-        if resp.code == ExecTxRespCode.Done:
-            _LOG.debug(msg)
-        else:
-            _LOG.warning(msg)
+        _LOG.debug(msg)
 
         is_good_resource = True
         if resp.code == ExecTxRespCode.BadResource:

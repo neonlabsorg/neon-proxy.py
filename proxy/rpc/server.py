@@ -8,7 +8,8 @@ from .np_block_transaction_api import NpBlockTxApi
 from .np_call_api import NpCallApi
 from .np_execute_transaction_api import NpExecTxApi
 from .np_gas_price import NpGasPriceApi
-from .np_get_logs_api import NpGetLogsApi
+from .np_net_api import NpNetApi
+from .np_transaction_logs_api import NpTxLogsApi
 from .np_version_api import NpVersionApi
 from .server_abc import NeonProxyAbc
 from .transaction_validator import NpTxValidator
@@ -31,7 +32,8 @@ class NeonProxy(NeonProxyAbc):
         self._add_api(NpGasPriceApi(self))
         self._add_api(NpCallApi(self))
         self._add_api(NpAccountApi(self))
-        self._add_api(NpGetLogsApi(self))
+        self._add_api(NpTxLogsApi(self))
+        self._add_api(NpNetApi(self))
 
         if self._cfg.enable_send_tx_api:
             self._add_api(NpExecTxApi(self))

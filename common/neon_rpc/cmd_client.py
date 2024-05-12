@@ -3,14 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .account_client import CoreApiAccountClient
 from .log_level import get_core_api_log_level
-from .api import (
-    CoreApiResp,
-    EvmConfigModel,
-    HolderAccountModel,
-    NeonAccountModel,
-)
+from .api import CoreApiResp, EvmConfigModel, HolderAccountModel, NeonAccountModel
 from ..config.config import Config
 from ..config.utils import LogMsgFilter
 from ..neon.account import NeonAccount
@@ -22,7 +16,7 @@ from ..utils.cached import cached_method
 _LOG = logging.getLogger(__name__)
 
 
-class NeonCmdClient(AsyncCmdClient, CoreApiAccountClient):
+class NeonCmdClient(AsyncCmdClient):
     def __init__(self, cfg: Config):
         super().__init__("neon-cli", cfg.debug_cmd_line)
         self._cfg = cfg
@@ -58,11 +52,13 @@ class NeonCmdClient(AsyncCmdClient, CoreApiAccountClient):
         return process.stdout.split()[1]
 
     async def get_neon_account_model(self, neon_account: NeonAccount) -> NeonAccountModel:
-        json_data_list = await self._run_cmd_client([
-            "get-ether-account-data",
-            neon_account.to_address(),
-            neon_account.chain_id,
-        ])
+        json_data_list = await self._run_cmd_client(
+            [
+                "get-ether-account-data",
+                neon_account.to_address(),
+                neon_account.chain_id,
+            ]
+        )
         json_data = json_data_list[0]
         return NeonAccountModel.from_dict(json_data, account=neon_account)
 

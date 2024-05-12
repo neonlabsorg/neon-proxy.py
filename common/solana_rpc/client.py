@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import itertools
 import logging
 import typing as tp
 from dataclasses import dataclass
-from typing import TypeVar, Sequence, Union
+from typing import TypeVar, Sequence, Union, Final
 
 import solders.account_decoder as _acct
 import solders.rpc.config as _cfg
@@ -66,6 +65,8 @@ _SoldersGetLatestBlockhash = _req.GetLatestBlockhash
 _SoldersGetTxSigForAddr = _req.GetSignaturesForAddress
 _SoldersGetTx = _req.GetTransaction
 _SoldersGetRentBalance = _req.GetMinimumBalanceForRentExemption
+_SoldersGetHealth = _req.GetHealth
+_SoldersGetNodeList = _req.GetClusterNodes
 
 _SoldersGetVerResp = _resp.GetVersionResp
 _SoldersGetBalanceResp = _resp.GetBalanceResp
@@ -80,6 +81,8 @@ _SoldersGetLatestBlockhashResp = _resp.GetLatestBlockhashResp
 _SoldersGetTxSigForAddrResp = _resp.GetSignaturesForAddressResp
 _SoldersGetTxResp = _resp.GetTransactionResp
 _SoldersGetRentBalanceResp = _resp.GetMinimumBalanceForRentExemptionResp
+_SoldersGetHealthResp = _resp.GetHealthResp
+_SoldersGetNodeListResp = _resp.GetClusterNodesResp
 
 _SoldersSendTxCfg = _cfg.RpcSendTransactionConfig
 _SoldersSendTx = _req.SendRawTransaction
@@ -95,6 +98,8 @@ SolRpcSendTxResultInfo = Union[
     SolRpcNodeUnhealthyErrorInfo,
     SolRpcInvalidParamErrorInfo,
 ]
+
+SolRpcContactInfo = _resp.RpcContactInfo
 
 
 @dataclass(frozen=True)
@@ -256,9 +261,9 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetTxSigForAddrResp)
         return tuple(resp.value)
 
-    async def get_tx(self, tx_sig: SolTxSig, commit=SolCommit.Confirmed) -> SolRpcTxSlotInfo | None:
+    async def get_tx(self, tx_sig: SolTxSig, commit=SolCommit.Confirmed, json_format=False) -> SolRpcTxSlotInfo | None:
         cfg = _SoldersTxCfg(
-            _SoldersTxEnc.Base64,
+            _SoldersTxEnc.JsonParsed if json_format else _SoldersTxEnc.Base64,
             commitment=commit.to_rpc_commit(),
             max_supported_transaction_version=0,
         )
@@ -270,10 +275,11 @@ class SolClient(HttpClient):
         self,
         tx_sig_list: Sequence[SolTxSig],
         commit=SolCommit.Confirmed,
+        json_format=False,
     ) -> tuple[SolRpcTxSlotInfo | None, ...]:
         if not tx_sig_list:
             return tuple()
-        tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit) for tx_sig in tx_sig_list])
+        tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit, json_format) for tx_sig in tx_sig_list])
         return tuple(tx_list)
 
     async def send_tx(self, tx: SolTx, skip_preflight: bool) -> SolRpcSendTxResultInfo | None:
@@ -309,4 +315,28 @@ class SolClient(HttpClient):
     async def get_rent_balance_for_size(self, size: int, commit=SolCommit.Confirmed) -> int:
         req = _SoldersGetRentBalance(size, commit.to_rpc_commit(), self._get_next_id())
         resp = await self._send_request(req, _SoldersGetRentBalanceResp)
+        return resp.value
+
+    async def get_health(self) -> int | None:
+        _big_value: Final[int] = 4096  # some big value
+
+        req = _SoldersGetHealth(self._get_next_id())
+        try:
+            resp = await self._send_request(req, _SoldersGetHealthResp)
+            if resp.value == "ok":
+                return None
+
+            _LOG.warning("unexpected response on get health: %s", resp.value)
+            return _big_value
+
+        except SolRpcError as exc:
+            if isinstance(exc.rpc_data, _SoldersNodeUnhealthyError):
+                return exc.rpc_data.data.num_slots_behind
+
+            _LOG.warning("unexpected error on get health", exc_info=exc, extra=self._msg_filter)
+            return _big_value
+
+    async def get_sol_node_list(self) -> list[SolRpcContactInfo]:
+        req = _SoldersGetNodeList(self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetNodeListResp)
         return resp.value

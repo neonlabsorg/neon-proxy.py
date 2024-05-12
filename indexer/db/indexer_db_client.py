@@ -118,16 +118,21 @@ class IndexerDbClient:
     async def get_tx_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> NeonTxMetaModel | None:
         return await self._neon_tx_db.get_tx_by_tx_hash(None, neon_tx_hash)
 
-    async def get_tx_by_sender_nonce(self, sender: NeonAccount, tx_nonce: int, chain_id: int | None) -> NeonTxMetaModel | None:
-        return await self._neon_tx_db.get_tx_by_sender_nonce(None, sender, tx_nonce, chain_id)
+    async def get_tx_by_sender_nonce(
+        self,
+        sender: NeonAccount,
+        tx_nonce: int,
+        inc_no_chain_id: bool,
+    ) -> NeonTxMetaModel | None:
+        return await self._neon_tx_db.get_tx_by_sender_nonce(None, sender, tx_nonce, inc_no_chain_id)
 
     async def get_tx_by_slot_tx_idx(self, slot: int, tx_idx: int) -> NeonTxMetaModel | None:
         return await self._neon_tx_db.get_tx_by_slot_tx_idx(None, slot, tx_idx)
 
-    async def get_sol_tx_sig_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolTxSig, ...]:
+    async def get_sol_tx_sig_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[tuple[int, SolTxSig], ...]:
         return await self._sol_neon_tx_db.get_sol_tx_sig_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_alt_sig_list_by_neon_sig(self, neon_tx_hash: EthTxHash) -> tuple[SolTxSig, ...]:
+    async def get_alt_sig_list_by_neon_sig(self, neon_tx_hash: EthTxHash) -> tuple[tuple[int, SolTxSig], ...]:
         return await self._sol_alt_tx_db.get_alt_sig_list_by_neon_tx_hash(None, neon_tx_hash)
 
     async def get_sol_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolNeonTxIxMetaModel, ...]:

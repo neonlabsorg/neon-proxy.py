@@ -61,7 +61,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             return ExecTxRespCode.Failed
 
         holder = await self._get_holder_acct()
-        if (holder.status != HolderAccountModel.Status.Active) or (holder.neon_tx_hash != self._ctx.neon_tx_hash):
+        if (holder.status != HolderAccountStatus.Active) or (holder.neon_tx_hash != self._ctx.neon_tx_hash):
             _LOG.debug("holder %s doesn't contain %s NeonTx", holder.address, self._ctx.neon_tx_hash)
             return ExecTxRespCode.Failed
 

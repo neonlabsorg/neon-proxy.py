@@ -122,17 +122,21 @@ class NeonTxDb(HistoryDbTable):
         return _RecordWithBlock.to_meta(rec)
 
     async def get_tx_by_sender_nonce(
-        self, ctx: DbTxCtx, sender: NeonAccount, tx_nonce: int, chain_id: int | None
+        self,
+        ctx: DbTxCtx,
+        sender: NeonAccount,
+        tx_nonce: int,
+        inc_no_chain_id: bool,
     ) -> NeonTxMetaModel | None:
         v_list = [hex(sender.chain_id * 2 + 35), hex(sender.chain_id * 2 + 36)]
-        if not chain_id:
+        if inc_no_chain_id:
             # before EIP-155: 0, 27, 28
-            v_list.append(["0x0", "0x1b", "0x1c"])
+            v_list.extend(["0x0", "0x1b", "0x1c"])
 
         rec = await self._fetch_one(
             ctx,
             self._select_by_nonce_query,
-            _BySenderNonceV(sender.to_string(), hex(tx_nonce), v_list),
+            _BySenderNonceV(sender.to_address(), hex(tx_nonce), v_list),
             record_type=_RecordWithBlock,
         )
         return _RecordWithBlock.to_meta(rec)

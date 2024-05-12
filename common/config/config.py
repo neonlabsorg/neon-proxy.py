@@ -692,7 +692,7 @@ class Config:
 
     @cached_property
     def alt_freeing_depth(self) -> int:
-        return self._env_num(self.alt_freeing_depth_name, 512 + 32 * 3, 512, 1024)
+        return self._env_num(self.alt_freeing_depth_name, 512 + 32 * 4, 512, 1024)
 
     @cached_property
     def metrics_log_skip_cnt(self) -> int:

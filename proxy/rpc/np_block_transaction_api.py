@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from typing import ClassVar, Final
 
 from pydantic import Field
@@ -21,9 +23,13 @@ from common.neon.account import NeonAccount
 from common.neon.block import NeonBlockHdrModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
+from common.solana.commit_level import SolCommit
+from common.solana.signature import SolTxSigField, SolTxSig
 from common.utils.pydantic import HexUIntField, HexUInt256Field, HexUInt8Field
 from .api import RpcBlockRequest, RpcEthTxEventModel
 from .server_abc import NeonProxyApi
+
+_LOG = logging.getLogger(__name__)
 
 
 class _RpcTxResp(BaseJsonRpcModel):
@@ -208,12 +214,15 @@ class NpBlockTxApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="neon_getTransactionBySenderNonce")
     async def get_tx_by_sender_nonce(
-        self, ctx: HttpRequestCtx, sender: EthTxHashField, nonce: HexUIntField
+        self,
+        ctx: HttpRequestCtx,
+        sender: EthAddressField,
+        nonce: HexUIntField,
     ) -> _RpcTxResp | None:
-        neon_acct = NeonAccount(sender, self.get_chain_id(ctx))
-        chain_id = None if self.is_default_chain_id(ctx) else neon_acct.chain_id
-        if not (meta := await self._db.get_tx_by_sender_nonce(sender, nonce, chain_id)):
-            if not (meta := await self._mp_client.get_tx_by_sender_nonce(self.get_ctx_id(ctx), sender, nonce)):
+        neon_acct = NeonAccount.from_raw(sender, self.get_chain_id(ctx))
+        inc_no_chain_id = True if self.is_default_chain_id(ctx) else False
+        if not (meta := await self._db.get_tx_by_sender_nonce(neon_acct, nonce, inc_no_chain_id)):
+            if not (meta := await self._mp_client.get_tx_by_sender_nonce(self.get_ctx_id(ctx), neon_acct, nonce)):
                 return None
         return _RpcTxResp.from_raw(meta)
 
@@ -268,7 +277,7 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByNumber")
     async def get_tx_cnt_by_block_number(self, block_tag: RpcBlockRequest) -> HexUIntField:
         block = await self.get_block_by_tag(block_tag)
-        return self._get_tx_cnt(block)
+        return await self._get_tx_cnt(block)
 
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByHash")
     async def get_tx_cnt_by_block_hash(self, block_hash: EthBlockHashField) -> HexUIntField:
@@ -293,3 +302,64 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_earliestBlockNumber")
     async def get_earliest_block_number(self) -> HexUIntField:
         return await self._db.get_earliest_block()
+
+    @NeonProxyApi.method(name="neon_getSolanaTransactionByNeonTransaction")
+    async def get_solana_tx_list(self, tx_hash: EthTxHashField, full: bool = False) -> list[dict | SolTxSigField]:
+        alt_sig_list = await self._db.get_alt_sig_list_by_neon_sig(tx_hash)
+        neon_sig_list = await self._db.get_sol_tx_sig_list_by_neon_tx_hash(tx_hash)
+
+        if not neon_sig_list:
+            return list()
+
+        last_pos = -2 if len(neon_sig_list) > 1 else -1
+        # last 2 signatures (Neon-Receipt or (Solana-Fail + Neon-Cancel)) should be at the end of the list,
+        #   because it simplifies the user experience
+        neon_sig_iter, last_sig_list = iter(neon_sig_list[:last_pos]), neon_sig_list[last_pos:]
+        alt_sig_iter = iter(alt_sig_list)
+
+        # Result list is sorted by slot :
+        #   1. Prepare transactions
+        #      - ALT transactions (Create and Extend)
+        #      - Neon transaction (WriteToHolder)
+        #   2. Neon execution
+        #   3. ALT transaction
+        #      - Deactivate
+        #      - Close
+        #   4. Finalization
+        #      - Neon-Receipt
+        #      - (or) Solana-Fail + Neon-Cancel
+
+        sig_list: list[SolTxSig] = list()
+        neon_sig, alt_sig = next(neon_sig_iter, None), next(alt_sig_iter, None)
+        while neon_sig or alt_sig:
+            if alt_sig:
+                if neon_sig and neon_sig[0] < alt_sig[0]:
+                    sig_list.append(neon_sig[1])
+                    neon_sig = next(neon_sig_iter, None)
+                else:
+                    sig_list.append(alt_sig[1])
+                    alt_sig = next(alt_sig_iter, None)
+            elif neon_sig:
+                sig_list.append(neon_sig[1])
+                neon_sig = next(neon_sig_iter, None)
+
+        # Last step: add Neon-Receipt or (Solana-Fail + Neon-Cancel)
+        sig_list.extend(map(lambda x: x[1], last_sig_list))
+        if not full:
+            return sig_list
+
+        # if user requests not just signatures, but full SolanaTx body
+        sol_tx_list = await self._sol_client.get_tx_list(sig_list, commit=SolCommit.Confirmed, json_format=True)
+        try:
+            result_list: list[dict | SolTxSig] = list()
+            for sig, tx in zip(sig_list, sol_tx_list):
+                if tx:
+                    result_list.append(json.loads(tx.to_json()))
+                else:
+                    result_list.append(sig)
+            return result_list
+
+        except BaseException as exc:
+            _LOG.warning("unexpected error on decode SolanaTx", exc_info=exc)
+
+        return sig_list

@@ -7,7 +7,8 @@ from typing import ClassVar, Final, Sequence
 from typing_extensions import Self
 
 from .account import NeonAccount
-from ..config.constants import NEON_EVM_PROGRAM_ID
+from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_PKG_VER, NEON_PROXY_MAJOR_VER, NEON_PROXY_MINOR_VER, \
+    NEON_PROXY_BUILD_VER
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
@@ -103,7 +104,12 @@ class NeonProg:
     @classmethod
     def validate_protocol(cls) -> None:
         if cls._protocol_version not in SUPPORTED_VERSION_SET:
-            raise EthError(f"NeonProxy doesn't support the EVM protocol {cls._protocol_version}")
+            evm_minor = cls._protocol_version % 1000
+            evm_major = cls._protocol_version // 1000
+            raise EthError(
+                f"Neon Proxy v{NEON_PROXY_MAJOR_VER}.{NEON_PROXY_MINOR_VER}.{NEON_PROXY_BUILD_VER} is not compatible "
+                f"with Neon EVM v{evm_major}.{evm_minor}.xxx"
+            )
 
     def init_token_address(self, token_sol_address: SolPubKey) -> Self:
         self._token_sol_address = token_sol_address

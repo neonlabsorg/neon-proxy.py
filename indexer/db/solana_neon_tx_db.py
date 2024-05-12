@@ -23,7 +23,8 @@ class SolNeonTxDb(HistoryDbTable):
         await super().start()
         select_sig_list_sql = DbSql(
             """;
-            SELECT 
+            SELECT
+                a.block_slot,
                 a.sol_sig as sol_tx_sig
             FROM 
                 {table_name} AS a
@@ -75,19 +76,26 @@ class SolNeonTxDb(HistoryDbTable):
         rec_list = [_Record.from_sol_neon_ix(ix) for block in block_list for ix in block.iter_sol_neon_ix()]
         await self._insert_row_list(ctx, rec_list)
 
-    async def get_sol_tx_sig_list_by_neon_tx_hash(self, ctx: DbTxCtx, neon_tx_hash: EthTxHash) -> tuple[SolTxSig, ...]:
+    async def get_sol_tx_sig_list_by_neon_tx_hash(
+        self,
+        ctx: DbTxCtx,
+        neon_tx_hash: EthTxHash,
+    ) -> tuple[tuple[int, SolTxSig], ...]:
         rec_list = await self._fetch_all(
-            ctx, self._select_sig_list_query, _ByNeonTxSig(neon_tx_hash.to_string()), record_type=_SolTxSig
+            ctx,
+            self._select_sig_list_query,
+            _ByNeonTxSig(neon_tx_hash.to_string()),
+            record_type=_SolTxSigSlot,
         )
 
         done_sig_set: set[str] = set()
-        sol_sig_list: list[SolTxSig] = list()
+        sol_sig_list: list[tuple[int, SolTxSig]] = list()
         for rec in rec_list:
             if rec.sol_tx_sig in done_sig_set:
                 continue
 
             done_sig_set.add(rec.sol_tx_sig)
-            sol_sig_list.append(SolTxSig.from_raw(rec.sol_tx_sig))
+            sol_sig_list.append((rec.block_slot, SolTxSig.from_raw(rec.sol_tx_sig)))
         return tuple(sol_sig_list)
 
     async def get_sol_ix_list_by_neon_tx_hash(
@@ -177,5 +185,6 @@ class _ByNeonTxSig:
 
 
 @dataclass(frozen=True)
-class _SolTxSig:
+class _SolTxSigSlot:
+    block_slot: int
     sol_tx_sig: str

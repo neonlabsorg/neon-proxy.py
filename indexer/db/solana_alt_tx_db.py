@@ -52,7 +52,8 @@ class SolAltTxDb(HistoryDbTable):
         select_sig_sql = DbSql(
             """;
             SELECT DISTINCT 
-                a.block_slot, a.sol_sig
+                a.block_slot, 
+                a.sol_sig
             FROM 
                 {table_name} AS a
             INNER JOIN 
@@ -78,18 +79,27 @@ class SolAltTxDb(HistoryDbTable):
         await self._insert_row_list(ctx, rec_list)
 
     async def get_alt_ix_list_by_neon_tx_hash(
-        self, ctx: DbTxCtx, neon_tx_hash: EthTxHash
+        self,
+        ctx: DbTxCtx,
+        neon_tx_hash: EthTxHash,
     ) -> tuple[SolNeonAltIxModel, ...]:
         rec_list = await self._fetch_all(
             ctx, self._select_query, _ByNeonTxSig(neon_tx_hash.to_string()), record_type=_RecordWithCost
         )
         return tuple([rec.to_alt_model() for rec in rec_list])
 
-    async def get_alt_sig_list_by_neon_tx_hash(self, ctx: DbTxCtx, neon_tx_hash: EthTxHash) -> tuple[SolTxSig, ...]:
+    async def get_alt_sig_list_by_neon_tx_hash(
+        self,
+        ctx: DbTxCtx,
+        neon_tx_hash: EthTxHash,
+    ) -> tuple[tuple[int, SolTxSig], ...]:
         rec_list = await self._fetch_all(
-            ctx, self._select_sig_query, _ByNeonTxSig(neon_tx_hash.to_string()), record_type=_SolBlockTxSig
+            ctx,
+            self._select_sig_query,
+            _ByNeonTxSig(neon_tx_hash.to_string()),
+            record_type=_SolBlockTxSig,
         )
-        return tuple([SolTxSig.from_raw(rec.sol_sig) for rec in rec_list])
+        return tuple([(rec.block_slot, SolTxSig.from_raw(rec.sol_sig)) for rec in rec_list])
 
 
 @dataclass(frozen=True)
@@ -145,7 +155,7 @@ class _RecordWithCost(_Record):
 
 @dataclass(frozen=True)
 class _SolBlockTxSig:
-    slot: int
+    block_slot: int
     sol_sig: str
 
 

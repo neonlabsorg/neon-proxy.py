@@ -304,44 +304,6 @@ class NeonRpcApiWorker:
         tx = self.eth_signTransaction(tx)
         return self.eth_sendRawTransaction(tx['raw'])
 
-    @staticmethod
-    def web3_sha3(data: str) -> str:
-        try:
-            data = hex_to_bytes(data)
-        except (Exception,):
-            raise InvalidParamError(message='data is not hex string')
-
-        return '0x' + keccak_256(data).hexdigest()
-
-    @staticmethod
-    def eth_mining() -> bool:
-        return False
-
-    def eth_syncing(self) -> Union[bool, dict]:
-        try:
-            slots_behind = self._sol_client.get_slots_behind()
-            latest_slot = self._db.latest_slot
-            first_slot = self._db.earliest_slot
-
-            LOG.debug(f'slots_behind: {slots_behind}, latest_slot: {latest_slot}, first_slot: {first_slot}')
-            if (slots_behind == 0) or (slots_behind is None) or (latest_slot is None) or (first_slot is None):
-                return False
-
-            return {
-                'startingBlock': first_slot,
-                'currentBlock': latest_slot,
-                'highestBlock': latest_slot + slots_behind
-            }
-        except (Exception,):
-            return False
-
-    def net_peerCount(self) -> str:
-        cluster_node_list = self._sol_client.get_cluster_nodes()
-        return hex(len(cluster_node_list))
-
-    @staticmethod
-    def net_listening() -> bool:
-        return False
 
     @staticmethod
     def _mp_pool_tx(neon_tx_info: NeonTxInfo) -> Dict[str, Any]:
@@ -390,30 +352,6 @@ class NeonRpcApiWorker:
         result_dict['pending'] = self._mp_pool_queue(content.pending_list)
         result_dict['queued'] = self._mp_pool_queue(content.queued_list)
         return result_dict
-
-    def neon_getSolanaTransactionByNeonTransaction(
-        self, neon_tx_id: str,
-        full: bool = False
-    ) -> Union[List[str], List[Optional[Dict[str, Any]]]]:
-        neon_sig = self._normalize_tx_id(neon_tx_id)
-        alt_sig_list = self._db.get_alt_sig_list_by_neon_sig(neon_sig)
-        sol_sig_list = self._db.get_sol_sig_list_by_neon_sig(neon_sig)
-
-        sol_sig_list = alt_sig_list + sol_sig_list
-        if not full:
-            return sol_sig_list
-
-        sol_tx_list = self._sol_client.get_tx_receipt_list(sol_sig_list, SolCommit.Confirmed)
-        for sol_tx in sol_tx_list:
-            if sol_tx is None:
-                return sol_sig_list
-        return sol_sig_list
-
-    def neon_getEvmParams(self) -> Dict[str, str]:
-        """Returns map of Neon-EVM parameters"""
-        evm_param_dict = self._evm_cfg.evm_param_dict
-        evm_param_dict['NEON_EVM_ID'] = EVM_PROGRAM_ID_STR
-        return evm_param_dict
 
     def is_allowed_api(self, method_name: str) -> bool:
         for prefix in ('eth_', 'net_', 'web3_', 'neon_', 'txpool_'):
