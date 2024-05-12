@@ -356,6 +356,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         operator: SolPubKeyField
         gas_used: int
         total_gas_used: int
+        has_truncated_log: bool
         neon_tx: NeonTxModel
         neon_tx_event_list: list[NeonTxEventModel]
         neon_tx_rcpt: NeonTxReceiptModel
@@ -369,6 +370,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx_rcpt: NeonTxReceiptModel,
         gas_used: int,
         total_gas_used: int,
+        has_truncated_log: bool,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -380,6 +382,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._operator = operator
         self._gas_used = gas_used
         self._total_gas_used = total_gas_used
+        self._has_truncated_log = has_truncated_log
 
         # default:
         self._is_done = False
@@ -398,6 +401,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             neon_tx_rcpt=NeonTxReceiptModel.default(),
             gas_used=0,
             total_gas_used=0,
+            has_truncated_log=False,
         )
 
     @classmethod
@@ -412,6 +416,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             neon_tx_rcpt=init.neon_tx_rcpt,
             gas_used=init.gas_used,
             total_gas_used=init.total_gas_used,
+            has_truncated_log=init.has_truncated_log,
             init=init,
         )
 
@@ -431,6 +436,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             operator=self._operator,
             gas_used=self._gas_used,
             total_gas_used=self._total_gas_used,
+            has_truncated_log=self._has_truncated_log,
             neon_tx=self._neon_tx,
             neon_tx_rcpt=self._neon_tx_rcpt.to_clean_copy(),
             neon_tx_event_list=tx_event_list,
@@ -472,7 +478,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     @property
     def is_corrupted(self) -> bool:
         """Return true if indexer didn't find all instructions for the tx"""
-        return (self._neon_tx.gas_limit <= 0) or (self._gas_used != self._total_gas_used)
+        return (self._neon_tx.gas_limit <= 0) or (self._gas_used != self._total_gas_used) or self._has_truncated_log
 
     @property
     def is_completed(self) -> bool:
@@ -534,8 +540,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             self._operator = sol_neon_ix.operator
 
     def extend_neon_tx_event_list(self, sol_neon_ix: SolNeonTxIxMetaInfo) -> None:
-        tx_event_list = [_NeonTxEventDraft.from_raw(e) for e in sol_neon_ix.iter_neon_tx_event]
-        if not tx_event_list:
+        if not (tx_event_list := [_NeonTxEventDraft.from_raw(e) for e in sol_neon_ix.iter_neon_tx_event]):
             return
 
         total_gas_used = sol_neon_ix.neon_total_gas_used or self._total_gas_used
@@ -543,6 +548,8 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             event_hide_info = True, True, total_gas_used
             for event in tx_event_list:
                 event.is_reverted, event.is_hidden, event.total_gas_used = event_hide_info
+        elif sol_neon_ix.is_log_truncated:
+            self._has_truncated_log = True
 
         self._neon_tx_event_dict.setdefault(total_gas_used, list()).extend(tx_event_list)
 
@@ -554,6 +561,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         sum_gas_used: int,
     ) -> tuple[int, int]:
         assert not self._clean_neon_tx_rcpt
+        assert not self.is_corrupted
 
         sum_gas_used += self._total_gas_used
         rcpt = self._neon_tx_rcpt
@@ -607,7 +615,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @staticmethod
     def _fill_tx_event_order_nums(neon_tx_event_list: list[_NeonTxEventDraft]) -> None:
-        current_level, current_order, total_step_cnt = 0, 0, 0
+        current_level, current_order, total_step_cnt, total_gas_used = 0, 0, 0, 0
         addr_stack: list[EthAddress] = list()
 
         for event in neon_tx_event_list:
@@ -615,12 +623,26 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             if event.is_reverted:
                 continue
 
-            # tx restart
+            is_tx_restart = False
+
+            #  iteration 1 (step 10)
+            #  iteration 2 (step 20)
+            #  iteration 3 (step 10) <--- we are here: the place of tx-restart
+            #  iteration 4 (step 20)
             if event.total_step_cnt < total_step_cnt:
+                is_tx_restart = True
+            #  iteration 1 (step 10, gas 10'000)
+            #  iteration 2 (step 10, gas 20'000) <--- we are here: the place of tx-restart
+            #  iteration 3 (step 20, gas 30'000)
+            elif (event.total_step_cnt == total_step_cnt) and (event.total_step_cnt > total_gas_used):
+                is_tx_restart = True
+
+            if is_tx_restart:
                 current_level, current_order = 0, 0
                 addr_stack.clear()
 
             total_step_cnt = event.total_step_cnt
+            total_gas_used = event.total_gas_used
 
             if event.is_start_event_type:
                 current_level += 1
@@ -643,7 +665,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     def _hide_reverted_tx_events(self, neon_tx_event_list: list[_NeonTxEventDraft]) -> None:
         is_failed = self._neon_tx_rcpt.status == 0
-        reverted_level, is_dropped, total_step_cnt = -1, False, 2**64
+        reverted_level, is_dropped, total_step_cnt, total_gas_used = -1, False, 2**64, 2**64
 
         for event in reversed(neon_tx_event_list):
             if is_dropped:
@@ -653,7 +675,17 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                 # events from broken iterations
                 is_reverted, is_hidden = True, True
             elif event.total_step_cnt > total_step_cnt:
-                # tx restart
+                # tx restart:
+                #   iteration 4 (step 20)
+                #   iteration 3 (step 10)  <- the first iteration, all next iters were canceled
+                #   iteration 2 (step 20)  <--- we are here
+                #   iteration 1 (step 10)
+                is_dropped, is_reverted, is_hidden = True, True, True
+            elif (event.total_step_cnt == total_step_cnt) and (event.total_gas_used < total_gas_used):
+                # tx restart:
+                #   iteration 3 (step 20, gas 30'000)
+                #   iteration 2 (step 10, gas 20'000)  <- the first iteration, all next iters were canceled
+                #   iteration 1 (step 10, gas 10'000)  <--- we are here
                 is_dropped, is_reverted, is_hidden = True, True, True
             else:
                 if event.is_start_event_type:
@@ -664,6 +696,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                         reverted_level = event.event_level
 
                 total_step_cnt = event.total_step_cnt
+                total_gas_used = event.total_gas_used
                 is_reverted = (reverted_level != -1) or is_failed
                 is_hidden = event.is_hidden or is_reverted
 
@@ -1233,6 +1266,7 @@ class NeonIndexedBlockInfo:
                 self._has_corrupted_tx = True
                 continue
             elif self._has_corrupted_tx:
+                _LOG.warning("block is corrupted, skip tx: %s", tx)
                 continue
 
             log_idx, sum_gas_used = tx.complete_neon_tx_event_list(neon_block_hdr, tx_idx, log_idx, sum_gas_used)
@@ -1400,7 +1434,7 @@ class SolNeonDecoderStat:
     def processing_time_ms(self) -> int:
         time_diff = self._total_time
         if self._in_process:
-            time_diff += (time.monotonic_ns() - self._start_time) // (10 ** 6)
+            time_diff += (time.monotonic_ns() - self._start_time) // (10**6)
         return time_diff
 
     def inc_sol_neon_ix_cnt(self) -> None:
