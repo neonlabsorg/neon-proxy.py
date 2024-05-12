@@ -85,6 +85,7 @@ class IndexerDb:
         )
 
         self._start_slot = 0
+        self._earliest_slot = -1
         self._stop_slot = self._max_u64
         self._min_used_slot = 0
         self._latest_slot = 0
@@ -96,6 +97,7 @@ class IndexerDb:
         await self.start()
 
         self._min_used_slot = await self._constant_db.get_int(None, self._min_used_slot_name, 0)
+        self._earliest_slot = await self._constant_db.get_int(None, self.base_start_slot_name, -1)
         self._start_slot = await self._constant_db.get_int(None, self._start_slot_name, self._min_used_slot)
         self._stop_slot = await self._constant_db.get_int(None, self._stop_slot_name, self._max_u64)
 
@@ -159,6 +161,7 @@ class IndexerDb:
             if self.is_reindexing_mode:
                 return
 
+            first_block = neon_block_queue[0]
             last_block = neon_block_queue[-1]
             if last_block.is_finalized:
                 await self._finalize_block_list(ctx, last_block, neon_block_queue)
@@ -170,6 +173,7 @@ class IndexerDb:
             #  if something bad happens, it is already happened
             await self._set_min_used_slot(ctx, min_used_slot)
             await self._set_latest_slot(ctx, last_block.slot)
+            await self._set_earliest_slot(ctx, first_block.slot)
 
         await self._db_conn.run_tx(_tx)
         for block in neon_block_queue:
@@ -225,6 +229,11 @@ class IndexerDb:
         if self._latest_slot < slot:
             await self._constant_db.set(ctx, self.latest_slot_name, slot)
             self._latest_slot = slot
+
+    async def _set_earliest_slot(self, ctx: DbTxCtx, slot: int) -> None:
+        if self._earliest_slot == -1:
+            self._earliest_slot = slot
+            await self._constant_db.set(ctx, self.base_start_slot_name, slot)
 
     async def _set_min_used_slot(self, ctx: DbTxCtx, slot: int) -> None:
         if self._min_used_slot < slot:
