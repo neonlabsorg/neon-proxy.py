@@ -557,7 +557,7 @@ class NpBlockTxApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="neon_earliestBlockNumber")
     async def get_earliest_block_number(self) -> HexUIntField:
-        return await self._db.get_earliest_block()
+        return await self._db.get_earliest_slot()
 
     @NeonProxyApi.method(name="neon_getSolanaTransactionByNeonTransaction")
     async def get_solana_tx_list(self, tx_hash: EthTxHashField, full: bool = False) -> list[dict | SolTxSigField]:

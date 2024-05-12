@@ -7,8 +7,12 @@ from typing import ClassVar, Final, Sequence
 from typing_extensions import Self
 
 from .account import NeonAccount
-from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_PKG_VER, NEON_PROXY_MAJOR_VER, NEON_PROXY_MINOR_VER, \
-    NEON_PROXY_BUILD_VER
+from ..config.constants import (
+    NEON_EVM_PROGRAM_ID,
+    NEON_PROXY_MAJOR_VER,
+    NEON_PROXY_MINOR_VER,
+    NEON_PROXY_BUILD_VER,
+)
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta

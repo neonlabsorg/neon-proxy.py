@@ -58,7 +58,6 @@ class NeonBlockHdrModel(BaseModel):
 
     @classmethod
     def _from_sol_block(cls, raw: SolRpcBlockInfo) -> Self:
-
         return cls(
             slot=raw.slot,
             commit=_SolEthCommit.to_eth_commit(raw.commit),
@@ -76,6 +75,16 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=self.block_hash,
+        )
+
+    def to_genesis_child(self, genesis_hash: EthBlockHash) -> Self:
+        return NeonBlockHdrModel(
+            slot=self.slot,
+            commit=self.commit,
+            block_hash=self.block_hash,
+            block_time=self.block_time,
+            parent_slot=self.slot,
+            parent_block_hash=genesis_hash,
         )
 
     @property
