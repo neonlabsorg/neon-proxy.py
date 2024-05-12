@@ -212,7 +212,11 @@ class BaseTxStrategy(abc.ABC):
 
     async def _emulate_tx_list(self, tx_list: Sequence[SolTx], *, mult_factor: int = 0) -> tuple[EmulSolTxInfo, ...]:
         blockhash = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Confirmed)
-        tx_list = tuple(map(lambda x: SolLegacyTx(name=x.name, ix_list=x.ix_list, blockhash=blockhash), tx_list))
+        if self._ctx.cfg.emul_orig_tx_list:
+            for tx in tx_list:
+                tx.set_recent_blockhash(blockhash)
+        else:
+            tx_list = tuple(map(lambda x: SolLegacyTx(name=x.name, ix_list=x.ix_list, blockhash=blockhash), tx_list))
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
 
         account_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
