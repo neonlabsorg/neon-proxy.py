@@ -207,7 +207,10 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
 
     backend_config = {"bucket": TFSTATE_BUCKET,
                       "key": thstate_key, "region": TFSTATE_REGION}
-    terraform.init(backend_config=backend_config)
+    return_code, stdout, stderr = terraform.init(backend_config=backend_config)
+    click.echo(f"code: {return_code}")
+    click.echo(f"stdout: {stdout}")
+    click.echo(f"stderr: {stderr}")
     return_code, stdout, stderr = terraform.apply(skip_plan=True)
     click.echo(f"code: {return_code}")
     click.echo(f"stdout: {stdout}")
@@ -377,13 +380,15 @@ def run_test(project_name, file_name):
     inst = local_docker_client.exec_create(
         f"{project_name}_proxy_1", './proxy/deploy-test.sh', environment=env)
     out, test_logs = local_docker_client.exec_start(inst['Id'], demux=True)
-    test_logs = test_logs.decode('utf-8')
-    click.echo(out)
-    click.echo(test_logs)
     errors_count = 0
-    for line in test_logs.split('\n'):
-        if re.match(r"FAILED \(.+=\d+", line):
-            errors_count += int(re.search(r"\d+", line).group(0))
+    if test_logs:
+        test_logs = test_logs.decode('utf-8')
+        click.echo(out)
+        click.echo(test_logs)
+
+        for line in test_logs.split('\n'):
+            if re.match(r"FAILED \(.+=\d+", line):
+                errors_count += int(re.search(r"\d+", line).group(0))
     return errors_count
 
 
