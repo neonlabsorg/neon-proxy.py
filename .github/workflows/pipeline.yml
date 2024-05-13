@@ -18,6 +18,7 @@ on:
       - master
       - develop
       - '[vt][0-9].[0-9]+.[0-9x]+*'
+      - DOPS-640-ci-cd-fix
     tags:
       - "*"
 env:
@@ -180,6 +181,11 @@ jobs:
     runs-on: test-runner
     steps:
       - uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       - name: deploy_check
         timeout-minutes: 60
         run: |
@@ -435,6 +441,11 @@ jobs:
       needs.prepare-infrastructure.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - name: Tag published image
         if: ${{ (github.event.inputs.neon_evm_commit == ''  &&
             needs.build-image.outputs.is_version_proxy_branch == 'false') ||
