@@ -65,6 +65,11 @@ VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 
 
 def docker_compose(args: str):
+    command = f'docker login -u {DOCKER_USERNAME} -p {DOCKER_PASSWORD}'
+    click.echo(f"run command: {command}")
+    out = subprocess.run(command, shell=True)
+    click.echo("return code: " + str(out.returncode))
+
     command = f'docker-compose --compatibility {args}'
     click.echo(f"run command: {command}")
     out = subprocess.run(command, shell=True)
@@ -117,7 +122,6 @@ def update_faucet_tag_if_same_branch_exists(branch, faucet_tag):
 def build_docker_image(neon_evm_tag,  proxy_tag, head_ref_branch, skip_pull):
     neon_evm_tag = update_neon_evm_tag_if_same_branch_exists(head_ref_branch, neon_evm_tag)
     neon_evm_image = f'{DOCKERHUB_ORG_NAME}/evm_loader:{neon_evm_tag}'
-    docker_client.login(username=DOCKER_USERNAME, password=DOCKER_PASSWORD)
 
     click.echo(f"neon-evm image: {neon_evm_image}")
     if not skip_pull:
@@ -325,6 +329,7 @@ def deploy_check(proxy_tag, neon_evm_tag, faucet_tag, head_ref_branch, github_re
     if not skip_pull:
         click.echo('pull docker images...')
         docker_client.login(username=DOCKER_USERNAME, password=DOCKER_PASSWORD)
+
         out = docker_compose(f"-p {project_name} -f docker-compose/docker-compose-ci.yml pull")
         click.echo(out)
     else:
