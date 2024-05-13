@@ -382,7 +382,8 @@ def deploy_check(
     neon_evm_tag = update_neon_evm_tag_if_same_branch_exists(head_ref_branch, neon_evm_tag)
     if feature_branch not in ["master", "develop"]:
         faucet_tag = update_faucet_tag_if_same_branch_exists(feature_branch, faucet_tag)
-
+    
+    
     os.environ["REVISION"] = proxy_tag
     os.environ["NEON_EVM_COMMIT"] = neon_evm_tag
     os.environ["FAUCET_COMMIT"] = faucet_tag
@@ -428,7 +429,7 @@ def deploy_check(
             for d in dir_list
         }
         host_cfg = docker_client.create_host_config(binds=bind_dict)
-
+    docker_client.login(username=DOCKER_USERNAME, password=DOCKER_PASSWORD)
     cont = docker_client.create_container(
         f"{IMAGE_NAME}:{proxy_tag}",
         volumes=volume_list,

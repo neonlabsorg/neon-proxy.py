@@ -39,7 +39,7 @@ services:
       - net
 
   dbcreation:
-    image: ${DOCKERHUB_ORG_NAME}/neon_proxy.py:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/${DOCKER_REPO}:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
       POSTGRES_DB: neon-db
@@ -55,7 +55,7 @@ services:
         condition: service_healthy
 
   proxy:
-    image: ${DOCKERHUB_ORG_NAME}/neon_proxy.py:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/${DOCKER_REPO}:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
       FAUCET_URL: http://faucet:3333
@@ -165,7 +165,7 @@ services:
 #        condition: service_started
 #
   indexer:
-    image: ${DOCKERHUB_ORG_NAME}/neon_proxy.py:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/${DOCKER_REPO}:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
       POSTGRES_DB: neon-db
