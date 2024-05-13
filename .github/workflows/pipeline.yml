@@ -42,6 +42,7 @@ env:
   TV_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
+  PROXY_IMAGE_NAME: "neon-proxy.py"
   FAUCET_COMMIT: ${{vars.FAUCET_COMMIT}}
   GH_ORG_NAME: ${{vars.GH_ORG_NAME}}
   IMAGE_NAME: ${{vars.IMAGE_NAME}}
