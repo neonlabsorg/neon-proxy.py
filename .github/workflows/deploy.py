@@ -120,6 +120,7 @@ def build_docker_image(neon_evm_tag,  proxy_tag, head_ref_branch, skip_pull):
     click.echo(f"neon-evm image: {neon_evm_image}")
     if not skip_pull:
         click.echo('pull docker images...')
+        docker_client.login(username=DOCKER_USERNAME, password=DOCKER_PASSWORD)
         out = docker_client.pull(neon_evm_image, stream=True, decode=True)
         process_output(out)
 
