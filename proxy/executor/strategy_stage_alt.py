@@ -38,7 +38,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         actual_alt_info = await self._alt_builder.build_alt_info(self._legacy_tx)
 
         alt_info_list = await self._filter_alt_info_list(actual_alt_info)
-        if (len(self._alt_info_dict) > 0) and self._tx_has_valid_size(self._legacy_tx):
+        if self._alt_info_dict and self._tx_has_valid_size(self._legacy_tx):
             return list()
 
         actual_alt_info = self._extend_alt_info(actual_alt_info, alt_info_list)
@@ -89,7 +89,7 @@ class AltTxPrepStage(BaseTxPrepStage):
                 await self._alt_builder.update_alt_info(alt_info)
                 alt_info_list.append(alt_info)
 
-                if actual_alt_info.remove_account_key_list(tuple(alt_info.account_key_set)):
+                if actual_alt_info.remove_account_key_list(alt_info.account_key_list):
                     self._add_alt_info(alt_info)
 
             except BaseException as exc:
@@ -111,10 +111,10 @@ class AltTxPrepStage(BaseTxPrepStage):
         for alt_info in alt_info_list:
             if alt_info.owner != self._ctx.payer:
                 continue
-            elif len(actual_alt_info.account_key_set) + len(alt_info.account_key_set) >= SolAltProg.MaxAltAccountCnt:
+            elif len(actual_alt_info.account_key_list) + len(alt_info.account_key_list) >= SolAltProg.MaxAltAccountCnt:
                 continue
 
-            alt_info.add_account_key_list(tuple(actual_alt_info.account_key_set))
+            alt_info.add_account_key_list(actual_alt_info.account_key_list)
             return alt_info
 
         return actual_alt_info
