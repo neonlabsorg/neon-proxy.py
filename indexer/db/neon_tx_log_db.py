@@ -68,7 +68,7 @@ class NeonTxLogDb(HistoryDbTable):
         for topic_name, topic_value in zip(self._topic_column_list, topic_list):
             if topic_value:
                 query_list.append(DbSql("a.{} = ANY({})").format(DbSqlIdent(topic_name), DbSqlParam(topic_name)))
-                param_dict[topic_name] = [t.as_string() for t in topic_value]
+                param_dict[topic_name] = [t.to_string() for t in topic_value]
 
         if topic_list:
             query_list.append(DbSql("a.log_topic_cnt >= ") + DbSqlParam("topic_cnt"))

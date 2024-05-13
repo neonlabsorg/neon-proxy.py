@@ -76,23 +76,9 @@ class RootModel(_PydanticRootModel):
         return self.model_dump(mode="json")
 
 
-# Allows: None | 1
-def _null_to_int(value: int | None) -> int:
-    if not value:
-        return 0
-    elif isinstance(value, int):
-        return value
-    raise ValueError(f"Wrong input type: {type(value).__name__}")
-
-
-NullIntField = Annotated[int, PlainValidator(_null_to_int), PlainSerializer(_null_to_int, return_type=int)]
-
-
-# Allows: None | 0x | 0X | 10 | 0xa | 0Xa | 0xA | 0XA | A
-def _hex_to_int(value: str | int | None) -> int | None:
-    if value is None:
-        return None
-    elif isinstance(value, str):
+# Allows: 0x | 0X | 10 | 0xa | 0Xa | 0xA | 0XA | A
+def _hex_to_int(value: str | int) -> int | None:
+    if isinstance(value, str):
         if (len(value) == 2) and has_hex_start(value):
             return 0
         result = hex_to_int(value)
@@ -116,10 +102,8 @@ def _uint_to_hex(value: int | None) -> str | None:
     raise ValueError(f"Wrong input type: {type(value).__name__}")
 
 
-def _uintN_to_hex(value: int | None, size: int) -> str | None:
-    if value is None:
-        return None
-    elif isinstance(value, int):
+def _uint_n_to_hex(value: int | None, size: int) -> str:
+    if isinstance(value, int):
         if value < 0:
             raise ValueError("Input can't be a negative number")
         return "0x" + value.to_bytes(size, "big").hex()
@@ -127,11 +111,11 @@ def _uintN_to_hex(value: int | None, size: int) -> str | None:
 
 
 def _uint8_to_hex(value: int | None) -> str | None:
-    return _uintN_to_hex(value, 8)
+    return _uint_n_to_hex(value, 8)
 
 
 def _uint256_to_hex(value: int | None) -> str | None:
-    return _uintN_to_hex(value, 256)
+    return _uint_n_to_hex(value, 256)
 
 
 HexUIntField = Annotated[int, PlainValidator(_hex_to_int), PlainSerializer(_uint_to_hex)]

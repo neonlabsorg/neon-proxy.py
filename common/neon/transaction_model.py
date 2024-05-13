@@ -70,8 +70,24 @@ class NeonTxModel(BaseModel):
         try:
             tx = EthTx.from_raw(data)
             return cls._from_eth_tx(tx)
-        except Exception as e:
-            return cls(error=str(e))
+        except Exception as exc:
+            return cls(
+                error=str(exc),
+                #
+                tx_type=0,
+                tx_sig=EthTxHash.default(),
+                from_address=EthAddress.default(),
+                to_address=EthAddress.default(),
+                contract=EthAddress.default(),
+                nonce=0,
+                gas_price=0,
+                gas_limit=0,
+                value=0,
+                call_data=EthBinStr.default(),
+                v=0,
+                r=0,
+                s=0,
+            )
 
     @classmethod
     def _from_eth_tx(cls, tx: EthTx) -> Self:

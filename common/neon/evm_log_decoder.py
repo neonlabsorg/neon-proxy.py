@@ -44,6 +44,7 @@ class NeonTxEventModel(BaseModel):
         ExitReturn = 202
         ExitSelfDestruct = 203
         ExitRevert = 204
+        ExitSendAll = 205,
 
         Return = 300
         Cancel = 301
@@ -450,6 +451,7 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
         "RETURN": NeonTxEventModel.Type.ExitReturn,
         "SELFDESTRUCT": NeonTxEventModel.Type.ExitSelfDestruct,
         "REVERT": NeonTxEventModel.Type.ExitRevert,
+        "SENDALL": NeonTxEventModel.Type.ExitSendAll,
     }
 
     @classmethod

@@ -277,6 +277,7 @@ class _NeonTxEventDraft:
             NeonTxEventModel.Type.ExitReturn,
             NeonTxEventModel.Type.ExitSelfDestruct,
             NeonTxEventModel.Type.ExitRevert,
+            NeonTxEventModel.Type.ExitSendAll,
         )
 
     @cached_property

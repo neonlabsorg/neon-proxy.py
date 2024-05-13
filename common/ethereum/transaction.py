@@ -9,12 +9,9 @@ from rlp import Serializable
 from rlp.exceptions import ObjectDeserializationError
 from typing_extensions import Self
 
+from .errors import EthError
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import hex_to_bytes
-
-
-class InvalidEthTx(Exception):
-    pass
 
 
 class EthNoChainTx(Serializable):
@@ -113,7 +110,7 @@ class EthTx(Serializable):
             # chainid*2 + 36  xxxxx0 + 100100   xxxx0 + 100011 +1
             return ((v - 1) // 2) - 17
         else:
-            raise InvalidEthTx(f"Invalid V value {v}")
+            raise EthError(f"Invalid V value {v}")
 
     def _unsigned_msg_impl(self) -> bytes:
         if not self.has_chain_id:
@@ -152,10 +149,10 @@ class EthTx(Serializable):
             vee = self.v - self.chain_id * 2 - 8
             assert vee in (27, 28)
         else:
-            raise InvalidEthTx(f"Invalid V value {self.v}")
+            raise EthError(f"Invalid V value {self.v}")
 
         if self.r >= self._secpk1n or self.s >= self._secpk1n or self.r == 0 or self.s == 0:
-            raise InvalidEthTx(f"Invalid signature values: r={self.r} s={self.s}!")
+            raise EthError(f"Invalid signature values: r={self.r} s={self.s}!")
 
         sig_hash = keccak(self._unsigned_msg_impl())
         sig = self._sig_impl()

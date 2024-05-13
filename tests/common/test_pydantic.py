@@ -1,16 +1,12 @@
 import unittest
 
-from common.utils.pydantic import HexUIntField, NullIntField, DecIntField, BytesField, BaseModel
+from common.utils.pydantic import HexUIntField, DecIntField, BytesField, BaseModel
 
 
 class TestPydantic(unittest.TestCase):
     def test_hex_int_field(self):
         class TestHexIntModel(BaseModel):
             value: HexUIntField
-
-        null_json = {"value": None}
-        null_model = TestHexIntModel.model_validate(null_json)
-        self.assertIsNone(null_model.value)
 
         zero_json = {"value": "0x"}
         zero_model = TestHexIntModel.model_validate(zero_json)
@@ -35,26 +31,6 @@ class TestPydantic(unittest.TestCase):
         test_model = TestHexIntModel(value=1)
         test_json = test_model.model_dump(mode="json")
         self.assertEqual(test_json["value"], "0x1")
-
-    def test_null_int_field(self):
-        class TestNullIntModel(BaseModel):
-            value: NullIntField
-
-        null_json = {"value": None}
-        null_model = TestNullIntModel.model_validate(null_json)
-        self.assertEqual(null_model.value, 0)
-
-        zero_json = {"value": 0}
-        zero_model = TestNullIntModel.model_validate(zero_json)
-        self.assertEqual(zero_model.value, 0)
-
-        full_json = {"value": 125}
-        full_model = TestNullIntModel.model_validate(full_json)
-        self.assertEqual(full_model.value, 125)
-
-        with self.assertRaises(ValueError):
-            error_json = {"value": "helloworld"}
-            TestNullIntModel.model_validate(error_json)
 
     def test_dec_int_field(self):
         class TestDecInt(BaseModel):

@@ -21,7 +21,7 @@ from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex
-from ..utils.pydantic import NullIntField, HexUIntField, BytesField, DecIntField, BaseModel
+from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel
 
 _LOG = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class CoreApiResp(BaseModel):
 
 
 class _AccountModel(BaseModel):
-    address: EthAddressField
+    address: EthZeroAddressField
     chain_id: int
 
     @classmethod
@@ -135,7 +135,7 @@ class NeonAccountModel(BaseModel):
 
 
 class NeonContractRequest(BaseModel):
-    contract: EthAddressField
+    contract: EthZeroAddressField
     slot: int | None
 
 
@@ -168,7 +168,7 @@ class NeonContractModel(BaseModel):
 
 
 class NeonStorageAtRequest(BaseModel):
-    contract: EthAddressField
+    contract: EthZeroAddressField
     index: HexUIntField
     slot: int | None
 
@@ -409,7 +409,7 @@ class HolderAccountModel(BaseModel):
     address: SolPubKeyField
 
     status: HolderAccountStatusField
-    size: NullIntField = Field(default=0, validation_alias="len")
+    size: int = Field(default=0, validation_alias="len")
     owner: SolPubKeyField = Field(default=SolPubKey.default())
 
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
@@ -575,14 +575,6 @@ class EmulNeonCallResp(BaseModel):
     iter_cnt: int = Field(alias="iterations")
 
     raw_meta_list: list[EmulAccountMetaModel] = Field(validation_alias="solana_accounts", default_factory=list)
-
-    def model_post_init(self, _ctx) -> None:
-        if self.iter_cnt <= 0:
-            raise ValueError(f"Emulator result contains bad number of iterations: {self.iter_cnt}")
-        if self.evm_step_cnt <= 0:
-            raise ValueError(f"Emulator result contains bad number of EVM steps: {self.evm_step_cnt}")
-        # if self.used_gas <= 0:
-        #     raise ValueError(f"Emulator result contains bad used gas: {self.used_gas}")
 
     @cached_property
     def sol_account_meta_list(self) -> tuple[SolAccountMeta, ...]:
