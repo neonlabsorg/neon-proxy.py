@@ -33,6 +33,7 @@ variable "faucet_model_commit" {
   type = string
 }
 
+
 data "template_file" "solana_init" {
   template = file("solana_init.sh")
 
@@ -58,5 +59,8 @@ data "template_file" "proxy_init" {
     faucet_model_commit = "${var.faucet_model_commit}"
     ci_pp_solana_url    = "${var.ci_pp_solana_url}"
     dockerhub_org_name  = "${var.dockerhub_org_name}"
+    proxy_image_name    = "${var.proxy_image_name}"
+    DOCKER_USERNAME     = "${var.DOCKER_USERNAME}"
+    DOCKER_PASSWORD     = "${var.DOCKER_PASSWORD}"
   }
 }

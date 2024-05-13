@@ -29,6 +29,7 @@ export NEON_EVM_COMMIT=${neon_evm_commit}
 export FAUCET_COMMIT=${faucet_model_commit}
 export CI_PP_SOLANA_URL=${ci_pp_solana_url}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
+export PROXY_IMAGE_NAME=${proxy_image_name}
 
 
 
@@ -84,6 +85,7 @@ EOF
 SERVICES=$(docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
+docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}
 docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull $SERVICES
 
 

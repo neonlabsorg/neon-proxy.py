@@ -53,10 +53,9 @@ FAUCET_COMMIT = os.environ.get("FAUCET_COMMIT")
 
 NEON_TESTS_IMAGE = os.environ.get("NEON_TESTS_IMAGE")
 
-GH_ORG_NAME  = os.environ.get("GH_ORG_NAME")
+GH_ORG_NAME = os.environ.get("GH_ORG_NAME")
 
-CONTAINERS = ['proxy', 'solana', 'neon_test_invoke_program_loader',
-              'dbcreation', 'faucet', 'gas_tank', 'indexer']
+CONTAINERS = ['proxy', 'solana', 'dbcreation', 'faucet', 'gas_tank', 'indexer']
 
 docker_client = docker.APIClient()
 terraform = Terraform(working_dir=pathlib.Path(
@@ -201,6 +200,9 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
     os.environ["TF_VAR_neon_evm_commit"] = neon_evm_tag
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
     os.environ["TF_VAR_dockerhub_org_name"] = dockerhub_org_name
+    os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
+    os.environ["TF_VAR_DOCKER_USERNAME"] = DOCKER_USERNAME
+    os.environ["TF_VAR_DOCKER_PASSWORD"] = DOCKER_PASSWORD
     thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
 
     backend_config = {"bucket": TFSTATE_BUCKET,
