@@ -415,9 +415,12 @@ class MpTxSchedule:
                 _LOG.debug(log_msg("tx {Tx} is already scheduled", Tx=tx))
                 return MpTxResp(code=MpTxRespCode.AlreadyKnown, state_tx_cnt=None)
             elif old_tx.gas_price >= tx.gas_price:
-                _LOG.debug(
-                    log_msg("old tx {OldTx} has higher gas-price than {GasPrice}", OldTx=old_tx, GasPrice=tx.gas_price)
+                msg = log_msg(
+                    "old tx {OldTx} has higher gas-price than {GasPrice}",
+                    OldTx=old_tx,
+                    GasPrice=tx.gas_price,
                 )
+                _LOG.debug(msg)
                 return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
 
         pool = self._get_or_create_sender_pool(tx.sender)
@@ -431,24 +434,22 @@ class MpTxSchedule:
                 if not gapped_tx:
                     return MpTxResp(code=MpTxRespCode.NonceTooHigh, state_tx_cnt=state_tx_cnt)
                 elif tx.gas_price < gapped_tx.gas_price:
-                    _LOG.debug(
-                        log_msg(
-                            "lowermost gapped tx {LowerTx} has higher gas-price than {GasPrice}",
-                            LowerTx=gapped_tx,
-                            GasPrice=tx.gas_price,
-                        )
+                    msg = log_msg(
+                        "lowermost gapped tx {LowerTx} has higher gas-price than {GasPrice}",
+                        LowerTx=gapped_tx,
+                        GasPrice=tx.gas_price,
                     )
+                    _LOG.debug(msg)
                     return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
             elif (self.tx_cnt >= self._capacity) and (not gapped_tx):
                 pending_tx = self._tx_dict.peek_pending_lower_tx()
                 if pending_tx and (tx.gas_price < pending_tx.gas_price):
-                    _LOG.debug(
-                        log_msg(
-                            "lowermost pending tx {LowerTx} has higher gas-price than {GasPrice}",
-                            LowerTx=pending_tx,
-                            GasPrice=tx.gas_price,
-                        )
+                    msg = log_msg(
+                        "lowermost pending tx {LowerTx} has higher gas-price than {GasPrice}",
+                        LowerTx=pending_tx,
+                        GasPrice=tx.gas_price,
                     )
+                    _LOG.debug(msg)
                     return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
 
         if pool.is_processing:
@@ -458,14 +459,13 @@ class MpTxSchedule:
                 return MpTxResp(code=MpTxRespCode.NonceTooLow, state_tx_cnt=top_tx.nonce + 1)
 
         if state_tx_cnt > tx.nonce:
-            _LOG.debug(
-                log_msg(
-                    "sender {Sender} has higher tx counter {StateTxCnt} > {Nonce}",
-                    Sender=pool,
-                    StateTxCnt=hex(state_tx_cnt),
-                    Nonce=hex(tx.nonce),
-                )
+            msg = log_msg(
+                "sender {Sender} has higher tx counter {StateTxCnt} > {Nonce}",
+                Sender=pool,
+                StateTxCnt=hex(state_tx_cnt),
+                Nonce=hex(tx.nonce),
             )
+            _LOG.debug(msg)
             return MpTxResp(code=MpTxRespCode.NonceTooLow, state_tx_cnt=state_tx_cnt)
 
         # Everything is ok, let's add transaction to the pool
@@ -477,9 +477,9 @@ class MpTxSchedule:
         self._check_oversized_and_reduce()
         self._add_tx_to_sender_pool(pool, tx)
         self._schedule_sender_pool(pool, state_tx_cnt)
-        _LOG.debug(
-            log_msg("done add tx {Tx}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info())
-        )
+
+        msg = log_msg("done add tx {Tx}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info())
+        _LOG.debug(msg)
         return MpTxResp(code=MpTxRespCode.Success, state_tx_cnt=None)
 
     def drop_tx(self, sender: EthAddress, nonce: int) -> bool:
@@ -563,7 +563,7 @@ class MpTxSchedule:
         )
 
     def _add_tx_to_sender_pool(self, pool: _SenderTxPool, tx: MpTxModel) -> None:
-        if not (is_new_pool := pool.is_empty):
+        if not (is_new_pool := pool.state == pool.State.Empty):  # use old state, before remove old tx
             self._sender_pool_heartbeat_queue.pop(pool)
 
         is_gapped_tx = (pool.state in (pool.State.Suspended, pool.state.Empty)) or (pool.pending_tx_cnt < tx.nonce)

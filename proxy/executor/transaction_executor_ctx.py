@@ -7,6 +7,7 @@ from typing import Sequence
 from typing_extensions import Self
 
 from common.config.config import Config
+from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
@@ -106,6 +107,13 @@ class NeonExecTxCtx:
 
     def set_emulator_result(self, resp: EmulNeonCallResp) -> None:
         assert not self.is_stuck_tx
+
+        if resp.iter_cnt <= 0:
+            raise EthError(f"Emulator result contains bad number of iterations: {resp.iter_cnt}")
+        # elif resp.evm_step_cnt <= 0:
+        #     raise EthError(f"Emulator result contains bad number of EVM steps: {resp.evm_step_cnt}")
+        # elif resp.used_gas <= 0:
+        #     raise EthError(f"Emulator result contains bad gas usage: {resp.used_gas}")
 
         _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
 

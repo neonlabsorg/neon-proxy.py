@@ -138,7 +138,7 @@ class NpCallApi(NeonProxyApi):
         self,
         ctx: HttpRequestCtx,
         call: RpcCallRequest,
-        neon_call: RpcNeonCallRequest = RpcCallRequest.default(),
+        neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
         chain_id = self.get_chain_id(ctx)
@@ -152,7 +152,7 @@ class NpCallApi(NeonProxyApi):
     async def neon_emulate(
         self,
         ctx: HttpRequestCtx,
-        raw_signed_tx: str,
+        raw_signed_tx: EthBinStrField,
         neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> _RpcEmulatorResp:
@@ -161,7 +161,7 @@ class NpCallApi(NeonProxyApi):
         chain_id = self.get_chain_id(ctx)
         block = await self.get_block_by_tag(block_tag)
 
-        neon_tx = NeonTxModel.from_raw(raw_signed_tx)
+        neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes())
 
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,

@@ -87,7 +87,6 @@ class NpTxLogsApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="neon_getLogs")
     async def get_neon_logs(self, params: _RpcLogListRequest) -> tuple[RpcNeonTxEventModel, ...]:
-        params.validate()
         is_empty, from_block, to_block = await self._get_slot_range(params)
         if is_empty:
             return tuple()

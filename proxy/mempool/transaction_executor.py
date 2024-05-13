@@ -127,7 +127,7 @@ class MpTxExecutor(MempoolComponent):
     def _call_tx_schedule(self, chain_id: int, method, *args):
         if tx_schedule := self._tx_schedule_dict.get(chain_id, None):
             return method(tx_schedule, *args)
-        if chain_id not in self._server.get_gas_price().token_dict:
+        if chain_id not in self._server.get_gas_price().chain_dict:
             _LOG.warning("unknown chainID: 0x%x", chain_id)
         return None
 
