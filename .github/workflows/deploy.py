@@ -324,6 +324,7 @@ def deploy_check(proxy_tag, neon_evm_tag, faucet_tag, head_ref_branch, github_re
 
     if not skip_pull:
         click.echo('pull docker images...')
+        docker_client.login(username=DOCKER_USERNAME, password=DOCKER_PASSWORD)
         out = docker_compose(f"-p {project_name} -f docker-compose/docker-compose-ci.yml pull")
         click.echo(out)
     else:
