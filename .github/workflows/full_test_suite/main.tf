@@ -49,6 +49,7 @@ resource "hcloud_server" "proxy" {
       "chmod a+x /tmp/proxy_init.sh",
       "sudo /tmp/proxy_init.sh"
     ]
+
   connection {
     type        = "ssh"
     user        = "root"
@@ -75,6 +76,18 @@ resource "hcloud_server" "solana" {
   ssh_keys = [
     data.hcloud_ssh_key.ci-ssh-key.id
   ]
+
+   provisioner "file" {
+    source      = "../../../docker-compose/docker-compose-ci.yml"
+    destination = "/tmp/docker-compose-ci.yml"
+
+    connection {
+        type        = "ssh"
+        user        = "root"
+        host        = hcloud_server.solana.ipv4_address
+        private_key = file("~/.ssh/ci-stands")
+      }
+  }
 
   public_net {
     ipv4_enabled = true
