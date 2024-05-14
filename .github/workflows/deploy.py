@@ -183,7 +183,6 @@ def finalize_image(github_ref, proxy_tag):
 
 
 @cli.command(name="terraform_infrastructure")
-@click.option('--dockerhub_org_name')
 @click.option('--head_ref_branch')
 @click.option('--github_ref_name')
 @click.option('--proxy_tag')
