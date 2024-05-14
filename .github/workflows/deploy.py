@@ -211,6 +211,7 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
     if return_code != 0:
         print("Terraform init failed:", stderr)
     return_code, stdout, stderr = terraform.apply(skip_plan=True)
+    click.echo(f"stdout: {stdout}")
     with open(f"terraform.log", "w") as file:
         file.write(stdout)
         file.write(stderr)
