@@ -132,4 +132,4 @@ PROXY_RESULT='"result"'
 wait_service "proxy" $PROXY_URL $PROXY_DATA $PROXY_RESULT
 
 
-docker rm -f opt_solana_1
+docker rm -f tmp_solana_1

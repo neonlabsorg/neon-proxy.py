@@ -288,7 +288,7 @@ def get_all_containers_logs():
     ssh_client.connect(hostname=solana_ip, username='root',
                        key_filename=ssh_key, timeout=120)
 
-    upload_remote_logs(ssh_client, "opt_solana_1", artifact_logs)
+    upload_remote_logs(ssh_client, "tmp_solana_1", artifact_logs)
 
     ssh_client.connect(hostname=proxy_ip, username='root',
                        key_filename=ssh_key, timeout=120)
