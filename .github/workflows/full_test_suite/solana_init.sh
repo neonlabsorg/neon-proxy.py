@@ -43,8 +43,8 @@ export FAUCET_COMMIT=${faucet_model_commit}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
 
 # Receive docker-compose file and create override file
-cd /opt
-curl -O https://raw.githubusercontent.com/neonlabsorg/proxy-model.py/${proxy_model_commit}/docker-compose/docker-compose-ci.yml
+cd /tmp
+#curl -O https://raw.githubusercontent.com/neonlabsorg/proxy-model.py/${proxy_model_commit}/docker-compose/docker-compose-ci.yml
 cat > docker-compose-ci.override.yml<<EOF
 version: "3"
 
