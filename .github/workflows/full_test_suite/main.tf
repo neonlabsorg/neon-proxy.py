@@ -18,6 +18,11 @@ resource "hcloud_server" "proxy" {
   }
 
   provisioner "file" {
+    source      = "../../../docker-compose/docker-compose-ci.yml"
+    destination = "/tmp/docker-compose-ci.yml"
+  }
+
+  provisioner "file" {
     content     = data.template_file.proxy_init.rendered
     destination = "/tmp/proxy_init.sh"
 

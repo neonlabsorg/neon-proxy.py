@@ -18,8 +18,8 @@ sudo chmod +x /usr/local/bin/docker-compose
 
 
 # Get docker-compose file
-cd /opt
-curl -O https://raw.githubusercontent.com/neonlabsorg/proxy-model.py/${proxy_model_commit}/docker-compose/docker-compose-ci.yml
+cd /tmp
+#curl -O https://raw.githubusercontent.com/neonlabsorg/proxy-model.py/${proxy_model_commit}/docker-compose/docker-compose-ci.yml
 
 
 # Set required environment variables
