@@ -190,7 +190,7 @@ def finalize_image(github_ref, proxy_tag):
 @click.option('--neon_evm_tag')
 @click.option('--faucet_tag')
 @click.option('--run_number')
-def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_ref_name, proxy_tag, neon_evm_tag, faucet_tag, run_number):
+def terraform_build_infrastructure(head_ref_branch, github_ref_name, proxy_tag, neon_evm_tag, faucet_tag, run_number):
     branch = head_ref_branch if head_ref_branch != "" else github_ref_name
     neon_evm_tag = update_neon_evm_tag_if_same_branch_exists(head_ref_branch, neon_evm_tag)
     if branch not in ['master', 'develop']:
@@ -199,10 +199,7 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
     os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
     os.environ["TF_VAR_neon_evm_commit"] = neon_evm_tag
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
-    os.environ["TF_VAR_dockerhub_org_name"] = dockerhub_org_name
-    os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
-    os.environ["TF_VAR_docker_username"] = DOCKER_USERNAME
-    os.environ["TF_VAR_docker_password"] = DOCKER_PASSWORD
+
     thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
 
     backend_config = {"bucket": TFSTATE_BUCKET,

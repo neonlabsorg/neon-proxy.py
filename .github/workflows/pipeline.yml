@@ -36,10 +36,12 @@ env:
   NEON_TEST_IMAGE:  ${{vars.DOCKERHUB_ORG_NAME}}/neon_tests
   TF_VAR_run_number: ${{ github.run_number }}
   TF_VAR_ci_pp_solana_url: ${{secrets.DEVNET_INTERNAL_RPC}}
-  TF_VAR_proxy_model_commit: ${{github.sha}}
   TF_VAR_neon_evm_commit: "latest"
   TF_VAR_faucet_model_commit: ${{vars.FAUCET_COMMIT}}
   TV_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
+  TF_VAR_proxy_image_name: "neon-proxy.py"
+  TF_VAR_docker_username: ${{secrets.DOCKER_USERNAME}}
+  TF_VAR_docker_password: ${{secrets.DOCKER_PASSWORD}}
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   PROXY_IMAGE_NAME: "neon-proxy.py"
@@ -238,7 +240,6 @@ jobs:
         id: terraform
         run: |
           python3 ./.github/workflows/deploy.py terraform_infrastructure \
-            --dockerhub_org_name=${{ env.DOCKERHUB_ORG_NAME }} \
             --github_ref_name=${{ github.ref_name }} \
             --head_ref_branch=${{ github.head_ref }} \
             --neon_evm_tag=${{ needs.build-image.outputs.neon_evm_tag }} \

@@ -16,10 +16,6 @@ variable "branch" {
 }
 
 
-variable "proxy_model_commit" {
-  type = string
-}
-
 variable "proxy_image_tag" {
   type = string
 }
@@ -42,7 +38,6 @@ data "template_file" "solana_init" {
 
   vars = {
     branch              = "${var.branch}"
-    proxy_model_commit  = "${var.proxy_model_commit}"
     proxy_image_tag     = "${var.proxy_image_tag}"
     neon_evm_commit     = "${var.neon_evm_commit}"
     faucet_model_commit = "${var.faucet_model_commit}"
@@ -55,7 +50,6 @@ data "template_file" "proxy_init" {
 
   vars = {
     branch              = "${var.branch}"
-    proxy_model_commit  = "${var.proxy_model_commit}"
     proxy_image_tag     = "${var.proxy_image_tag}"
     solana_ip           = hcloud_server.solana.network.*.ip[0]
     neon_evm_commit     = "${var.neon_evm_commit}"
