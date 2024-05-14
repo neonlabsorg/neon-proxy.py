@@ -90,6 +90,10 @@ class RpcBlockRequest(RootModel):
             return self.root.blockNumber
         return self.root
 
+    def model_post_init(self, _ctx) -> None:
+        if self.root is None:
+            raise ValueError(f"{type(self).__name__} can't be null")
+
 
 class RpcAccessItemModel(BaseJsonRpcModel):
     address: EthAddressField

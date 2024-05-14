@@ -55,9 +55,14 @@ class NpVersionApi(NeonProxyApi):
         evm_cfg = await self.get_evm_cfg()
         return evm_cfg.package_version
 
-    @NeonProxyApi.method(name=["neon_proxyVersion", "neon_proxy_version"])
+    @NeonProxyApi.method(name=["neon_proxyVersion"])
     def neon_proxy_version(self) -> str:
         return NEON_PROXY_PKG_VER
+
+    @NeonProxyApi.method(name=["neon_proxy_version"])
+    def neon_proxy_version(self) -> str:
+        # Deprecated version
+        return "N" + NEON_PROXY_PKG_VER[1:].lower()
 
     @NeonProxyApi.method(name="neon_solanaVersion")
     async def neon_solana_version(self) -> str:

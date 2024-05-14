@@ -120,6 +120,7 @@ class Config:
     commit_level_name: Final[str] = "COMMIT_LEVEL"
     max_tx_account_cnt_name: Final[str] = "MAX_TX_ACCOUNT_COUNT"
     calc_cu_limit_usage_name: Final[str] = "CALCULATE_CU_LIMIT_USAGE"
+    emul_orig_tx_list_name: Final[str] = "SIMULATE_ORIGINAL_SOLANA_TRANSACTION"
     # Gas price settings
     pyth_url_name: Final[str] = "PYTH_URL"
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
@@ -530,6 +531,10 @@ class Config:
     @cached_property
     def calc_cu_limit_usage(self) -> bool:
         return self._env_bool(self.calc_cu_limit_usage_name, False)
+
+    @cached_property
+    def emul_orig_tx_list(self) -> bool:
+        return self._env_bool(self.emul_orig_tx_list_name, False)
 
     #####################
     # Gas-Price settings

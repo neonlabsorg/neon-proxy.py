@@ -15,7 +15,7 @@ class EthWrongChainIdError(EthError):
 
 class EthInvalidFilterError(EthError):
     def __init__(self, message: str) -> None:
-        super().__init__(message, code=-36200)
+        super().__init__(message, code=-32600)
 
 
 class EthNonceTooLowError(EthError):

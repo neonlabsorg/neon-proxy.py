@@ -6,7 +6,7 @@ from .gas_limit_calculator import NpGasLimitCalculator
 from .np_account_api import NpAccountApi
 from .np_block_transaction_api import NpBlockTxApi
 from .np_call_api import NpCallApi
-from .np_execute_transaction_api import NpExecTxApi
+from .np_send_transaction_api import NpExecTxApi
 from .np_gas_price import NpGasPriceApi
 from .np_net_api import NpNetApi
 from .np_transaction_logs_api import NpTxLogsApi

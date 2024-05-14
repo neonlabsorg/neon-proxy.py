@@ -227,6 +227,7 @@ class NeonTxExecutor(ExecutorComponent):
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
             EmulNeonCallModel.from_neon_tx(ctx.neon_tx, ctx.chain_id),
+            preload_sol_address_list=ctx.account_key_list,
             check_result=False,
         )
         acct_meta_cnt = NeonProg.BaseAccountCnt + len(resp.raw_meta_list)

@@ -90,7 +90,7 @@ class SolV0Tx(SolTx):
         for alt_info in self._alt_info_list:
             rw_idx_list: list[int] = list()
             ro_idx_list: list[int] = list()
-            for idx, key in enumerate(alt_info.account_key_set):
+            for idx, key in enumerate(alt_info.account_key_list):
                 if key in rw_key_set:
                     rw_idx_list.append(idx)
                     rw_key_list.append(key)
@@ -120,6 +120,8 @@ class SolV0Tx(SolTx):
         tx_ro_unsigned_account_key_cnt = alt_filter.tx_unsigned_account_key_cnt + len(ro_key_set)
         signed_tx_key_list, ro_tx_key_list = tx_key_list[:signed_key_cnt], tx_key_list[signed_key_cnt:]
 
+        # This list will be included in the transaction header as defined here,
+        #   so the order of accounts doesn't depend on the order in ALTs
         tx_key_list = (
             list(signed_tx_key_list)
             +

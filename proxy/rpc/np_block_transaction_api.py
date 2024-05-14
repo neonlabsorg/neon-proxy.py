@@ -27,7 +27,6 @@ from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_decoder import SolNeonAltIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
-from common.solana.alt_program import SolAltIxCode
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig
@@ -557,7 +556,7 @@ class NpBlockTxApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="neon_earliestBlockNumber")
     async def get_earliest_block_number(self) -> HexUIntField:
-        return await self._db.get_earliest_block()
+        return await self._db.get_earliest_slot()
 
     @NeonProxyApi.method(name="neon_getSolanaTransactionByNeonTransaction")
     async def get_solana_tx_list(self, tx_hash: EthTxHashField, full: bool = False) -> list[dict | SolTxSigField]:
@@ -624,7 +623,7 @@ class NpBlockTxApi(NeonProxyApi):
     async def get_neon_tx_receipt(
         self,
         neon_tx_hash: EthTxHashField,
-        detail: _RpcNeonTxReceiptDetailField,
+        detail: _RpcNeonTxReceiptDetailField = _RpcNeonTxReceiptDetail.SolTxList,
     ) -> _RpcNeonTxReceiptResp | _RpcEthTxReceiptResp | None:
         if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(neon_tx_hash)):
             return None

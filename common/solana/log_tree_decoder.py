@@ -150,7 +150,9 @@ class SolTxLogTreeDecoder:
     def _add_missed_logs(cls, log: _SolTxIxLogDraft, inner_log: _SolTxIxLogDraft, ctx: _SolLogDecoderCtx) -> None:
         while True:
             prog_id, level = ctx.next_prog_lvl(inner_log.level)
-            if (prog_id, level) == (inner_log.prog_id, inner_log.level):
+            if prog_id.is_empty:
+                return
+            elif (prog_id, level) == (inner_log.prog_id, inner_log.level):
                 return
 
             missed_log = SolTxIxLogInfo.new_unknown(prog_id, level + 1)
@@ -187,11 +189,11 @@ class _SolLogDecoderCtx:
 
     def next_prog_lvl(self, base_level: int) -> tuple[SolPubKey, int]:
         if base_level == 1:
-            ix = self._next_ix()
+            if not (ix := self._next_ix()):
+                return SolPubKey.default(), 1
             return self._acct_list[ix.program_id_index], 1
 
-        ix = self._next_inner_ix()
-        if not ix:
+        if not (ix := self._next_inner_ix()):
             return SolPubKey.default(), base_level
         return self._acct_list[ix.program_id_index], getattr(ix, "stack_height", base_level)
 

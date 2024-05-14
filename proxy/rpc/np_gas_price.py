@@ -85,7 +85,7 @@ class _RpcNativeTokenResp(BaseJsonRpcModel):
 
 class _RpcGasCallRequest(BaseJsonRpcModel):
     fromAddress: EthAddressField = Field(validation_alias=AliasChoices("from", "fromAddress"))
-    toAddress: EthAddressField | None = Field(default=None, validation_alias=AliasChoices("to", "toAddress"))
+    toAddress: EthAddressField = Field(default=None, validation_alias=AliasChoices("to", "toAddress"))
     nonce: HexUIntField = Field(default=0)
     gas: HexUIntField = Field(default=0)
 

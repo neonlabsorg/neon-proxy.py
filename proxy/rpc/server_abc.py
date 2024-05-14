@@ -3,15 +3,25 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import Callable
+from typing import Callable, Final
 
+import base58
 from typing_extensions import Self
 
 from common.config.config import Config
+from common.config.constants import (
+    MAINNET_PROGRAM_ID,
+    MAINNET_GENESIS_HASH,
+    MAINNET_GENESIS_TIME,
+    DEVNET_PROGRAM_ID,
+    DEVNET_GENESIS_TIME,
+    DEVNET_GENESIS_HASH,
+    UNKNOWN_GENESIS_HASH,
+)
 from common.config.utils import LogMsgFilter
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.errors import EthError
-from common.ethereum.hash import EthAddress
+from common.ethereum.hash import EthAddress, EthBlockHash
 from common.http.errors import HttpRouteError
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcRequest, JsonRpcResp
@@ -20,6 +30,7 @@ from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
+from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context, log_msg
@@ -93,21 +104,31 @@ class NeonProxyComponent:
 
     async def get_block_by_tag(self, block_tag: RpcBlockRequest) -> NeonBlockHdrModel:
         if block_tag.is_block_hash:
-            return await self._db.get_block_by_hash(block_tag.block_hash)
+            block = await self._db.get_block_by_hash(block_tag.block_hash)
         elif block_tag.is_block_number:
-            return await self._db.get_block_by_slot(block_tag.block_number)
+            if block_tag.block_number == 0:
+                block = self._server.genesis_block
+            else:
+                block = await self._db.get_block_by_slot(block_tag.block_number)
+        else:
+            block_name = block_tag.block_name
+            if block_name == EthCommit.Pending:
+                block = await self._db.get_latest_block()
+                block = block.to_pending()
+            elif block_name == EthCommit.Latest:
+                block = await self._db.get_latest_block()
+            elif block_name in (EthCommit.Safe, EthCommit.Finalized):
+                block = await self._db.get_finalized_block()
+            elif block_name == EthCommit.Earliest:
+                block = await self._db.get_earliest_block()
+            else:
+                raise EthError(f"Unknown block tag {block_name}")
 
-        block_name = block_tag.block_name
-        if block_name == EthCommit.Pending:
-            block = await self._db.get_latest_block()
-            return block.to_pending()
-        elif block_name == EthCommit.Latest:
-            return await self._db.get_latest_block()
-        elif block_name in (EthCommit.Safe, EthCommit.Finalized):
-            return await self._db.get_finalized_block()
-        elif block_name == EthCommit.Earliest:
-            return await self._db.get_earliest_block()
-        raise EthError(f"Unknown block tag {block_name}")
+        if block.slot == 1:
+            genesis_block = self._server.genesis_block
+            block = block.to_genesis_child(genesis_block.block_hash)
+
+        return block
 
     async def has_fee_less_tx_permit(
         self,
@@ -146,6 +167,7 @@ class NeonProxyAbc(JsonRpcServer):
         self._mp_client = mp_client
         self._db = db
         self._gas_tank = gas_tank
+        self._genesis_block: NeonBlockHdrModel | None = None
 
     async def on_server_start(self) -> None:
         await asyncio.gather(
@@ -155,6 +177,7 @@ class NeonProxyAbc(JsonRpcServer):
             self._sol_client.start(),
             self._core_api_client.start(),
         )
+        await self._init_genesis_block()
 
     async def on_server_stop(self) -> None:
         await asyncio.gather(
@@ -164,6 +187,10 @@ class NeonProxyAbc(JsonRpcServer):
             self._sol_client.stop(),
             self._db.stop(),
         )
+
+    @property
+    def genesis_block(self) -> NeonBlockHdrModel:
+        return self._genesis_block
 
     def _add_api(self, api: NeonProxyApi) -> Self:
         for endpoint in _ENDPOINT_LIST:
@@ -262,3 +289,31 @@ class NeonProxyAbc(JsonRpcServer):
                 )
             _LOG.info(dict(**msg, TimeMS=ctx.process_time_msec))
         return resp
+
+    async def _init_genesis_block(self) -> None:
+        parent_hash: Final[EthBlockHash] = EthBlockHash.from_raw(b"\0" * 32)
+
+        if NeonProg.ID == MAINNET_PROGRAM_ID:
+            block_hash = EthBlockHash.from_raw(base58.b58decode(MAINNET_GENESIS_HASH))
+            block_time = MAINNET_GENESIS_TIME
+        elif NeonProg.ID == DEVNET_PROGRAM_ID:
+            block_hash = EthBlockHash.from_raw(base58.b58decode(DEVNET_GENESIS_HASH))
+            block_time = DEVNET_GENESIS_TIME
+        else:
+            block = await self._sol_client.get_block(0, SolCommit.Confirmed)
+            if block.is_empty:
+                block_hash = EthBlockHash.from_raw(UNKNOWN_GENESIS_HASH)
+                block_time = MAINNET_GENESIS_TIME
+            else:
+                block_hash = EthBlockHash.from_raw(block.block_hash.to_bytes())
+                block_time = block.block_time
+
+        self._genesis_block = NeonBlockHdrModel(
+            slot=0,
+            commit=EthCommit.Finalized,
+            block_hash=block_hash,
+            block_time=block_time,
+            parent_slot=0,
+            parent_block_hash=parent_hash,
+        )
+        # _LOG.debug("genesis hash %s, genesis time %s", block_hash, block_time)

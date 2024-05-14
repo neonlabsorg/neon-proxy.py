@@ -242,9 +242,9 @@ class SolBlockDb(HistoryDbTable):
         return NeonBlockHdrModel(
             slot=slot,
             commit=sol_commit,
-            is_finalized=is_finalized,
             block_hash=self._generate_fake_block_hash(slot),
             block_time=block_time,
+            parent_slot=slot-1,
             parent_block_hash=self._generate_fake_block_hash(slot - 1),
         )
 

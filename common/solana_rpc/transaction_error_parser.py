@@ -20,9 +20,10 @@ from ..utils.cached import cached_method
 
 
 class SolTxErrorParser:
-    _already_finalized_log = "Program log: Transaction already finalized"
-    _log_truncated_log = "Log truncated"
-    _require_resize_iter_log = "Deployment of contract which needs more than 10kb of account space needs several"
+    _already_finalized_msg = "Program log: Transaction already finalized"
+    _log_truncated_msg = "Log truncated"
+    _require_resize_iter_msg = "Deployment of contract which needs more than 10kb of account space needs several"
+    _cb_exceeded_msg = "exceeded CUs meter at BPF instruction"
 
     _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
     _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
@@ -56,7 +57,12 @@ class SolTxErrorParser:
             return True
 
         log_list = self._get_log_list()
-        return any(log_rec == self._log_truncated_log for log_rec in log_list)
+        for log_rec in log_list:
+            if log_rec == self._log_truncated_msg:
+                return True
+            elif log_rec.find(self._cb_exceeded_msg) != -1:
+                return True
+        return False
 
     @cached_method
     def check_if_require_resize_iter(self) -> bool:
@@ -65,7 +71,7 @@ class SolTxErrorParser:
                 return True
 
         log_list = self._get_evm_log_list()
-        return any(log_rec.find(self._require_resize_iter_log) != -1 for log_rec in reversed(log_list))
+        return any(log_rec.find(self._require_resize_iter_msg) != -1 for log_rec in reversed(log_list))
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
@@ -79,7 +85,7 @@ class SolTxErrorParser:
     @cached_method
     def check_if_already_finalized(self) -> bool:
         log_list = self._get_evm_log_list()
-        return any(log_rec == self._already_finalized_log for log_rec in log_list)
+        return any(log_rec == self._already_finalized_msg for log_rec in log_list)
 
     @cached_method
     def check_if_blockhash_notfound(self) -> bool:
