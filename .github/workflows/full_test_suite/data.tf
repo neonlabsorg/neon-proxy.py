@@ -60,7 +60,7 @@ data "template_file" "proxy_init" {
     ci_pp_solana_url    = "${var.ci_pp_solana_url}"
     dockerhub_org_name  = "${var.dockerhub_org_name}"
     proxy_image_name    = "${var.proxy_image_name}"
-    DOCKER_USERNAME     = "${var.DOCKER_USERNAME}"
-    DOCKER_PASSWORD     = "${var.DOCKER_PASSWORD}"
+    DOCKER_USERNAME     = "${var.docker_username}"
+    DOCKER_PASSWORD     = "${var.docker_password}"
   }
 }

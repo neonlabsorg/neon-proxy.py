@@ -18,3 +18,11 @@ variable "ci_pp_solana_url" {
 variable "dockerhub_org_name" {
   type = string
 }
+
+variable "docker_username" {
+  type = string
+}
+
+variable "docker_password" {
+  type = string
+}

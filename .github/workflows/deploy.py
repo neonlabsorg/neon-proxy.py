@@ -201,8 +201,8 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
     os.environ["TF_VAR_dockerhub_org_name"] = dockerhub_org_name
     os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
-    os.environ["TF_VAR_DOCKER_USERNAME"] = DOCKER_USERNAME
-    os.environ["TF_VAR_DOCKER_PASSWORD"] = DOCKER_PASSWORD
+    os.environ["TF_VAR_docker_username"] = DOCKER_USERNAME
+    os.environ["TF_VAR_docker_password"] = DOCKER_PASSWORD
     thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
 
     backend_config = {"bucket": TFSTATE_BUCKET,
