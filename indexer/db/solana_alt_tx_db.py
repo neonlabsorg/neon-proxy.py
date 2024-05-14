@@ -6,9 +6,9 @@ from typing_extensions import Self
 
 from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQueryBody
 from common.ethereum.hash import EthTxHash
-from common.neon.transaction_decoder import SolNeonAltIxModel
+from common.neon.transaction_decoder import SolNeonAltTxIxModel
 from common.solana.alt_program import SolAltIxCode
-from common.solana.signature import SolTxSig
+from common.solana.signature import SolTxSig, SolTxSigSlotInfo
 from common.solana.transaction_decoder import SolTxCostModel
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
@@ -83,7 +83,7 @@ class SolAltTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[SolNeonAltIxModel, ...]:
+    ) -> tuple[SolNeonAltTxIxModel, ...]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_query,
@@ -96,14 +96,14 @@ class SolAltTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[tuple[int, SolTxSig], ...]:
+    ) -> tuple[SolTxSigSlotInfo, ...]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_sig_query,
             _ByNeonTxSig(neon_tx_hash.to_string()),
             record_type=_SolBlockTxSig,
         )
-        return tuple([(rec.block_slot, SolTxSig.from_raw(rec.sol_sig)) for rec in rec_list])
+        return tuple([SolTxSigSlotInfo(rec.block_slot, SolTxSig.from_raw(rec.sol_sig)) for rec in rec_list])
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ class _Record:
     neon_sig: str
 
     @classmethod
-    def from_alt_model(cls, sol_alt: SolNeonAltIxModel) -> Self:
+    def from_alt_model(cls, sol_alt: SolNeonAltTxIxModel) -> Self:
         return cls(
             sol_sig=sol_alt.sol_tx_sig.to_string(),
             block_slot=sol_alt.slot,
@@ -136,8 +136,8 @@ class _RecordWithCost(_Record):
     operator: str
     sol_spent: int
 
-    def to_alt_model(self) -> SolNeonAltIxModel:
-        return SolNeonAltIxModel(
+    def to_alt_model(self) -> SolNeonAltTxIxModel:
+        return SolNeonAltTxIxModel(
             sol_tx_sig=self.sol_sig,
             slot=self.block_slot,
             sol_ix_idx=self.idx,
@@ -148,7 +148,7 @@ class _RecordWithCost(_Record):
                 slot=self.block_slot,
                 is_success=self.is_success,
                 sol_signer=self.operator,
-                sol_spent=self.sol_spent,
+                sol_expense=self.sol_spent,
             ),
             alt_ix_code=SolAltIxCode(self.ix_code),
             alt_address=self.alt_address,

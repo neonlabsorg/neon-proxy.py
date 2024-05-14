@@ -7,7 +7,7 @@ from typing_extensions import Self
 from common.db.db_connect import DbConnection, DbTxCtx, DbSql, DbQueryBody, DbSqlParam
 from common.ethereum.hash import EthTxHash
 from common.neon.transaction_decoder import SolNeonTxIxMetaInfo, SolNeonTxIxMetaModel
-from common.solana.signature import SolTxSig
+from common.solana.signature import SolTxSig, SolTxSigSlotInfo
 from common.solana.transaction_decoder import SolTxCostModel
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
@@ -81,7 +81,7 @@ class SolNeonTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[tuple[int, SolTxSig], ...]:
+    ) -> tuple[SolTxSigSlotInfo, ...]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_sig_list_query,
@@ -90,13 +90,13 @@ class SolNeonTxDb(HistoryDbTable):
         )
 
         done_sig_set: set[str] = set()
-        sol_sig_list: list[tuple[int, SolTxSig]] = list()
+        sol_sig_list: list[SolTxSigSlotInfo] = list()
         for rec in rec_list:
             if rec.sol_tx_sig in done_sig_set:
                 continue
 
             done_sig_set.add(rec.sol_tx_sig)
-            sol_sig_list.append((rec.block_slot, SolTxSig.from_raw(rec.sol_tx_sig)))
+            sol_sig_list.append(SolTxSigSlotInfo(rec.block_slot, SolTxSig.from_raw(rec.sol_tx_sig)))
         return tuple(sol_sig_list)
 
     async def get_sol_ix_list_by_neon_tx_hash(
@@ -182,7 +182,7 @@ class _RecordWithCost(_Record):
                 slot=self.block_slot,
                 is_success=self.is_success,
                 sol_signer=self.operator,
-                sol_spent=self.sol_spent,
+                sol_expense=self.sol_spent,
             ),
         )
 

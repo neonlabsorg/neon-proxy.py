@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Union, Annotated, ClassVar
 
 import solders.rpc.responses as _resp
@@ -88,3 +89,9 @@ SolTxSigField = Annotated[
     PlainValidator(SolTxSig.from_raw),
     PlainSerializer(lambda v: v.to_string(), return_type=str),
 ]
+
+
+@dataclass(frozen=True)
+class SolTxSigSlotInfo:
+    slot: int
+    sol_tx_sig: SolTxSig

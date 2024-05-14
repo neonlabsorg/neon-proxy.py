@@ -64,7 +64,7 @@ services:
       POSTGRES_USER: neon-proxy
       POSTGRES_PASSWORD: neon-proxy-pass
       POSTGRES_HOST: postgres
-      DEBUG_CMD_LINE: "YES"
+      DEBUG_CMD_LINE: "NO"
       FUZZ_FAIL_PCT: 0
       GATHER_STATISTICS: "YES"
       MIN_OPERATOR_BALANCE_TO_WARN: 4565760000 # = 913152000 * 5 (5 storage accounts) = 4.56576 SOL
@@ -74,12 +74,13 @@ services:
       # Set to 0 + CONST_GAS_PRICE to 0, if you want 0 gas-price
       MINIMAL_GAS_PRICE: 1
       CONST_GAS_PRICE: 2
+      MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE: 1
       GAS_PRICE_SLIPPAGE: 0.2
       CU_PRIORITY_FEE: 2
       SIMPLE_CU_PRIORITY_FEE: 1
       ENABLE_PRIVATE_API: "NO"
       LOG_FULL_OBJECT_INFO: "NO"
-      LOG_CLEF_FORMAT: "YES"
+      LOG_CLEF_FORMAT: "NO"
       NEON_EVM_PROGRAM: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
       RUST_BACKTRACE: ${RUST_BACKTRACE:-0}
       COMMIT_LEVEL: Confirmed

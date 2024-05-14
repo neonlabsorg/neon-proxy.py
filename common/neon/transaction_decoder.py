@@ -54,7 +54,7 @@ class SolNeonTxIxMetaModel(BaseModel):
         return self.to_string()
 
 
-class SolNeonAltIxModel(BaseModel):
+class SolNeonAltTxIxModel(BaseModel):
     sol_tx_sig: SolTxSigField
     slot: int
     sol_ix_idx: int

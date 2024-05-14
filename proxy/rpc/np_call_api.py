@@ -76,9 +76,9 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
         elif isinstance(raw, EmulNeonCallResp):
             return cls(
                 exitCode=raw.exit_code,
-                externalSolanaCall=raw.external_solana_call,
-                revertBeforeSolanaCall=raw.revert_before_solana_call,
-                revertAfterSolanaCall=raw.revert_after_solana_call,
+                externalSolanaCall=raw.external_sol_call,
+                revertBeforeSolanaCall=raw.revert_before_sol_call,
+                revertAfterSolanaCall=raw.revert_after_sol_call,
                 result=raw.result,
                 numEvmSteps=raw.evm_step_cnt,
                 gasUsed=raw.used_gas,

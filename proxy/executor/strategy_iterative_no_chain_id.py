@@ -1,11 +1,13 @@
+from typing import ClassVar
+
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
-from .strategy_stage_alt import alt_strategy
 from .strategy_iterative_holder import HolderTxStrategy
+from .strategy_stage_alt import alt_strategy
 
 
 class NoChainIdTxStrategy(HolderTxStrategy):
-    name = NeonEvmIxCode.TxStepFromAccountNoChainId.name
+    name: ClassVar[str] = NeonEvmIxCode.TxStepFromAccountNoChainId.name
 
     async def _validate(self) -> bool:
         if self._ctx.has_chain_id:

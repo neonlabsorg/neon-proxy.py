@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Final
 
+import eth_keys
 import rlp
 from eth_hash.auto import keccak
-from eth_keys import keys as neon_keys
-from rlp import Serializable
-from rlp.exceptions import ObjectDeserializationError
 from typing_extensions import Self
 
 from .errors import EthError
@@ -14,7 +12,7 @@ from ..utils.cached import cached_property, cached_method
 from ..utils.format import hex_to_bytes
 
 
-class EthNoChainTx(Serializable):
+class EthNoChainTx(rlp.Serializable):
     nonce: int
     gas_price: int
     gas_limit: int
@@ -36,7 +34,7 @@ class EthNoChainTx(Serializable):
         return rlp.decode(s, cls)
 
 
-class EthTx(Serializable):
+class EthTx(rlp.Serializable):
     nonce: int
     gas_price: int
     gas_limit: int
@@ -63,7 +61,7 @@ class EthTx(Serializable):
     _null_address: Final[bytes] = b"\xff" * 20
 
     def __init__(self, *args, **kwargs):
-        Serializable.__init__(self, *args, **kwargs)
+        rlp.Serializable.__init__(self, *args, **kwargs)
 
     @classmethod
     def from_raw(cls, s: bytes | bytearray | str) -> Self:
@@ -74,8 +72,8 @@ class EthTx(Serializable):
 
         try:
             return rlp.decode(s, cls)
-        except ObjectDeserializationError as err:
-            if (not err.list_exception) or (len(err.list_exception.serial) != 6):
+        except rlp.exceptions.ObjectDeserializationError as exc:
+            if (not exc.list_exception) or (len(exc.list_exception.serial) != 6):
                 raise
 
             tx = EthNoChainTx.from_raw(s)
@@ -136,8 +134,8 @@ class EthTx(Serializable):
             )
         return rlp.encode(obj)
 
-    def _sig_impl(self) -> neon_keys.Signature:
-        return neon_keys.Signature(vrs=[1 if self.v % 2 == 0 else 0, self.r, self.s])
+    def _sig_impl(self) -> eth_keys.keys.Signature:
+        return eth_keys.keys.Signature(vrs=[1 if self.v % 2 == 0 else 0, self.r, self.s])
 
     @cached_property
     def from_address(self) -> bytes:
@@ -154,9 +152,12 @@ class EthTx(Serializable):
         if self.r >= self._secpk1n or self.s >= self._secpk1n or self.r == 0 or self.s == 0:
             raise EthError(f"Invalid signature values: r={self.r} s={self.s}!")
 
-        sig_hash = keccak(self._unsigned_msg_impl())
-        sig = self._sig_impl()
-        pub = sig.recover_public_key_from_msg_hash(sig_hash)
+        try:
+            sig_hash = keccak(self._unsigned_msg_impl())
+            sig = self._sig_impl()
+            pub = sig.recover_public_key_from_msg_hash(sig_hash)
+        except (BaseException,):
+            raise EthError("Invalid signature")
 
         return pub.to_canonical_address()
 

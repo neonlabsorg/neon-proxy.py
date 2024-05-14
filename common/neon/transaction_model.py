@@ -33,7 +33,7 @@ class NeonTxModel(BaseModel):
     def default(cls) -> Self:
         return cls(
             tx_type=0,
-            tx_sig=EthTxHash.default(),
+            neon_tx_hash=EthTxHash.default(),
             from_address=EthAddress.default(),
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
@@ -49,13 +49,13 @@ class NeonTxModel(BaseModel):
         )
 
     @classmethod
-    def from_raw(cls, data: _RawNeonTxModel) -> Self:
+    def from_raw(cls, data: _RawNeonTxModel, *, raise_exception=False) -> Self:
         if isinstance(data, cls):
             return data
         elif data is None:
             return cls.default()
         elif isinstance(data, (str, bytes, bytearray)):
-            return cls._from_rlp(data)
+            return cls._from_rlp(data, raise_exception)
         elif isinstance(data, EthTx):
             return cls._from_eth_tx(data)
         elif isinstance(data, dict):
@@ -66,16 +66,19 @@ class NeonTxModel(BaseModel):
         raise ValueError(f"Unsupported input type: {type(data).__name__}")
 
     @classmethod
-    def _from_rlp(cls, data: str | bytes | bytearray) -> Self:
+    def _from_rlp(cls, data: str | bytes | bytearray, raise_exception: bool) -> Self:
         try:
             tx = EthTx.from_raw(data)
             return cls._from_eth_tx(tx)
         except Exception as exc:
+            if raise_exception:
+                raise
+
             return cls(
                 error=str(exc),
                 #
                 tx_type=0,
-                tx_sig=EthTxHash.default(),
+                neon_tx_hash=EthTxHash.default(),
                 from_address=EthAddress.default(),
                 to_address=EthAddress.default(),
                 contract=EthAddress.default(),
@@ -94,9 +97,9 @@ class NeonTxModel(BaseModel):
         return cls(
             tx_type=0,
             neon_tx_hash=tx.neon_tx_hash,
-            from_address=EthAddress.from_raw(tx.from_address),
-            to_address=EthAddress.from_raw(tx.to_address),
-            contract=EthAddress.from_raw(tx.contract),
+            from_address=tx.from_address,
+            to_address=tx.to_address,
+            contract=tx.contract,
             v=tx.v,
             r=tx.r,
             s=tx.s,
@@ -104,7 +107,7 @@ class NeonTxModel(BaseModel):
             gas_price=tx.gas_price,
             gas_limit=tx.gas_limit,
             value=tx.value,
-            call_data=EthBinStr.from_raw(tx.call_data),
+            call_data=tx.call_data,
             error=None,
         )
 

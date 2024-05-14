@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+from typing import ClassVar
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
@@ -33,7 +34,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class NeonTxExecutor(ExecutorComponent):
-    _tx_strategy_list = [
+    _tx_strategy_list: ClassVar[list[type[BaseTxStrategy]]] = [
         # single iteration
         SimpleTxStrategy,
         #     + alt
@@ -65,7 +66,7 @@ class NeonTxExecutor(ExecutorComponent):
         AltSimpleHolderTxSolanaCallStrategy,
     ]
 
-    _stuck_tx_strategy_list = [
+    _stuck_tx_strategy_list: ClassVar[list[type[BaseTxStrategy]]] = [
         # multi-iteration
         #     + holder
         HolderTxStrategy,

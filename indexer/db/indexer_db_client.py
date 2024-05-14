@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Final
 
 from common.config.config import Config
@@ -11,9 +10,9 @@ from common.ethereum.hash import EthBlockHash, EthAddress, EthHash32, EthTxHash
 from common.neon.account import NeonAccount
 from common.neon.block import NeonBlockHdrModel
 from common.neon.evm_log_decoder import NeonTxEventModel
-from common.neon.transaction_decoder import SolNeonTxIxMetaModel, SolNeonAltIxModel
+from common.neon.transaction_decoder import SolNeonTxIxMetaModel, SolNeonAltTxIxModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
-from common.solana.signature import SolTxSig
+from common.solana.signature import SolTxSigSlotInfo
 from .indexer_db import IndexerDb
 from .neon_tx_db import NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
@@ -23,8 +22,6 @@ from .solana_neon_tx_db import SolNeonTxDb
 from .solana_tx_cost_db import SolTxCostDb
 from .stuck_alt_db import StuckNeonAltDb
 from .stuck_neon_tx_db import StuckNeonTxDb
-
-_LOG = logging.getLogger(__name__)
 
 
 class IndexerDbClient:
@@ -129,16 +126,16 @@ class IndexerDbClient:
     async def get_tx_by_slot_tx_idx(self, slot: int, tx_idx: int) -> NeonTxMetaModel | None:
         return await self._neon_tx_db.get_tx_by_slot_tx_idx(None, slot, tx_idx)
 
-    async def get_sol_tx_sig_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[tuple[int, SolTxSig], ...]:
+    async def get_sol_tx_sig_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolTxSigSlotInfo, ...]:
         return await self._sol_neon_tx_db.get_sol_tx_sig_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_alt_sig_list_by_neon_sig(self, neon_tx_hash: EthTxHash) -> tuple[tuple[int, SolTxSig], ...]:
+    async def get_alt_sig_list_by_neon_sig(self, neon_tx_hash: EthTxHash) -> tuple[SolTxSigSlotInfo, ...]:
         return await self._sol_alt_tx_db.get_alt_sig_list_by_neon_tx_hash(None, neon_tx_hash)
 
     async def get_sol_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolNeonTxIxMetaModel, ...]:
         return await self._sol_neon_tx_db.get_sol_ix_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_alt_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolNeonAltIxModel, ...]:
+    async def get_alt_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolNeonAltTxIxModel, ...]:
         return await self._sol_alt_tx_db.get_alt_ix_list_by_neon_tx_hash(None, neon_tx_hash)
 
     async def get_stuck_neon_tx_list(self) -> tuple[int | None, tuple[dict, ...]]:

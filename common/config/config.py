@@ -129,7 +129,7 @@ class Config:
     cu_price_name: Final[str] = "CU_PRIORITY_FEE"
     simple_cu_price_name: Final[str] = "SIMPLE_CU_PRIORITY_FEE"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
-    min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WO_CHAINID_GAS_PRICE"
+    min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
     # Operator resources
     holder_size_name: Final[str] = "HOLDER_SIZE"

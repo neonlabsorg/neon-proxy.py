@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from typing import Sequence, ClassVar
 
 from common.neon.neon_program import NeonProg
 from common.solana.alt_info import SolAltInfo
@@ -122,7 +122,7 @@ class AltTxPrepStage(BaseTxPrepStage):
 
 def alt_strategy(cls):
     class AltStrategy(cls):
-        name = "ALT+" + cls.name
+        name: ClassVar[str] = "ALT+" + cls.name
 
         def __init__(self, *args, **kwargs) -> None:
             cls.__init__(self, *args, **kwargs)

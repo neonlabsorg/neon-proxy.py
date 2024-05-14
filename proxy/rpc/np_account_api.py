@@ -7,7 +7,7 @@ from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommit
-from common.ethereum.hash import EthAddressField, EthAddress, EthZeroHash32Field
+from common.ethereum.hash import EthAddress, EthZeroHash32Field, EthNotNoneAddressField
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.account import NeonAccount
@@ -22,7 +22,7 @@ _LOG = logging.getLogger(__name__)
 
 class _NeonRpcAccountResp(BaseJsonRpcModel):
     status: str
-    address: EthAddressField
+    address: EthNotNoneAddressField
     transactionCount: HexUIntField
     balance: HexUIntField
     chainId: HexUIntField
@@ -51,7 +51,7 @@ class NpAccountApi(NeonProxyApi):
     async def get_tx_cnt(
         self,
         ctx: HttpRequestCtx,
-        address: EthAddressField,
+        address: EthNotNoneAddressField,
         block_tag: RpcBlockRequest,
     ) -> HexUIntField:
         block = await self.get_block_by_tag(block_tag)
@@ -70,7 +70,7 @@ class NpAccountApi(NeonProxyApi):
     async def get_balance(
         self,
         ctx: HttpRequestCtx,
-        address: EthAddressField,
+        address: EthNotNoneAddressField,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
         chain_id = self.get_chain_id(ctx)
@@ -88,7 +88,7 @@ class NpAccountApi(NeonProxyApi):
     async def get_code(
         self,
         ctx: HttpRequestCtx,
-        address: EthAddressField,
+        address: EthNotNoneAddressField,
         block_tag: RpcBlockRequest,
     ) -> EthBinStrField:
         block = await self.get_block_by_tag(block_tag)
@@ -100,7 +100,7 @@ class NpAccountApi(NeonProxyApi):
     @NeonProxyApi.method(name="eth_getStorageAt")
     async def get_storage_at(
         self,
-        address: EthAddressField,
+        address: EthNotNoneAddressField,
         position: HexUIntField,
         block_tag: RpcBlockRequest,
     ) -> EthZeroHash32Field:
@@ -111,7 +111,7 @@ class NpAccountApi(NeonProxyApi):
     async def get_neon_account(
         self,
         ctx: HttpRequestCtx,
-        address: EthAddressField,
+        address: EthNotNoneAddressField,
         block_tag: RpcBlockRequest,
     ) -> _NeonRpcAccountResp:
         block = await self.get_block_by_tag(block_tag)

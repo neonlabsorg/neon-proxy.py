@@ -319,11 +319,12 @@ class NeonExecTxCtx:
         return iter_cnt
 
     @property
-    def has_external_solana_call(self) -> bool:
-        assert not self.is_stuck_tx
-        assert self._emulator_resp
+    def has_external_sol_call(self) -> bool:
+        if self.is_stuck_tx:
+            return False
 
-        return self._emulator_resp.external_solana_call
+        assert self._emulator_resp
+        return self._emulator_resp.external_sol_call
 
     @property
     def alt_id_list(self) -> tuple[SolAltID, ...]:

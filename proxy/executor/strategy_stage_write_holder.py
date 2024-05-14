@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon_rpc.api import HolderAccountStatus
 from common.solana.transaction import SolTx
@@ -6,7 +8,7 @@ from .strategy_base import BaseTxPrepStage
 
 
 class WriteHolderTxPrepStage(BaseTxPrepStage):
-    name = NeonEvmIxCode.HolderWrite.name
+    name: ClassVar[str] = NeonEvmIxCode.HolderWrite.name
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)

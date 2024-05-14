@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
 from .strategy_simple_solana_call import SimpleTxSolanaCallStrategy
@@ -6,7 +8,7 @@ from .strategy_stage_write_holder import WriteHolderTxPrepStage
 
 
 class SimpleHolderTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
-    name = NeonEvmIxCode.TxExecFromAccountSolanaCall.name
+    name: ClassVar[str] = NeonEvmIxCode.TxExecFromAccountSolanaCall.name
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
