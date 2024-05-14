@@ -213,8 +213,10 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
     return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=False)
     click.echo(f"stdout: {stdout}")
     with open(f"terraform.log", "w") as file:
-        file.write(stdout)
-        file.write(stderr)
+        if stdout:
+            file.write(stdout)
+        if stderr:
+            file.write(stderr)
     if return_code != 0:
         print("Terraform apply failed:", stderr)
         print("Terraform infrastructure is not built correctly")
