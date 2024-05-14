@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import ClassVar, Final, Annotated, Literal
+from typing import ClassVar, Final, Annotated, Literal, Any
 
 from pydantic import Field, PlainValidator
 from strenum import StrEnum
@@ -18,18 +18,19 @@ from common.ethereum.hash import (
     EthHash32Field,
     EthZeroAddressField,
     EthAddress,
+    EthNotNoneAddressField,
 )
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.account import NeonAccount
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonEvmIxCode
-from common.neon.transaction_decoder import SolNeonAltIxModel, SolNeonTxIxMetaModel
+from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
-from common.solana.signature import SolTxSigField, SolTxSig
+from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, HexUInt256Field, HexUInt8Field, Base58Field
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
@@ -157,14 +158,14 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
 
 class _RpcNeonCostModel(BaseJsonRpcModel):
     neonOperatorAddress: SolPubKeyField
-    solanaLamportsSpent: int
+    solanaLamportExpense: int
     neonAlanIncome: int
 
 
 @dataclass
 class _RpcNeonCostDraft:
     neonOperatorAddress: SolPubKeyField
-    solanaLamportsSpent: int = 0
+    solanaLamportExpense: int = 0
     neonAlanIncome: int = 0
 
     def to_clean_copy(self) -> _RpcNeonCostModel:
@@ -178,13 +179,13 @@ class _RpcNeonIxModel(BaseJsonRpcModel):
     svmHeapSizeLimit: int
     svmCyclesLimit: int
     svmCyclesUsed: int
-    neonInstructionCode: HexUIntField
+    neonInstructionCode: int
     neonInstructionName: str
     neonEvmSteps: int
     neonTotalEvmSteps: int
     neonGasUsed: int
     neonTotalGasUsed: int
-    neonAlanIncome: int
+    neonTransactionFee: int
     neonMiner: EthAddressField
     neonLogs: tuple[RpcNeonTxEventModel, ...]
 
@@ -199,7 +200,7 @@ class _RpcNeonIxModel(BaseJsonRpcModel):
             if (event.sol_tx_sig, event.sol_ix_idx, (event.sol_inner_ix_idx or 0))
             == (ix_meta.sol_tx_sig, ix_meta.sol_ix_idx, (ix_meta.sol_inner_ix_idx or 0))
         ]
-        neon_income = ix_meta.neon_gas_used * tx.gas_price
+        neon_tx_fee = ix_meta.neon_gas_used * tx.gas_price
 
         return cls(
             solanaInstructionIndex=ix_meta.sol_ix_idx,
@@ -213,7 +214,7 @@ class _RpcNeonIxModel(BaseJsonRpcModel):
             neonTotalEvmSteps=ix_meta.neon_total_step_cnt,
             neonGasUsed=ix_meta.neon_gas_used,
             neonTotalGasUsed=ix_meta.neon_total_gas_used,
-            neonAlanIncome=neon_income,
+            neonTransactionFee=neon_tx_fee,
             neonMiner=ix_meta.neon_tx_ix_miner,
             neonLogs=tuple(log_list),
         )
@@ -228,7 +229,7 @@ class _RpcAltIxModel(BaseJsonRpcModel):
     lookupTableAddress: SolPubKeyField
 
     @classmethod
-    def from_raw(cls, raw: SolNeonAltIxModel) -> Self:
+    def from_raw(cls, raw: SolNeonAltTxIxModel) -> Self:
         return cls(
             solanaInstructionIndex=raw.sol_ix_idx,
             solanaInnerInstructionIndex=raw.sol_inner_ix_idx,
@@ -242,7 +243,7 @@ class _RpcSolReceiptModel(BaseJsonRpcModel):
     solanaTransactionSignature: SolTxSigField
     solanaTransactionIsSuccess: bool
     solanaBlockSlot: int
-    solanaLamportsSpent: int
+    solanaLamportExpense: int
     neonOperatorAddress: SolPubKeyField
     solanaInstructions: list[_RpcNeonIxModel | _RpcAltIxModel]
 
@@ -252,17 +253,17 @@ class _RpcSolReceiptDraft:
     solanaTransactionSignature: SolTxSig
     solanaTransactionIsSuccess: bool
     solanaBlockSlot: int
-    solanaLamportsSpent: int
+    solanaLamportExpense: int
     neonOperatorAddress: SolPubKey
     solanaInstructions: list[_RpcNeonIxModel | _RpcAltIxModel]
 
     @classmethod
-    def from_raw(cls, raw: SolNeonAltIxModel | SolNeonTxIxMetaModel) -> Self:
+    def from_raw(cls, raw: SolNeonAltTxIxModel | SolNeonTxIxMetaModel) -> Self:
         return cls(
             solanaTransactionSignature=raw.sol_tx_sig,
             solanaTransactionIsSuccess=raw.is_success,
             solanaBlockSlot=raw.slot,
-            solanaLamportsSpent=raw.sol_tx_cost.sol_spent,
+            solanaLamportExpense=raw.sol_tx_cost.sol_expense,
             neonOperatorAddress=raw.sol_tx_cost.sol_signer,
             solanaInstructions=list(),
         )
@@ -288,8 +289,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
         neon_tx_meta: NeonTxMetaModel,
         *,
         detail: _RpcNeonTxReceiptDetail = _RpcNeonTxReceiptDetail.Eth,
-        sol_meta_list: tuple[SolNeonTxIxMetaModel, ...] = tuple(),
-        alt_meta_list: tuple[SolNeonAltIxModel, ...] = tuple(),
+        sol_meta_list: tuple[SolNeonTxIxMetaModel | SolNeonAltTxIxModel, ...] = tuple(),
     ) -> _RpcEthTxReceiptResp | Self:
         if detail == _RpcNeonTxReceiptDetail.Eth:
             return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
@@ -301,7 +301,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
             sol_tx_list, neon_cost_list = tuple(), tuple()
         else:
             log_list = tuple()
-            sol_tx_list, neon_cost_list = cls._to_sol_receipt_list(neon_tx_meta, sol_meta_list, alt_meta_list)
+            sol_tx_list, neon_cost_list = cls._to_sol_receipt_list(neon_tx_meta, sol_meta_list)
 
         return cls(
             **cls._to_dict(neon_tx_meta),
@@ -320,15 +320,14 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
     @staticmethod
     def _to_sol_receipt_list(
         neon_tx_meta: NeonTxMetaModel,
-        sol_meta_list: tuple[SolNeonTxIxMetaModel, ...],
-        alt_meta_list: tuple[SolNeonAltIxModel, ...],
+        sol_meta_list: tuple[SolNeonTxIxMetaModel | SolNeonAltTxIxModel, ...],
     ) -> tuple[tuple[_RpcSolReceiptModel, ...], tuple[_RpcNeonCostModel, ...]]:
         rcpt_list: list[_RpcSolReceiptModel] = list()
         cost_dict: dict[SolPubKey, _RpcNeonCostDraft] = dict()
         cost: _RpcNeonCostDraft | None = None
         rcpt: _RpcSolReceiptDraft | None = None
 
-        def _update_list(_ix_meta: SolNeonTxIxMetaModel | SolNeonAltIxModel) -> None:
+        def _update_list(_ix_meta: SolNeonTxIxMetaModel | SolNeonAltTxIxModel) -> None:
             nonlocal rcpt
             nonlocal cost
 
@@ -344,37 +343,17 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
                     rcpt_cost = _RpcNeonCostDraft(sol_signer)
                     cost_dict[sol_signer] = rcpt_cost
 
-                rcpt_cost.solanaLamportsSpent += _ix_meta.sol_tx_cost.sol_spent
+                rcpt_cost.solanaLamportExpense += _ix_meta.sol_tx_cost.sol_expense
                 cost = rcpt_cost
 
-        def _add_neon_ix(_ix_meta: SolNeonTxIxMetaModel) -> None:
-            _update_list(_ix_meta)
-            ix = _RpcNeonIxModel.from_raw(neon_tx_meta, _ix_meta)
-            rcpt.solanaInstructions.append(ix)
-            cost.neonAlanIncome += ix.neonAlanIncome
-
-        # logic of ordering is the same with neon_getSolanaTransactionByNeonTransaction
-
-        last_pos = -2 if len(sol_meta_list) > 1 else -1
-        sol_meta_iter, last_meta_list = iter(sol_meta_list[:last_pos]), sol_meta_list[last_pos:]
-        alt_meta_iter = iter(alt_meta_list)
-
-        sol_meta, alt_meta = next(sol_meta_iter, None), next(alt_meta_iter, None)
-        while sol_meta or alt_meta:
-            if alt_meta:
-                if sol_meta and sol_meta.slot < alt_meta.slot:
-                    _add_neon_ix(sol_meta)
-                    sol_meta = next(sol_meta_iter, None)
-                else:
-                    _update_list(alt_meta)
-                    rcpt.solanaInstructions.append(_RpcAltIxModel.from_raw(alt_meta))
-                    alt_meta = next(alt_meta_iter, None)
-            elif sol_meta:
-                _add_neon_ix(sol_meta)
-                sol_meta = next(sol_meta_iter, None)
-
-        for sol_meta in last_meta_list:
-            _add_neon_ix(sol_meta)
+        for sol_meta in sol_meta_list:
+            _update_list(sol_meta)
+            if isinstance(sol_meta, SolNeonAltTxIxModel):
+                rcpt.solanaInstructions.append(_RpcAltIxModel.from_raw(sol_meta))
+            else:
+                ix_meta = _RpcNeonIxModel.from_raw(neon_tx_meta, sol_meta)
+                rcpt.solanaInstructions.append(ix_meta)
+                cost.neonAlanIncome += ix_meta.neonTransactionFee
 
         if rcpt:
             rcpt_list.append(rcpt.to_clean_copy())
@@ -465,9 +444,10 @@ class NpBlockTxApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::BlockTransaction"
 
     @NeonProxyApi.method(name="eth_getTransactionByHash")
-    async def get_tx_by_hash(self, ctx: HttpRequestCtx, neon_tx_hash: EthTxHashField) -> _RpcTxResp | None:
-        if not (meta := await self._db.get_tx_by_neon_tx_hash(neon_tx_hash)):
-            if not (meta := await self._mp_client.get_tx_by_hash(self.get_ctx_id(ctx), neon_tx_hash)):
+    async def get_tx_by_hash(self, ctx: HttpRequestCtx, transaction_hash: EthTxHashField) -> _RpcTxResp | None:
+        tx_hash = transaction_hash
+        if not (meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
+            if not (meta := await self._mp_client.get_tx_by_hash(self.get_ctx_id(ctx), tx_hash)):
                 return None
         return _RpcTxResp.from_raw(meta)
 
@@ -475,7 +455,7 @@ class NpBlockTxApi(NeonProxyApi):
     async def get_tx_by_sender_nonce(
         self,
         ctx: HttpRequestCtx,
-        sender: EthAddressField,
+        sender: EthNotNoneAddressField,
         nonce: HexUIntField,
     ) -> _RpcTxResp | None:
         neon_acct = NeonAccount.from_raw(sender, self.get_chain_id(ctx))
@@ -486,8 +466,9 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcTxResp.from_raw(meta)
 
     @NeonProxyApi.method(name="eth_getTransactionReceipt")
-    async def get_tx_receipt(self, neon_tx_hash: EthTxHashField) -> _RpcEthTxReceiptResp | None:
-        if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(neon_tx_hash)):
+    async def get_tx_receipt(self, transaction_hash: EthTxHashField) -> _RpcEthTxReceiptResp | None:
+        tx_hash = transaction_hash
+        if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             return None
         return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
 
@@ -559,47 +540,20 @@ class NpBlockTxApi(NeonProxyApi):
         return await self._db.get_earliest_slot()
 
     @NeonProxyApi.method(name="neon_getSolanaTransactionByNeonTransaction")
-    async def get_solana_tx_list(self, tx_hash: EthTxHashField, full: bool = False) -> list[dict | SolTxSigField]:
+    async def get_solana_tx_list(
+        self,
+        transaction_hash: EthTxHashField,
+        full: bool = False,
+    ) -> list[dict | SolTxSigField]:
+        tx_hash = transaction_hash
         alt_sig_list = await self._db.get_alt_sig_list_by_neon_sig(tx_hash)
-        neon_sig_list = await self._db.get_sol_tx_sig_list_by_neon_tx_hash(tx_hash)
+        sol_sig_list = await self._db.get_sol_tx_sig_list_by_neon_tx_hash(tx_hash)
 
-        if not neon_sig_list:
+        if not sol_sig_list:
             return list()
 
-        last_pos = -2 if len(neon_sig_list) > 1 else -1
-        # last 2 signatures (Neon-Receipt or (Solana-Fail + Neon-Cancel)) should be at the end of the list,
-        #   because it simplifies the user experience
-        neon_sig_iter, last_sig_list = iter(neon_sig_list[:last_pos]), neon_sig_list[last_pos:]
-        alt_sig_iter = iter(alt_sig_list)
-
-        # Result list is sorted by slot :
-        #   1. Prepare transactions
-        #      - ALT transactions (Create and Extend)
-        #      - Neon transaction (WriteToHolder)
-        #   2. Neon execution
-        #   3. ALT transaction
-        #      - Deactivate
-        #      - Close
-        #   4. Finalization
-        #      - Neon-Receipt
-        #      - (or) Solana-Fail + Neon-Cancel
-
-        sig_list: list[SolTxSig] = list()
-        neon_sig, alt_sig = next(neon_sig_iter, None), next(alt_sig_iter, None)
-        while neon_sig or alt_sig:
-            if alt_sig:
-                if neon_sig and neon_sig[0] < alt_sig[0]:
-                    sig_list.append(neon_sig[1])
-                    neon_sig = next(neon_sig_iter, None)
-                else:
-                    sig_list.append(alt_sig[1])
-                    alt_sig = next(alt_sig_iter, None)
-            elif neon_sig:
-                sig_list.append(neon_sig[1])
-                neon_sig = next(neon_sig_iter, None)
-
-        # Last step: add Neon-Receipt or (Solana-Fail + Neon-Cancel)
-        sig_list.extend(map(lambda x: x[1], last_sig_list))
+        sig_list: tuple[SolTxSigSlotInfo, ...] = self._sort_alt_sol_tx_list(alt_sig_list, sol_sig_list)
+        sig_list: list[SolTxSig] = list(map(lambda x: x.sol_tx_sig, sig_list))
         if not full:
             return sig_list
 
@@ -622,20 +576,57 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_getTransactionReceipt")
     async def get_neon_tx_receipt(
         self,
-        neon_tx_hash: EthTxHashField,
+        transaction_hash: EthTxHashField,
         detail: _RpcNeonTxReceiptDetailField = _RpcNeonTxReceiptDetail.SolTxList,
     ) -> _RpcNeonTxReceiptResp | _RpcEthTxReceiptResp | None:
-        if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(neon_tx_hash)):
+        tx_hash = transaction_hash
+        if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             return None
 
-        alt_meta_list: tuple[SolNeonAltIxModel, ...] = tuple()
-        sol_meta_list: tuple[SolNeonTxIxMetaModel, ...] = tuple()
+        meta_list: tuple[SolNeonTxIxMetaModel | SolNeonAltTxIxModel, ...] = tuple()
         if detail == _RpcNeonTxReceiptDetail.SolTxList:
-            alt_meta_list = await self._db.get_alt_ix_list_by_neon_tx_hash(neon_tx_hash)
-            sol_meta_list = await self._db.get_sol_ix_list_by_neon_tx_hash(neon_tx_hash)
-        return _RpcNeonTxReceiptResp.from_raw(
-            neon_tx_meta,
-            detail=detail,
-            alt_meta_list=alt_meta_list,
-            sol_meta_list=sol_meta_list,
-        )
+            alt_meta_list = await self._db.get_alt_ix_list_by_neon_tx_hash(tx_hash)
+            sol_meta_list = await self._db.get_sol_ix_list_by_neon_tx_hash(tx_hash)
+            if sol_meta_list:
+                meta_list = self._sort_alt_sol_tx_list(alt_meta_list, sol_meta_list)
+
+        return _RpcNeonTxReceiptResp.from_raw(neon_tx_meta, detail=detail, sol_meta_list=meta_list)
+
+    @staticmethod
+    def _sort_alt_sol_tx_list(alt_meta_list, sol_meta_list) -> tuple[Any, ...]:
+        # last 2 signatures (Neon-Receipt or (Solana-Fail + Neon-Cancel)) should be at the end of the list,
+        #   because it simplifies the user experience
+        last_pos = -2 if len(sol_meta_list) > 1 else -1
+        sol_meta_iter, last_meta_list = iter(sol_meta_list[:last_pos]), sol_meta_list[last_pos:]
+
+        alt_meta_iter = iter(alt_meta_list)
+
+        # The result list is sorted by a slot :
+        #   1. Prepare transactions
+        #      - ALT transactions (Create and Extend)
+        #      - Neon transaction (WriteToHolder)
+        #   2. Neon execution
+        #   3. ALT transaction
+        #      - Deactivate
+        #      - Close
+        #   4. Finalization
+        #      - Neon-Receipt
+        #      - (or) Solana-Fail + Neon-Cancel
+
+        result_list = list()
+        sol_meta, alt_meta = next(sol_meta_iter, None), next(alt_meta_iter, None)
+        while sol_meta or alt_meta:
+            if alt_meta:
+                if sol_meta and sol_meta.slot < alt_meta.slot:
+                    result_list.append(sol_meta)
+                    sol_meta = next(sol_meta_iter, None)
+                else:
+                    result_list.append(alt_meta)
+                    alt_meta = next(alt_meta_iter, None)
+            elif sol_meta:
+                result_list.append(sol_meta)
+                sol_meta = next(sol_meta_iter, None)
+
+        # Last step: add Neon-Receipt or (Solana-Fail + Neon-Cancel)
+        result_list.extend(last_meta_list)
+        return tuple(result_list)

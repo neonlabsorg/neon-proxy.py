@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Sequence, Final
+from typing import Sequence, Final, ClassVar
 
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo, EmulSolTxMetaModel
@@ -42,7 +42,7 @@ class BaseTxPrepStage(abc.ABC):
 
 
 class BaseTxStrategy(abc.ABC):
-    name = "UNKNOWN STRATEGY"
+    name: ClassVar[str] = "UNKNOWN STRATEGY"
 
     def __init__(self, ctx: NeonExecTxCtx) -> None:
         self._ctx = ctx
@@ -137,13 +137,13 @@ class BaseTxStrategy(abc.ABC):
         return False
 
     def _validate_no_sol_call(self) -> bool:
-        if not self._ctx.has_external_solana_call:
+        if not self._ctx.has_external_sol_call:
             return True
         self._validation_error_msg = "Has external Solana call"
         return False
 
     def _validate_has_sol_call(self) -> bool:
-        if self._ctx.has_external_solana_call:
+        if self._ctx.has_external_sol_call:
             return True
         self._validation_error_msg = "Doesn't have external Solana call"
         return False

@@ -565,9 +565,9 @@ class EmulAccountMetaModel(BaseModel):
 
 class EmulNeonCallResp(BaseModel):
     exit_code: EmulNeonCallExitCodeField = Field(validation_alias="exit_status")
-    external_solana_call: bool
-    revert_before_solana_call: bool = Field(validation_alias="reverts_before_solana_calls")
-    revert_after_solana_call: bool = Field(validation_alias="reverts_after_solana_calls")
+    external_sol_call: bool = Field(validation_alias="external_solana_call")
+    revert_before_sol_call: bool = Field(validation_alias="reverts_before_solana_calls")
+    revert_after_sol_call: bool = Field(validation_alias="reverts_after_solana_calls")
 
     result: EthBinStrField
     evm_step_cnt: int = Field(validation_alias="steps_executed")

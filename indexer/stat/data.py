@@ -11,13 +11,13 @@ class NeonTxStat(BaseModel):
     completed_neon_tx_cnt: int
     canceled_neon_tx_cnt: int
     sol_tx_cnt: int
-    sol_spent: int
-    token_income: int
+    sol_expense: int
+    neon_tx_fee: int
     neon_step_cnt_limit: int
     cu_limit: int
 
-    op_sol_spent: int
-    op_token_income: int
+    op_sol_expense: int
+    op_neon_income: int
     op_completed_neon_tx_cnt: int
     op_canceled_neon_tx_cnt: int
 

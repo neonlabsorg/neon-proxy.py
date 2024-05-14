@@ -11,6 +11,7 @@ from typing import Any, Final
 from .log_level import get_core_api_log_level
 from ..config.config import Config
 from ..config.utils import LogMsgFilter
+from ..neon.neon_program import NeonProg
 from ..utils.json_logger import log_msg
 
 _LOG = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class _Server:
             SOLANA_URL=self._solana_url,
             NEON_API_LISTENER_ADDR=self._host,
             COMMITMENT="recent",
+            EVM_LOADER=str(NeonProg.ID),
             NEON_DB_CLICKHOUSE_URLS=";".join(self._cfg.ch_dsn_list),
             SOLANA_KEY_FOR_CONFIG=self._cfg.sol_key_for_evm_cfg.to_string(),
         )

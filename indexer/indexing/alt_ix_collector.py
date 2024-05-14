@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 
 from common.config.config import Config
-from common.neon.transaction_decoder import SolNeonAltIxModel
+from common.neon.transaction_decoder import SolNeonAltTxIxModel
 from common.solana.alt_program import SolAltProg, SolAltIxCode
 from common.solana.commit_level import SolCommit
 from common.solana.signature import SolTxSig
@@ -82,7 +82,7 @@ class SolAltTxIxCollector:
     def _has_done_in_alt_ix(ctx: _Ctx, tx: SolTxMetaInfo, tx_ix: SolTxIxMetaInfo) -> bool:
         if tx_ix.prog_id != SolAltProg.ID:
             return False
-        elif not (alt_ix_info := SolNeonAltIxModel.from_raw(tx, tx_ix, ctx.alt_info.neon_tx_hash)):
+        elif not (alt_ix_info := SolNeonAltTxIxModel.from_raw(tx, tx_ix, ctx.alt_info.neon_tx_hash)):
             return False
 
         ctx.neon_block.add_alt_ix(ctx.alt_info, alt_ix_info)

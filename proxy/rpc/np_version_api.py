@@ -26,7 +26,7 @@ class _RpcNeonEvmParamResp(BaseJsonRpcModel):
     neonAccountSeedVersion: int | None
     neonMaxEvmStepsInLastIteration: int | None
     neonMinEvmStepsInIteration: int | None
-    neonGasLimitMultiplierNoChainId: int | None
+    neonGasLimitMultiplierWithoutChainId: int | None
     neonHolderMessageSize: int | None
     neonPaymentToTreasury: int | None
     neonStorageEntriesInContractAccount: int | None
@@ -55,14 +55,9 @@ class NpVersionApi(NeonProxyApi):
         evm_cfg = await self.get_evm_cfg()
         return evm_cfg.package_version
 
-    @NeonProxyApi.method(name=["neon_proxyVersion"])
+    @NeonProxyApi.method(name=["neon_proxyVersion", "neon_proxy_version"])
     def neon_proxy_version(self) -> str:
         return NEON_PROXY_PKG_VER
-
-    @NeonProxyApi.method(name=["neon_proxy_version"])
-    def neon_proxy_version(self) -> str:
-        # Deprecated version
-        return "N" + NEON_PROXY_PKG_VER[1:].lower()
 
     @NeonProxyApi.method(name="neon_solanaVersion")
     async def neon_solana_version(self) -> str:
@@ -83,9 +78,9 @@ class NpVersionApi(NeonProxyApi):
         return self.get_chain_id(ctx)
 
     @NeonProxyApi.method(name="net_version")
-    async def get_net_version(self) -> HexUIntField:
+    async def get_net_version(self) -> str:
         gas_price = await self._server.get_gas_price()
-        return gas_price.default_token.chain_id
+        return str(gas_price.default_token.chain_id)
 
     @NeonProxyApi.method(name="neon_getEvmParams")
     async def get_neon_evm_param(self) -> _RpcNeonEvmParamResp:
@@ -100,7 +95,7 @@ class NpVersionApi(NeonProxyApi):
             neonAccountSeedVersion=_get_int_param("NEON_ACCOUNT_SEED_VERSION"),
             neonMaxEvmStepsInLastIteration=_get_int_param("NEON_EVM_STEPS_LAST_ITERATION_MAX"),
             neonMinEvmStepsInIteration=evm_cfg.evm_step_cnt,
-            neonGasLimitMultiplierNoChainId=evm_cfg.gas_limit_multiplier_wo_chain_id,
+            neonGasLimitMultiplierWithoutChainId=evm_cfg.gas_limit_multiplier_wo_chain_id,
             neonHolderMessageSize=evm_cfg.holder_msg_size,
             neonPaymentToTreasury=_get_int_param("NEON_PAYMENT_TO_TREASURE"),
             neonStorageEntriesInContractAccount=_get_int_param("NEON_STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT"),

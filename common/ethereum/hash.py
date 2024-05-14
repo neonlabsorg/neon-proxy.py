@@ -36,7 +36,7 @@ class _BaseHash:
     def from_raw(cls, raw: _RawHash) -> Self:
         if isinstance(raw, cls):
             return raw
-        elif not raw:
+        elif raw is None:
             return cls.default()
 
         data: bytes
@@ -48,6 +48,12 @@ class _BaseHash:
             data = raw
 
         return cls(data)
+
+    @classmethod
+    def from_not_none(cls, raw: _RawHash) -> Self:
+        if raw is None:
+            raise ValueError(f"Wrong input: null")
+        return cls.from_raw(raw)
 
     @property
     def is_empty(self) -> bool:
@@ -84,6 +90,7 @@ _RawHash = Union[str, bytes, bytearray, _BaseHash, None]
 
 class EthAddress(_BaseHash):
     hash_size: ClassVar[int] = 20
+    zero_address: ClassVar[str] = "0x" + "00" * hash_size
 
     def to_checksum(self, default: str | None = None) -> str | None:
         return self._to_checksum() if self._data else default
@@ -107,12 +114,18 @@ EthAddressField = Annotated[
 EthZeroAddressField = Annotated[
     EthAddress,
     PlainValidator(EthAddress.from_raw),
-    PlainSerializer(lambda v: v.to_checksum("0x" + "00" * EthAddress.hash_size), return_type=str)
+    PlainSerializer(lambda v: v.to_checksum(EthAddress.zero_address), return_type=str),
+]
+EthNotNoneAddressField = Annotated[
+    EthAddress,
+    PlainValidator(EthAddress.from_not_none),
+    PlainSerializer(lambda v: v.to_checksum(EthAddress.zero_address), return_type=str),
 ]
 
 
 class EthHash32(_BaseHash):
     hash_size: ClassVar[int] = 32
+    zero_hash: ClassVar[str] = "0x" + "00" * hash_size
 
     def to_string(self, default: str | None = None) -> str | None:
         return self._to_string() if self._data else default
@@ -132,9 +145,15 @@ EthHash32Field = Annotated[
 EthZeroHash32Field = Annotated[
     EthHash32,
     PlainValidator(EthHash32.from_raw),
-    PlainSerializer(lambda v: v.to_string("0x" + "00" * EthHash32.hash_size), return_type=str)
+    PlainSerializer(lambda v: v.to_string(EthHash32.zero_hash), return_type=str),
 ]
+EthNotNoneHash32Field = Annotated[
+    EthHash32,
+    PlainValidator(EthHash32.from_not_none),
+    PlainSerializer(lambda v: v.to_string(EthHash32.zero_hash), return_type=str),
+]
+
 EthTxHash = EthHash32
-EthTxHashField = EthHash32Field
+EthTxHashField = EthNotNoneHash32Field
 EthBlockHash = EthHash32
-EthBlockHashField = EthHash32Field
+EthBlockHashField = EthNotNoneHash32Field

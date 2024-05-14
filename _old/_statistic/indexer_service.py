@@ -146,12 +146,12 @@ class IndexerStatService(StatService, IHealthStatService):
     def commit_neon_tx_result(self, tx_stat: NeonTxStatData):
         self._metr_tx_count.add({}, tx_stat.completed_neon_tx_cnt)
         self._metr_tx_canceled.add({}, tx_stat.canceled_neon_tx_cnt)
-        self._metr_tx_sol_spent.add({}, tx_stat.sol_spent)
+        self._metr_tx_sol_spent.add({}, tx_stat.sol_expense)
         self._metr_tx_neon_income.add({}, tx_stat.neon_income)
         self._metr_tx_count_by_type.add({'type': tx_stat.tx_type}, tx_stat.completed_neon_tx_cnt)
 
         self._metr_tx_op_count_by_type.add({'type': tx_stat.tx_type}, tx_stat.op_completed_neon_tx_cnt)
         self._metr_tx_op_neon_income.add({}, tx_stat.op_neon_income)
-        self._metr_tx_op_sol_spent.add({}, tx_stat.op_sol_spent)
+        self._metr_tx_op_sol_spent.add({}, tx_stat.op_sol_expense)
         self._metr_tx_op_canceled.add({}, tx_stat.op_canceled_neon_tx_cnt)
         self._metr_tx_op_count.add({}, tx_stat.op_completed_neon_tx_cnt)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon_rpc.api import HolderAccountModel, HolderAccountStatus
@@ -20,8 +20,8 @@ _LOG = logging.getLogger(__name__)
 
 
 class IterativeTxStrategy(BaseTxStrategy):
-    name = NeonEvmIxCode.TxStepFromData.name
-    _cancel_name = NeonEvmIxCode.CancelWithHash.name
+    name: ClassVar[str] = NeonEvmIxCode.TxStepFromData.name
+    _cancel_name: ClassVar[str] = NeonEvmIxCode.CancelWithHash.name
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)

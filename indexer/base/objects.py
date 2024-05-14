@@ -18,7 +18,7 @@ from common.neon.block import NeonBlockHdrModel
 from common.neon.evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonProg
 from common.neon.receipt_model import NeonTxReceiptModel
-from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo, SolNeonAltIxModel
+from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo, SolNeonAltTxIxModel
 from common.neon.transaction_model import NeonTxModel
 from common.solana.alt_program import SolAltIxCode
 from common.solana.block import SolRpcBlockInfo
@@ -715,6 +715,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             sol_inner_ix_idx=rcpt.sol_inner_ix_idx,
             data=EthBinStr.from_raw(ret.status.to_bytes(1, "little")),
             total_gas_used=self._neon_tx_ret.total_gas_used,
+            event_order=len(neon_tx_event_list) + 1,
         )
         neon_tx_event_list.append(event)
 
@@ -884,7 +885,7 @@ class NeonIndexedBlockInfo:
         self._sol_alt_info_dict: dict[NeonIndexedAltInfo.Key, NeonIndexedAltInfo] = dict()
 
         self._sol_neon_ix_list: list[SolNeonTxIxMetaInfo] = list()
-        self._sol_alt_ix_list: list[SolNeonAltIxModel] = list()
+        self._sol_alt_ix_list: list[SolNeonAltTxIxModel] = list()
         self._sol_tx_cost_list: list[SolTxCostModel] = list()
 
     @staticmethod
@@ -1049,7 +1050,7 @@ class NeonIndexedBlockInfo:
     def done_alt_info(self, alt_info: NeonIndexedAltInfo) -> None:
         self._sol_alt_info_dict.pop(alt_info.key)
 
-    def add_alt_ix(self, alt_info: NeonIndexedAltInfo, alt_ix: SolNeonAltIxModel) -> None:
+    def add_alt_ix(self, alt_info: NeonIndexedAltInfo, alt_ix: SolNeonAltTxIxModel) -> None:
         self._sol_tx_cost_list.append(alt_ix.sol_tx_cost)
         self._sol_alt_ix_list.append(alt_ix)
         alt_info.set_last_ix_slot(alt_ix.slot, alt_ix.sol_tx_cost.sol_signer)
@@ -1113,7 +1114,7 @@ class NeonIndexedBlockInfo:
     def iter_sol_neon_ix(self) -> Iterator[SolNeonTxIxMetaInfo]:
         return iter(self._sol_neon_ix_list)
 
-    def iter_sol_alt_ix(self) -> Iterator[SolNeonAltIxModel]:
+    def iter_sol_alt_ix(self) -> Iterator[SolNeonAltTxIxModel]:
         return iter(self._sol_alt_ix_list)
 
     def iter_sol_tx_cost(self) -> Iterator[SolTxCostModel]:
@@ -1199,28 +1200,28 @@ class NeonIndexedBlockInfo:
                 stat = _NeonTxStatDraft(tx_type=NeonEvmIxCode(sol_neon_ix.neon_ix_code).name)
                 tx_stat_dict[sol_neon_ix.neon_ix_code] = stat
 
-            token_income = 0
+            neon_tx_fee = 0
             if tx is not None:
-                token_income = sol_neon_ix.neon_tx_ix_gas_used * tx.neon_tx.gas_price
+                neon_tx_fee = sol_neon_ix.neon_tx_ix_gas_used * tx.neon_tx.gas_price
 
-            sol_spent = 0
+            sol_expense = 0
             is_op_sol_neon_ix = False
 
             sol_tx_sig = sol_neon_ix.sol_tx_sig
             if sol_tx_sig != prev_sol_tx_sig:
                 prev_sol_tx_sig = sol_tx_sig
                 is_op_sol_neon_ix = sol_neon_ix.operator in cfg.op_key_set
-                sol_spent = sol_neon_ix.sol_tx_cost.sol_spent
-                stat.sol_spent += sol_spent
+                sol_expense = sol_neon_ix.sol_tx_cost.sol_expense
+                stat.sol_expense += sol_expense
                 stat.sol_tx_cnt += 1
 
-            stat.token_income += token_income
+            stat.neon_tx_fee += neon_tx_fee
             stat.neon_step_cnt_limit += sol_neon_ix.neon_tx_ix_step_cnt
             stat.cu_limit += sol_neon_ix.cu_limit
 
             if is_op_sol_neon_ix:
-                stat.op_sol_spent += sol_spent
-                stat.op_token_income += token_income
+                stat.op_sol_expense += sol_expense
+                stat.op_neon_income += neon_tx_fee
 
             if not sol_neon_ix.neon_tx_return:
                 continue
@@ -1250,9 +1251,9 @@ class NeonIndexedBlockInfo:
                 tx_stat_dict[sol_alt_ix.alt_ix_code] = stat
             stat.sol_tx_cnt += 1
 
-            sol_spent = sol_alt_ix.sol_tx_cost.sol_spent
+            sol_expense = sol_alt_ix.sol_tx_cost.sol_expense
             if sol_alt_ix.sol_tx_cost.sol_signer in cfg.op_key_set:
-                stat.op_sol_spent += sol_spent
+                stat.op_sol_expense += sol_expense
         return tx_stat_dict
 
     def _finalize_log_list(self) -> None:
@@ -1346,13 +1347,13 @@ class _NeonTxStatDraft:
     completed_neon_tx_cnt: int = 0
     canceled_neon_tx_cnt: int = 0
     sol_tx_cnt: int = 0
-    sol_spent: int = 0
-    token_income: int = 0
+    sol_expense: int = 0
+    neon_tx_fee: int = 0
     neon_step_cnt_limit: int = 0
     cu_limit: int = 0
 
-    op_sol_spent: int = 0
-    op_token_income: int = 0
+    op_sol_expense: int = 0
+    op_neon_income: int = 0
     op_completed_neon_tx_cnt: int = 0
     op_canceled_neon_tx_cnt: int = 0
 

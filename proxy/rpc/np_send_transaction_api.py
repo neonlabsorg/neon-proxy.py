@@ -4,7 +4,6 @@ from typing import ClassVar
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.errors import EthError, EthNonceTooLowError, EthNonceTooHighError, EthWrongChainIdError
 from common.ethereum.hash import EthTxHashField, EthTxHash
-from common.ethereum.transaction import EthTx
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.errors import InvalidParamError
 from common.neon.transaction_model import NeonTxModel
@@ -27,8 +26,7 @@ class NpExecTxApi(NeonProxyApi):
     async def send_raw_tx(self, ctx: HttpRequestCtx, raw_tx: EthBinStrField) -> EthTxHashField:
         try:
             eth_tx_rlp = raw_tx.to_bytes()
-            eth_tx = EthTx.from_raw(eth_tx_rlp)
-            neon_tx = NeonTxModel.from_raw(eth_tx)
+            neon_tx = NeonTxModel.from_raw(eth_tx_rlp, raise_exception=True)
         except EthError:
             raise
         except (BaseException,):

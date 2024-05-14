@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
 from .strategy_simple import SimpleTxStrategy
@@ -5,7 +7,7 @@ from .strategy_stage_alt import alt_strategy
 
 
 class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
-    name = NeonEvmIxCode.TxExecFromDataSolanaCall.name
+    name: ClassVar[str] = NeonEvmIxCode.TxExecFromDataSolanaCall.name
 
     async def _validate(self) -> bool:
         return (

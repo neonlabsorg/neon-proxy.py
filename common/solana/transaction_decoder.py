@@ -203,7 +203,7 @@ class SolTxCostModel(BaseModel):
     is_success: bool
 
     sol_signer: SolPubKeyField
-    sol_spent: int
+    sol_expense: int
 
     @classmethod
     def from_raw(cls, tx: SolTxMetaInfo, rpc_meta: SolRpcTxMetaInfo) -> Self:
@@ -218,7 +218,7 @@ class SolTxCostModel(BaseModel):
             slot=tx.slot,
             is_success=tx.is_success,
             sol_signer=tx.sol_signer,
-            sol_spent=(pre_balance - post_balance),
+            sol_expense=(pre_balance - post_balance),
         )
 
 

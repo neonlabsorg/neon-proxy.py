@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Final
+from typing import Final, ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
@@ -16,7 +16,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class SimpleTxStrategy(BaseTxStrategy):
-    name = NeonEvmIxCode.TxExecFromData.name
+    name: ClassVar[str] = NeonEvmIxCode.TxExecFromData.name
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
