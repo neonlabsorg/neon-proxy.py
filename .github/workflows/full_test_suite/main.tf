@@ -20,18 +20,25 @@ resource "hcloud_server" "proxy" {
   provisioner "file" {
     source      = "../../../docker-compose/docker-compose-ci.yml"
     destination = "/tmp/docker-compose-ci.yml"
+
+    connection {
+        type        = "ssh"
+        user        = "root"
+        host        = hcloud_server.proxy.ipv4_address
+        private_key = file("~/.ssh/ci-stands")
+      }
   }
 
   provisioner "file" {
     content     = data.template_file.proxy_init.rendered
     destination = "/tmp/proxy_init.sh"
 
-  connection {
+    connection {
     type        = "ssh"
     user        = "root"
     host        = hcloud_server.proxy.ipv4_address
     private_key = file("~/.ssh/ci-stands")
-  }
+    }
 
   }
 
