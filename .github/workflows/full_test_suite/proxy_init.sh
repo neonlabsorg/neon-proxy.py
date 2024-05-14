@@ -17,10 +17,7 @@ sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-
 sudo chmod +x /usr/local/bin/docker-compose
 
 
-# Get docker-compose file
-cd /opt
-curl -O https://raw.githubusercontent.com/neonlabsorg/proxy-model.py/${proxy_model_commit}/docker-compose/docker-compose-ci.yml
-
+cd /tmp
 
 # Set required environment variables
 export REVISION=${proxy_image_tag}
@@ -29,6 +26,7 @@ export NEON_EVM_COMMIT=${neon_evm_commit}
 export FAUCET_COMMIT=${faucet_model_commit}
 export CI_PP_SOLANA_URL=${ci_pp_solana_url}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
+export PROXY_IMAGE_NAME=${proxy_image_name}
 
 
 
@@ -84,6 +82,7 @@ EOF
 SERVICES=$(docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
+docker login -u ${docker_username} -p ${docker_password}
 docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull $SERVICES
 
 
@@ -130,4 +129,4 @@ PROXY_RESULT='"result"'
 wait_service "proxy" $PROXY_URL $PROXY_DATA $PROXY_RESULT
 
 
-docker rm -f opt_solana_1
+docker rm -f tmp_solana_1
