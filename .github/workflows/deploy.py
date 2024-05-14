@@ -208,17 +208,14 @@ def terraform_build_infrastructure(dockerhub_org_name, head_ref_branch, github_r
     backend_config = {"bucket": TFSTATE_BUCKET,
                       "key": thstate_key, "region": TFSTATE_REGION}
     return_code, stdout, stderr = terraform.init(backend_config=backend_config)
-    click.echo(f"code: {return_code}")
-    click.echo(f"stdout: {stdout}")
-    click.echo(f"stderr: {stderr}")
+    if return_code != 0:
+        print("Terraform init failed:", stderr)
     return_code, stdout, stderr = terraform.apply(skip_plan=True)
-    click.echo(f"code: {return_code}")
-    click.echo(f"stdout: {stdout}")
-    click.echo(f"stderr: {stderr}")
     with open(f"terraform.log", "w") as file:
         file.write(stdout)
         file.write(stderr)
     if return_code != 0:
+        print("Terraform apply failed:", stderr)
         print("Terraform infrastructure is not built correctly")
         sys.exit(1)
     output = terraform.output(json=True)

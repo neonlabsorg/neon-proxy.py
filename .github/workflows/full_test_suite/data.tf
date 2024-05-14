@@ -33,6 +33,9 @@ variable "faucet_model_commit" {
   type = string
 }
 
+variable "proxy_image_name" {
+  type = string
+}
 
 data "template_file" "solana_init" {
   template = file("solana_init.sh")
