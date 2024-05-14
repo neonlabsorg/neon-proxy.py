@@ -69,6 +69,7 @@ class DbConnection:
             max_lifetime=(10 * 60),  # 10 minutes
             min_size=5,
             max_size=self._cfg.pg_conn_cnt,
+            open=False,
         )
         await self._conn_pool.open()
         await self._conn_pool.wait()

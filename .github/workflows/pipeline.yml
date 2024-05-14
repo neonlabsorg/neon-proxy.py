@@ -159,6 +159,7 @@ jobs:
           else
             tag='latest'
           fi
+          tag='v1.13.x'
           echo "value=${tag}"
           echo "value=${tag}" >> $GITHUB_OUTPUT
       - name: Check image
