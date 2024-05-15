@@ -4,14 +4,16 @@ import abc
 import logging
 from typing import Sequence, Final, ClassVar
 
+from common.neon.neon_program import NeonIxMode
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
-from common.neon_rpc.api import EmulSolTxInfo, EmulSolTxMetaModel
+from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.commit_level import SolCommit
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx, SolTxIx
 from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
+from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from common.utils.cached import cached_property
 from .transaction_executor_ctx import NeonExecTxCtx
@@ -212,11 +214,8 @@ class BaseTxStrategy(abc.ABC):
 
     async def _emulate_tx_list(self, tx_list: Sequence[SolTx], *, mult_factor: int = 0) -> tuple[EmulSolTxInfo, ...]:
         blockhash = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Confirmed)
-        if self._ctx.cfg.emul_orig_tx_list:
-            for tx in tx_list:
-                tx.set_recent_blockhash(blockhash)
-        else:
-            tx_list = tuple(map(lambda x: SolLegacyTx(name=x.name, ix_list=x.ix_list, blockhash=blockhash), tx_list))
+        for tx in tx_list:
+            tx.set_recent_blockhash(blockhash)
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
 
         account_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
@@ -225,8 +224,8 @@ class BaseTxStrategy(abc.ABC):
         try:
             return await self._ctx.core_api_client.emulate_sol_tx_list(cu_limit, account_cnt_limit, blockhash, tx_list)
         except BaseException as exc:
-            _LOG.debug("error on emulate solana tx list", exc_info=exc)
-            return tuple(map(lambda tx: EmulSolTxInfo(tx=tx, meta=EmulSolTxMetaModel.new_error()), tx_list))
+            _LOG.warning("error on emulate solana tx list", exc_info=exc)
+            raise SolCbExceededError()
 
     @staticmethod
     def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:
@@ -238,7 +237,7 @@ class BaseTxStrategy(abc.ABC):
         return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @abc.abstractmethod
-    def _build_tx(self, *, is_finalized: bool = True, evm_step_cnt: int = 0) -> SolLegacyTx:
+    def _build_tx(self, *, mode: NeonIxMode = NeonIxMode.Default, evm_step_cnt: int = 0) -> SolLegacyTx:
         pass
 
     @abc.abstractmethod

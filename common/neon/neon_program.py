@@ -65,6 +65,14 @@ class NeonEvmIxCode(IntEnum):
     OldTxStepFromAccountNoChainIdV1004 = 0x22  # 34
 
     OldCancelWithHashV1004 = 0x23              # 35
+
+
+class NeonIxMode(IntEnum):
+    Readable = 1
+    Writable = 2
+    FullWritable = 3
+
+    Default = Readable
 # fmt: on
 
 
@@ -141,6 +149,7 @@ class NeonProg:
 
     def init_account_meta_list(self, account_meta_list: Sequence[SolAccountMeta]) -> Self:
         self._acct_meta_list = list(account_meta_list)
+        self._get_readable_acct_meta_list.reset_cache(self)
         self._get_writable_acct_meta_list.reset_cache(self)
         return self
 
@@ -252,14 +261,14 @@ class NeonProg:
         )
         return self._make_holder_ix(bytes().join(ix_data_list), self._acct_meta_list)
 
-    def make_tx_step_from_account_ix(self, is_finalized: bool, step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccount, is_finalized, step_cnt, index, None)
+    def make_tx_step_from_account_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccount, mode, step_cnt, index, None)
 
-    def make_tx_step_from_account_no_chain_id_ix(self, is_finalized: bool, step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccountNoChainId, is_finalized, step_cnt, index, None)
+    def make_tx_step_from_account_no_chain_id_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccountNoChainId, mode, step_cnt, index, None)
 
-    def make_tx_step_from_data_ix(self, is_finalized: bool, step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, is_finalized, step_cnt, index, self._eth_rlp_tx)
+    def make_tx_step_from_data_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, mode, step_cnt, index, self._eth_rlp_tx)
 
     def make_cancel_ix(self) -> SolTxIx:
         self.validate_protocol()
@@ -273,7 +282,7 @@ class NeonProg:
             SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
-        ] + self._writable_acct_meta_list
+        ] + self._acct_meta_list
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 
@@ -299,7 +308,7 @@ class NeonProg:
     def _make_tx_step_ix(
         self,
         ix_code: NeonEvmIxCode,
-        is_finalized: bool,
+        mode: NeonIxMode,
         step_cnt: int,
         index: int,
         data: bytes | None,
@@ -315,7 +324,12 @@ class NeonProg:
         if data is not None:
             ix_data += data
 
-        return self._make_holder_ix(ix_data, self._writable_acct_meta_list if is_finalized else self._acct_meta_list)
+        if mode == NeonIxMode.Readable:
+            return self._make_holder_ix(ix_data, self._readable_acct_meta_list)
+        elif mode == NeonIxMode.Writable:
+            return self._make_holder_ix(ix_data, self._acct_meta_list)
+
+        return self._make_holder_ix(ix_data, self._writable_acct_meta_list)
 
     def _make_holder_ix(self, ix_data: bytes, acct_meta_list: list[SolAccountMeta]) -> SolTxIx:
         self.validate_protocol()
@@ -331,8 +345,16 @@ class NeonProg:
         return SolTxIx(program_id=self.ID, data=ix_data, accounts=tuple(acct_meta_list))
 
     @property
+    def _readable_acct_meta_list(self) -> list[SolAccountMeta]:
+        return self._get_readable_acct_meta_list()
+
+    @reset_cached_method
+    def _get_readable_acct_meta_list(self) -> list[SolAccountMeta]:
+        return list(map(lambda x: SolAccountMeta(x.pubkey, x.is_signer, is_writable=False), self._acct_meta_list))
+
+    @property
     def _writable_acct_meta_list(self) -> list[SolAccountMeta]:
-        return self._get_writable_acct_meta_list()
+        return self._get_readable_acct_meta_list()
 
     @reset_cached_method
     def _get_writable_acct_meta_list(self) -> list[SolAccountMeta]:

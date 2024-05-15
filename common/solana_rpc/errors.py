@@ -29,6 +29,11 @@ class SolNeonRequireResizeIterError(SolError):
 class SolCbExceededError(SolError):
     def __init__(self) -> None:
         super().__init__("Compute Budget exceeded")
+
+
+class SolCbExceededCriticalError(SolError):
+    def __init__(self) -> None:
+        super().__init__("Compute Budget is critically exceeded")
         
 
 class SolNoMoreRetriesError(SolError):

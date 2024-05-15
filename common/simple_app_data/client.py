@@ -11,9 +11,15 @@ from ..utils.pydantic import BaseModel
 
 class SimpleAppDataClient(HttpClient):
     @classmethod
-    def method(cls, handler: SimpleAppDataClientSender | None = None, *, name: str = None) -> Callable:
+    def method(
+        cls,
+        handler: SimpleAppDataClientSender | None = None,
+        *,
+        name: str = None,
+        reraise_50x: bool = False,
+    ) -> Callable:
         def _registrator(_handler: SimpleAppDataClientSender) -> SimpleAppDataClientSender:
-            return cls._register_data_sender(_handler, name)
+            return cls._register_data_sender(_handler, name, reraise_50x)
 
         if handler:
             return _registrator(handler)
@@ -21,7 +27,7 @@ class SimpleAppDataClient(HttpClient):
         return _registrator
 
     @classmethod
-    def _register_data_sender(cls, handler: SimpleAppDataClientSender, name: str) -> Callable:
+    def _register_data_sender(cls, handler: SimpleAppDataClientSender, name: str, reraise_50x: bool) -> Callable:
         method = SimpleAppDataMethod.from_handler(handler, name)
 
         assert method.is_async_def, "SimpleAppDataClient support only async methods"
@@ -32,7 +38,7 @@ class SimpleAppDataClient(HttpClient):
         method_path = HttpURL(method.name)
 
         async def _null_wrapper(self: SimpleAppDataClient) -> _RespType:
-            resp_json = await self._send_post_request("", path=method_path)
+            resp_json = await self._send_post_request("", path=method_path, reraise_50x=reraise_50x)
             return _parse_resp(resp_json)
 
         async def _wrapper(self: SimpleAppDataClient, data: _RequestType) -> _RespType:
@@ -41,7 +47,7 @@ class SimpleAppDataClient(HttpClient):
             ), f"Wrong type of the request {type(data).__name__} != {_RequestType.__name__}"
 
             req_json = data.to_json()
-            resp_json = await self._send_post_request(req_json, path=method_path)
+            resp_json = await self._send_post_request(req_json, path=method_path, reraise_50x=reraise_50x)
             return _parse_resp(resp_json)
 
         def _parse_resp(resp_json: str) -> _RespType:
