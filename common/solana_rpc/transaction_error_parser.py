@@ -24,6 +24,8 @@ class SolTxErrorParser:
     _log_truncated_msg = "Log truncated"
     _require_resize_iter_msg = "Deployment of contract which needs more than 10kb of account space needs several"
     _cb_exceeded_msg = "exceeded CUs meter at BPF instruction"
+    _out_of_memory_msg = "Program log: EVM Allocator out of memory"
+    _memory_alloc_fail_msg = "Program log: Error: memory allocation failed, out of memory"
 
     _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
     _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
@@ -63,6 +65,11 @@ class SolTxErrorParser:
             elif log_rec.find(self._cb_exceeded_msg) != -1:
                 return True
         return False
+
+    @cached_method
+    def check_if_out_of_memory(self) -> bool:
+        log_list = self._get_log_list()
+        return any(log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg) for log_rec in log_list)
 
     @cached_method
     def check_if_require_resize_iter(self) -> bool:

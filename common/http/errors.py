@@ -64,5 +64,9 @@ class BaseHttpError(Exception):
         return error_list
 
 
+class Http50xError(BaseHttpError):
+    pass
+
+
 class HttpRouteError(Exception):
     pass

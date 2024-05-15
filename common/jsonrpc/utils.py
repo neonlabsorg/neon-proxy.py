@@ -32,7 +32,7 @@ class JsonRpcMethod(HttpMethod):
         is_batch: bool = False,
         allow_request_ctx: bool = False,
     ) -> Self:
-        method = HttpMethod.from_handler(handler, allow_request_ctx)
+        method = HttpMethod.from_handler(handler, allow_request_ctx=allow_request_ctx)
 
         req = (
             _parse_params_request(method, is_batch)

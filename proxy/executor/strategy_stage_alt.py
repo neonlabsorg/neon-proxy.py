@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Sequence, ClassVar
 
-from common.neon.neon_program import NeonProg
+from common.neon.neon_program import NeonProg, NeonIxMode
 from common.solana.alt_info import SolAltInfo
 from common.solana.alt_program import SolAltProg
 from common.solana.errors import SolTxSizeError, SolAltContentError
@@ -153,11 +153,11 @@ def alt_strategy(cls):
             with self._ctx.test_mode():
                 return self._alt_stage.validate_v0_tx_size(self._build_legacy_tx())
 
-        def _build_legacy_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolLegacyTx:
-            return cls._build_tx(self, is_finalized=is_finalized, step_cnt=step_cnt)
+        def _build_legacy_tx(self, *, mode: NeonIxMode = NeonIxMode.Default, step_cnt: int = 0) -> SolLegacyTx:
+            return cls._build_tx(self, mode=mode, step_cnt=step_cnt)
 
-        def _build_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolV0Tx:
-            return self._alt_stage.build_tx(self._build_legacy_tx(is_finalized=is_finalized, step_cnt=step_cnt))
+        def _build_tx(self, *, mode: NeonIxMode = NeonIxMode.Default, step_cnt: int = 0) -> SolV0Tx:
+            return self._alt_stage.build_tx(self._build_legacy_tx(mode=mode, step_cnt=step_cnt))
 
         def _build_cancel_tx(self) -> SolV0Tx:
             return self._alt_stage.build_tx(cls._build_cancel_tx(self))

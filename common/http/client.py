@@ -10,6 +10,7 @@ import aiohttp.client as _cl
 from typing_extensions import Self
 
 from .utils import HttpURL, HttpStrOrURL
+from .errors import Http50xError
 from ..config.config import Config
 from ..config.utils import LogMsgFilter
 from ..utils.cached import cached_property
@@ -18,6 +19,7 @@ _LOG = logging.getLogger(__name__)
 
 HttpClientSession = _cl.ClientSession
 HttpClientTimeout = _cl.ClientTimeout
+_HttpResponseError = _cl.ClientResponseError
 
 
 @dataclass
@@ -25,6 +27,7 @@ class HttpClientRequest:
     data: str
     header_dict: dict[str, str]
     path: HttpURL | None
+    reraise_50x: bool
 
     base_url: HttpURL | None = None
     url: HttpURL | None = None
@@ -116,13 +119,14 @@ class HttpClient:
         _LOG.debug("connect to the URL: %s", str(base_url), extra=self._msg_filter)
         self._base_url_list.append(base_url)
 
-    async def _send_post_request(self, data: str, *, path: HttpURL | None = None) -> str:
+    async def _send_post_request(self, data: str, *, path: HttpURL | None = None, reraise_50x: bool = False) -> str:
         assert len(self._base_url_list), "HttpClient must have at least one remote URL"
 
         request = HttpClientRequest(
             data=data,
             header_dict=self._header_dict,
             path=path,
+            reraise_50x=reraise_50x,
         )
         return await _send_post_request(self, request)
 
@@ -160,6 +164,9 @@ async def _send_post_request(self: HttpClient, req: HttpClientRequest) -> str:
             resp.raise_for_status()
             return await resp.text()
         except BaseException as exc:
+            if isinstance(exc, _HttpResponseError) and (exc.status // 100 == 5) and req.reraise_50x:
+                raise Http50xError(exc.message, tuple())
+
             # Can reraise exception inside
             self._exception_handler(req, retry, exc)
 

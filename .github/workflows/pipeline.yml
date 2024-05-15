@@ -159,7 +159,6 @@ jobs:
           else
             tag='latest'
           fi
-          tag='v1.13.x'
           echo "value=${tag}"
           echo "value=${tag}" >> $GITHUB_OUTPUT
       - name: Check image
@@ -323,7 +322,7 @@ jobs:
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-      NUMPROCESSES: 4
+      NUMPROCESSES: 8
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
     steps:

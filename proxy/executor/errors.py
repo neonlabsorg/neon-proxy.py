@@ -5,11 +5,13 @@ from common.utils.cached import cached_method
 
 
 class WrongStrategyError(Exception):
-    pass
+    def __str__(self) -> str:
+        return "Wrong strategy"
 
 
 class BadResourceError(Exception):
-    pass
+    def __str__(self) -> str:
+        return "Bad resource"
 
 
 class StuckTxError(Exception):

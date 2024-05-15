@@ -119,7 +119,7 @@ class HttpMethod:
     ReturnType: type
 
     @classmethod
-    def from_handler(cls, handler: Callable, allow_request_ctx: bool) -> Self:
+    def from_handler(cls, handler: Callable, *, allow_request_ctx: bool) -> Self:
         assert inspect.isfunction(handler), f"Handler {handler} is not a function"
 
         signature = inspect.signature(handler)
