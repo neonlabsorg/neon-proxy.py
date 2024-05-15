@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-from common.neon.neon_program import NeonEvmIxCode
+from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
 from common.solana.transaction_legacy import SolLegacyTx
 from .strategy_iterative import IterativeTxStrategy
 from .strategy_stage_alt import alt_strategy
@@ -23,11 +23,11 @@ class HolderTxStrategy(IterativeTxStrategy):
         )
         # fmt: on
 
-    def _build_tx(self, *, is_finalized: bool = False, step_cnt: int = 0) -> SolLegacyTx:
-        step_cnt = step_cnt or self._def_evm_step_cnt
+    def _build_tx(self, *, mode: NeonIxMode = NeonIxMode.Default, step_cnt: int = 0) -> SolLegacyTx:
+        step_cnt = step_cnt or self._ctx.evm_step_cnt_per_iter
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
-        return self._build_cu_tx(prog.make_tx_step_from_account_ix(is_finalized, step_cnt, uniq_idx))
+        return self._build_cu_tx(prog.make_tx_step_from_account_ix(mode, step_cnt, uniq_idx))
 
 
 @alt_strategy

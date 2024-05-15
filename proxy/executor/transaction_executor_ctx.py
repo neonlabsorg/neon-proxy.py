@@ -56,8 +56,10 @@ class NeonExecTxCtx:
         self._sol_tx_list_dict: dict[str, list[SolTx]] = dict()
         self._has_completed_receipt = False
 
+        self._sender_sol_address: SolPubKey = SolPubKey.default()
         self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
         self._emulator_resp: EmulNeonCallResp | None = None
+        self._emulator_slot = 0
 
         self._test_mode = False
 
@@ -105,7 +107,10 @@ class NeonExecTxCtx:
     def _get_account_key_list(self) -> tuple[SolPubKey, ...]:
         return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
 
-    def set_emulator_result(self, resp: EmulNeonCallResp) -> None:
+    def set_sender_sol_address(self, sol_address: SolPubKey) -> None:
+        self._sender_sol_address = sol_address
+
+    def set_emulator_result(self, slot: int, resp: EmulNeonCallResp) -> None:
         assert not self.is_stuck_tx
 
         if resp.iter_cnt <= 0:
@@ -129,10 +134,17 @@ class NeonExecTxCtx:
             _LOG.debug("emulator result contains %d accounts: %s", len(resp.raw_meta_list), self._FmtAcctMeta(self))
 
         self._emulator_resp = resp
+        self._emulator_slot = slot
+
+        # reset calculated cache
         self._calc_total_evm_step_cnt.reset_cache(self)
         self._calc_total_iter_cnt.reset_cache(self)
         self._calc_wrap_iter_cnt.reset_cache(self)
         self._calc_resize_iter_cnt.reset_cache(self)
+
+    @property
+    def emulator_slot(self) -> int:
+        return self._emulator_slot
 
     def set_holder_account(self, holder: HolderAccountModel) -> None:
         assert self.is_stuck_tx
@@ -211,6 +223,7 @@ class NeonExecTxCtx:
         else:
             eth_rlp_tx = bytes()
         prog.init_neon_tx(self.neon_tx_hash, eth_rlp_tx)
+        prog.init_sender_sol_address(self._sender_sol_address)
 
         return prog
 

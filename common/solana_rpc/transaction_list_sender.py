@@ -15,6 +15,7 @@ from .errors import (
     SolNeonRequireResizeIterError,
     SolCbExceededError,
     SolNoMoreRetriesError,
+    SolOutOfMemoryError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .ws_client import SolWatchTxSession
@@ -51,6 +52,7 @@ class SolTxSendState:
         CbExceededError = enum.auto()
         InvalidIxDataError = enum.auto()
         RequireResizeIterError = enum.auto()
+        OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
         OutOfGasError = enum.auto()
         UnknownError = enum.auto()
@@ -400,6 +402,8 @@ class SolTxListSender:
             return self._DecodeResult(status.CbExceededError, SolCbExceededError())
         elif tx_error_parser.check_if_require_resize_iter():
             return self._DecodeResult(status.RequireResizeIterError, SolNeonRequireResizeIterError())
+        elif tx_error_parser.check_if_out_of_memory():
+            return self._DecodeResult(status.OutOfMemoryError, SolOutOfMemoryError())
 
         elif gas_limit_error := tx_error_parser.get_out_of_gas_error():
             gas_limit, required_gas_limit = gas_limit_error

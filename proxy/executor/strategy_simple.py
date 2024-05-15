@@ -5,6 +5,7 @@ from typing import Final, ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
+from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy
@@ -53,26 +54,25 @@ class SimpleTxStrategy(BaseTxStrategy):
     async def _emulate_and_send_tx_list(self) -> bool:
         tx_list = tuple([self._build_tx()])
 
-        # TODO: wait for fix in core-api
-        if self._ctx.cfg.calc_cu_limit_usage:
-            emul_tx_list = await self._emulate_tx_list(tx_list)
-            used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
+        emul_tx_list = await self._emulate_tx_list(tx_list)
+        used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
 
-            # let's decrease the available cu-limit on 5% percents
-            safe_cu_limit_add: Final[int] = int(self._cu_limit * 0.05)
-            total_used_cu_limit = max(used_cu_limit + safe_cu_limit_add, self._cu_limit)
+        # let's decrease the available cu-limit on 5% percents
+        safe_cu_limit_add: Final[int] = int(self._cu_limit * 0.05)
+        total_used_cu_limit = max(used_cu_limit + safe_cu_limit_add, self._cu_limit)
 
-            if total_used_cu_limit > self._cu_limit:
-                _LOG.debug(
-                    "got %s(+%s) compute units for %s EVM steps, and it's bigger than the upper limit %s",
-                    used_cu_limit,
-                    safe_cu_limit_add,
-                    self._ctx.total_evm_step_cnt,
-                    self._cu_limit,
-                )
-                raise WrongStrategyError()
-            _LOG.debug("got %s compute units for %s EVM steps", used_cu_limit, self._ctx.total_evm_step_cnt)
+        if total_used_cu_limit > self._cu_limit:
+            _LOG.debug(
+                "got %s(+%s) CUs for %s EVM steps, and it's bigger than the upper limit %s",
+                used_cu_limit,
+                safe_cu_limit_add,
+                self._ctx.total_evm_step_cnt,
+                self._cu_limit,
+            )
+            raise SolCbExceededError()
 
+        _LOG.debug("got %s CUs for %s EVM steps", used_cu_limit, self._ctx.total_evm_step_cnt)
+        tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
         return await self._send_tx_list(tx_list)
 
     def _build_tx(self, **kwargs) -> SolLegacyTx:

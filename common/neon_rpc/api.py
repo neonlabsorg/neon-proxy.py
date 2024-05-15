@@ -594,18 +594,6 @@ class EmulSolTxMetaModel(BaseModel):
     log_list: list[str] = Field(default_factory=list, validation_alias="logs")
     used_cu_limit: int = Field(validation_alias="executed_units")
 
-    _error: ClassVar[EmulSolTxMetaModel | None] = None
-
-    @classmethod
-    def new_error(cls) -> Self:
-        if not cls._error:
-            cls._error = cls(
-                error={"message": "Unknown"},
-                logs=list(),
-                executed_units=SolCbProg.MaxCuLimit
-            )
-        return cls._error
-
 
 class EmulSolTxListResp(BaseModel):
     meta_list: list[EmulSolTxMetaModel] = Field(validation_alias="transactions")

@@ -215,7 +215,7 @@ class CoreApiClient(SimpleAppDataClient):
     @SimpleAppDataClient.method(name="emulate")
     async def _emulate_neon_call(self, request: EmulNeonCallRequest) -> CoreApiResp: ...
 
-    @SimpleAppDataClient.method(name="simulate_solana")
+    @SimpleAppDataClient.method(name="simulate_solana", reraise_50x=True)
     async def _emulate_sol_tx_list(self, request: EmulSolTxListRequest) -> CoreApiResp: ...
 
     @ttl_cached_method(ttl_sec=60)

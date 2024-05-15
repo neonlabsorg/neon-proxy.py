@@ -22,7 +22,7 @@ class SimpleAppDataMethod(HttpMethod):
         name: str = None,
         allow_request_ctx: bool = False,
     ) -> Self:
-        method = HttpMethod.from_handler(handler, allow_request_ctx)
+        method = HttpMethod.from_handler(handler, allow_request_ctx=allow_request_ctx)
 
         assert issubclass(method.ReturnType, BaseModel), "AppDataMethod must return an BaseModel instance"
         assert len(method.param_name_list) in (0, 1), "AppDataMethod must have only 1 argument"
