@@ -291,7 +291,7 @@ jobs:
               -e NETWORK=${{env.NETWORK}} \
               ${{ env.CONTAINER }} python3 ./clickfile.py run oz \
             --network ${{ env.NETWORK }} \
-            --jobs 16 \
+            --jobs 8 \
             --users 10
       - name: Print OpenZeppelin report
         run: |
