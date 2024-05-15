@@ -15,6 +15,14 @@ on:
       initial_pr:
         required: false
         description: "Initial PR"
+      trigger_tracer_tests:
+        required: false
+        description: "Trigger Tracer CI tests"
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
   push:
@@ -423,6 +431,24 @@ jobs:
           python3 ./.github/workflows/deploy.py destroy_terraform \
           --run_number=${{env.GITHUB_RUN_NUMBER}} \
           --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
+  trigger-tracer-tests:
+    if: ${{ (contains(github.event.pull_request.labels.*.name, 'runTracerTests')) || (inputs.trigger_tracer_tests == 'true') }}
+    needs: build-image
+    runs-on: test-runner
+    steps:
+      - name: Run a script
+        run: echo "PR was labeled with runTracerTests so triggering Tracer CI tests!"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Tracer CI test workflow
+        run: |
+          python3 ./.github/workflows/deploy.py trigger_tracer_tests --proxy_image_tag=${{ needs.build-image.outputs.proxy_tag }} \
+          --evm_loader_image_tag=${{ needs.build-image.outputs.neon_evm_tag }} \
+          --token=${{ secrets.GHTOKEN }} --ref=update_hardcoded_proxy_image_name
+      - name: Cancel the build if job failed
+        if: "failure()"
+        uses: "andymckay/cancel-action@0.4"
   finalize-image:
     runs-on: build-runner
     needs:
@@ -431,12 +457,14 @@ jobs:
       - basic-tests
       - dapps-tests
       - deploy-check
+      - trigger-tracer-tests
     if: |
       always() &&
       needs.deploy-check.result == 'success' &&
       needs.basic-tests.result == 'success' &&
       needs.dapps-tests.result == 'success' &&
-      contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result)
+      contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result) &&
+      contains(fromJSON('["success", "skipped"]'), needs.trigger-tracer-tests.result)
     steps:
       - uses: actions/checkout@v4
       - name: Tag published image
