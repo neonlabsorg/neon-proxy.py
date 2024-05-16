@@ -55,6 +55,10 @@ class NeonEvmIxCode(IntEnum):
 
     CancelWithHash = 0x37                      # 55
 
+    CreateOperatorBalance = 0x3a               # 58
+    DeleteOperatorBalance = 0x3b               # 59
+    WithdrawOperatorBalance = 0x3c             # 60
+
     OldDepositV1004 = 0x27                     # 39
     OldCreateAccountV1004 = 0x28               # 40
 
@@ -179,6 +183,7 @@ class NeonProg:
         self.validate_protocol()
 
         _LOG.debug("createHolderIx %s by the payer account %s", self._holder_address, self._payer)
+
         seed = bytes(seed, "utf-8")
         ix_data_list = (
             NeonEvmIxCode.HolderCreate.value.to_bytes(1, byteorder="little"),
@@ -223,6 +228,56 @@ class NeonProg:
                 SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
                 SolAccountMeta(pubkey=sol_address, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=contract_sol_address, is_signer=False, is_writable=True),
+            ),
+        )
+
+    def make_create_operator_balance_ix(self, neon_account: NeonAccount) -> SolTxIx:
+        self.validate_protocol()
+
+        _LOG.debug("Create operator token account: %s, solana address: %s", neon_account, self._token_sol_address)
+
+        ix_data_list = (
+            NeonEvmIxCode.CreateOperatorBalance.value.to_bytes(1, byteorder="little"),
+            neon_account.eth_address.to_bytes(),
+            neon_account.chain_id.to_bytes(8, byteorder="little"),
+        )
+
+        return SolTxIx(
+            program_id=self.ID,
+            data=bytes().join(ix_data_list),
+            accounts=(
+                SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+                SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
+                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+            ),
+        )
+
+    def make_delete_operator_balance_ix(self) -> SolTxIx:
+        _LOG.debug("Delete operator token account, solana address: %s", self._token_sol_address)
+
+        ix_data = NeonEvmIxCode.DeleteOperatorBalance.value.to_bytes(1, byteorder="little")
+
+        return SolTxIx(
+            program_id=self.ID,
+            data=ix_data,
+            accounts=(
+                SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+            ),
+        )
+
+    def make_withdraw_operator_balance_ix(self, neon_token_address: SolPubKey) -> SolTxIx:
+        _LOG.debug("Withdraw operator token account, solana address: %s", self._token_sol_address)
+
+        ix_data = NeonEvmIxCode.WithdrawOperatorBalance.value.to_bytes(1, byteorder="little")
+
+        return SolTxIx(
+            program_id=self.ID,
+            data=ix_data,
+            accounts=(
+                SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=False),
+                SolAccountMeta(pubkey=neon_token_address, is_signer=False, is_writable=True),
             ),
         )
 

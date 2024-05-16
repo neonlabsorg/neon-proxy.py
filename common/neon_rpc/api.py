@@ -15,7 +15,6 @@ from ..neon.account import NeonAccount, NeonAccountField
 from ..neon.neon_program import NeonEvmProtocol
 from ..neon.transaction_model import NeonTxModel
 from ..solana.account import SolAccountModel
-from ..solana.cb_program import SolCbProg
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
@@ -173,6 +172,22 @@ class NeonStorageAtRequest(BaseModel):
     slot: int | None
 
 
+class OperatorAccountModel(BaseModel):
+    status: NeonAccountStatusField
+    operator_key: SolPubKeyField
+    neon_account: NeonAccountField
+    token_sol_address: SolPubKeyField
+    balance: int
+
+    @property
+    def chain_id(self) -> int:
+        return self.account.chain_id
+
+    @property
+    def eth_address(self) -> EthAddress:
+        return self.account.eth_address
+
+
 class BpfLoader2ProgModel(BaseModel):
     version: int
     exec_address: SolPubKeyField = SolPubKeyField.default()
@@ -218,6 +233,7 @@ class EvmConfigModel(BaseModel):
 
     treasury_pool_cnt: DecIntField
     treasury_pool_seed: BytesField
+    account_seed_version: DecIntField
     evm_step_cnt: DecIntField
     holder_msg_size: DecIntField
     gas_limit_multiplier_wo_chain_id: DecIntField
@@ -365,6 +381,7 @@ class EvmConfigModel(BaseModel):
             ("NEON_TREASURY_POOL_SEED", "treasury_pool_seed", bytes()),
             ("NEON_EVM_STEPS_MIN", "evm_step_cnt", -1),
             ("NEON_HOLDER_MSG_SIZE", "holder_msg_size", -1),
+            ("NEON_ACCOUNT_SEED_VERSION", "account_seed_version", -1),
             ("NEON_GAS_LIMIT_MULTIPLIER_NO_CHAINID", "gas_limit_multiplier_wo_chain_id", -1),
         )
 
@@ -496,7 +513,7 @@ class EmulNeonCallModel(BaseModel):
             data=tx.call_data.to_bytes(),
             gas_limit=tx.gas_limit,
             gas_price=tx.gas_price,
-            chain_id=chain_id
+            chain_id=chain_id,
         )
 
 

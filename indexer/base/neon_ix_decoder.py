@@ -4,6 +4,7 @@ import logging
 from typing import ClassVar
 
 from common.ethereum.hash import EthTxHash, EthAddressField
+from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_model import NeonTxModel
 from common.solana.pubkey import SolPubKey, SolPubKeyField
@@ -445,6 +446,43 @@ class DepositIxDecoder(DummyIxDecoder):
         return self._decoding_success(None, "deposit NEONs")
 
 
+class CreateOperatorBalanceIxDecoder(DummyIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.CreateOperatorBalance
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        """Just for information in the Indexer logs."""
+
+        ix = self.state.sol_neon_ix
+        ix_data = ix.neon_ix_data
+
+        # 20 bytes: ETH address
+        # 8 bytes: chain-id
+        if len(ix_data) < 28:
+            return self._decoding_skip("not enough data to get Operator.NeonAddress.ChainId %s", len(ix_data))
+
+        neon_acct = NeonAccount.from_raw(ix_data[:20], int.from_bytes(ix_data[20:8], "little"))
+        return self._decoding_success(neon_acct, "create Operator Balance")
+
+
+class DeleteOperatorBalanceIxDecoder(DummyIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.DeleteOperatorBalance
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        """Just for information in the Indexer logs."""
+        return self._decoding_success(None, "delete Operator Balance")
+
+
+class WithdrawOperatorBalanceIxDecoder(DummyIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.WithdrawOperatorBalance
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        """Just for information in the Indexer logs."""
+        return self._decoding_success(None, "withdraw Operator Balance")
+
+
 def get_neon_ix_decoder_list() -> list[type[DummyIxDecoder]]:
     ix_decoder_list = [
         TxExecFromDataIxDecoder,
@@ -461,6 +499,9 @@ def get_neon_ix_decoder_list() -> list[type[DummyIxDecoder]]:
         CreateHolderAccountIx,
         DeleteHolderAccountIx,
         DepositIxDecoder,
+        CreateOperatorBalanceIxDecoder,
+        DeleteOperatorBalanceIxDecoder,
+        WithdrawOperatorBalanceIxDecoder,
     ]
 
     for IxDecoder in ix_decoder_list:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from typing import Sequence, Final
 
 from .api import (
     CoreApiResp,
@@ -25,6 +25,8 @@ from .api import (
     EmulSolTxListResp,
     EmulSolTxInfo,
     EmulSolTxListRequest,
+    OperatorAccountModel,
+    NeonAccountStatus,
 )
 from ..config.config import Config
 from ..ethereum.commit_level import EthCommit
@@ -141,6 +143,46 @@ class CoreApiClient(SimpleAppDataClient):
         req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
         resp = await self._get_storage_at(req)
         return EthHash32.from_raw(bytes(resp.value))
+
+    async def get_operator_account(
+        self,
+        evm_cfg: EvmConfigModel,
+        operator_key: SolPubKey,
+        account: NeonAccount,
+        _block: NeonBlockHdrModel | None,
+    ) -> OperatorAccountModel:
+        seed_list = (
+            evm_cfg.account_seed_version.to_bytes(1, byteorder="little"),
+            operator_key.to_bytes(),
+            account.eth_address.to_bytes(),
+            account.chain_id.to_bytes(32, byteorder="big"),
+        )
+
+        token_sol_addr, _ = SolPubKey.find_program_address(seed_list, NeonProg.ID)
+
+        # TODO: move to core-api
+        prefix_len: Final[int] = 1 + 1  # tag + version
+        owner_len: Final[int] = SolPubKey.key_size
+        addr_len: Final[int] = EthAddress.hash_size
+        chain_id_len: Final[int] = 8
+        balance_len: Final[int] = 32
+        balance_offset: Final[int] = prefix_len + owner_len + addr_len + chain_id_len
+
+        sol_acct = await self._sol_client.get_account(token_sol_addr)
+        if not sol_acct.is_empty:
+            status = NeonAccountStatus.Ok
+            balance = int.from_bytes(sol_acct.data[balance_offset : balance_offset + balance_len], byteorder="little")
+        else:
+            status = NeonAccountStatus.Empty
+            balance = 0
+
+        return OperatorAccountModel(
+            status=status,
+            operator_key=operator_key,
+            neon_account=account,
+            token_sol_address=token_sol_addr,
+            balance=balance,
+        )
 
     async def emulate_neon_call(
         self,
