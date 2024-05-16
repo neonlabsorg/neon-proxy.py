@@ -92,7 +92,7 @@ class NpVersionApi(NeonProxyApi):
             return None
 
         return _RpcNeonEvmParamResp(
-            neonAccountSeedVersion=_get_int_param("NEON_ACCOUNT_SEED_VERSION"),
+            neonAccountSeedVersion=evm_cfg.account_seed_version,
             neonMaxEvmStepsInLastIteration=_get_int_param("NEON_EVM_STEPS_LAST_ITERATION_MAX"),
             neonMinEvmStepsInIteration=evm_cfg.evm_step_cnt,
             neonGasLimitMultiplierWithoutChainId=evm_cfg.gas_limit_multiplier_wo_chain_id,

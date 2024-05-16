@@ -228,7 +228,7 @@ class OpResourceMng(OpResourceComponent):
                 await self._delete_signer_list()
                 await self._delete_blocked_holder_list()
             except BaseException as exc:
-                _LOG.error("error on active operator keys", exc_info=exc)
+                _LOG.error("error on activate operator keys", exc_info=exc)
 
     async def _activate_signer_list(self) -> None:
         op_signer_list = [s for s in self._active_signer_dict.values() if s.disabled_holder_list or s.warn_cnt]
@@ -408,25 +408,21 @@ class OpResourceMng(OpResourceComponent):
         assert evm_cfg is not None
 
         prog = NeonProg(op_signer.owner)
-        ix_list: list[SolTxIx] = list()
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
         for token in evm_cfg.token_dict.values():
             acct = NeonAccount.from_raw(op_signer.eth_address, token.chain_id)
-            model = await self._core_api_client.get_neon_account(acct, None)
-            token_sol_addr_dict[token.chain_id] = model.sol_address
+            model = await self._core_api_client.get_operator_account(evm_cfg, op_signer.owner, acct, None)
+            token_sol_addr_dict[token.chain_id] = model.token_sol_address
             if model.status == NeonAccountStatus.Ok:
                 continue
 
-            ix = prog.make_create_neon_account_ix(model.account, model.sol_address, model.contract_sol_address)
-            ix_list.append(ix)
+            prog.init_token_address(model.token_sol_address)
+            ix = prog.make_create_operator_balance_ix(model.neon_account)
+            tx = SolLegacyTx("createOperatorBalance", ix_list=tuple([ix]))
+            if not (await self._send_tx(op_signer.signer, tx)):
+                return False
 
-        if ix_list:
-            tx = SolLegacyTx("createNeonAccount", ix_list=tuple(ix_list))
-            if result := await self._send_tx(op_signer.signer, tx):
-                op_signer.token_sol_address_dict = token_sol_addr_dict
-            return result
-        else:
-            op_signer.token_sol_address_dict = token_sol_addr_dict
+        op_signer.token_sol_address_dict = token_sol_addr_dict
         return True
 
     async def _delete_signer_list(self) -> None:

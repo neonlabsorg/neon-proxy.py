@@ -45,11 +45,7 @@ def _get_root_path_len() -> int:
 
 _SKIP_ROOTPATH_LEN = _get_root_path_len()
 _BASE_ROOTPATH = __file__[:_SKIP_ROOTPATH_LEN]
-# fmt: off
-_CLEF_LOG_FORMAT = os.environ.get("LOG_CLEF_FORMAT", "NO").upper() in (
-    "YES", "ON", "TRUE", "1",
-)
-# fmt: on
+_CLEF_LOG_FORMAT = os.environ.get("LOG_CLEF_FORMAT", "NO").upper() in ("YES", "ON", "TRUE", "1")
 
 
 class JSONFormatter(logging.Formatter):
@@ -107,11 +103,15 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(msg_dict)
 
     def _simple_format(self, record: LogRecord) -> str:
+        pathname = record.pathname
+        if pathname.startswith(_BASE_ROOTPATH):
+            pathname = pathname[_SKIP_ROOTPATH_LEN:]
+
         msg_dict = {
             "level": record.levelname,
             "date": datetime.fromtimestamp(record.created).isoformat(),
             # "process": record.process,
-            "module": record.pathname[_SKIP_ROOTPATH_LEN:] + ":" + str(record.lineno),
+            "module": pathname + ":" + str(record.lineno),
         }
 
         msg_filter = record.msg_filter if hasattr(record, "msg_filter") else None

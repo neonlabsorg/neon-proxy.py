@@ -322,7 +322,7 @@ jobs:
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-      NUMPROCESSES: 8
+      NUMPROCESSES: 12
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
     steps:
