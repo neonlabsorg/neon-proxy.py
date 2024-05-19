@@ -204,22 +204,12 @@ jobs:
         timeout-minutes: 60
         run: |
           python3 ./.github/workflows/deploy.py deploy_check \
-          --proxy_tag=${{ needs.build-image.outputs.proxy_tag }} \
-          --neon_evm_tag=${{ needs.build-image.outputs.neon_evm_tag }} \
-          --faucet_tag=${{ env.FAUCET_TAG }} \
-          --head_ref_branch=${{ github.head_ref }} \
-          --github_ref_name=${{ github.ref_name }}
-      - name: Dump docker logs
-        if: always()
-        run: python3 ./.github/workflows/deploy.py dump_apps_logs --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
+          --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Docker logs
           path: ./*.log
-      - name: Stop containers
-        if: always()
-        run: python3 ./.github/workflows/deploy.py stop_containers --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
       - name: canceling the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"

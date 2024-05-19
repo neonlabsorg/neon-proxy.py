@@ -120,7 +120,7 @@ class SolAltAccountInfo:
             return
 
         addr_list_len = len(data) - _alt.LOOKUP_TABLE_META_SIZE
-        if addr_list_len % SolPubKey.key_size:
+        if addr_list_len % SolPubKey.KeySize:
             _LOG.error("ALT %s addresses list has bad length %s", address, addr_list_len)
             return
 
@@ -148,11 +148,11 @@ class SolAltAccountInfo:
     def account_key_list(self) -> tuple[SolPubKey, ...]:
         # tried solders, but _alt.AddressLookupTable doesn't work...
         offset = 0
-        acct_key_cnt = len(self._addr_list_data) // SolPubKey.key_size
+        acct_key_cnt = len(self._addr_list_data) // SolPubKey.KeySize
         acct_key_list = list()
         for _ in range(acct_key_cnt):
-            key = SolPubKey.from_bytes(self._addr_list_data[offset:offset + SolPubKey.key_size])
-            offset += SolPubKey.key_size
+            key = SolPubKey.from_bytes(self._addr_list_data[offset:offset + SolPubKey.KeySize])
+            offset += SolPubKey.KeySize
             acct_key_list.append(key)
 
         self._addr_list_data = bytes()

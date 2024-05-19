@@ -10,7 +10,6 @@ from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQue
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.hash import EthBlockHash
 from common.neon.block import NeonBlockHdrModel
-from common.solana.commit_level import SolCommit
 from common.utils.format import hex_to_int
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
@@ -197,12 +196,12 @@ class SolBlockDb(HistoryDbTable):
     @staticmethod
     def _generate_fake_block_hash(slot: int) -> str:
         if slot < 0:
-            return "0x" + "00" * EthBlockHash.hash_size
+            return "0x" + "00" * EthBlockHash.HashSize
 
         hex_num = hex(slot)[2:]
         num_len = len(hex_num)
         hex_num = "00" + hex_num.rjust(((num_len >> 1) + (num_len % 2)) << 1, "0")
-        return "0x" + hex_num.rjust(EthBlockHash.hash_size * 2, "f")
+        return "0x" + hex_num.rjust(EthBlockHash.HashSize * 2, "f")
 
     @classmethod
     def _check_block_hash(cls, slot: int, block_hash: str | None) -> str:

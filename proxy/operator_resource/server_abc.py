@@ -41,5 +41,5 @@ class OpResourceServerAbc(BaseProxyServer, abc.ABC):
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
+        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
         return evm_cfg

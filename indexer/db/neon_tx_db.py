@@ -298,25 +298,25 @@ class _RecordWithBlock(_Record):
         return NeonTxMetaModel(neon_tx=neon_tx, neon_tx_rcpt=neon_tx_rcpt)
 
     @staticmethod
-    def _decode_event_list(value: bytes) -> tuple[NeonTxEventModel, ...]:
+    def _decode_event_list(value: bytes) -> list[NeonTxEventModel]:
         try:
             if not value:
-                return tuple()
+                return list()
 
             if value.startswith(b"[") and value.endswith(b"]"):
                 json_data = str(value, "utf-8")
-                return tuple(_NeonTxEventModelList.from_json(json_data).root)
+                return _NeonTxEventModelList.from_json(json_data).root
 
             # TODO: remove after converting all records
             value_list = pickle.loads(value)
             event_list = [
                 NeonTxEventModel.from_dict(_OldNeonTxEventModel.from_dict(value).to_dict()) for value in value_list
             ]
-            return tuple(event_list)
+            return event_list
 
         except BaseException as exc:
             _LOG.warning("cannot decode event list %s", value, exc_info=exc)
-            return tuple()
+            return list()
 
 
 @dataclass(frozen=True)

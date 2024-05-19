@@ -14,7 +14,7 @@ _SoldersPubKey = _pk.Pubkey
 
 class SolPubKey(_SoldersPubKey):
     _default: ClassVar[SolPubKey | None] = None
-    key_size: Final[int] = _SoldersPubKey.LENGTH
+    KeySize: Final[int] = _SoldersPubKey.LENGTH
 
     @classmethod
     def default(cls) -> Self:

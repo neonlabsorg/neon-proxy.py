@@ -8,7 +8,7 @@ from common.ethereum.hash import EthAddress, EthAddressField, EthHash32, EthHash
 class TestNeonHash(unittest.TestCase):
     def test_account_address(self):
         empty_hash = EthAddress.default()
-        self.assertEqual(empty_hash.hash_size, 20)
+        self.assertEqual(empty_hash.HashSize, 20)
         self.assertTrue(empty_hash.is_empty)
         self.assertEqual(len(empty_hash.to_bytes()), 0)
         self.assertIsNone(empty_hash.to_string())
@@ -24,7 +24,7 @@ class TestNeonHash(unittest.TestCase):
         self.assertFalse(good_hash.is_empty)
         self.assertIsNotNone(good_hash.to_string())
         self.assertEqual(len(good_hash.to_string()), 42)
-        self.assertEqual(len(good_hash.to_bytes()), good_hash.hash_size)
+        self.assertEqual(len(good_hash.to_bytes()), good_hash.HashSize)
         self.assertNotEqual(good_hash.to_string("0x"), "0x")
         self.assertEqual(good_hash.to_string(), "0x0102030405060708091011121314151617181920")
         self.assertEqual(good_hash.to_string("0x1"), "0x0102030405060708091011121314151617181920")
@@ -46,7 +46,7 @@ class TestNeonHash(unittest.TestCase):
 
     def test_hash32(self):
         empty_hash = EthHash32.default()
-        self.assertEqual(empty_hash.hash_size, 32)
+        self.assertEqual(empty_hash.HashSize, 32)
         self.assertTrue(empty_hash.is_empty)
         self.assertEqual(len(empty_hash.to_bytes()), 0)
         self.assertIsNone(empty_hash.to_string())
@@ -62,7 +62,7 @@ class TestNeonHash(unittest.TestCase):
         self.assertFalse(good_hash.is_empty)
         self.assertIsNotNone(good_hash.to_string())
         self.assertEqual(len(good_hash.to_string()), 66)
-        self.assertEqual(len(good_hash.to_bytes()), good_hash.hash_size)
+        self.assertEqual(len(good_hash.to_bytes()), good_hash.HashSize)
         self.assertNotEqual(good_hash.to_string("0x2"), "0x2")
         self.assertEqual(good_hash.to_string(), "0x0102030405060708091011121314151617181920212223242526272829303132")
         self.assertEqual(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
+from types import NoneType
 from typing import Callable
 
 from typing_extensions import Self
@@ -12,8 +13,8 @@ from ..utils.pydantic import BaseModel
 
 @dataclass(frozen=True)
 class SimpleAppDataMethod(HttpMethod):
-    RequestType: type[BaseModel] | None
-    RespType: type[BaseModel]
+    RequestType: type[BaseModel] | NoneType
+    RespType: type[BaseModel] | NoneType
 
     @classmethod
     def from_handler(
@@ -24,15 +25,15 @@ class SimpleAppDataMethod(HttpMethod):
     ) -> Self:
         method = HttpMethod.from_handler(handler, allow_request_ctx=allow_request_ctx)
 
-        assert issubclass(method.ReturnType, BaseModel), "AppDataMethod must return an BaseModel instance"
-        assert len(method.param_name_list) in (0, 1), "AppDataMethod must have only 1 argument"
+        assert issubclass(method.ReturnType, (BaseModel, NoneType)), "AppDataMethod must return an BaseModel instance"
+        assert len(method.param_name_list) in (0, 1), "AppDataMethod can have not more than 1 argument"
 
         if len(method.param_name_list) == 1:
             req_param_name = method.param_name_list[0]
             _RequestType = method.type_hint_dict.get(req_param_name)
             assert issubclass(_RequestType, BaseModel), "AppDataMethod must accept an BaseModel instance"
         else:
-            _RequestType = None
+            _RequestType = NoneType
 
         kwargs = dataclasses.asdict(method)
         kwargs.pop("name")

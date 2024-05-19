@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import time
-from multiprocessing import Process
+import multiprocessing as mp
 from typing import Any, Final
 
 from .log_level import get_core_api_log_level
@@ -42,13 +42,17 @@ class _Server:
         port = cfg.neon_core_api_port + idx
         self._host = f"127.0.0.1:{port}"
         self._solana_url = solana_url
-        self._process: Process | None = None
+        self._process: mp.Process | None = None
+        self._stop_event = mp.Event()
 
     def start(self) -> None:
-        self._process = process = Process(target=self._run)
+        self._process = process = mp.Process(target=self._run)
         process.start()
 
     def stop(self) -> None:
+        self._stop_event.set()
+        time.sleep(0.1)
+
         self._process.kill()
         self._process.join()
 
@@ -74,7 +78,7 @@ class _Server:
         cmd = ["neon-core-api", "-H", self._host]
         env = self._create_env()
 
-        while True:
+        while not self._stop_event.is_set():
             self._run_host_api(cmd, env)
             time.sleep(1)
 
@@ -88,7 +92,7 @@ class _Server:
                 universal_newlines=True,
                 env=env,
             )
-            while True:
+            while not self._stop_event.is_set():
                 line = process.stdout.readline()
                 if line:
                     if not self._cfg.debug_cmd_line:

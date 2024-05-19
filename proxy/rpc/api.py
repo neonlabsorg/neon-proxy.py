@@ -166,7 +166,7 @@ class RpcNeonCallRequest(BaseJsonRpcModel):
 class RpcEthTxEventModel(BaseJsonRpcModel):
     address: EthAddressField
     data: EthBinStrField
-    topics: tuple[EthHash32Field, ...]
+    topics: list[EthHash32Field]
     blockHash: EthBlockHashField
     blockNumber: HexUIntField
     transactionHash: EthTxHashField

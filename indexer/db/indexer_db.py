@@ -26,10 +26,10 @@ _LOG = logging.getLogger(__name__)
 
 class IndexerDb:
     _max_u64: Final[int] = 2**64 - 1
-    base_start_slot_name: Final[str] = "starting_slot"
-    base_min_used_slot_name: Final[str] = "min_receipt_slot"
-    finalized_slot_name: Final[str] = "finalized_slot"
-    latest_slot_name: Final[str] = "latest_slot"
+    base_start_slot_name: Final[str] = "starting_block_slot"
+    base_min_used_slot_name: Final[str] = "min_receipt_block_slot"
+    finalized_slot_name: Final[str] = "finalized_block_slot"
+    latest_slot_name: Final[str] = "latest_block_slot"
 
     def __init__(self, cfg: Config, db_conn: DbConnection, reindex_ident: str):
         self._cfg = cfg
@@ -40,7 +40,7 @@ class IndexerDb:
             reindex_ident += ":"
 
         self._start_slot_name = reindex_ident + self.base_start_slot_name
-        self._stop_slot_name = reindex_ident + "stop_slot"
+        self._stop_slot_name = reindex_ident + "stop_block_slot"
         self._min_used_slot_name = reindex_ident + self.base_min_used_slot_name
 
         self._constant_db = ConstantDb(db_conn)
@@ -93,6 +93,9 @@ class IndexerDb:
 
     @classmethod
     async def from_db_conn(cls, cfg: Config, db: DbConnection, *, reindex_ident: str = "") -> Self:
+        _LOG.info("init db...")
+        db.enable_debug_query()
+        await db.start()
         self = cls(cfg, db, reindex_ident)
         await self.start()
 
@@ -100,7 +103,7 @@ class IndexerDb:
         self._earliest_slot = await self._constant_db.get_int(None, self.base_start_slot_name, -1)
         self._start_slot = await self._constant_db.get_int(None, self._start_slot_name, self._min_used_slot)
         self._stop_slot = await self._constant_db.get_int(None, self._stop_slot_name, self._max_u64)
-
+        _LOG.info("init db done")
         return self
 
     @classmethod
@@ -132,6 +135,9 @@ class IndexerDb:
         if not self.is_reindexing_mode:
             self._latest_slot = await self.get_latest_slot()
             self._finalized_slot = await self.get_finalized_slot()
+
+    async def stop(self) -> None:
+        await self._db_conn.stop()
 
     @property
     def reindex_ident(self) -> str:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing
+from types import NoneType
 from typing import Awaitable, Callable, Union, Sequence
 
 from .api import (
@@ -20,6 +21,7 @@ from ..http.api_sever import BaseApiServer, BaseApi
 from ..http.errors import BaseHttpError, HttpRouteError
 from ..http.server import HttpHeaderDict, HttpResp
 from ..http.utils import HttpRequestIdField, HttpURL, HttpRequestCtx
+from ..utils.json_logger import log_msg
 from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
@@ -125,7 +127,7 @@ def _parse_request(
             arg_list.append(api)
         if method.has_ctx:
             arg_list.append(ctx)
-        if method.RequestType is not None:
+        if not issubclass(method.RequestType, NoneType):
             arg_list.append(method.RequestType.from_dict(request_model.data))
 
         return None, tuple(arg_list)
@@ -141,10 +143,13 @@ def _parse_request(
 
 
 def _pack_json_resp(
-    self: AppDataServer, method: AppDataMethod, ctx: HttpRequestCtx, resp: BaseModel
+    self: AppDataServer,
+    method: AppDataMethod,
+    ctx: HttpRequestCtx,
+    resp: BaseModel | None,
 ) -> HttpResp:
     assert isinstance(resp, method.RespType), "AppDataHandler returned invalid response"
-    body_model = AppResp(id=ctx.req_id, result=resp.to_dict())
+    body_model = AppResp(id=ctx.req_id, result=resp.to_dict() if resp else None)
     return self._pack_json_resp(ctx, body_model.to_json())
 
 
@@ -152,8 +157,8 @@ def _pack_error_resp(self: AppDataServer, ctx: HttpRequestCtx, exc: BaseExceptio
     if not isinstance(exc, BaseHttpError):
         return self._pack_error_resp(ctx, exc)
 
-    msg = dict(
-        message="error on {Path} from {IP}: {Error}",
+    msg = log_msg(
+        "error on {Path} from {IP}: {Error}",
         Path=ctx.path,
         IP=ctx.ip_addr,
         Error=str(exc),

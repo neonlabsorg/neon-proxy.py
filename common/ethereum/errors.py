@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Final, ClassVar
+
 from .hash import EthAddress
 from ..jsonrpc.errors import BaseJsonRpcError
 
@@ -19,8 +21,8 @@ class EthInvalidFilterError(EthError):
 
 
 class EthNonceTooLowError(EthError):
-    CODE = -32002
-    _empty_sender = "?"
+    CODE: ClassVar[int] = -32002
+    _empty_sender: Final[str] = "?"
 
     def __init__(self, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress = _empty_sender) -> None:
         msg = f"nonce too low: address {sender}, tx: {tx_nonce} state: {state_tx_cnt}"
@@ -45,7 +47,7 @@ class EthNonceTooLowError(EthError):
 
 
 class EthNonceTooHighError(EthError):
-    _empty_sender = "?"
+    _empty_sender: Final[str] = "?"
 
     def __init__(self, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress = _empty_sender) -> None:
         msg = f"nonce too high: address {sender}, tx: {tx_nonce} state: {state_tx_cnt}"
@@ -69,7 +71,7 @@ class EthNonceTooHighError(EthError):
 
 
 class EthOutOfGasError(EthError):
-    _empty_sender = "?"
+    _empty_sender: Final[str] = "?"
 
     def __init__(self, gas_limit: int, required_gas_limit: int, *, sender: str | EthAddress = _empty_sender) -> None:
         super().__init__("gas limit reached")

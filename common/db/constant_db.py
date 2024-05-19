@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+import pickle
 from dataclasses import dataclass
 from typing import Sequence
 
 from .base_db_table import BaseDbTable
 from .db_connect import DbConnection, DbTxCtx, DbSql, DbSqlParam, DbQueryBody
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,7 @@ class ConstantDb(BaseDbTable):
         self._key_list_query = DbQueryBody()
         self._get_query = DbQueryBody()
         self._del_query = DbQueryBody()
+        self._full_list_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -40,16 +45,22 @@ class ConstantDb(BaseDbTable):
         del_sql = DbSql(";DELETE FROM {table_name} WHERE key = ANY({key})").format(
             table_name=self._table_name, key=DbSqlParam("key")
         )
+        full_list_sql = DbSql(";SELECT {column_list} FROM {table_name} AS a").format(
+            table_name=self._table_name, column_list=self._column_list
+        )
 
         (
             self._key_list_query,
             self._get_query,
             self._del_query,
+            self._full_list_query,
         ) = await self._db.sql_to_query(
             key_list_sql,
             get_sql,
             del_sql,
+            full_list_sql,
         )
+        await self.convert_old_format(None)
 
     async def get_key_list(self, ctx: DbTxCtx) -> tuple[str, ...]:
         rec_list: list[_Record] = await self._fetch_all(ctx, self._key_list_query, None)
@@ -78,3 +89,17 @@ class ConstantDb(BaseDbTable):
 
     async def delete_list(self, ctx: DbTxCtx, key_list: Sequence[str]) -> None:
         await self._update_row(ctx, self._del_query, _ByKey(list(key_list)))
+
+    async def convert_old_format(self, ctx: DbTxCtx) -> None:
+        # TODO: remove after migrating
+        rec_list = await self._fetch_all(ctx, self._full_list_query, dict())
+        for rec in rec_list:
+            try:
+                value = pickle.loads(rec.value)
+                if isinstance(value, str):
+                    await self.set(ctx, rec.key, value)
+                else:
+                    await self.set(ctx, rec.key, str(value))
+
+            except pickle.UnpicklingError:
+                _LOG.debug("record %s is already converted", rec.key)

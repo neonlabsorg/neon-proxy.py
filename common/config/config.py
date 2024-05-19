@@ -90,11 +90,13 @@ class Config:
     enable_private_api_name: Final[str] = "ENABLE_PRIVATE_API"
     enable_send_tx_api_name: Final[str] = "ENABLE_SEND_TX_API"
     max_emulate_evm_step_cnt_name: Final[str] = "MAX_EMULATE_EVM_STEP_COUNT"
-    gather_statistics_name: Final[str] = "GATHER_STATISTICS"
     debug_cmd_line_name: Final[str] = "DEBUG_CMD_LINE"
+    # Statistic configuration
+    gather_stat_name: Final[str] = "GATHER_STATISTICS"
     # Proxy configuration
-    proxy_process_cnt_name: Final[str] = "PROXY_PROCESS_CNT"
-    proxy_worker_cnt_name: Final[str] = "PROXY_WORKER_CNT"
+    rpc_public_port_name: Final[str] = "RPC_PUBLIC_PORT"
+    rpc_process_cnt_name: Final[str] = "RPC_PROCESS_COUNT"
+    rpc_worker_cnt_name: Final[str] = "RPC_WORKER_COUNT"
     # Neon Core API configuration
     sol_key_for_evm_cfg_name: Final[str] = "SOLANA_KEY_FOR_EVM_CONFIG"
     # Postgres DB settings
@@ -112,7 +114,8 @@ class Config:
     mp_eviction_timeout_sec_name: Final[str] = "MEMPOOL_EVICTION_TIMEOUT_SEC"
     mp_gas_price_min_window_name: Final[str] = "MEMPOOL_GAS_PRICE_MINUTE_WINDOW"
     mp_cache_life_sec_name: Final[str] = "MEMPOOL_CACHE_LIFE_SEC"
-    mp_exec_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_COUNT"
+    mp_exec_process_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_PROCESS_COUNT"
+    mp_exec_worker_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_WORKER_COUNT"
     mp_skip_stuck_tx_name: Final[str] = "MEMPOOL_SKIP_STUCK_TRANSACTIONS"
     # Transaction execution settings
     retry_on_fail_name: Final[str] = "RETRY_ON_FAIL"
@@ -401,23 +404,37 @@ class Config:
         return self._env_num(self.max_emulate_evm_step_cnt_name, 500_000, 1000)
 
     @cached_property
-    def gather_statistics(self) -> bool:
-        return self._env_bool(self.gather_statistics_name, False)
-
-    @cached_property
     def debug_cmd_line(self) -> bool:
         return self._env_bool(self.debug_cmd_line_name, False)
+
+    #########################
+    # Statistic configuration
+    @property
+    def stat_port(self) -> int:
+        return self.base_service_port + 3
+
+    @property
+    def stat_public_port(self) -> int:
+        return 8888
+
+    @cached_property
+    def gather_stat(self) -> bool:
+        return self._env_bool(self.gather_stat_name, False)
 
     #########################
     # Proxy configuration
 
     @cached_property
-    def proxy_process_cnt(self) -> int:
-        return self._env_num(self.proxy_process_cnt_name, os.cpu_count(), 1)
+    def rpc_public_port(self) -> int:
+        return self._env_num(self.rpc_public_port_name, 9090, 8000, 25000)
 
     @cached_property
-    def proxy_worker_cnt(self) -> int:
-        return self._env_num(self.proxy_worker_cnt_name, 1, 1)
+    def rpc_process_cnt(self) -> int:
+        return self._env_num(self.rpc_process_cnt_name, os.cpu_count(), 1)
+
+    @cached_property
+    def rpc_worker_cnt(self) -> int:
+        return self._env_num(self.rpc_worker_cnt_name, 1, 1)
 
     #####################
     # Base Service settings
@@ -433,7 +450,7 @@ class Config:
         return self.base_service_port
 
     @cached_property
-    def executor_port(self) -> int:
+    def exec_port(self) -> int:
         return self.base_service_port + 1
 
     @cached_property
@@ -461,8 +478,12 @@ class Config:
         return self._env_num(self.mp_cache_life_sec_name, 30 * self._1min, 15, self._1hour)
 
     @cached_property
-    def mp_exec_cnt(self) -> int:
-        return self._env_num(self.mp_exec_cnt_name, max(os.cpu_count() // 2, 1), 1, os.cpu_count() * 2)
+    def mp_exec_process_cnt(self) -> int:
+        return self._env_num(self.mp_exec_process_cnt_name, max(os.cpu_count() // 2, 1), 1)
+
+    @cached_property
+    def mp_exec_worker_cnt(self) -> int:
+        return self._env_num(self.mp_exec_worker_cnt_name,  1, 1)
 
     @cached_property
     def mp_skip_stuck_tx(self) -> bool:
@@ -473,7 +494,7 @@ class Config:
 
     @cached_property
     def neon_core_api_port(self) -> int:
-        return self.base_service_port + 3
+        return self.base_service_port + 4
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
@@ -504,7 +525,7 @@ class Config:
 
     @cached_property
     def pg_conn_cnt(self) -> int:
-        return self._env_num(self.pg_conn_cnt_name, max(os.cpu_count() // 2, 1), 5, os.cpu_count() * 2)
+        return self._env_num(self.pg_conn_cnt_name, max(os.cpu_count() // 2, 1), 5)
 
     #################################
     # Transaction execution settings
@@ -772,11 +793,12 @@ class Config:
             self.enable_private_api_name: self.enable_private_api,
             self.enable_send_tx_api_name: self.enable_send_tx_api,
             self.max_emulate_evm_step_cnt_name: self.max_emulate_evm_step_cnt,
-            self.gather_statistics_name: self.gather_statistics,
+            self.gather_stat_name: self.gather_stat,
             self.debug_cmd_line_name: self.debug_cmd_line,
             # Proxy configuration
-            self.proxy_process_cnt_name: self.proxy_process_cnt,
-            self.proxy_worker_cnt_name: self.proxy_worker_cnt,
+            self.rpc_public_port_name: self.rpc_public_port,
+            self.rpc_process_cnt_name: self.rpc_process_cnt,
+            self.rpc_worker_cnt_name: self.rpc_worker_cnt,
             # Base service settings:
             self.base_service_port_name: self.base_service_port,
             # Mempool settings
@@ -785,7 +807,8 @@ class Config:
             self.mp_eviction_timeout_sec_name: self.mp_eviction_timeout_sec,
             self.mp_gas_price_min_window_name: self.mp_gas_price_min_window,
             self.mp_cache_life_sec_name: self.mp_cache_life_sec,
-            self.mp_exec_cnt_name: self.mp_exec_cnt,
+            self.mp_exec_process_cnt_name: self.mp_exec_process_cnt,
+            self.mp_exec_worker_cnt_name: self.mp_exec_worker_cnt,
             self.mp_skip_stuck_tx_name: self.mp_skip_stuck_tx,
             # Neon Core API settings
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,
@@ -829,7 +852,6 @@ class Config:
             self.stuck_object_validate_blockout_name: self.stuck_object_validate_blockout,
             self.alt_freeing_depth_name: self.alt_freeing_depth,
             self.metrics_log_skip_cnt_name: self.metrics_log_skip_cnt,
-            self.op_key_list_name: self.op_key_set,
             # Integration Indexer with Tracer API
             self.slot_processing_delay_name: self.slot_processing_delay,
             self.clickhouse_dsn_list_name: self.ch_dsn_list,

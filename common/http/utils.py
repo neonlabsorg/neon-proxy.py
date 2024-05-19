@@ -89,12 +89,14 @@ class HttpRequestCtx:
         return self
 
     @property
-    def process_time_msec(self) -> float:
+    def process_time_nsec(self) -> int:
         if self.start_time_nsec:
-            total_time_nsec = time.monotonic_ns() - self.start_time_nsec
-        else:
-            total_time_nsec = 0
-        return total_time_nsec / (10**6)
+            return time.monotonic_ns() - self.start_time_nsec
+        return 0
+
+    @property
+    def process_time_msec(self) -> float:
+        return self.process_time_nsec / (10**6)
 
     def set_property_value(self, name: str, value) -> Self:
         object.__setattr__(self, name, value)

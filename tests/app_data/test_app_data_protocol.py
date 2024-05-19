@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from multiprocessing import Process
-
-from singleton_decorator import singleton
 
 from common.app_data.client import AppDataClient
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
 from common.http.utils import HttpRequestCtx
+from common.utils.process_pool import ProcessPool
 from common.utils.pydantic import BaseModel
 
 HOST = "127.0.0.1"
@@ -37,6 +35,10 @@ class StopServerResp(BaseModel):
 
 
 class TestApi(AppDataApi):
+    def __init__(self) -> None:
+        super().__init__()
+        self._stop_task: asyncio.Task | None = None
+
     @AppDataApi.method(name="helloWorld")
     def hello(self, ctx: HttpRequestCtx, request: HelloRequest) -> HelloResp:
         return HelloResp(message=f"Hello {request.name} {ctx.request.method}", value=request.value.value)
@@ -48,35 +50,45 @@ class TestApi(AppDataApi):
 
     @AppDataApi.method(name="stopServer")
     async def stop_server(self) -> StopServerResp:
-        self.server.stop()
+        async def _stop() -> None:
+            await asyncio.sleep(0.1)
+            self._server.stop()
+
+        self._stop_task = asyncio.get_event_loop().create_task(_stop())
         return StopServerResp(message="Server is going to stop")
 
 
 class TestApiServer(AppDataServer):
+    class _ProcessPool(ProcessPool):
+        def __init__(self, server: TestApiServer) -> None:
+            super().__init__()
+            self._server = server
+
+        def _on_process_start(self) -> None:
+            self._server._on_process_start()
+
+        def _on_process_stop(self) -> None:
+            self._server._on_process_stop()
+            self._server = None
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self._process_pool = self._ProcessPool(self)
         test_api = TestApi()
-        self.set_process_cnt(2)
         self.listen(host=HOST, port=PORT)
         self.add_api(test_api, endpoint=ENDPOINT)
 
+    def start(self) -> None:
+        self._process_pool.start()
 
-@singleton
-class ServerProcess:
-    def __init__(self, cfg: Config) -> None:
-        self._process: Process | None = None
-        self._server = TestApiServer(cfg)
+    def stop(self) -> None:
+        self._process_pool.stop()
 
-    def start(self):
-        self._process = Process(target=self._run)
-        self._process.start()
+    def _on_process_start(self) -> None:
+        super().start()
 
-    def stop(self):
-        self._server.stop()
-        self._process.kill()
-
-    def _run(self):
-        self._server.start()
+    def _on_process_stop(self) -> None:
+        super().stop()
 
 
 class ApiClient(AppDataClient):
@@ -93,14 +105,14 @@ class ApiClient(AppDataClient):
 class TestAppDataProtocol(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         config = Config()
-        self._server_process = ServerProcess(config)
-        self._server_process.start()
+        self._api_server = TestApiServer(config)
+        self._api_server.start()
         self._api_client = ApiClient(config)
-        self._api_client.connect(host=HOST, port=PORT, path=ENDPOINT).set_timeout_sec(1).set_max_retry_cnt(3)
+        self._api_client.connect(host=HOST, port=PORT, path=ENDPOINT).set_timeout_sec(1).set_max_retry_cnt(30)
 
     async def asyncTearDown(self):
         await self._api_client.stop()
-        self._server_process.stop()
+        self._api_server.stop()
 
     async def test_app_data_server(self):
         req = HelloRequest(name="world", value=Bar(value=42))

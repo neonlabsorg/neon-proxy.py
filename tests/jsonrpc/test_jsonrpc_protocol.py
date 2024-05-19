@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
-from multiprocessing import Process
 from typing import AsyncIterator
 
 from pydantic import StrictInt, StrictStr, Field
-from singleton_decorator import singleton
 
 from common.config.config import Config
 from common.http.utils import HttpRequestCtx
@@ -13,6 +12,7 @@ from common.jsonrpc.api import JsonRpcListMixin
 from common.jsonrpc.client import JsonRpcClient
 from common.jsonrpc.errors import InvalidParamError
 from common.jsonrpc.server import JsonRpcServer, JsonRpcApi
+from common.utils.process_pool import ProcessPool
 from common.utils.pydantic import BaseModel, RootModel
 
 HOST = "127.0.0.1"
@@ -40,7 +40,23 @@ class TestParamsRoot(JsonRpcListMixin[TestParams], RootModel):
 
 
 class TestApiServer(JsonRpcServer):
+    class _ProcessPool(ProcessPool):
+        def __init__(self, server: TestApiServer) -> None:
+            super().__init__()
+            self._server = server
+
+        def _on_process_start(self) -> None:
+            self._server._on_process_start()
+
+        def _on_process_stop(self) -> None:
+            self._server._on_process_stop()
+            self._server = None
+
     class TestApi(JsonRpcApi):
+        def __init__(self) -> None:
+            super().__init__()
+            self._stop_task: asyncio.Task | None = None
+
         @JsonRpcApi.method(name="json_helloWorld")
         async def hello(self, name: StrictStr, value: Bar) -> HelloResp:
             return HelloResp(message=f"Hello {name}", value=value.value)
@@ -53,37 +69,27 @@ class TestApiServer(JsonRpcServer):
         def try_params(self, params: TestParams) -> HelloResp:
             return HelloResp(message=f"Hello {params.message}", value=params.value)
 
-        @JsonRpcApi.method(name="json_stopServer")
-        async def stop_server(self) -> str:
-            self.server.stop()
-            return "Server stopped"
-
     def __init__(self, cfg: Config) -> None:
         super().__init__(cfg)
 
-        self.set_process_cnt(2)
         self.listen(host=HOST, port=PORT)
 
         test_api = self.TestApi()
         self.add_api(test_api, endpoint=ENDPOINT)
 
+        self._process_pool = self._ProcessPool(self)
 
-@singleton
-class ServerProcess:
-    def __init__(self, cfg: Config) -> None:
-        self._process: Process | None = None
-        self._server = TestApiServer(cfg)
+    def start(self) -> None:
+        self._process_pool.start()
 
-    def start(self):
-        self._process = Process(target=self._run)
-        self._process.start()
+    def stop(self) -> None:
+        self._process_pool.stop()
 
-    def stop(self):
-        self._server.stop()
-        self._process.kill()
+    def _on_process_start(self) -> None:
+        super().start()
 
-    def _run(self):
-        self._server.start()
+    def _on_process_stop(self) -> None:
+        super().stop()
 
 
 class ApiClient(JsonRpcClient):
@@ -99,9 +105,6 @@ class ApiClient(JsonRpcClient):
     @JsonRpcClient.method(name="json_tryDefault")
     async def try_default2(self, name: str, value: int, value1: int) -> HelloResp: ...
 
-    @JsonRpcClient.method(name="json_stopServer")
-    async def stop_server(self) -> str: ...
-
     @JsonRpcClient.method(name="json_Params", predefined_params=True)
     async def try_params(self, params: TestParams) -> HelloResp: ...
 
@@ -112,14 +115,14 @@ class ApiClient(JsonRpcClient):
 class TestJsonRpcProtocol(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         config = Config()
-        self._server_process = ServerProcess(config)
-        self._server_process.start()
+        self._api_server = TestApiServer(config)
+        self._api_server.start()
         self._api_client = ApiClient(config).connect(host=HOST, port=PORT, path=ENDPOINT)
         self._api_client.set_timeout_sec(1).set_max_retry_cnt(3)
 
     async def asyncTearDown(self):
         await self._api_client.stop()
-        self._server_process.stop()
+        self._api_server.stop()
 
     async def test_jsonrpc(self):
         res = await self._api_client.hello(name="John", value=Bar(value=12))

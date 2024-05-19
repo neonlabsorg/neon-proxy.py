@@ -101,7 +101,7 @@ class SolAltTxIxCollector:
             return True
 
         # don't wait for ALTs from other operators
-        return alt_info.owner in self._cfg.op_key_set
+        return False
 
 
 @dataclass(frozen=True)

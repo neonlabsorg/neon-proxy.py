@@ -146,7 +146,7 @@ class _RecordWithBlock(_Record):
         return NeonTxEventModel(
             neon_tx_hash=self.tx_hash,
             address=self.address,
-            topic_list=tuple(topic_list),
+            topic_list=topic_list,
             data=self.log_data,
             sol_tx_sig=self.sol_sig,
             sol_ix_idx=self.idx,

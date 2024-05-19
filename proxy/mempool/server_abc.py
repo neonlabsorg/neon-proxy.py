@@ -16,6 +16,7 @@ from ..base.ex_client import ExecutorClient
 from ..base.mp_api import MpGasPriceModel, MP_ENDPOINT
 from ..base.op_client import OpResourceClient
 from ..base.server import BaseProxyServer, BaseProxyComponent
+from ..stat.client import StatClient
 
 
 class MempoolComponent(BaseProxyComponent):
@@ -35,6 +36,10 @@ class MempoolComponent(BaseProxyComponent):
     def _op_client(self) -> OpResourceClient:
         return self._server._op_client  # noqa
 
+    @cached_property
+    def _stat_client(self) -> StatClient:
+        return self._server._stat_client  # noqa
+
 
 class MempoolApi(MempoolComponent, AppDataApi):
     def __init__(self, server: MempoolServerAbc) -> None:
@@ -50,27 +55,31 @@ class MempoolServerAbc(BaseProxyServer, abc.ABC):
         sol_client: SolClient,
         exec_client: ExecutorClient,
         op_client: OpResourceClient,
+        stat_client: StatClient,
         db: IndexerDbClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._exec_client = exec_client
         self._op_client = op_client
+        self._stat_client = stat_client
         self._db = db
 
-    async def on_server_start(self) -> None:
+    async def _on_server_start(self) -> None:
         await asyncio.gather(
-            super().on_server_start(),
+            super()._on_server_start(),
             self._db.start(),
             self._op_client.start(),
             self._exec_client.start(),
+            self._stat_client.start(),
         )
 
-    async def on_server_stop(self) -> None:
+    async def _on_server_stop(self) -> None:
         await asyncio.gather(
-            super().on_server_stop(),
+            super()._on_server_stop(),
             self._db.stop(),
             self._exec_client.stop(),
             self._op_client.stop(),
+            self._stat_client.stop(),
         )
 
     @ttl_cached_method(ttl_sec=1)

@@ -61,8 +61,12 @@ class MpTxModel(BaseModel):
         return self.order_gas_price or self.neon_tx.gas_price
 
     @property
+    def process_time_nsec(self) -> int:
+        return time.monotonic_ns() - self.start_time_nsec
+
+    @property
     def process_time_msec(self) -> float:
-        return (time.monotonic_ns() - self.start_time_nsec) / (10**6)
+        return self.process_time_nsec / (10**6)
 
     @cached_method
     def to_string(self) -> str:
@@ -112,8 +116,12 @@ class MpStuckTxModel(BaseModel):
         return self.neon_tx_hash.to_bytes()[:4].hex()
 
     @property
+    def process_time_nsec(self) -> int:
+        return time.monotonic_ns() - self.start_time_nsec
+
+    @property
     def process_time_msec(self) -> float:
-        return (time.monotonic_ns() - self.start_time_nsec) / (10**6)
+        return self.process_time_nsec / (10**6)
 
     def __str__(self) -> str:
         return self.to_string()

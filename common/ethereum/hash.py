@@ -11,7 +11,7 @@ from ..utils.pydantic import PlainValidator, PlainSerializer
 
 
 class _BaseHash:
-    hash_size: ClassVar[int] = 0
+    HashSize: ClassVar[int] = 0
     _empty_hash: Final[bytes] = bytes()
     _default: ClassVar[_BaseHash | None] = None
 
@@ -21,8 +21,8 @@ class _BaseHash:
 
         if not isinstance(data, bytes):
             raise ValueError(f"Wrong input type {type(data).__name__}")
-        elif len(data) not in (0, self.hash_size):
-            raise ValueError(f"Wrong input len: {len(data)} not in (0, {self.hash_size})")
+        elif len(data) not in (0, self.HashSize):
+            raise ValueError(f"Wrong input len: {len(data)} not in (0, {self.HashSize})")
 
         self._data: Final[bytes] = data
 
@@ -89,8 +89,8 @@ _RawHash = Union[str, bytes, bytearray, _BaseHash, None]
 
 
 class EthAddress(_BaseHash):
-    hash_size: ClassVar[int] = 20
-    zero_address: ClassVar[str] = "0x" + "00" * hash_size
+    HashSize: ClassVar[int] = 20
+    ZeroAddress: ClassVar[str] = "0x" + "00" * HashSize
 
     def to_checksum(self, default: str | None = None) -> str | None:
         return self._to_checksum() if self._data else default
@@ -114,18 +114,18 @@ EthAddressField = Annotated[
 EthZeroAddressField = Annotated[
     EthAddress,
     PlainValidator(EthAddress.from_raw),
-    PlainSerializer(lambda v: v.to_checksum(EthAddress.zero_address), return_type=str),
+    PlainSerializer(lambda v: v.to_checksum(EthAddress.ZeroAddress), return_type=str),
 ]
 EthNotNoneAddressField = Annotated[
     EthAddress,
     PlainValidator(EthAddress.from_not_none),
-    PlainSerializer(lambda v: v.to_checksum(EthAddress.zero_address), return_type=str),
+    PlainSerializer(lambda v: v.to_checksum(EthAddress.ZeroAddress), return_type=str),
 ]
 
 
 class EthHash32(_BaseHash):
-    hash_size: ClassVar[int] = 32
-    zero_hash: ClassVar[str] = "0x" + "00" * hash_size
+    HashSize: ClassVar[int] = 32
+    ZeroHash: ClassVar[str] = "0x" + "00" * HashSize
 
     def to_string(self, default: str | None = None) -> str | None:
         return self._to_string() if self._data else default
@@ -145,12 +145,12 @@ EthHash32Field = Annotated[
 EthZeroHash32Field = Annotated[
     EthHash32,
     PlainValidator(EthHash32.from_raw),
-    PlainSerializer(lambda v: v.to_string(EthHash32.zero_hash), return_type=str),
+    PlainSerializer(lambda v: v.to_string(EthHash32.ZeroHash), return_type=str),
 ]
 EthNotNoneHash32Field = Annotated[
     EthHash32,
     PlainValidator(EthHash32.from_not_none),
-    PlainSerializer(lambda v: v.to_string(EthHash32.zero_hash), return_type=str),
+    PlainSerializer(lambda v: v.to_string(EthHash32.ZeroHash), return_type=str),
 ]
 
 EthTxHash = EthHash32

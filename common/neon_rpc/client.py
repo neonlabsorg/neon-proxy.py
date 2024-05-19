@@ -162,8 +162,8 @@ class CoreApiClient(SimpleAppDataClient):
 
         # TODO: move to core-api
         prefix_len: Final[int] = 1 + 1  # tag + version
-        owner_len: Final[int] = SolPubKey.key_size
-        addr_len: Final[int] = EthAddress.hash_size
+        owner_len: Final[int] = SolPubKey.KeySize
+        addr_len: Final[int] = EthAddress.HashSize
         chain_id_len: Final[int] = 8
         balance_len: Final[int] = 32
         balance_offset: Final[int] = prefix_len + owner_len + addr_len + chain_id_len

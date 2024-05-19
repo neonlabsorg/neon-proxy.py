@@ -355,13 +355,14 @@ class _SenderTxPool:
 class MpTxSchedule:
     _top_index: Final[int] = -1
 
-    def __init__(self, cfg: Config, core_api_client: CoreApiClient, chain_id: int) -> None:
+    def __init__(self, cfg: Config, core_api_client: CoreApiClient, token: str, chain_id: int) -> None:
         self._core_api_client = core_api_client
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
 
         self._tx_dict = _TxDict(chain_id)
+        self._token: Final[str] = token
         self._chain_id: Final[int] = chain_id
 
         self._sender_pool_dict: dict[EthAddress, _SenderTxPool] = dict()
@@ -405,6 +406,10 @@ class MpTxSchedule:
     @property
     def chain_id(self) -> int:
         return self._chain_id
+
+    @property
+    def token(self) -> str:
+        return self._token
 
     def add_tx(self, tx: MpTxModel, state_tx_cnt: int) -> MpTxResp:
         _LOG.debug(log_msg("add tx {Tx} to mempool {ChainID} with {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info()))

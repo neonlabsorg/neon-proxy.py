@@ -38,7 +38,7 @@ class TestNeonAccount(unittest.TestCase):
         raw_dict5 = dict()
         account5 = NeonAccount.from_dict(raw_dict5)
         self.assertTrue(account5.is_empty)
-        self.assertEqual(account5.to_address(), account5.null_address)
+        self.assertEqual(account5.to_address(), account5.NullAddress)
 
     def test_from_raw(self):
         public_key = eth_keys.keys.PrivateKey(bytes(32)).public_key
@@ -115,17 +115,17 @@ class TestNeonAccount(unittest.TestCase):
 
         account2 = NeonAccount.from_raw(None, 14)
         self.assertTrue(account2.is_empty)
-        self.assertEqual(account2.to_address(), account2.null_address)
-        self.assertEqual(account2.to_checksum_address(), account2.null_address)
+        self.assertEqual(account2.to_address(), account2.NullAddress)
+        self.assertEqual(account2.to_checksum_address(), account2.NullAddress)
 
         account3 = NeonAccount.from_raw(bytes(), 15)
         self.assertTrue(account3.is_empty)
-        self.assertEqual(account3.to_address(), account3.null_address)
-        self.assertEqual(account3.to_checksum_address(), account3.null_address)
+        self.assertEqual(account3.to_address(), account3.NullAddress)
+        self.assertEqual(account3.to_checksum_address(), account3.NullAddress)
 
         neon_account = NeonAccount.default()
         self.assertTrue(neon_account.is_empty)
-        self.assertEqual(neon_account.to_address(), NeonAccount.null_address)
+        self.assertEqual(neon_account.to_address(), NeonAccount.NullAddress)
         self.assertEqual(neon_account.chain_id, 0)
         self.assertEqual(neon_account._private_key, None)
 
@@ -150,20 +150,20 @@ class TestNeonAccount(unittest.TestCase):
         account2 = NeonAccount.from_raw(None, 76)
         self.assertIsNotNone(account2.to_address())
         self.assertEqual(account2.to_string(), "")
-        self.assertEqual(account2.to_address(), account2.null_address)
+        self.assertEqual(account2.to_address(), account2.NullAddress)
         self.assertIsNone(account2.to_address(None))
 
     def test_to_checksum_address(self):
         account1 = NeonAccount.from_private_key(bytes(32), 88)
         self.assertFalse(account1.is_empty)
-        self.assertNotEqual(account1.to_checksum_address(), account1.null_address)
+        self.assertNotEqual(account1.to_checksum_address(), account1.NullAddress)
         self.assertNotEqual(account1.to_string(), "")
         self.assertIsNotNone(account1.private_key)
 
         account2 = NeonAccount.from_private_key(bytes(33), 99)
         self.assertFalse(account2.is_empty)
         self.assertNotEqual(account2.to_string(), "")
-        self.assertNotEqual(account2.to_checksum_address(), account2.null_address)
+        self.assertNotEqual(account2.to_checksum_address(), account2.NullAddress)
         self.assertIsNotNone(account2.private_key)
 
         with self.assertRaises(ValueError):

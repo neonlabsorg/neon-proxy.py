@@ -11,7 +11,6 @@ from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, HolderAccountStatus, NeonAccountStatus
-from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
