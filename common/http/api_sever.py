@@ -43,7 +43,7 @@ class BaseApiServer(HttpServer, abc.ABC):
         self._virtual_method_name = False
 
     def add_api(self, api: BaseApi, *, endpoint: HttpStrOrURL = "/") -> Self:
-        assert not self.is_started(), "Server is already started"
+        assert not self._is_started, "Server is already started"
 
         base_url = HttpURL(endpoint)
         assert not base_url.is_absolute(), "'endpoint' must be relative"
@@ -56,7 +56,7 @@ class BaseApiServer(HttpServer, abc.ABC):
         return self
 
     def _validate_unique_method_path(self) -> None:
-        assert not self.is_started(), "Server is already started"
+        assert not self._is_started, "Server is already started"
 
         # Build the full map of method, and validate uniques of the path
         path_set: set[HttpURL] = set()

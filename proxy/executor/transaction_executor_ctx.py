@@ -65,7 +65,7 @@ class NeonExecTxCtx:
 
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
+        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
         return self
 
     @cached_property

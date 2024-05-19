@@ -12,7 +12,6 @@ from ..config.constants import DEFAULT_TOKEN_NAME
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress
 from ..neon.account import NeonAccount, NeonAccountField
-from ..neon.neon_program import NeonEvmProtocol
 from ..neon.transaction_model import NeonTxModel
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
@@ -314,21 +313,6 @@ class EvmConfigModel(BaseModel):
     @cached_property
     def package_version(self) -> str:
         return "Neon-EVM/v" + self.version + "-" + self.revision
-
-    @cached_property
-    def protocol_version(self) -> NeonEvmProtocol:
-        try:
-            ver_part_list = self.version.split(".")
-            if len(ver_part_list) != 3:
-                _LOG.error("wrong format of NeonEVM version %s", self.version)
-                return NeonEvmProtocol.Unknown
-
-            major, minor, build = ver_part_list
-            protocol = major + str(minor).rjust(3, "0")
-            return NeonEvmProtocol(int(protocol))
-        except (BaseException,):
-            _LOG.error("wrong format of NeonEVM version %s", self.version)
-            return NeonEvmProtocol.Unknown
 
     @cached_property
     def token_dict(self) -> dict[str, TokenModel]:

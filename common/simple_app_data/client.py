@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import NoneType
 from typing import Callable, Awaitable, Union
 
 from .errors import BadRespError
@@ -37,18 +38,29 @@ class SimpleAppDataClient(HttpClient):
         _RespType = method.RespType
         method_path = HttpURL(method.name)
 
+        def _req_to_json(data: _RequestType) -> str:
+            assert isinstance(
+                data, _RequestType
+            ), f"Wrong type of the request {type(data).__name__} != {_RequestType.__name__}"
+            return data.to_json()
+
         async def _null_wrapper(self: SimpleAppDataClient) -> _RespType:
             resp_json = await self._send_post_request("", path=method_path, reraise_50x=reraise_50x)
             return _parse_resp(resp_json)
 
-        async def _wrapper(self: SimpleAppDataClient, data: _RequestType) -> _RespType:
-            assert isinstance(
-                data, _RequestType
-            ), f"Wrong type of the request {type(data).__name__} != {_RequestType.__name__}"
+        async def _null_wrapper_no_return(self: SimpleAppDataClient) -> None:
+            if resp := await self._send_post_request("", path=method_path, reraise_50x=reraise_50x):
+                raise BadRespError(error_list=f"The server returned a data: {resp}")
 
-            req_json = data.to_json()
+        async def _wrapper(self: SimpleAppDataClient, data: _RequestType) -> _RespType:
+            req_json = _req_to_json(data)
             resp_json = await self._send_post_request(req_json, path=method_path, reraise_50x=reraise_50x)
             return _parse_resp(resp_json)
+
+        async def _wrapper_no_return(self: SimpleAppDataClient, data: _RequestType) -> None:
+            req_json = _req_to_json(data)
+            if resp := await self._send_post_request(req_json, path=method_path, reraise_50x=reraise_50x):
+                raise BadRespError(error_list=f"The server returned a data: {resp}")
 
         def _parse_resp(resp_json: str) -> _RespType:
             try:
@@ -56,8 +68,12 @@ class SimpleAppDataClient(HttpClient):
             except BaseException as exc:
                 raise BadRespError(exc)
 
-        if _RequestType is None:
+        if issubclass(_RequestType, NoneType):
+            if issubclass(_RespType, NoneType):
+                return _null_wrapper_no_return
             return _null_wrapper
+        elif issubclass(_RespType, NoneType):
+            return _wrapper_no_return
         return _wrapper
 
 

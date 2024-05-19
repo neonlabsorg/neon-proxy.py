@@ -13,8 +13,6 @@ class OpResourceServer(OpResourceServerAbc):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.set_process_cnt(1)
-        self.set_worker_cnt(1)
         self.listen(host="127.0.0.1", port=self._cfg.op_resource_port)
 
         self._op_secret_mng = OpSecretMng(self)
@@ -24,16 +22,16 @@ class OpResourceServer(OpResourceServerAbc):
         self._add_api(OpSignTxApi(self))
         self._add_api(OpSignerKeyApi(self))
 
-    async def on_server_start(self) -> None:
+    async def _on_server_start(self) -> None:
         await asyncio.gather(
-            super().on_server_start(),
+            super()._on_server_start(),
             self._op_secret_mng.start(),
             self._op_resource_mng.start(),
         )
 
-    async def on_server_stop(self) -> None:
+    async def _on_server_stop(self) -> None:
         await asyncio.gather(
-            super().on_server_stop(),
+            super()._on_server_stop(),
             self._op_secret_mng.stop(),
             self._op_resource_mng.stop(),
         )

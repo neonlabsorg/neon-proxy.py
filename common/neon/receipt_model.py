@@ -28,7 +28,7 @@ class NeonTxReceiptModel(BaseModel):
     total_gas_used: HexUIntField
     sum_gas_used: HexUIntField
 
-    event_list: tuple[NeonTxEventModel, ...]
+    event_list: list[NeonTxEventModel]
 
     is_completed: bool
     is_canceled: bool
@@ -45,7 +45,7 @@ class NeonTxReceiptModel(BaseModel):
             status=0,
             total_gas_used=0,
             sum_gas_used=0,
-            event_list=tuple(),
+            event_list=list(),
             is_completed=False,
             is_canceled=False,
         )

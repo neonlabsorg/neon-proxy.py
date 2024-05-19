@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+from types import NoneType
 from typing import Callable
 
 from .api import AppRequest, AppResp
@@ -26,16 +27,28 @@ class AppDataClient(SimpleAppDataClient):
         method_path = HttpURL(method.name)
 
         async def _null_wrapper(self: AppDataClient) -> _RespType:
-            return await _send_request(self, None)
+            resp = await _send_request(self, None)
+            return _parse_resp(resp)
 
-        async def _wrapper(self: AppDataClient, data: _RequestType) -> _RespType:
+        async def _null_wrapper_no_return(self: AppDataClient) -> None:
+            if resp := await _send_request(self, None):
+                raise BadRespError(error_list=f"The server returned a data: {resp}")
+
+        def _req_to_dict(data: _RequestType) -> dict:
             assert isinstance(
                 data, _RequestType
             ), f"Wrong type of the request {type(data).__name__} != {_RequestType.__name__}"
-            data = data.to_dict()
-            return await _send_request(self, data)
+            return data.to_dict()
 
-        async def _send_request(self: AppDataClient, data: dict | None) -> _RespType:
+        async def _wrapper(self: AppDataClient, data: _RequestType) -> _RespType:
+            resp = await _send_request(self, _req_to_dict(data))
+            return _parse_resp(resp)
+
+        async def _wrapper_no_return(self: AppDataClient, data: _RequestType) -> None:
+            if resp := await _send_request(self, _req_to_dict(data)):
+                raise BadRespError(error_list=f"The server returned a data: {resp}")
+
+        async def _send_request(self: AppDataClient, data: dict | None) -> dict | None:
             req_id = str(next(self._req_id))
             req_data = AppRequest(id=req_id, data=data).to_json()
 
@@ -48,14 +61,20 @@ class AppDataClient(SimpleAppDataClient):
                 error = resp.error
                 error_list = error.data.get("errors", tuple())
                 raise BaseAppDataError(error.message, code=error.code, error_list=error_list)
+            return resp.result
 
+        def _parse_resp(resp: dict) -> _RespType:
             try:
-                return _RespType.from_dict(resp.result)
+                return _RespType.from_dict(resp)
             except PydanticValidationError as exc:
                 raise BadRespError(exc)
 
-        if not _RequestType:
+        if issubclass(_RequestType, NoneType):
+            if issubclass(_RespType, NoneType):
+                return _null_wrapper_no_return
             return _null_wrapper
+        elif issubclass(_RespType, NoneType):
+            return _wrapper_no_return
         return _wrapper
 
 

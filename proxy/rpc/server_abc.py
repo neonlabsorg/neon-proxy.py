@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import Callable, Final
+from typing import Callable, Final, ClassVar
 
 import base58
 from typing_extensions import Self
@@ -32,13 +32,16 @@ from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
+from common.stat.api import RpcCallData
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context, log_msg
+from common.utils.process_pool import ProcessPool
 from gas_tank.db.gas_less_accounts_db import GasLessAccountDb
 from indexer.db.indexer_db_client import IndexerDbClient
 from .api import RpcBlockRequest
 from ..base.mp_api import MpGasPriceModel, MpTokenGasPriceModel
 from ..base.mp_client import MempoolClient
+from ..stat.client import StatClient
 
 _ENDPOINT_LIST = ("/solana", "/solana/:token", "/", "/:token")
 _LOG = logging.getLogger(__name__)
@@ -151,12 +154,27 @@ class NeonProxyApi(NeonProxyComponent, JsonRpcApi):
 
 
 class NeonProxyAbc(JsonRpcServer):
+    _stat_name: ClassVar[str] = "PublicRpc"
+
+    class _ProcessPool(ProcessPool):
+        def __init__(self, server: NeonProxyAbc) -> None:
+            super().__init__()
+            self._server = server
+
+        def _on_process_start(self) -> None:
+            self._server._on_process_start()
+
+        def _on_process_stop(self) -> None:
+            self._server._on_process_stop()
+            self._server = None
+
     def __init__(
         self,
         cfg: Config,
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
+        stat_client: StatClient,
         db: IndexerDbClient,
         gas_tank: GasLessAccountDb,
     ) -> None:
@@ -165,13 +183,16 @@ class NeonProxyAbc(JsonRpcServer):
         self._core_api_client = core_api_client
         self._sol_client = sol_client
         self._mp_client = mp_client
+        self._stat_client = stat_client
         self._db = db
         self._gas_tank = gas_tank
         self._genesis_block: NeonBlockHdrModel | None = None
+        self._process_pool = self._ProcessPool(self)
 
-    async def on_server_start(self) -> None:
+    async def _on_server_start(self) -> None:
         await asyncio.gather(
             self._db.start(),
+            self._stat_client.start(),
             self._gas_tank.start(),
             self._mp_client.start(),
             self._sol_client.start(),
@@ -179,7 +200,7 @@ class NeonProxyAbc(JsonRpcServer):
         )
         await self._init_genesis_block()
 
-    async def on_server_stop(self) -> None:
+    async def _on_server_stop(self) -> None:
         await asyncio.gather(
             self._gas_tank.stop(),
             self._mp_client.stop(),
@@ -202,7 +223,7 @@ class NeonProxyAbc(JsonRpcServer):
         # forwarding request to mempool allows to limit the number of requests to Solana to maximum 1 time per second
         # for details, see the mempool_server::get_evm_cfg() implementation
         evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.protocol_version)
+        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
         return evm_cfg
 
     @ttl_cached_method(ttl_sec=1)
@@ -259,8 +280,14 @@ class NeonProxyAbc(JsonRpcServer):
             )
             _LOG.info(msg)
 
+        stat = RpcCallData(service=self._stat_name, method="BIG", time_nsec=ctx.process_time_nsec, is_error=False)
+        self._stat_client.commit_rpc_call(stat)
+
     def on_bad_request(self, ctx: HttpRequestCtx) -> None:
         _LOG.warning(log_msg("BAD request from {IP} with size {Size}", IP=ctx.ip_addr, Size=len(ctx.request.body)))
+
+        stat = RpcCallData(service=self._stat_name, method="UNKNOWN", time_nsec=ctx.process_time_nsec, is_error=True)
+        self._stat_client.commit_rpc_call(stat)
 
     async def handle_request(
         self,
@@ -288,6 +315,15 @@ class NeonProxyAbc(JsonRpcServer):
                     **info,
                 )
             _LOG.info(dict(**msg, TimeMS=ctx.process_time_msec))
+
+            stat = RpcCallData(
+                service=self._stat_name,
+                method=request.method,
+                time_nsec=ctx.process_time_nsec,
+                is_error=resp.is_error,
+            )
+            self._stat_client.commit_rpc_call(stat)
+
         return resp
 
     async def _init_genesis_block(self) -> None:
@@ -317,3 +353,16 @@ class NeonProxyAbc(JsonRpcServer):
             parent_block_hash=parent_hash,
         )
         # _LOG.debug("genesis hash %s, genesis time %s", block_hash, block_time)
+
+    def start(self) -> None:
+        self._register_handler_list()
+        self._process_pool.start()
+
+    def stop(self) -> None:
+        self._process_pool.stop()
+
+    def _on_process_start(self) -> None:
+        super().start()
+
+    def _on_process_stop(self) -> None:
+        super().stop()

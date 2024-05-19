@@ -56,7 +56,7 @@ class NeonTxEventModel(BaseModel):
     neon_tx_hash: EthTxHashField
 
     address: EthAddressField
-    topic_list: tuple[EthHash32Field, ...]
+    topic_list: list[EthHash32Field]
     data: EthBinStrField
 
     sol_tx_sig: SolTxSigField
@@ -84,7 +84,8 @@ class NeonTxEventModel(BaseModel):
     def log_bloom(self) -> int:
         if self.event_type != self.Type.Log or self.is_hidden:
             return 0
-        iter_list = tuple([self.address.to_bytes()] + [topic.to_bytes() for topic in self.topic_list])
+        iter_list = [self.address.to_bytes()]
+        iter_list.extend(map(lambda x: x.to_bytes(), self.topic_list))
         bloom = BloomFilter.from_iterable(iter_list)
         return int(bloom)
 
@@ -96,7 +97,7 @@ class NeonTxLogInfo:
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
     tx_return: NeonTxLogReturnInfo
-    tx_event_list: tuple[NeonTxEventModel, ...]
+    tx_event_list: list[NeonTxEventModel]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -183,7 +184,7 @@ class _NeonTxLogDraft:
             tx_ix_step=self.tx_ix_step,
             tx_ix_gas=self.tx_ix_gas,
             tx_return=self.tx_return,
-            tx_event_list=tuple([e.to_clean_copy(self) for e in self.tx_event_list]),
+            tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
             is_truncated=self.is_truncated,
             is_already_finalized=self.is_already_finalized,
         )
@@ -195,7 +196,7 @@ class _NeonTxEventDraft:
     is_hidden: bool
 
     address: bytes
-    topic_list: tuple[bytes, ...]
+    topic_list: list[bytes]
     data: bytes
 
     @classmethod
@@ -204,7 +205,7 @@ class _NeonTxEventDraft:
         event_type: NeonTxEventModel.Type,
         is_hidden: bool,
         address: bytes,
-        topic_list: tuple[bytes, ...],
+        topic_list: list[bytes],
         data: bytes,
     ) -> Self:
         return cls(
@@ -391,7 +392,7 @@ class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
             return
 
         address = base64.b64decode(data_list[0])
-        topic_list = tuple([base64.b64decode(data_list[2 + i]) for i in range(topic_cnt)])
+        topic_list = [base64.b64decode(data_list[2 + i]) for i in range(topic_cnt)]
 
         data_index = 2 + topic_cnt
         data = base64.b64decode(data_list[data_index]) if data_index < len(data_list) else bytes()
@@ -439,7 +440,7 @@ class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
             return
 
         event = _NeonTxEventDraft.from_raw(
-            event_type=event_type, is_hidden=True, address=address, topic_list=tuple(), data=bytes()
+            event_type=event_type, is_hidden=True, address=address, topic_list=list(), data=bytes()
         )
         log.tx_event_list.append(event)
 
@@ -482,7 +483,7 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
             data = base64.b64decode(data_list[1])
 
         event = _NeonTxEventDraft.from_raw(
-            event_type=event_type, is_hidden=True, address=bytes(), data=data, topic_list=tuple()
+            event_type=event_type, is_hidden=True, address=bytes(), data=data, topic_list=list()
         )
         log.tx_event_list.append(event)
 

@@ -17,7 +17,7 @@ from ..utils.format import bytes_to_hex, hex_to_bytes, hex_to_int
 class NeonAccount:
     _empty_address_bytes: Final[bytes] = bytes()
     _empty_chain_id: Final[int] = 0
-    null_address: Final[str] = "0x"
+    NullAddress: Final[str] = "0x"
 
     def __init__(
         self,
@@ -122,19 +122,19 @@ class NeonAccount:
     def to_string(self) -> str:
         return self._to_checksum_address() + ":" + hex(self._chain_id) if not self.is_empty else ""
 
-    def to_address(self, default: str | None = null_address) -> str | None:
+    def to_address(self, default: str | None = NullAddress) -> str | None:
         return self._to_address() if self._address else default
 
     @cached_method
     def _to_address(self) -> str:
-        return bytes_to_hex(self._address) if self._address else self.null_address
+        return bytes_to_hex(self._address) if self._address else self.NullAddress
 
-    def to_checksum_address(self, default: str | None = null_address) -> str | None:
+    def to_checksum_address(self, default: str | None = NullAddress) -> str | None:
         return self._to_checksum_address() if self._address else default
 
     @cached_method
     def _to_checksum_address(self) -> str:
-        return eth_utils.to_checksum_address(self._address) if self._address else self.null_address
+        return eth_utils.to_checksum_address(self._address) if self._address else self.NullAddress
 
     @property
     def chain_id(self) -> int:

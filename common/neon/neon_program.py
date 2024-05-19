@@ -7,12 +7,7 @@ from typing import ClassVar, Final, Sequence
 from typing_extensions import Self
 
 from .account import NeonAccount
-from ..config.constants import (
-    NEON_EVM_PROGRAM_ID,
-    NEON_PROXY_MAJOR_VER,
-    NEON_PROXY_MINOR_VER,
-    NEON_PROXY_BUILD_VER,
-)
+from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
@@ -84,6 +79,7 @@ class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1011
+    _evm_version: ClassVar[str] = "v1.11.x"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
     # 1. holder
@@ -109,22 +105,32 @@ class NeonProg:
         self._treasury_pool_account = SolPubKey.default()
 
     @classmethod
-    def init_prog(cls, treasury_pool_cnt: int, treasury_pool_seed: bytes, protocol_version: NeonEvmProtocol) -> None:
+    def init_prog(cls, treasury_pool_cnt: int, treasury_pool_seed: bytes, evm_version: str) -> None:
+        def _ver_to_proto() -> NeonEvmProtocol:
+            try:
+                ver_part_list = evm_version.split(".")
+                if len(ver_part_list) != 3:
+                    _LOG.error("wrong format of NeonEVM version %s", evm_version)
+                    return NeonEvmProtocol.Unknown
+
+                major, minor, build = ver_part_list
+                protocol = major + str(minor).rjust(3, "0")
+                return NeonEvmProtocol(int(protocol))
+            except (BaseException,):
+                _LOG.error("wrong format of NeonEVM version %s", evm_version)
+                return NeonEvmProtocol.Unknown
+
         assert isinstance(treasury_pool_cnt, int)
         assert isinstance(treasury_pool_seed, bytes)
         cls._treasury_pool_cnt = treasury_pool_cnt
         cls._treasury_pool_seed = treasury_pool_seed
-        cls._protocol_version = protocol_version
+        cls._evm_version = evm_version
+        cls._protocol_version = _ver_to_proto()
 
     @classmethod
     def validate_protocol(cls) -> None:
         if cls._protocol_version not in SUPPORTED_VERSION_SET:
-            evm_minor = cls._protocol_version % 1000
-            evm_major = cls._protocol_version // 1000
-            raise EthError(
-                f"Neon Proxy v{NEON_PROXY_MAJOR_VER}.{NEON_PROXY_MINOR_VER}.{NEON_PROXY_BUILD_VER} is not compatible "
-                f"with Neon EVM v{evm_major}.{evm_minor}.xxx"
-            )
+            raise EthError(f"Neon-Proxy v{NEON_PROXY_VER} is not compatible with Neon-EVM v{cls._evm_version}")
 
     def init_token_address(self, token_sol_address: SolPubKey) -> Self:
         self._token_sol_address = token_sol_address

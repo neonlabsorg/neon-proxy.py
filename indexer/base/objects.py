@@ -6,7 +6,7 @@ import itertools
 import logging
 import time
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator, Generator, ClassVar
 
 from typing_extensions import Self
@@ -30,7 +30,7 @@ from common.solana.transaction_meta import SolRpcTxInfo
 from common.utils.cached import cached_method, reset_cached_method, cached_property
 from common.utils.format import str_fmt_object
 from common.utils.pydantic import BaseModel
-from ..stat.data import NeonTxStat
+from ..stat.api import NeonTxStat
 
 _LOG = logging.getLogger(__name__)
 
@@ -170,6 +170,33 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
         data_size: int
         data: EthBinStrField
 
+    # TODO: remove after migrating
+    class _DeprecatedInitData(BaseModel):
+        start_block_slot: int
+        last_block_slot: int
+        is_stuck: bool
+        neon_tx_sig: str
+        account: str
+        data_size: int
+        data: str
+
+        @classmethod
+        def is_deprecated(cls, data: dict) -> bool:
+            return "neon_tx_sig" in data
+
+        def to_clean_copy(self) -> NeonIndexedHolderInfo.InitData:
+            return NeonIndexedHolderInfo.InitData(
+                start_slot=self.start_block_slot,
+                last_slot=self.last_block_slot,
+                is_stuck=self.is_stuck,
+                neon_tx_hash=self.neon_tx_sig,
+                address=self.account,
+                data_size=self.data_size,
+                data=self.data,
+            )
+
+    # TODO: done
+
     def __init__(self, key: Key, data: bytes, data_size: int, **kwargs) -> None:
         super().__init__(**kwargs)
         self._key = key
@@ -187,12 +214,16 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
 
     @classmethod
     def from_dict(cls, dict_data: dict) -> Self:
-        init = cls.InitData.from_dict(dict_data)
+        if cls._DeprecatedInitData.is_deprecated(dict_data):
+            init = cls._DeprecatedInitData.from_dict(dict_data).to_clean_copy()
+        else:
+            init = cls.InitData.from_dict(dict_data)
+
         holder = cls(
             key=cls.Key(init.address, init.neon_tx_hash),
-            data=init.data,
+            data=init.data.to_bytes(),
             data_size=init.data_size,
-            init_data=init,
+            init=init,
         )
         return holder
 
@@ -248,7 +279,7 @@ class _NeonTxEventDraft:
     sol_inner_ix_idx: int | None
 
     address: EthAddress = EthAddress.default()
-    topic_list: tuple[EthHash32, ...] = tuple()
+    topic_list: list[EthHash32] = field(default_factory=list)
     data: EthBinStrField = EthBinStr.default()
 
     total_gas_used: int = 0
@@ -320,7 +351,7 @@ class _NeonTxReceiptDraft:
     total_gas_used: int
     sum_gas_used: int
 
-    event_list: list[NeonTxEventModel] | tuple[NeonTxEventModel, ...]
+    event_list: list[NeonTxEventModel]
 
     is_completed: bool
     is_canceled: bool
@@ -328,12 +359,11 @@ class _NeonTxReceiptDraft:
     @classmethod
     def from_raw(cls, src: NeonTxReceiptModel) -> Self:
         self = cls(**dict(src))
-        self.event_list = list(src.event_list)
+        self.event_list = src.event_list.copy()
         return self
 
     def to_clean_copy(self) -> NeonTxReceiptModel:
-        data = dataclasses.replace(self, event_list=tuple(self.event_list))
-        return NeonTxReceiptModel.model_validate(data, from_attributes=True)
+        return NeonTxReceiptModel.model_validate(self, from_attributes=True)
 
     def set_event_list(self, event_list: list[NeonTxEventModel]) -> None:
         self.event_list = event_list
@@ -362,6 +392,148 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx_event_list: list[NeonTxEventModel]
         neon_tx_rcpt: NeonTxReceiptModel
 
+    # TODO: remove after migrating
+    class _DeprecatedNeonTx(BaseModel):
+        addr: str
+        sig: str
+        tx_type: int
+        nonce: int
+        gas_price: int
+        gas_limit: int
+        to_addr: str
+        contract: str | None
+        value: int
+        calldata: str
+        v: int
+        r: int
+        s: int
+        error: str | None
+
+        def to_clean_copy(self) -> NeonTxModel:
+            return NeonTxModel(
+                tx_type=self.tx_type,
+                neon_tx_hash=self.sig,
+                from_address=self.addr,
+                to_address=self.to_addr,
+                contract=self.contract,
+                nonce=self.nonce,
+                gas_price=self.gas_price,
+                gas_limit=self.gas_limit,
+                value=self.value,
+                call_data=self.calldata,
+                v=self.v,
+                r=self.r,
+                s=self.s,
+                error=None,
+            )
+
+    class _DeprecatedNeonTxRcpt(BaseModel):
+        block_slot: int | None
+        block_hash: str | None
+        tx_idx: int | None
+        sol_sig: str | None
+        sol_ix_idx: int | None
+        sol_ix_inner_idx: int | None
+        neon_sig: str
+        status: int
+        gas_used: int
+        sum_gas_used: int
+        event_list: list[str]
+
+        def to_clean_copy(self) -> NeonTxReceiptModel:
+            return NeonTxReceiptModel(
+                slot=self.block_slot,
+                block_hash=EthBlockHash.from_raw(self.block_hash),
+                sol_tx_sig=self.sol_sig if self.sol_sig else SolTxSig.default(),
+                sol_ix_idx=self.sol_ix_idx,
+                sol_inner_ix_idx=self.sol_ix_inner_idx,
+                neon_tx_idx=self.tx_idx,
+                status=self.status,
+                total_gas_used=self.gas_used,
+                sum_gas_used=self.sum_gas_used,
+                event_list=list(),
+                is_completed=False,
+                is_canceled=False,
+            )
+
+    class _DeprecatedEvent(BaseModel):
+        event_type: int
+        is_hidden: bool
+        address: str
+        topic_list: list[str]
+        data: str
+        sol_sig: str
+        idx: int
+        inner_idx: int | None
+        total_gas_used: int
+        is_reverted: bool
+        event_level: int
+        event_order: int
+        neon_sig: str
+        block_hash: str
+        block_slot: int
+        neon_tx_idx: int
+        block_log_idx: int | None
+        neon_tx_log_idx: int | None
+
+        def to_clean_copy(self) -> NeonTxEventModel:
+            return NeonTxEventModel(
+                event_type=NeonTxEventModel.Type(self.event_type),
+                is_hidden=self.is_hidden,
+                neon_tx_hash=self.neon_sig,
+                address=self.address,
+                topic_list=self.topic_list,
+                data=self.data,
+                sol_tx_sig=self.sol_sig,
+                sol_ix_idx=self.idx,
+                sol_inner_ix_idx=self.inner_idx,
+                total_gas_used=self.total_gas_used,
+                total_step_cnt=0,
+                is_reverted=self.is_reverted,
+                event_level=self.event_level,
+                event_order=self.event_order,
+                block_hash=self.block_hash,
+                slot=self.block_slot,
+                neon_tx_idx=self.neon_tx_idx,
+                block_log_idx=self.block_log_idx,
+                neon_tx_log_idx=self.neon_tx_log_idx,
+            )
+
+    class _DeprecatedInitData(BaseModel):
+        start_block_slot: int
+        last_block_slot: int
+        is_stuck: bool
+        ix_code: int
+        neon_tx_sig: str
+        holder_account: str
+        operator: str
+        gas_used: int
+        total_gas_used: int
+        neon_tx: NeonIndexedTxInfo._DeprecatedNeonTx
+        neon_tx_res: NeonIndexedTxInfo._DeprecatedNeonTxRcpt
+        neon_tx_event_list: list[NeonIndexedTxInfo._DeprecatedEvent]
+
+        @classmethod
+        def is_deprecated(cls, data: dict) -> bool:
+            return "neon_tx_sig" in data
+
+        def to_clean_copy(self) -> NeonIndexedTxInfo.InitData:
+            return NeonIndexedTxInfo.InitData(
+                start_slot=self.start_block_slot,
+                last_slot=self.last_block_slot,
+                is_stuck=self.is_stuck,
+                neon_tx_hash=self.neon_tx_sig,
+                holder_address=self.holder_account,
+                operator=self.operator,
+                gas_used=self.gas_used,
+                total_gas_used=self.total_gas_used,
+                has_truncated_log=False,
+                neon_tx=self.neon_tx.to_clean_copy(),
+                neon_tx_rcpt=self.neon_tx_res.to_clean_copy(),
+                neon_tx_event_list=list(map(lambda x: x.to_clean_copy(), self.neon_tx_event_list)),
+            )
+    # TODO: done
+
     def __init__(
         self,
         key: Key,
@@ -373,7 +545,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         total_gas_used: int,
         has_truncated_log: bool,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
 
         self._key = key
@@ -407,7 +579,10 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
-        init = cls.InitData.from_dict(data)
+        if cls._DeprecatedInitData.is_deprecated(data):
+            init = cls._DeprecatedInitData.from_dict(data).to_clean_copy()
+        else:
+            init = cls.InitData.from_dict(data)
 
         self = cls(
             key=init.neon_tx_hash,
@@ -747,6 +922,30 @@ class NeonIndexedAltInfo:
         last_ix_slot: int
         is_stuck: bool
 
+    # TODO: remove after migrating
+    class _DeprecatedInitData(BaseModel):
+        alt_key: str
+        neon_tx_sig: str
+        block_slot: int
+        next_check_slot: int
+        last_ix_slot: int
+        is_stuck: bool
+
+        @classmethod
+        def is_deprecated(cls, data: dict) -> bool:
+            return "neon_tx_sig" in data
+
+        def to_clean_copy(self) -> NeonIndexedAltInfo.InitData:
+            return NeonIndexedAltInfo.InitData(
+                key=self.alt_key,
+                neon_tx_hash=self.neon_tx_sig,
+                slot=self.block_slot,
+                next_check_slot=self.next_check_slot,
+                last_ix_slot=self.last_ix_slot,
+                is_stuck=self.is_stuck,
+            )
+    # TODO: done
+
     def __init__(
         self,
         key: Key,
@@ -780,7 +979,10 @@ class NeonIndexedAltInfo:
 
     @classmethod
     def from_dict(cls, dict_data: dict) -> Self:
-        init = cls.InitData.from_dict(dict_data)
+        if cls._DeprecatedInitData.is_deprecated(dict_data):
+            init = cls._DeprecatedInitData.from_dict(dict_data).to_clean_copy()
+        else:
+            init = cls.InitData.from_dict(dict_data)
         return cls(
             key=init.key,
             neon_tx_hash=init.neon_tx_hash,
@@ -1129,8 +1331,8 @@ class NeonIndexedBlockInfo:
     def iter_alt_info(self) -> Iterator[NeonIndexedAltInfo]:
         return iter(self._sol_alt_info_dict.values())
 
-    def iter_stat_neon_tx(self, cfg: Config) -> Iterator[NeonTxStat]:
-        return iter(self._get_neon_tx_stat_list(cfg))
+    def iter_stat_neon_tx(self) -> Iterator[NeonTxStat]:
+        return iter(self._get_neon_tx_stat_list())
 
     def complete_block(self) -> None:
         assert not self._is_completed
@@ -1182,60 +1384,38 @@ class NeonIndexedBlockInfo:
             _LOG.error("attempt to remove the not-exist %s", tx)
 
     @cached_method
-    def _get_neon_tx_stat_list(self, cfg: Config) -> tuple[NeonTxStat, ...]:
+    def _get_neon_tx_stat_list(self) -> tuple[NeonTxStat, ...]:
         stat_list: list[NeonTxStat] = list()
         if self._sol_neon_ix_list:
-            stat_list.extend(stat.to_clean_copy() for stat in self._calc_evm_tx_stat(cfg).values())
+            stat_list.extend(stat.to_clean_copy() for stat in self._calc_evm_tx_stat().values())
         if self._sol_alt_ix_list:
-            stat_list.extend(stat.to_clean_copy() for stat in self._calc_alt_tx_stat(cfg).values())
+            stat_list.extend(stat.to_clean_copy() for stat in self._calc_alt_tx_stat().values())
         return tuple(stat_list)
 
-    def _calc_evm_tx_stat(self, cfg: Config) -> dict[int, _NeonTxStatDraft]:
+    def _calc_evm_tx_stat(self) -> dict[int, _NeonTxStatDraft]:
         tx_stat_dict: dict[int, _NeonTxStatDraft] = dict()
         prev_sol_tx_sig = SolTxSig.default()
         for sol_neon_ix in self._sol_neon_ix_list:
-            tx = self._neon_tx_dict.get(NeonIndexedTxInfo.Key.from_raw(sol_neon_ix.neon_tx_hash), None)
             stat = tx_stat_dict.get(sol_neon_ix.neon_ix_code, None)
             if not stat:
                 stat = _NeonTxStatDraft(tx_type=NeonEvmIxCode(sol_neon_ix.neon_ix_code).name)
                 tx_stat_dict[sol_neon_ix.neon_ix_code] = stat
 
-            neon_tx_fee = 0
-            if tx is not None:
-                neon_tx_fee = sol_neon_ix.neon_tx_ix_gas_used * tx.neon_tx.gas_price
-
-            sol_expense = 0
-            is_op_sol_neon_ix = False
-
             sol_tx_sig = sol_neon_ix.sol_tx_sig
             if sol_tx_sig != prev_sol_tx_sig:
                 prev_sol_tx_sig = sol_tx_sig
-                is_op_sol_neon_ix = sol_neon_ix.operator in cfg.op_key_set
-                sol_expense = sol_neon_ix.sol_tx_cost.sol_expense
-                stat.sol_expense += sol_expense
+                stat.sol_expense += sol_neon_ix.sol_tx_cost.sol_expense
                 stat.sol_tx_cnt += 1
 
-            stat.neon_tx_fee += neon_tx_fee
-            stat.neon_step_cnt_limit += sol_neon_ix.neon_tx_ix_step_cnt
-            stat.cu_limit += sol_neon_ix.cu_limit
+            if sol_neon_ix.is_success:
+                if not sol_neon_ix.neon_tx_return.is_empty:
+                    stat.completed_neon_tx_cnt += 1
+                elif sol_neon_ix.neon_ix_code in (NeonEvmIxCode.CancelWithHash, NeonEvmIxCode.OldCancelWithHashV1004):
+                    stat.canceled_neon_tx_cnt += 1
 
-            if is_op_sol_neon_ix:
-                stat.op_sol_expense += sol_expense
-                stat.op_neon_income += neon_tx_fee
-
-            if not sol_neon_ix.neon_tx_return:
-                continue
-            elif sol_neon_ix.neon_tx_return.event_type == NeonTxEventModel.Type.Cancel:
-                stat.canceled_neon_tx_cnt += 1
-                if is_op_sol_neon_ix:
-                    stat.op_canceled_neon_tx_cnt += 1
-            else:
-                stat.completed_neon_tx_cnt += 1
-                if is_op_sol_neon_ix:
-                    stat.op_completed_neon_tx_cnt += 1
         return tx_stat_dict
 
-    def _calc_alt_tx_stat(self, cfg: Config) -> dict[int, _NeonTxStatDraft]:
+    def _calc_alt_tx_stat(self) -> dict[int, _NeonTxStatDraft]:
         tx_stat_dict: dict[int, _NeonTxStatDraft] = dict()
         prev_sol_tx_sig = SolTxSig.default()
 
@@ -1249,11 +1429,9 @@ class NeonIndexedBlockInfo:
             if not stat:
                 stat = _NeonTxStatDraft(tx_type=SolAltIxCode(sol_alt_ix.alt_ix_code).name)
                 tx_stat_dict[sol_alt_ix.alt_ix_code] = stat
-            stat.sol_tx_cnt += 1
 
-            sol_expense = sol_alt_ix.sol_tx_cost.sol_expense
-            if sol_alt_ix.sol_tx_cost.sol_signer in cfg.op_key_set:
-                stat.op_sol_expense += sol_expense
+            stat.sol_tx_cnt += 1
+            stat.sol_expense += sol_alt_ix.sol_tx_cost.sol_expense
         return tx_stat_dict
 
     def _finalize_log_list(self) -> None:
@@ -1343,19 +1521,10 @@ class NeonIndexedBlockInfo:
 @dataclass
 class _NeonTxStatDraft:
     tx_type: str
-    token_name: str = "NEON"
     completed_neon_tx_cnt: int = 0
     canceled_neon_tx_cnt: int = 0
     sol_tx_cnt: int = 0
     sol_expense: int = 0
-    neon_tx_fee: int = 0
-    neon_step_cnt_limit: int = 0
-    cu_limit: int = 0
-
-    op_sol_expense: int = 0
-    op_neon_income: int = 0
-    op_completed_neon_tx_cnt: int = 0
-    op_canceled_neon_tx_cnt: int = 0
 
     def to_clean_copy(self) -> NeonTxStat:
         return NeonTxStat.from_dict(dataclasses.asdict(self))

@@ -17,6 +17,7 @@ from .transaction_stuck_dict import MpStuckTxDict
 from ..base.ex_api import ExecTxRespCode, ExecTxResp
 from ..base.mp_api import MpTxResp, MpTxRespCode, MpTxPoolContentResp, MpTxModel, MpStuckTxModel, MpGasPriceModel
 from ..base.op_api import OpResourceModel
+from ..stat.api import TxDoneData, TxFailData, TxPoolData, TxTokenPoolData
 
 _LOG = logging.getLogger(__name__)
 
@@ -65,7 +66,9 @@ class MpTxExecutor(MempoolComponent):
                 return result
 
             if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id)):
-                tx_schedule = MpTxSchedule(self._cfg, self._core_api_client, tx.chain_id)
+                evm_cfg = await self._server.get_evm_cfg()
+                token = evm_cfg.chain_dict.get(tx.chain_id).name
+                tx_schedule = MpTxSchedule(self._cfg, self._core_api_client, token, tx.chain_id)
                 self._tx_schedule_dict[tx.chain_id] = tx_schedule
                 await tx_schedule.start()
 
@@ -149,10 +152,20 @@ class MpTxExecutor(MempoolComponent):
                 if task_list:
                     await asyncio.gather(*task_list)
 
-                # TODO: add statistics
+                self._commit_pool_stat()
 
             except BaseException as exc:
                 _LOG.error("error on process schedule", exc_info=exc)
+
+    def _commit_pool_stat(self) -> None:
+        queue = list(map(lambda x: TxTokenPoolData(token=x.token, queue_len=x.tx_cnt), self._tx_schedule_dict.values()))
+        data = TxPoolData(
+            scheduling_queue=queue,
+            processing_queue_len=len(self._exec_task_dict),
+            stuck_queue_len=self._stuck_tx_dict.tx_cnt,
+            processing_stuck_queue_len=self._stuck_tx_dict.processing_tx_cnt,
+        )
+        self._stat_client.commit_tx_pool(data)
 
     async def _acquire_stuck_tx(self) -> bool:
         if self._cfg.mp_skip_stuck_tx:
@@ -206,6 +219,7 @@ class MpTxExecutor(MempoolComponent):
             self._stuck_tx_dict.cancel_tx(stuck_tx)
         elif resp.code == ExecTxRespCode.Failed:
             self._stuck_tx_dict.fail_tx(stuck_tx)
+            self._stat_client.commit_tx_fail(TxFailData(time_nsec=stuck_tx.process_time_nsec))
         elif resp.code == ExecTxRespCode.Done:
             self._stuck_tx_dict.done_tx(stuck_tx)
         else:
@@ -287,6 +301,11 @@ class MpTxExecutor(MempoolComponent):
         else:
             action = MpTxSchedule.fail_tx
             _LOG.error("unknown exec response code %s", resp)
+
+        if action == MpTxSchedule.done_tx:
+            self._stat_client.commit_tx_done(TxDoneData(time_nsec=tx.process_time_nsec))
+        elif action == MpTxSchedule.fail_tx:
+            self._stat_client.commit_tx_fail(TxFailData(time_nsec=tx.process_time_nsec))
 
         self._call_tx_schedule(tx.chain_id, action, tx, resp.state_tx_cnt)
         await self._op_client.free_resource(dict(tx=tx.tx_id), is_good_resource, resource)

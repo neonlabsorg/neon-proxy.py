@@ -11,9 +11,8 @@ class ExecutorServer(ExecutorServerAbc):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.set_process_cnt(self.config.mp_exec_cnt)
-        self.set_worker_cnt(1)
-        self.listen(host="127.0.0.1", port=self._cfg.executor_port)
+        self.listen(host="127.0.0.1", port=self._cfg.exec_port)
+        self._process_pool.set_process_cnt(self._cfg.mp_exec_process_cnt)
 
         self._neon_tx_executor = NeonTxExecutor(self)
         self._sol_alt_destroyer = SolAltDestroyer(self)
@@ -21,14 +20,14 @@ class ExecutorServer(ExecutorServerAbc):
         self._add_api(NeonTxExecApi(self))
         self._add_api(SolAltApi(self))
 
-    async def on_server_start(self) -> None:
+    async def _on_server_start(self) -> None:
         await asyncio.gather(
-            super().on_server_start(),
+            super()._on_server_start(),
             self._sol_alt_destroyer.start(),
         )
 
-    async def on_server_stop(self) -> None:
+    async def _on_server_stop(self) -> None:
         await asyncio.gather(
-            super().on_server_stop(),
+            super()._on_server_stop(),
             self._sol_alt_destroyer.stop(),
         )

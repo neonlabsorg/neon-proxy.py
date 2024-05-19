@@ -11,7 +11,7 @@ from ..utils.pydantic import PlainValidator, PlainSerializer
 
 class EthBinStr:
     _empty_data: Final[bytes] = bytes()
-    null_str: Final[str] = "0x"
+    NullStr: Final[str] = "0x"
 
     def __init__(self, data: bytes):
         # pydantic.BaseModel validates field types in the constructor
@@ -50,7 +50,7 @@ class EthBinStr:
     def _to_string(self) -> str:
         return bytes_to_hex(self._data, prefix="0x")
 
-    def to_string(self, default: str | None = null_str) -> str | None:
+    def to_string(self, default: str | None = NullStr) -> str | None:
         return self._to_string() if self._data else default
 
     def to_bytes(self) -> bytes:

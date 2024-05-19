@@ -20,15 +20,21 @@ from ..base.neon_ix_decoder_deprecate import get_neon_ix_decoder_deprecated_list
 from ..base.objects import NeonIndexedBlockInfo, NeonIndexedBlockDict, SolNeonDecoderCtx, SolNeonDecoderStat
 from ..base.solana_block_net_cache import SolBlockNetCache
 from ..db.indexer_db import IndexerDb
-from ..stat.data import NeonBlockStat, NeonDoneBlockStat
-
-# from statistic.indexer_client import IndexerStatClient
+from ..stat.client import StatClient
+from ..stat.api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat
 
 _LOG = logging.getLogger(__name__)
 
 
 class Indexer:
-    def __init__(self, cfg: Config, sol_client: SolClient, core_api_client: CoreApiClient, db: IndexerDb) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        sol_client: SolClient,
+        core_api_client: CoreApiClient,
+        stat_client: StatClient,
+        db: IndexerDb,
+    ) -> None:
         self._cfg = cfg
         self._sol_client = sol_client
         self._db = db
@@ -38,9 +44,7 @@ class Indexer:
 
         self._msg_filter = LogMsgFilter(cfg)
         self._counted_logger = MetricsLogger(cfg.metrics_log_skip_cnt)
-        # TODO: statistics
-        # self._stat_client = IndexerStatClient(config)
-        # self._stat_client.start()
+        self._stat_client = stat_client
 
         self._last_processed_slot = 0
         self._last_confirmed_slot = 0
@@ -87,14 +91,14 @@ class Indexer:
         await self._db.submit_block_list(self._neon_block_dict.min_slot, neon_block_queue)
         dctx.clear_neon_block_queue()
 
-    async def _complete_neon_block(self, dctx: SolNeonDecoderCtx) -> None:
+    def _complete_neon_block(self, dctx: SolNeonDecoderCtx) -> None:
         neon_block = dctx.neon_block
         neon_block.complete_block()
         self._neon_block_dict.add_neon_block(neon_block)
         self._last_processed_slot = neon_block.slot
         self._print_progress_stat()
-        await self._commit_block_stat(neon_block)
-        await self._commit_progress_stat()
+        self._commit_block_stat(neon_block)
+        self._commit_progress_stat()
 
     async def _add_neon_block_to_queue(self, dctx: SolNeonDecoderCtx) -> None:
         is_finalized = dctx.is_finalized
@@ -108,33 +112,37 @@ class Indexer:
         if is_finalized and dctx.is_neon_block_queue_full:
             await self._save_checkpoint(dctx)
 
-    async def _commit_block_stat(self, neon_block: NeonIndexedBlockInfo):
+    def _commit_block_stat(self, neon_block: NeonIndexedBlockInfo):
         """Send statistics about blocks which changed state from confirmed to finalized"""
-        if not self._cfg.gather_statistics:
+        if not self._cfg.gather_stat:
             return
 
-        # TODO: statistic
-        # await asyncio.gather(
-        #     [self._stat_client.commit(tx_stat) for tx_stat in neon_block.iter_stat_neon_tx(self._cfg)]
-        # )
+        for tx_stat in neon_block.iter_stat_neon_tx():
+            self._stat_client.commit_tx_stat(tx_stat)
 
-    async def _commit_progress_stat(self) -> None:
+    def _commit_progress_stat(self) -> None:
         """Send statistics for the current block's range"""
-        if not self._cfg.gather_statistics:
+        if not self._cfg.gather_stat:
             return
 
-        block_stat = NeonBlockStat(
-            reindex_ident=self._db.reindex_ident,
-            start_block=self._db.start_slot,
-            parsed_block=self._last_processed_slot,
-            stop_block=self._db.stop_slot,
-            term_block=self._term_slot,
-            finalized_block=self._last_finalized_slot,
-            confirmed_block=self._last_confirmed_slot,
-            tracer_block=self._last_tracer_slot,
-        )
-        # TODO: statistic
-        # await self._stat_client.commit_block_stat(block_stat)
+        if self._db.reindex_ident:
+            block_stat = NeonReindexBlockStat(
+                reindex_ident=self._db.reindex_ident,
+                start_block=self._db.start_slot,
+                parsed_block=self._last_processed_slot,
+                stop_block=self._db.stop_slot,
+                term_block=self._term_slot,
+            )
+            self._stat_client.commit_reindex_block_stat(block_stat)
+        else:
+            block_stat = NeonBlockStat(
+                start_block=self._db.start_slot,
+                parsed_block=self._last_processed_slot,
+                finalized_block=self._last_finalized_slot,
+                confirmed_block=self._last_confirmed_slot,
+                tracer_block=self._last_tracer_slot,
+            )
+            self._stat_client.commit_block_stat(block_stat)
 
     def _print_progress_stat(self) -> None:
         if not self._counted_logger.is_print_time:
@@ -242,17 +250,22 @@ class Indexer:
                             # _LOG.debug("failed tx")
                             continue
                         sol_neon_ix_decoder.execute()
-            await self._complete_neon_block(dctx)
+            self._complete_neon_block(dctx)
             await self._add_neon_block_to_queue(dctx)
 
         with logging_context(last_slot=f"{dctx.sol_commit[:3]}-{dctx.stop_slot}"):
             await self._save_checkpoint(dctx)
 
-    async def start(self):
+    async def start(self) -> None:
+        await self._stat_client.start()
         await self._check_start_slot(self._db.get_min_used_slot())
         await self._run()
 
-    async def _run(self):
+    async def stop(self) -> None:
+        await self._stat_client.stop()
+        await self._db.stop()
+
+    async def _run(self) -> None:
         check_sec = float(self._cfg.indexer_check_msec) / 1000
         while not self._is_done_parsing:
             if not (await self._has_new_blocks()):
@@ -267,13 +280,9 @@ class Indexer:
             finally:
                 self._decoder_stat.commit_timer()
 
-        await self._commit_done_block_stat()
-
-    async def _commit_done_block_stat(self):
-        """Send done event to the prometheus"""
-        done_stat = NeonDoneBlockStat(reindex_ident=self._db.reindex_ident, parsed_block=self._last_processed_slot)
-        # TODO: statistics
-        # await self._stat_client.commit_done_block_stat(done_stat)
+        if not self._db.reindex_ident:
+            done_stat = NeonDoneReindexStat(reindex_ident=self._db.reindex_ident)
+            self._stat_client.commit_done_reindex_stat(done_stat)
 
     async def _has_new_blocks(self) -> bool:
         if self._db.is_reindexing_mode:
@@ -289,7 +298,7 @@ class Indexer:
                 self._last_finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
                 # TODO: tracer
                 # self._last_tracer_slot = await self._tracer_api.max_slot()
-                await self._commit_progress_stat()
+                self._commit_progress_stat()
         return result
 
     @property

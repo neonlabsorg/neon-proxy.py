@@ -13,6 +13,8 @@ from common.neon_rpc.server import CoreApiServer
 from common.utils.json_logger import Logger
 from .db.indexer_db import IndexerDb
 from .indexing.indexer import Indexer
+from .stat.client import StatClient
+from .stat.server import StatServer
 
 _LOG = logging.getLogger(__name__)
 
@@ -29,30 +31,26 @@ class NeonIndexerApp:
         self._core_api_server = CoreApiServer(cfg)
         self._core_api_client = CoreApiClient(cfg=cfg, sol_client=self._sol_client)
 
+        self._db_conn = DbConnection(self._cfg)
+
+        self._stat_server = StatServer(cfg)
+        self._stat_client = StatClient(cfg)
+
     def start(self) -> int:
-        if sys.version_info >= (3, 11):
-            with asyncio.Runner(loop_factory=uvloop.new_event_loop) as runner:
-                runner.run(self._run())
-        else:
-            uvloop.install()
-            asyncio.run(self._run())
+        uvloop.run(self._run())
         return 0
 
     async def _run(self):
         try:
             self._core_api_server.start()
+            self._stat_server.start()
 
-            _LOG.info("init db...")
-            db_conn = DbConnection(self._cfg)
-            db_conn.enable_debug_query()
-            await db_conn.start()
-
-            db = await IndexerDb.from_db_conn(self._cfg, db_conn)
-            _LOG.info("init db done")
-
-            indexer = Indexer(self._cfg, self._sol_client, self._core_api_client, db)
+            db = await IndexerDb.from_db_conn(self._cfg, self._db_conn)
+            indexer = Indexer(self._cfg, self._sol_client, self._core_api_client, self._stat_client, db)
             await indexer.start()
 
-            await db_conn.stop()
+            await indexer.stop()
+
+            self._stat_server.stop()
         except BaseException as exc:
             _LOG.error("error on Indexer run", exc_info=exc, extra=self._msg_filter)

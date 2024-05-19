@@ -316,152 +316,98 @@ def upload_remote_logs(ssh_client, service, artifact_logs):
 
 
 @cli.command(name="deploy_check")
-@click.option('--proxy_tag', help="the neon proxy image tag")
-@click.option('--neon_evm_tag', help="the neon evm_loader image tag")
-@click.option('--faucet_tag', help="the neon faucet image tag")
-@click.option('--head_ref_branch')
-@click.option('--github_ref_name')
-@click.option('--test_files', help="comma-separated file names if you want to run a specific list of tests")
-@click.option('--skip_pull', is_flag=True, default=False, help="skip pulling of docker images from the docker-hub")
-def deploy_check(proxy_tag, neon_evm_tag, faucet_tag, head_ref_branch, github_ref_name, test_files, skip_pull):
-    feature_branch = head_ref_branch if head_ref_branch != "" else github_ref_name
-    neon_evm_tag = update_neon_evm_tag_if_same_branch_exists(head_ref_branch, neon_evm_tag)
-    if feature_branch not in ['master', 'develop']:
-        faucet_tag = update_faucet_tag_if_same_branch_exists(feature_branch, faucet_tag)
-
-    os.environ["REVISION"] = proxy_tag
-    os.environ["NEON_EVM_COMMIT"] = neon_evm_tag
-    os.environ["FAUCET_COMMIT"] = faucet_tag
-    project_name = proxy_tag
-    cleanup_docker(project_name)
-
+@click.option("--proxy_tag", help="the neon proxy image tag")
+@click.option("--test_files", help="comma-separated file names if you want to run a specific list of tests")
+@click.option("--mount_local", is_flag=True, default=False, help="mount local dir to the docker")
+@click.option("--skip_pull", is_flag=True, default=False, help="skip pulling of docker images from the docker-hub")
+def deploy_check(proxy_tag, test_files, mount_local, skip_pull):
+    neon_proxy_image = f"{IMAGE_NAME}:{proxy_tag}"
     if not skip_pull:
         click.echo('pull docker images...')
-        docker_client.login(username=DOCKER_USERNAME, password=DOCKER_PASSWORD)
+        out = docker_client.pull(neon_proxy_image, stream=True, decode=True)
+        process_output(out)
 
-        out = docker_compose(f"-p {project_name} -f docker-compose/docker-compose-ci.yml pull")
-        click.echo(out)
-    else:
-        click.echo('skip pulling of docker images')
+    host_cfg = None
+    volume_list = None
+    if mount_local:
+        l1_path, _ = os.path.split(__file__)
+        l2_path, _ = os.path.split(l1_path)
+        l3_path, _ = os.path.split(l2_path)
 
+        dir_list = ["common", "tests"]
+        volume_list = [os.path.join(l3_path, d) for d in dir_list]
+        bind_dict = {
+            os.path.join(l3_path, d): {"bind": os.path.join("/opt/neon-proxy", d), "mode": "rw"} for d in dir_list
+        }
+        host_cfg = docker_client.create_host_config(binds=bind_dict)
+
+    cont = docker_client.create_container(
+        f"{IMAGE_NAME}:{proxy_tag}",
+        volumes=volume_list,
+        host_config=host_cfg,
+        detach=True,
+        entrypoint="tail -f /dev/null",
+    )
+    cont_id = cont["Id"]
     try:
-        docker_compose(f"-p {project_name} -f docker-compose/docker-compose-ci.yml up -d")
-    except:
-        raise RuntimeError("Docker-compose failed to start")
+        click.echo(f"Start container {cont_id}")
+        docker_client.start(cont_id)
 
-    containers = ["".join(item['Names']).replace("/", "")
-                  for item in docker_client.containers() if item['State'] == 'running']
-    click.echo(f"Running containers: {containers}")
+        test_list = get_test_list(cont_id)
+        if test_files is not None:
+            test_file_list = test_files.split(",")
+            test_list = [(d, f) for d, f in test_list if f in test_file_list]
 
-    for service_name in ['SOLANA', 'PROXY', 'FAUCET']:
-        wait_for_service(project_name, service_name)
+        with multiprocessing.Pool(multiprocessing.cpu_count()) as p:
+            err_cnt_list = p.starmap(run_test, [(cont_id, d, f) for d, f in test_list])
+    finally:
+        docker_client.stop(cont_id, timeout=0)
+        docker_client.remove_container(cont_id, force=True)
 
-    if test_files is None:
-        test_list = get_test_list(project_name)
-    else:
-        test_list = test_files.split(',')
-
-    with multiprocessing.Pool(multiprocessing.cpu_count()) as p:
-        errors_count_list = p.starmap(run_test, [(project_name, x) for x in test_list])
-
-    errors_count = sum(errors_count_list)
-    if errors_count > 0:
-        raise RuntimeError(f"Tests failed! Errors count: {errors_count}")
+    err_cnt = sum(err_cnt_list)
+    if err_cnt > 0:
+        raise RuntimeError(f"Tests failed! Errors count: {err_cnt}")
 
 
-def get_test_list(project_name):
-    inst = docker_client.exec_create(
-        f"{project_name}_proxy_1", 'find . -type f -name "test_*.py" -printf "%f\n"')
-    out = docker_client.exec_start(inst['Id'])
-    test_list = out.decode('utf-8').strip().split('\n')
-    return test_list
+def get_test_list(cont_id: str) -> tp.List[tp.Tuple[str, str]]:
+    inst = docker_client.exec_create(cont_id, 'find tests/ -type f -name "test_*.py" -printf "%p\n"')
+    inst_id = inst["Id"]
+    click.echo(f"Exec {inst_id}")
+    out = docker_client.exec_start(inst_id)
+    test_list = out.decode("utf-8").strip().split("\n")
+    return [(os.path.dirname(p), os.path.basename(p)) for p in test_list]
 
 
-def run_test(project_name, file_name):
-    click.echo(f"Running {file_name} tests")
-    env = {"TESTNAME": file_name}
-    local_docker_client = docker.APIClient()
-    inst = local_docker_client.exec_create(
-        f"{project_name}_proxy_1", './proxy/deploy-test.sh', environment=env)
-    out, test_logs = local_docker_client.exec_start(inst['Id'], demux=True)
-    errors_count = 0
-    if test_logs:
-        test_logs = test_logs.decode('utf-8')
-        click.echo(out)
-        click.echo(test_logs)
+def run_test(cont_id, dir_name, file_name):
+    # it is a fake configuration, which isn't used in a test,
+    #  but it allows to ckip validation step of the Config object
+    local_env = {
+        "EVM_LOADER": "53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io",
+        "SOLANA_URL": "https://solana:8899",
+        "POSTGRES_DB": "neon-db",
+        "POSTGRES_USER": "neon-proxy",
+        "POSTGRES_PASSWORD": "neon-proxy-pass",
+        "POSTGRES_HOST": "postgres",
+    }
+    # not fake
+    local_docker_cli = docker.APIClient()
+    inst = local_docker_cli.exec_create(
+        cont_id,
+        ["./tests/deploy-test.sh", dir_name, file_name],
+        environment=local_env,
+    )
 
-        for line in test_logs.split('\n'):
-            if re.match(r"FAILED \(.+=\d+", line):
-                errors_count += int(re.search(r"\d+", line).group(0))
-    return errors_count
-
-
-@cli.command(name="dump_apps_logs")
-@click.option('--proxy_tag', help="the neon proxy image tag")
-def dump_apps_logs(proxy_tag):
-    for container in [f"{proxy_tag}_{item}_1" for item in CONTAINERS]:
-        dump_docker_logs(container)
-
-
-def dump_docker_logs(container):
-    try:
-        logs = docker_client.logs(container).decode("utf-8")
-        with open(f"{container}.log", "w") as file:
-            file.write(logs)
-    except (docker.errors.NotFound):
-        click.echo(f"Container {container} does not exist")
-
-
-@cli.command(name="stop_containers")
-@click.option('--proxy_tag', help="the neon proxy image tag")
-def stop_containers(proxy_tag):
-    cleanup_docker(proxy_tag)
-
-
-def cleanup_docker(project_name):
-    click.echo(f"Cleanup docker-compose...")
-
-    docker_compose(f"-p {project_name} -f docker-compose/docker-compose-ci.yml down -t 1")
-    click.echo(f"Cleanup docker-compose done.")
-
-    click.echo(f"Removing temporary data volumes...")
-    command = "docker volume prune -f"
-    subprocess.run(command, shell=True)
-    click.echo(f"Removing temporary data done.")
-
-
-def get_service_url(project_name: str, service_name: str):
-    inspect_out = docker_client.inspect_container(f"{project_name}_proxy_1")
-    env = inspect_out["Config"]["Env"]
-    service_url = ""
-    for item in env:
-        if f"{service_name}_URL=" in item:
-            service_url = item.replace(f"{service_name}_URL=", "")
-            break
-    click.echo(f"service_url: {service_url}")
-    return service_url
-
-
-def wait_for_service(project_name: str, service_name: str):
-    service_url = get_service_url(project_name, service_name)
-    service_info = urlparse(service_url)
-    service_ip, service_port = service_info.hostname, service_info.port
-
-    command = f'docker exec {project_name}_proxy_1 nc -zvw1 {service_ip} {service_port}'
-    timeout_sec = 120
-    start_time = time.time()
-    while True:
-        if time.time() - start_time > timeout_sec:
-            raise RuntimeError(f'Service {service_name} {service_url} is unavailable - time is over')
-        try:
-            if subprocess.run(command, shell=True, capture_output=True, text=True).returncode == 0:
-                click.echo(f"Service {service_name} is available")
-                break
-            else:
-                click.echo(f"Service {service_name} {service_url} is unavailable - sleeping")
-        except:
-            raise RuntimeError(f"Error during run command {command}")
-        time.sleep(1)
+    inst_id = inst["Id"]
+    click.echo(f"Running {file_name} tests in {inst_id}")
+    test_out, test_logs = local_docker_cli.exec_start(inst_id, demux=True)
+    test_logs = test_logs.decode("utf-8")
+    click.echo(test_out)
+    click.echo(test_logs)
+    err_cnt = 0
+    for line in test_logs.split("\n"):
+        if re.match(r"FAILED \(.+=\d+", line):
+            err_cnt += int(re.search(r"\d+", line).group(0))
+    return err_cnt
 
 
 @cli.command(name="send_notification", help="Send notification to slack")

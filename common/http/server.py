@@ -1,36 +1,54 @@
 from __future__ import annotations
 
 import abc
-import asyncio
 import logging
 import os
-import signal
-import time
-from multiprocessing import Process, Event
+from dataclasses import dataclass
 from typing import Callable, Awaitable, Union
 
-import robyn as _rb
+import robyn.robyn as _rb
 import robyn.router as _rt
+import robyn.status_codes as _st
 from typing_extensions import Self
 
 from .errors import HttpRouteError
 from .utils import HttpMethod, HttpURL, HttpStrOrURL, HttpRequestCtx
 from ..config.config import Config
 from ..config.utils import LogMsgFilter, hide_sensitive_info
+from ..utils.cached import cached_property, cached_method
 
 _LOG = logging.getLogger(__name__)
 
 _HttpRoute = _rt.Route
 _HttpFunctionInfo = _rt.FunctionInfo
-_HttpProcessEvent = _rb.Events
 _HttpRouteType = _rb.HttpMethod
+_RobynServer = _rb.Server
 _http_get_version = _rb.get_version
-_http_pool = _rb.processpool
-_http_status_code = _rb.status_codes
 
+HttpHolder = _rb.SocketHeld
 HttpRequest = _rb.Request
 HttpResp = _rb.Response
 HttpHeaderDict = _rb.Headers
+
+
+@dataclass(frozen=True)
+class HttpSocket:
+    host: str
+    port: int
+
+    @cached_property
+    def holder(self) -> HttpHolder:
+        return HttpHolder(self.host, self.port)
+
+    @cached_method
+    def to_string(self) -> str:
+        return f"{'http'}://{self.host}:{self.port}"
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
 
 class HttpServer(abc.ABC):
@@ -38,93 +56,89 @@ class HttpServer(abc.ABC):
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(self._cfg)
 
-        self._host = "127.0.0.1"
-        self._port = 8000
-
-        self._proc_cnt = 1
         self._wrk_cnt = 1
+        self._is_started = False
+        self._robyn_server: _RobynServer | None = None
+        self._http_socket: HttpSocket | None = None
 
         self._req_hdr_dict = HttpHeaderDict({})
+        self._resp_hdr_dict = HttpHeaderDict({})
         self._route_list: list[_HttpRoute] = list()
 
-        self._pid: int | None = None
-        self._recv_sig_num = signal.SIG_DFL
-        self._stop_event = Event()
+    def listen(self, host: str, port: int) -> Self:
+        self._http_socket = HttpSocket(host, port)
+        _ = self._http_socket.holder
+        return self
 
     @property
-    def config(self) -> Config:
-        return self._cfg
+    def host(self) -> str:
+        return self._http_socket.host
+
+    @property
+    def port(self) -> int:
+        return self._http_socket.port
 
     @abc.abstractmethod
     def _register_handler_list(self) -> None: ...
 
-    async def on_server_start(self) -> None: ...
-    async def on_server_stop(self) -> None: ...
-
-    def set_process_cnt(self, value: int) -> Self:
-        self._proc_cnt = value
-        return self
+    async def _on_server_start(self) -> None: ...
+    async def _on_server_stop(self) -> None: ...
 
     def set_worker_cnt(self, value: int) -> Self:
         self._wrk_cnt = value
         return self
 
-    def listen(self, *, host: str, port: int) -> Self:
-        self._host = host
-        self._port = port
-        return self
+    def add_post_route(self, endpoint: HttpStrOrURL, post_handler: HttpHandler) -> None:
+        return _add_http_handler(self, _HttpRouteType.POST, endpoint, post_handler)
 
-    def add_post_route(self, endpoint: HttpStrOrURL, post_handler: HttpPostHandler) -> None:
-        return _add_post_handler(self, endpoint, post_handler)
-
-    def is_started(self) -> bool:
-        return self._pid is not None
+    def add_get_route(self, endpoint: HttpStrOrURL, get_handler: HttpHandler) -> None:
+        return _add_http_handler(self, _HttpRouteType.GET, endpoint, get_handler)
 
     def start(self) -> None:
-        assert not self.is_started(), "Server is already started"
+        assert self._http_socket is not None, "Listen Host:Port aren't defined"
+        assert not self._is_started, "Server is already started"
 
-        # register http handlers
-        self._register_handler_list()
+        if not self._route_list:
+            self._register_handler_list()
+            assert self._route_list, "No route list?"
 
         # run Robyn HTTP server
-        self._pid = os.getpid()
-        _LOG.info("starting Server(pid=%s) ...", self._pid)
-        process_pool = _start_process_pool(self)
+        _LOG.info("start Robyn HTTP Server v%s at the %s, pid=%s", _http_get_version(), self._http_socket, os.getpid())
 
-        # register signal handlers
-        _register_term_signal_handler(self)
-        _LOG.info("Server(pid=%s) is started", self._pid)
+        self._is_started = True
+        self._robyn_server = server = _RobynServer()
 
-        # wait for signal or stop event ...
-        while self._recv_sig_num == signal.SIG_DFL:
-            if self._stop_event.wait(1.0):
-                break
-        else:
-            _LOG.info("received signal %d in the process %d...", self._recv_sig_num, self._pid)
+        server.add_startup_handler(_HttpFunctionInfo(_start_process_event(self), True, 0, {}, {}))
+        server.add_shutdown_handler(_HttpFunctionInfo(_shutdown_process_event(self), True, 0, {}, {}))
 
-        _LOG.info("stopping Server(pid=%d)...", self._pid)
-        _stop_process_pool(process_pool)
-        _LOG.info("Server(pid=%d) is stopped", self._pid)
+        server.apply_request_headers(self._req_hdr_dict)
+        server.apply_response_headers(self._resp_hdr_dict)
 
-    def stop(self, wait_sec: float = 1.0) -> None:
-        pid = os.getpid()
-        _LOG.info("received stop event in the process: %d", pid)
+        for route in self._route_list:
+            server.add_route(route.route_type, route.route, route.function, route.is_const)
 
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_postpone_stop(self._stop_event, wait_sec))
-        except RuntimeError:
-            if pid == self._pid:
-                _LOG.error("can't stop server in the same process: %s", pid)
-            else:
-                self._stop_event.set()
+        server.start(self._http_socket.holder.try_clone(), self._wrk_cnt)
+
+    def stop(self) -> None:
+        assert self._is_started
+        del self._robyn_server
+        self._robyn_server = None
+        self._is_started = False
 
     @classmethod
     def _pack_json_resp(cls, ctx: HttpRequestCtx, body_json: str) -> HttpResp:
         return HttpResp(
-            status_code=_http_status_code.HTTP_200_OK,
+            status_code=_st.HTTP_200_OK,
             description=body_json,
-            headers=_create_headers(ctx),
+            headers=cls._create_header_dict(ctx, "application/json"),
+        )
+
+    @classmethod
+    def _pack_text_resp(cls, ctx: HttpRequestCtx, body_str: str | bytes, content_type: str = "text/plain") -> HttpResp:
+        return HttpResp(
+            status_code=_st.HTTP_200_OK,
+            description=body_str,
+            headers=cls._create_header_dict(ctx, content_type),
         )
 
     def _pack_error_resp(self, ctx: HttpRequestCtx, exc: BaseException) -> HttpResp:
@@ -136,21 +150,30 @@ class HttpServer(abc.ABC):
         _LOG.error(msg, exc_info=exc)
 
         return HttpResp(
-            status_code=_http_status_code.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=_st.HTTP_500_INTERNAL_SERVER_ERROR,
             description=hide_sensitive_info(self._msg_filter, str(exc)),
-            headers=_create_headers(ctx),
+            headers=self._create_header_dict(ctx),
         )
 
     @classmethod
     def _pack_bad_route_resp(cls, ctx: HttpRequestCtx) -> HttpResp:
         return HttpResp(
-            status_code=_http_status_code.HTTP_404_NOT_FOUND,
+            status_code=_st.HTTP_404_NOT_FOUND,
             description="The requested URL was not found on this server.",
-            headers=_create_headers(ctx),
+            headers=cls._create_header_dict(ctx),
         )
 
+    @classmethod
+    def _create_header_dict(cls, ctx: HttpRequestCtx, content_type: str = "text/plain") -> HttpHeaderDict:
+        hdr_dict = {
+            "Content-Type": f"{content_type}; charset=utf-8",
+            "X-Process-Time": ctx.process_time_msec,
+            "Allow": "POST, GET",
+        }
+        return HttpHeaderDict(hdr_dict)
 
-HttpPostHandler = Union[
+
+HttpHandler = Union[
     Callable[[HttpServer, HttpRequestCtx], Awaitable[HttpResp]],
     Callable[[HttpServer, HttpRequestCtx], HttpResp],
     Callable[[HttpRequestCtx], Awaitable[HttpResp]],
@@ -158,98 +181,28 @@ HttpPostHandler = Union[
 ]
 
 
-def _create_headers(ctx: HttpRequestCtx) -> HttpHeaderDict:
-    hdr_dict = {
-        "Content-Type": "application/text; charset=utf-8",
-        "X-Process-Time": ctx.process_time_msec,
-    }
-    return HttpHeaderDict(hdr_dict)
-
-
-def _register_term_signal_handler(self: HttpServer) -> None:
-    def _signal_handler(_sig: int, _frame) -> None:
-        if self._recv_sig_num == signal.SIG_DFL:
-            self._recv_sig_num = _sig
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        _LOG.info("register signal handler %d", sig)
-        signal.signal(sig, _signal_handler)
-
-
-def _start_process_pool(self: HttpServer) -> list[Process]:
-    _LOG.info("Robyn HTTP Server v%s at the %s://%s:%d", _http_get_version(), "http", self._host, self._port)
-
-    event_dict = {
-        _HttpProcessEvent.STARTUP: _HttpFunctionInfo(_start_process_event(self), True, 0, {}, {}),
-        _HttpProcessEvent.SHUTDOWN: _HttpFunctionInfo(_shutdown_process_event(self), True, 0, {}, {}),
-    }
-
-    pool_socket = _http_pool.SocketHeld(self._host, self._port)
-
-    process_pool: list[Process] = _http_pool.init_processpool(
-        directories=list(),
-        request_headers=self._req_hdr_dict,
-        routes=self._route_list,
-        global_middlewares=list(),
-        route_middlewares=list(),
-        web_sockets=dict(),
-        event_handlers=event_dict,
-        socket=pool_socket,
-        workers=self._wrk_cnt,
-        processes=self._proc_cnt,
-        response_headers=HttpHeaderDict({}),
-    )
-
-    return process_pool
-
-
 def _start_process_event(self: HttpServer) -> Callable:
     async def _wrapper() -> None:
-        pid = os.getpid()
-        await self.on_server_start()
-        _LOG.info("Worker(pid=%d) is started", pid)
+        await self._on_server_start()
+        _LOG.info("HttpWorker(pid=%d) is started", os.getpid())
 
     return _wrapper
 
 
 def _shutdown_process_event(self: HttpServer) -> Callable:
     async def _wrapper() -> None:
-        pid = os.getpid()
-        await self.on_server_stop()
-        _LOG.info("Worker(pid=%d) is stopped", pid)
-        self._stop_event.set()
+        await self._on_server_stop()
+        _LOG.info("HttpWorker(pid=%d) is stopped", os.getpid())
 
     return _wrapper
 
 
-def _stop_process_pool(process_pool: list[Process]):
-    has_alive_process = False
-    for process in process_pool:
-        if process.is_alive():
-            has_alive_process = True
-            os.kill(process.pid, signal.SIGINT)
-
-    if has_alive_process:
-        time.sleep(0.5)
-
-    for process in process_pool:
-        if process.is_alive():
-            process.kill()
-
-    for process in process_pool:
-        process.join()
-
-
-async def _postpone_stop(stop_event: Event, wait_sec: float) -> None:
-    # Allow finish all postponed tasks
-    _LOG.info("wait %s seconds before stopping server...", wait_sec)
-    await asyncio.sleep(wait_sec)
-
-    _LOG.info("send stop signal")
-    stop_event.set()
-
-
-def _add_post_handler(self: HttpServer, base_path: HttpStrOrURL, handler: HttpPostHandler) -> None:
+def _add_http_handler(
+    self: HttpServer,
+    route_type: _HttpRouteType,
+    base_path: HttpStrOrURL,
+    handler: HttpHandler,
+) -> None:
     method = HttpMethod.from_handler(handler, allow_request_ctx=True)
     assert method.has_ctx
 
@@ -290,6 +243,14 @@ def _add_post_handler(self: HttpServer, base_path: HttpStrOrURL, handler: HttpPo
     param_dict = dict(wrapper_info.signature.parameters)
     func_info = _HttpFunctionInfo(_wrapper, method.is_async_def, len(param_dict), param_dict, dict())
 
-    route = _HttpRoute(_HttpRouteType.POST, endpoint.path, func_info, False)
+    route = _HttpRoute(route_type, endpoint.path, func_info, False)
     self._route_list.append(route)
-    _LOG.info("add POST handler %s://%s:%d%s", "http", self._host, self._port, endpoint.path)
+
+    def _route_name() -> str:
+        if route_type == _HttpRouteType.GET:
+            return "GET"
+        elif route_type == _HttpRouteType.POST:
+            return "POST"
+        return "UNKNOWN"
+
+    _LOG.info("add %s handler %s%s", _route_name(), self._http_socket, endpoint.path)
