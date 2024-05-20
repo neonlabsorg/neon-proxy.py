@@ -53,6 +53,9 @@ class SimpleTxStrategy(BaseTxStrategy):
 
     async def _emulate_and_send_tx_list(self) -> bool:
         tx_list = tuple([self._build_tx()])
+        # don't try the simulation, if the number of steps is less than the default number of steps
+        if self._ctx.total_evm_step_cnt <= self._ctx.evm_step_cnt_per_iter:
+            return await self._send_tx_list(tx_list)
 
         emul_tx_list = await self._emulate_tx_list(tx_list)
         used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))

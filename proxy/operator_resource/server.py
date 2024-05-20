@@ -1,7 +1,7 @@
 import asyncio
 
 from common.solana.signer import SolSigner
-from .op_lock_resource_api import OpAcquireResourceApi
+from .op_acquire_resource_api import OpAcquireResourceApi
 from .op_sign_transaction_api import OpSignTxApi
 from .op_signer_key_api import OpSignerKeyApi
 from .resource_manager import OpResourceMng

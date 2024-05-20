@@ -154,6 +154,10 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         step_cnt = max(total_step_cnt, step_cnt_per_iter)
         for retry in range(5):
+            # don't try the number of step less than default per iteration
+            if step_cnt <= step_cnt_per_iter:
+                break
+
             exec_iter_cnt = (total_step_cnt // step_cnt) + (1 if (total_step_cnt % step_cnt) > 1 else 0)
             # and as a result, the total number of iterations = the execution iterations + begin+resize iterations
             iter_cnt = exec_iter_cnt + wrap_iter_cnt

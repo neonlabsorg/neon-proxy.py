@@ -65,7 +65,7 @@ class JSONFormatter(logging.Formatter):
 
         msg_dict["@t"] = datetime.fromtimestamp(record.created).isoformat()
         msg_dict["@p"] = pathname + ":" + str(record.lineno)
-        # msg_dict["process"] = record.process,
+        msg_dict["pid"] = record.process,
 
         msg_filter = record.msg_filter if hasattr(record, "msg_filter") else None
         if isinstance(record.msg, dict):
@@ -110,7 +110,7 @@ class JSONFormatter(logging.Formatter):
         msg_dict = {
             "level": record.levelname,
             "date": datetime.fromtimestamp(record.created).isoformat(),
-            # "process": record.process,
+            "pid": record.process,
             "module": pathname + ":" + str(record.lineno),
         }
 
