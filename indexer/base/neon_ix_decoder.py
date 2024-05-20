@@ -35,7 +35,7 @@ class DummyIxDecoder:
     def execute(self) -> bool:
         """By default, skip the instruction without parsing."""
         ix = self.state.sol_neon_ix
-        return self._decoding_skip("no logic to decode the instruction %s(%s)", ix.neon_ix_data.hex()[:8])
+        return self._decoding_skip("no logic to decode the instruction %s", ix.neon_ix_data.hex()[:8])
 
     def decode_failed_neon_tx_event_list(self) -> None:
         pass
