@@ -410,6 +410,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         error: str | None
 
         def to_clean_copy(self) -> NeonTxModel:
+            # TODO EIP1559: adjust constructor params for DynamicGas transaction type.
             return NeonTxModel(
                 tx_type=self.tx_type,
                 neon_tx_hash=self.sig,

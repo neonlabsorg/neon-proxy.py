@@ -264,6 +264,7 @@ class _RecordWithBlock(_Record):
         if not self:
             return None
 
+        # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
         neon_tx = NeonTxModel(
             tx_type=self.tx_type,
             neon_tx_hash=self.neon_sig,

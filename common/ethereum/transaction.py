@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Final, List, Tuple, Union
+from typing import Final
 
 import eth_keys
 import rlp
 from eth_hash.auto import keccak
 from typing_extensions import Self
-
-from common.utils.pydantic import BaseModel
 
 from .errors import EthError
 from ..utils.cached import cached_property, cached_method
@@ -93,18 +91,7 @@ class EthLegacyTxPayload(rlp.Serializable):
 
     @cached_property
     def chain_id(self) -> int | None:
-        return self._calc_chain_id(self.v)
-
-    @staticmethod
-    def _calc_chain_id(v: int) -> int | None:
-        if v in (0, 27, 28):
-            return None
-        elif v >= 37:
-            # chainid*2 + 35  xxxxx0 + 100011   xxxx0 + 100010 +1
-            # chainid*2 + 36  xxxxx0 + 100100   xxxx0 + 100011 +1
-            return ((v - 1) // 2) - 17
-        else:
-            raise EthError(f"Invalid V value {v}")
+        return EthTx.calc_chain_id(self.v)
 
     def _unsigned_msg_impl(self) -> bytes:
         if not self.has_chain_id:
@@ -189,7 +176,7 @@ class EthDynamicGasTxPayload(rlp.Serializable):
     to_address: bytes
     value: int
     call_data: bytes
-    access_list: List[Tuple[int, List[int]]]
+    access_list: list[tuple[int, list[bytes]]]
     v: int
     r: int
     s: int
@@ -298,7 +285,7 @@ class EthDynamicGasTxPayload(rlp.Serializable):
 
 class EthTx:
     type: int
-    payload: Union[EthLegacyTxPayload, EthDynamicGasTxPayload]
+    payload: EthLegacyTxPayload | EthDynamicGasTxPayload
 
     def __init__(self, *args, **kwargs):
         tx_type = kwargs.pop("type", 0)
@@ -312,7 +299,7 @@ class EthTx:
             elif tx_type == 2:
                 payload_cls = EthDynamicGasTxPayload
             else:
-                raise TypeError(f"Invalid transaction type specified: {tx_type}")
+                raise ValueError(f"Invalid transaction type specified: {tx_type}")
             self.payload = payload_cls(*args, **kwargs)
 
     @classmethod
@@ -327,15 +314,16 @@ class EthTx:
         if tx_type <= 0x7f:
             # Typed transaction.
             if tx_type not in (0, 2):
-                raise TypeError(f"Invalid transaction type parsed: {tx_type}")
+                raise ValueError(f"Invalid transaction type parsed: {tx_type}")
             if tx_type == 0:
+                # Legacy transaction in the envelope form.
                 payload_cls = EthLegacyTxPayload
             else:
                 payload_cls = EthDynamicGasTxPayload
             # Remove the first byte, so the `s` contains rlp bytes only.
             s = s[1:]
         else:
-            # Legacy transaction.
+            # Plain legacy transaction (non-enveloped).
             tx_type = 0
             payload_cls = EthLegacyTxPayload
         
@@ -402,6 +390,17 @@ class EthTx:
     @cached_property
     def chain_id(self) -> int | None:
         return self.payload.chain_id
+    
+    @staticmethod
+    def calc_chain_id(v: int) -> int | None:
+        if v in (0, 27, 28):
+            return None
+        elif v >= 37:
+            # chainid*2 + 35  xxxxx0 + 100011   xxxx0 + 100010 +1
+            # chainid*2 + 36  xxxxx0 + 100100   xxxx0 + 100011 +1
+            return ((v - 1) // 2) - 17
+        else:
+            raise EthError(f"Invalid V value {v}")
 
     @cached_property
     def from_address(self) -> bytes:
