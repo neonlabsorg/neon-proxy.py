@@ -101,6 +101,7 @@ class RpcAccessItemModel(BaseJsonRpcModel):
 
 
 class RpcCallRequest(BaseJsonRpcModel):
+    type: HexUIntField = Field(default=0)
     fromAddress: EthAddressField = Field(
         default=EthAddress.default(),
         validation_alias=AliasChoices("from", "fromAddress"),
