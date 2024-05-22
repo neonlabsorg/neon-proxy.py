@@ -166,7 +166,7 @@ class NpCallApi(NeonProxyApi):
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
             EmulNeonCallModel.from_neon_tx(neon_tx, chain_id),
-            check_result=True,
+            check_result=False,
             sol_account_dict=neon_call.sol_account_dict,
             block=block,
         )
