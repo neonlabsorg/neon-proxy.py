@@ -40,11 +40,7 @@ COPY ./requirements.txt .
 RUN pip3 install uv && \
     uv venv && \
     uv pip install --upgrade pip && \
-    uv pip install -r requirements.txt && \
-    /bin/bash -c " \
-        source .venv/bin/activate && \
-        python3 -c \"import solcx; solcx.install_solc(version='0.7.6')\" \
-    "
+    uv pip install -r requirements.txt
 
 COPY --from=spl \
     /root/.local/share/solana/install/active_release/bin/solana \
