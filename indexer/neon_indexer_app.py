@@ -1,15 +1,14 @@
-import asyncio
 import logging
-import sys
 
 import uvloop
 
 from common.config.config import Config
+from common.config.constants import NEON_PROXY_PKG_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
-from common.solana_rpc.client import SolClient
 from common.neon_rpc.client import CoreApiClient
 from common.neon_rpc.server import CoreApiServer
+from common.solana_rpc.client import SolClient
 from common.utils.json_logger import Logger
 from .db.indexer_db import IndexerDb
 from .indexing.indexer import Indexer
@@ -23,7 +22,7 @@ class NeonIndexerApp:
     def __init__(self):
         Logger.setup()
         cfg = Config()
-        _LOG.info("running NeonIndexer with the config: %s", cfg.to_string())
+        _LOG.info("running NeonIndexer %s with the config: %s", NEON_PROXY_PKG_VER, cfg.to_string())
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
