@@ -190,15 +190,18 @@ class NeonProxyAbc(JsonRpcServer):
         self._process_pool = self._ProcessPool(self)
 
     async def _on_server_start(self) -> None:
-        await asyncio.gather(
-            self._db.start(),
-            self._stat_client.start(),
-            self._gas_tank.start(),
-            self._mp_client.start(),
-            self._sol_client.start(),
-            self._core_api_client.start(),
-        )
-        await self._init_genesis_block()
+        try:
+            await asyncio.gather(
+                self._db.start(),
+                self._stat_client.start(),
+                self._gas_tank.start(),
+                self._mp_client.start(),
+                self._sol_client.start(),
+                self._core_api_client.start(),
+            )
+            await self._init_genesis_block()
+        except BaseException as exc:
+            _LOG.error("error on start public RPC", exc_info=exc, extra=self._msg_filter)
 
     async def _on_server_stop(self) -> None:
         await asyncio.gather(
