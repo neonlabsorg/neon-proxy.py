@@ -13,10 +13,11 @@ from ..utils.pydantic import BaseModel, HexUIntField
 
 from pydantic import Field
 
-_TX_MODEL_EXCLUDE_LIST= {
-    0: set(["max_priority_fee_per_gas", "max_fee_per_gas", "chain_id"]),
-    2: set(["gas_price"])
+_TX_MODEL_EXCLUDE_LIST = {
+    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "chain_id"},
+    2: {"gas_price"},
 }
+
 
 class NeonTxModel(BaseModel):
     tx_type: HexUIntField
@@ -48,13 +49,16 @@ class NeonTxModel(BaseModel):
             if self.gas_price is None:
                 raise ValueError("gas_price is not specified for the Legacy transaction.")
             if self.max_priority_fee_per_gas is not None or self.max_fee_per_gas is not None:
-                raise ValueError("max_priority_fee_per_gas or max_fee_per_gas should be absent for the Legacy transaction.")
+                raise ValueError(
+                    "max_priority_fee_per_gas or max_fee_per_gas should be absent for the Legacy transaction."
+                )
         else:
             if self.gas_price is not None:
                 raise ValueError("gas_price shouldn't be specified for the Dynamic Gas transaction.")
             if self.max_priority_fee_per_gas is None or self.max_fee_per_gas is None:
-                raise ValueError("max_priority_fee_per_gas or max_fee_per_gas is absent for the Dynamic Gas transaction.")
-        return self
+                raise ValueError(
+                    "max_priority_fee_per_gas or max_fee_per_gas is absent for the Dynamic Gas transaction."
+                )
 
     @classmethod
     def default(cls) -> Self:
@@ -141,7 +145,7 @@ class NeonTxModel(BaseModel):
             call_data=tx.call_data,
             error=None,
         )
-    
+
     @cached_method
     def _to_eth_tx(self) -> EthTx:
         ctr = dict(
@@ -200,7 +204,7 @@ class NeonTxModel(BaseModel):
     @property
     def has_chain_id(self) -> bool:
         return self.chain_id is not None
-    
+
     @cached_property
     def chain_id(self) -> int | None:
         # Chain_id is derived from the v for the legacy transactions.
@@ -212,7 +216,7 @@ class NeonTxModel(BaseModel):
     @property
     def is_valid(self) -> bool:
         return (not self.from_address.is_empty) and (not self.error)
-    
+
     @cached_property
     def gas_price(self) -> int:
         if self.tx_type == 0:

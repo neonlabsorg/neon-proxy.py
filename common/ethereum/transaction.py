@@ -33,6 +33,7 @@ class EthNoChainLegacyTxPayload(rlp.Serializable):
     def from_raw(cls, s: bytes) -> Self:
         return rlp.decode(s, cls)
 
+
 class EthLegacyTxPayload(rlp.Serializable):
     nonce: int
     gas_price: int
@@ -80,7 +81,7 @@ class EthLegacyTxPayload(rlp.Serializable):
             value_list.append(value)
         value_list += [0, 0, 0]
         return cls(*value_list)
-    
+
     @cached_method
     def to_bytes(self) -> bytes:
         return rlp.encode(self)
@@ -166,7 +167,8 @@ class EthLegacyTxPayload(rlp.Serializable):
 
         contract_addr = rlp.encode((self.from_address, self.nonce))
         return keccak(contract_addr)[-20:]
-    
+
+
 class EthDynamicGasTxPayload(rlp.Serializable):
     chain_id: int
     nonce: int
@@ -192,13 +194,12 @@ class EthDynamicGasTxPayload(rlp.Serializable):
         ("call_data", rlp.codec.binary),
         # Although it's not used (even Metamask currently does not fully support access lists),
         # the exact rlp sedes structure is in place, so the rlp.decode does not fail.
-        ("access_list", rlp.sedes.lists.CountableList(
-            rlp.codec.List(
-                [
-                    rlp.codec.big_endian_int, 
-                    rlp.sedes.lists.CountableList(rlp.codec.big_endian_int)
-                ]
-        ))),
+        (
+            "access_list",
+            rlp.sedes.lists.CountableList(
+                rlp.codec.List([rlp.codec.big_endian_int, rlp.sedes.lists.CountableList(rlp.codec.big_endian_int)])
+            ),
+        ),
         ("v", rlp.codec.big_endian_int),
         ("r", rlp.codec.big_endian_int),
         ("s", rlp.codec.big_endian_int),
@@ -213,7 +214,6 @@ class EthDynamicGasTxPayload(rlp.Serializable):
     @classmethod
     def from_raw(cls, s: bytes) -> Self:
         return rlp.decode(s, cls)
-
 
     @cached_method
     def to_bytes(self) -> bytes:
@@ -244,7 +244,7 @@ class EthDynamicGasTxPayload(rlp.Serializable):
     def from_address(self) -> bytes:
         if self.r == 0 and self.s == 0:
             return self._null_address
-        
+
         if self.r >= self._secpk1n or self.s >= self._secpk1n or self.r == 0 or self.s == 0:
             raise EthError(f"Invalid signature values: r={self.r} s={self.s}!")
 
@@ -283,6 +283,7 @@ class EthDynamicGasTxPayload(rlp.Serializable):
         contract_addr = rlp.encode((self.from_address, self.nonce))
         return keccak(contract_addr)[-20:]
 
+
 class EthTx:
     type: int
     payload: EthLegacyTxPayload | EthDynamicGasTxPayload
@@ -290,7 +291,7 @@ class EthTx:
     def __init__(self, *args, **kwargs):
         tx_type = kwargs.pop("type", 0)
         self.type = tx_type
-        
+
         if (payload := kwargs.pop("payload", None)) is not None:
             self.payload = payload
         else:
@@ -308,10 +309,10 @@ class EthTx:
             s = hex_to_bytes(s)
         elif isinstance(s, bytearray):
             s = bytes(s)
-        
+
         # Determining transaction type according to the EIP-2718.
         tx_type = s[0]
-        if tx_type <= 0x7f:
+        if tx_type <= 0x7F:
             # Typed transaction.
             if tx_type not in (0, 2):
                 raise ValueError(f"Invalid transaction type parsed: {tx_type}")
@@ -326,19 +327,19 @@ class EthTx:
             # Plain legacy transaction (non-enveloped).
             tx_type = 0
             payload_cls = EthLegacyTxPayload
-        
+
         return cls(type=tx_type, payload=payload_cls.from_raw(s))
 
     @property
     def nonce(self) -> int:
         return self.payload.nonce
-    
+
     @property
     def gas_price(self) -> int | None:
         if self.type == 0:
             return self.payload.gas_price
         return None
-    
+
     @property
     def max_priority_fee_per_gas(self) -> int | None:
         if self.type == 2:
@@ -354,27 +355,27 @@ class EthTx:
     @property
     def gas_limit(self) -> int:
         return self.payload.gas_limit
-    
+
     @property
     def value(self) -> int:
         return self.payload.value
-    
+
     @property
     def call_data(self) -> bytes:
         return self.payload.call_data
-    
+
     @property
     def to_address(self) -> bytes:
         return self.payload.to_address
-    
+
     @property
     def v(self) -> int:
         return self.payload.v
-    
+
     @property
     def r(self) -> int:
         return self.payload.r
-    
+
     @property
     def s(self) -> int:
         return self.payload.s
@@ -390,7 +391,7 @@ class EthTx:
     @cached_property
     def chain_id(self) -> int | None:
         return self.payload.chain_id
-    
+
     @staticmethod
     def calc_chain_id(v: int) -> int | None:
         if v in (0, 27, 28):
