@@ -13,22 +13,24 @@ from ..utils.pydantic import BaseModel, HexUIntField
 
 from pydantic import Field
 
+
 _TX_MODEL_EXCLUDE_LIST = {
-    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "chain_id"},
+    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "tx_chain_id"},
     2: {"gas_price"},
 }
 
 
 class NeonTxModel(BaseModel):
     tx_type: HexUIntField
-    chain_id: HexUIntField | None = Field(default=None)
+    # None for legacy transaction (calculated from v), present for dynamic gas transaction.
+    tx_chain_id: HexUIntField | None = Field(default=None, serialization_alias="chain_id")
     neon_tx_hash: EthTxHashField
     from_address: EthAddressField
     to_address: EthAddressField
     contract: EthAddressField
     nonce: HexUIntField
     # Gas price for the legacy transactions.
-    gas_price: HexUIntField | None = Field(default=None)
+    gas_price_legacy: HexUIntField | None = Field(default=None, serialization_alias="gas_price")
     # Gas parameters for the Dynamic Gas transactions.
     max_priority_fee_per_gas: HexUIntField | None = Field(default=None)
     max_fee_per_gas: HexUIntField | None = Field(default=None)
@@ -46,14 +48,14 @@ class NeonTxModel(BaseModel):
         if self.tx_type not in (0, 2):
             raise ValueError("Unsupported transaction type.")
         if self.tx_type == 0:
-            if self.gas_price is None:
+            if self.gas_price_legacy is None:
                 raise ValueError("gas_price is not specified for the Legacy transaction.")
             if self.max_priority_fee_per_gas is not None or self.max_fee_per_gas is not None:
                 raise ValueError(
                     "max_priority_fee_per_gas or max_fee_per_gas should be absent for the Legacy transaction."
                 )
         else:
-            if self.gas_price is not None:
+            if self.gas_price_legacy is not None:
                 raise ValueError("gas_price shouldn't be specified for the Dynamic Gas transaction.")
             if self.max_priority_fee_per_gas is None or self.max_fee_per_gas is None:
                 raise ValueError(
@@ -70,7 +72,7 @@ class NeonTxModel(BaseModel):
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
             nonce=0,
-            gas_price=0,
+            gas_price_legacy=0,
             gas_limit=0,
             value=0,
             call_data=EthBinStr.default(),
@@ -115,7 +117,7 @@ class NeonTxModel(BaseModel):
                 to_address=EthAddress.default(),
                 contract=EthAddress.default(),
                 nonce=0,
-                gas_price=0,
+                gas_price_legacy=0,
                 gas_limit=0,
                 value=0,
                 call_data=EthBinStr.default(),
@@ -128,7 +130,7 @@ class NeonTxModel(BaseModel):
     def _from_eth_tx(cls, tx: EthTx) -> Self:
         return cls(
             tx_type=tx.type,
-            chain_id=tx.chain_id,
+            tx_chain_id=tx.chain_id,
             neon_tx_hash=tx.neon_tx_hash,
             from_address=tx.from_address,
             to_address=tx.to_address,
@@ -137,7 +139,7 @@ class NeonTxModel(BaseModel):
             r=tx.r,
             s=tx.s,
             nonce=tx.nonce,
-            gas_price=tx.gas_price,
+            gas_price_legacy=tx.gas_price,
             max_priority_fee_per_gas=tx.max_priority_fee_per_gas,
             max_fee_per_gas=tx.max_fee_per_gas,
             gas_limit=tx.gas_limit,
@@ -152,7 +154,7 @@ class NeonTxModel(BaseModel):
             type=self.tx_type,
             chain_id=self.chain_id,
             nonce=self.nonce,
-            gas_price=self.gas_price,
+            gas_price=self.gas_price_legacy,
             max_priority_fee_per_gas=self.max_priority_fee_per_gas,
             max_fee_per_gas=self.max_fee_per_gas,
             gas_limit=self.gas_limit,
@@ -178,7 +180,7 @@ class NeonTxModel(BaseModel):
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
             nonce=0,
-            gas_price=0,
+            gas_price_legacy=0,
             gas_limit=0,
             value=0,
             call_data=EthBinStr.default(),
@@ -211,7 +213,7 @@ class NeonTxModel(BaseModel):
         if self.tx_type == 0:
             return EthTx.calc_chain_id(self.v)
         # For Dynamic Gas, chain_id is stored as a field.
-        return self.chain_id
+        return self.tx_chain_id
 
     @property
     def is_valid(self) -> bool:
@@ -220,7 +222,7 @@ class NeonTxModel(BaseModel):
     @cached_property
     def gas_price(self) -> int:
         if self.tx_type == 0:
-            return self.gas_price
+            return self.gas_price_legacy
         else:
             # TODO EIP1559: check usage across the code and validate if it's correct.
             return self.max_priority_fee_per_gas
@@ -234,7 +236,8 @@ class NeonTxModel(BaseModel):
 
     @cached_method
     def to_string(self) -> str:
-        return str_fmt_object(self)
+        # Corresponding cached properties are included in the string representation.
+        return str_fmt_object(self, skip_keys={"tx_chain_id", "gas_price_legacy"})
 
     def __str__(self) -> str:
         return self.to_string()
