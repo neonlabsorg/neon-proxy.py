@@ -90,3 +90,11 @@ class OpGetSignerKeyListRequest(BaseModel):
 
 class OpSignerKeyListResp(BaseModel):
     signer_key_list: list[SolPubKeyField]
+
+
+class OpWithdrawTokenRequest(BaseModel):
+    req_id: dict
+
+
+class OpWithdrawTokenResp(BaseModel):
+    total_amount_dict: dict[str, int]

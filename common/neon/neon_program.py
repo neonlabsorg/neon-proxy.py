@@ -273,7 +273,7 @@ class NeonProg:
         )
 
     def make_withdraw_operator_balance_ix(self, neon_token_address: SolPubKey) -> SolTxIx:
-        _LOG.debug("Withdraw operator token account, solana address: %s", self._token_sol_address)
+        _LOG.debug("Withdraw from operator balance %s to neon balance %s", self._token_sol_address, neon_token_address)
 
         ix_data = NeonEvmIxCode.WithdrawOperatorBalance.value.to_bytes(1, byteorder="little")
 
@@ -282,7 +282,7 @@ class NeonProg:
             data=ix_data,
             accounts=(
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=False),
+                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=neon_token_address, is_signer=False, is_writable=True),
             ),
         )

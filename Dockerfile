@@ -71,6 +71,9 @@ COPY test-operator-keypairs/id.json /root/.config/solana/
 COPY . .
 ARG PROXY_REVISION
 RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'"$PROXY_REVISION"'/g' ./common/config/constants.py
+RUN ln -s /opt/neon-proxy/proxy-client/proxy-cli /opt/neon-proxy/proxy-cli
+# for backward compatibility
+RUN ln -s /opt/neon-proxy/proxy-client/proxy-cli /opt/neon-proxy/proxy-cli.sh
 
 ENV PATH /venv/bin:/cli/bin/:/spl/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

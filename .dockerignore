@@ -8,10 +8,10 @@
 !gas_tank
 !indexer
 !proxy
+!proxy-client
 !statistic
 !test-operator-keypairs
 !tests
 !requirements.txt
 !README.md
 !log_cfg.json
-!proxy-cli
