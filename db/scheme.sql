@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS gas_less_accounts (
     neon_sig TEXT
 );
 ALTER TABLE gas_less_accounts
-    ADD COLUMN IF NOT EXISTS nonce_done BIGINT
+    ADD COLUMN IF NOT EXISTS nonce_done BIGINT,
     ADD COLUMN IF NOT EXISTS gas_limit BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gas_less_accounts ON gas_less_accounts(address, contract, nonce);
 
