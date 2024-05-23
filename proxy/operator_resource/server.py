@@ -2,6 +2,7 @@ import asyncio
 
 from common.solana.signer import SolSigner
 from .op_acquire_resource_api import OpAcquireResourceApi
+from .op_balance_api import OpBalanceApi
 from .op_sign_transaction_api import OpSignTxApi
 from .op_signer_key_api import OpSignerKeyApi
 from .resource_manager import OpResourceMng
@@ -21,6 +22,7 @@ class OpResourceServer(OpResourceServerAbc):
         self._add_api(OpAcquireResourceApi(self))
         self._add_api(OpSignTxApi(self))
         self._add_api(OpSignerKeyApi(self))
+        self._add_api(OpBalanceApi(self))
 
     async def _on_server_start(self) -> None:
         await asyncio.gather(

@@ -11,6 +11,7 @@ from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, HolderAccountStatus, NeonAccountStatus
+from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
@@ -149,6 +150,28 @@ class OpResourceMng(OpResourceComponent):
             tx_list = await tx_signer.sign_tx_list(tx_list)
             _LOG.debug("done sign the tx-list: %s", tx_list)
         return tx_list
+
+    async def withdraw(self) -> None:
+        for op_signer in self._active_signer_dict.values():
+            ix_list: list[SolTxIx] = list()
+            for chain_id, token_sol_addr in op_signer.token_sol_address_dict.items():
+                acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
+                neon_acct = await self._core_api_client.get_neon_account(acct, None)
+                neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)
+
+                if neon_acct.status == NeonAccountStatus.Empty:
+                    ix = neon_prog.make_create_neon_account_ix(
+                        neon_acct.account,
+                        neon_acct.sol_address,
+                        neon_acct.contract_sol_address,
+                    )
+                    ix_list.append(ix)
+
+                ix = neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address)
+                ix_list.append(ix)
+
+            tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
+            await self._send_tx(op_signer.signer, tx)
 
     def get_signer_key_list(self) -> tuple[SolPubKey, ...]:
         return self._get_signer_key_list()
@@ -408,6 +431,7 @@ class OpResourceMng(OpResourceComponent):
 
         prog = NeonProg(op_signer.owner)
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
+        ix_list: list[SolTxIx] = list()
         for token in evm_cfg.token_dict.values():
             acct = NeonAccount.from_raw(op_signer.eth_address, token.chain_id)
             model = await self._core_api_client.get_operator_account(evm_cfg, op_signer.owner, acct, None)
@@ -417,7 +441,10 @@ class OpResourceMng(OpResourceComponent):
 
             prog.init_token_address(model.token_sol_address)
             ix = prog.make_create_operator_balance_ix(model.neon_account)
-            tx = SolLegacyTx("createOperatorBalance", ix_list=tuple([ix]))
+            ix_list.append(ix)
+
+        if ix_list:
+            tx = SolLegacyTx("createOperatorBalance", ix_list=ix_list)
             if not (await self._send_tx(op_signer.signer, tx)):
                 return False
 
@@ -514,8 +541,8 @@ class OpResourceMng(OpResourceComponent):
     @reset_cached_method
     def _get_signer_key_list(self) -> tuple[SolPubKey, ...]:
         key_set = set(
-            list(self._active_signer_dict.keys()) +
-            list(self._deactivated_signer_dict.keys()) +
-            list(self._disabled_signer_dict.keys())
+            list(self._active_signer_dict.keys())
+            + list(self._deactivated_signer_dict.keys())
+            + list(self._disabled_signer_dict.keys())
         )
         return tuple(key_set)
