@@ -267,6 +267,8 @@ class _RecordWithBlock(_Record):
         # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
         neon_tx = NeonTxModel(
             tx_type=self.tx_type,
+            # Only legacy are supported right now, chain_id is derived from the v.
+            tx_chain_id=None,
             neon_tx_hash=self.neon_sig,
             from_address=self.from_addr,
             to_address=self.to_addr,
