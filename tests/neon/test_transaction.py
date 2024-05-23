@@ -110,19 +110,19 @@ class TestNeonTx(unittest.TestCase):
         neon_tx_str = (
             "NeonTxModel("
             "tx_type=0, "
-            "chain_id=1, "
             "neon_tx_hash=0x14a298c1eea89f42285948b7d51eeac2876ca7406c9784b9b90dd3591d156d64, "
             "from_address=0x8d900bfA2353548a4631bE870f99939575551B60, "
             "to_address=0x7917bC33EeA648809c285607579c9919FB864F8F, "
             "contract=None, "
             "nonce=0, "
-            "gas_price=50000000000, "
             "gas_limit=21000, "
             "value=1050000000000000, "
             "call_data=0x, "
             "v=37, "
             "r=2928110023290089484253548116616605334358013891920862960710110507440823852614, "
-            "s=47804268715460771705062403734867221257027780543816644424145154262186536340073)"
+            "s=47804268715460771705062403734867221257027780543816644424145154262186536340073, "
+            "gas_price=50000000000, "
+            "chain_id=1)"
         )
         self.assertEqual(neon_tx_info.to_string(), neon_tx_str)
 
@@ -271,7 +271,6 @@ class TestNeonTx(unittest.TestCase):
         neon_tx_str = (
             "NeonTxModel("
             "tx_type=2, "
-            "chain_id=1, "
             "neon_tx_hash=0x698787452047f9e2187f653a6e66fac0f8ea30d3c78bdeae80a7317c2a30fdd8, "
             "from_address=0x8d99C04eDe67EF5c2936215f95Af1A11045EA298, "
             "to_address=0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD, "
@@ -284,7 +283,8 @@ class TestNeonTx(unittest.TestCase):
             f"call_data={call_data}, "
             "v=0, "
             "r=6754232943803086859573945381489541043538645080117524293567261896370670536488, "
-            "s=27390128385222333415767794961570757421005708102856399244378685593600677403441)"
+            "s=27390128385222333415767794961570757421005708102856399244378685593600677403441, "
+            "chain_id=1)"
         )
         self.assertEqual(neon_tx_info.to_string(), neon_tx_str)
 

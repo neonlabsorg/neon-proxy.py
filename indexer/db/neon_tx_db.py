@@ -272,7 +272,7 @@ class _RecordWithBlock(_Record):
             to_address=self.to_addr,
             contract=self.contract,
             nonce=self.nonce,
-            gas_price=self.gas_price,
+            gas_price_legacy=self.gas_price,
             gas_limit=self.gas_limit,
             value=self.value,
             call_data=self.calldata,
