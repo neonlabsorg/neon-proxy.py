@@ -155,19 +155,19 @@ class OpResourceMng(OpResourceComponent):
         for op_signer in self._active_signer_dict.values():
             ix_list: list[SolTxIx] = list()
             for chain_id, token_sol_addr in op_signer.token_sol_address_dict.items():
-                acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
-                neon_acct = await self._core_api_client.get_neon_account(acct, None)
+                neon_acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
+                neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
                 neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)
 
-                if neon_acct.status == NeonAccountStatus.Empty:
+                if neon_balance.status == NeonAccountStatus.Empty:
                     ix = neon_prog.make_create_neon_account_ix(
-                        neon_acct.account,
-                        neon_acct.sol_address,
-                        neon_acct.contract_sol_address,
+                        neon_acct,
+                        neon_balance.sol_address,
+                        neon_balance.contract_sol_address,
                     )
                     ix_list.append(ix)
 
-                ix = neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address)
+                ix = neon_prog.make_withdraw_operator_balance_ix(neon_balance.sol_address)
                 ix_list.append(ix)
 
             tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
@@ -429,19 +429,31 @@ class OpResourceMng(OpResourceComponent):
     async def _validate_neon_acct_list(self, op_signer: OpSignerInfo, evm_cfg: EvmConfigModel) -> bool:
         assert evm_cfg is not None
 
-        prog = NeonProg(op_signer.owner)
+        neon_prog = NeonProg(op_signer.owner)
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
         ix_list: list[SolTxIx] = list()
         for token in evm_cfg.token_dict.values():
-            acct = NeonAccount.from_raw(op_signer.eth_address, token.chain_id)
-            model = await self._core_api_client.get_operator_account(evm_cfg, op_signer.owner, acct, None)
-            token_sol_addr_dict[token.chain_id] = model.token_sol_address
-            if model.status == NeonAccountStatus.Ok:
-                continue
+            neon_acct = NeonAccount.from_raw(op_signer.eth_address, token.chain_id)
+            neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
+            if neon_balance.status == NeonAccountStatus.Empty:
+                ix = neon_prog.make_create_neon_account_ix(
+                    neon_acct,
+                    neon_balance.sol_address,
+                    neon_balance.contract_sol_address,
+                )
+                ix_list.append(ix)
 
-            prog.init_token_address(model.token_sol_address)
-            ix = prog.make_create_operator_balance_ix(model.neon_account)
-            ix_list.append(ix)
+            op_balance = await self._core_api_client.get_operator_account(
+                evm_cfg,
+                op_signer.owner,
+                neon_acct,
+                None,
+            )
+            token_sol_addr_dict[token.chain_id] = op_balance.token_sol_address
+            if op_balance.status != NeonAccountStatus.Ok:
+                neon_prog.init_token_address(op_balance.token_sol_address)
+                ix = neon_prog.make_create_operator_balance_ix(neon_acct)
+                ix_list.append(ix)
 
         if ix_list:
             tx = SolLegacyTx("createOperatorBalance", ix_list=ix_list)
