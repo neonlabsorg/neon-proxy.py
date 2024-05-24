@@ -525,7 +525,7 @@ class Config:
 
     @cached_property
     def pg_conn_cnt(self) -> int:
-        return self._env_num(self.pg_conn_cnt_name, max(os.cpu_count() // 2, 1), 5)
+        return self._env_num(self.pg_conn_cnt_name, max(os.cpu_count() // 2, 5), 5)
 
     #################################
     # Transaction execution settings
