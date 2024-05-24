@@ -55,7 +55,7 @@ class CoreApiClient(SimpleAppDataClient):
         base_port = cfg.neon_core_api_port
         for idx in range(client_cnt):
             port = base_port + idx
-            self.connect(host="127.0.0.1", port=port, path="/api/")
+            self.connect(host=cfg.neon_core_api_ip, port=port, path="/api/")
 
         self.set_timeout_sec(5).set_max_retry_cnt(30)
 

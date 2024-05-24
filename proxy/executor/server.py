@@ -11,7 +11,7 @@ class ExecutorServer(ExecutorServerAbc):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.listen(host="127.0.0.1", port=self._cfg.exec_port)
+        self.listen(host=self._cfg.exec_ip, port=self._cfg.exec_port)
         self._process_pool.set_process_cnt(self._cfg.mp_exec_process_cnt)
 
         self._neon_tx_executor = NeonTxExecutor(self)

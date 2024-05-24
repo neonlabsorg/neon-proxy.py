@@ -10,7 +10,7 @@ class StatClient(AppDataClient, BaseStatClient):
     def __init__(self, cfg: Config) -> None:
         AppDataClient.__init__(self, cfg)
         BaseStatClient.__init__(self, cfg)
-        self.connect(host="127.0.0.1", port=cfg.stat_port, path=STATISTIC_ENDPOINT)
+        self.connect(host=cfg.stat_ip, port=cfg.stat_port, path=STATISTIC_ENDPOINT)
 
     async def start(self) -> None:
         await AppDataClient.start(self)

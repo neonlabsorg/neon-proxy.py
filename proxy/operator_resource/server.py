@@ -14,7 +14,7 @@ class OpResourceServer(OpResourceServerAbc):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.listen(host="127.0.0.1", port=self._cfg.op_resource_port)
+        self.listen(host=self._cfg.op_resource_ip, port=self._cfg.op_resource_port)
 
         self._op_secret_mng = OpSecretMng(self)
         self._op_resource_mng = OpResourceMng(self)

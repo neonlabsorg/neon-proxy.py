@@ -24,7 +24,7 @@ from .mp_api import (
 class MempoolClient(AppDataClient):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.connect(host="127.0.0.1", port=self._cfg.mp_port, path=MP_ENDPOINT)
+        self.connect(host=self._cfg.mp_ip, port=self._cfg.mp_port, path=MP_ENDPOINT)
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         return await self._get_evm_cfg()

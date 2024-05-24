@@ -17,7 +17,7 @@ from .op_api import OpResourceModel
 class ExecutorClient(AppDataClient):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.connect(host="127.0.0.1", port=self._cfg.exec_port, path=EXECUTOR_ENDPOINT)
+        self.connect(host=self._cfg.exec_ip, port=self._cfg.exec_port, path=EXECUTOR_ENDPOINT)
         self.set_timeout_sec(60 * 30)  # 30 minutes
 
     async def exec_tx(self, tx: MpTxModel, resource: OpResourceModel) -> ExecTxResp:
