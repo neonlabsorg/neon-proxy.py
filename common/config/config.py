@@ -107,6 +107,7 @@ class Config:
     pg_timeout_sec_name: Final[str] = "POSTGRES_TIMEOUT"
     pg_conn_cnt_name: Final[str] = "POSTGRES_CONNECTION_COUNT"
     # Base service settings
+    base_service_ip_name = "BASE_SERVICE_IP"
     base_service_port_name = "BASE_SERVICE_PORT"
     # Mempool settings
     mp_capacity_name: Final[str] = "MEMPOOL_CAPACITY"
@@ -409,6 +410,11 @@ class Config:
 
     #########################
     # Statistic configuration
+
+    @property
+    def stat_ip(self) -> str:
+        return self.base_service_ip
+
     @property
     def stat_port(self) -> int:
         return self.base_service_port + 3
@@ -439,6 +445,10 @@ class Config:
     #####################
     # Base Service settings
     @cached_property
+    def base_service_ip(self) -> str:
+        return os.environ.get(self.base_service_ip_name, "127.0.0.1")
+
+    @cached_property
     def base_service_port(self) -> int:
         return self._env_num(self.base_service_port_name, 9100, 8000, 25000)
 
@@ -446,12 +456,24 @@ class Config:
     # Mempool settings
 
     @cached_property
+    def mp_ip(self) -> str:
+        return self.base_service_ip
+
+    @cached_property
     def mp_port(self) -> int:
         return self.base_service_port
 
     @cached_property
+    def exec_ip(self) -> str:
+        return self.base_service_ip
+
+    @cached_property
     def exec_port(self) -> int:
         return self.base_service_port + 1
+
+    @cached_property
+    def op_resource_ip(self) -> str:
+        return self.base_service_ip
 
     @cached_property
     def op_resource_port(self) -> int:
@@ -491,6 +513,10 @@ class Config:
 
     ########################
     # Neon Core API settings
+
+    @property
+    def neon_core_api_ip(self) -> str:
+        return self.base_service_ip
 
     @cached_property
     def neon_core_api_port(self) -> int:
@@ -800,6 +826,7 @@ class Config:
             self.rpc_process_cnt_name: self.rpc_process_cnt,
             self.rpc_worker_cnt_name: self.rpc_worker_cnt,
             # Base service settings:
+            self.base_service_ip_name: self.base_service_ip,
             self.base_service_port_name: self.base_service_port,
             # Mempool settings
             self.mp_capacity_name: self.mp_capacity,

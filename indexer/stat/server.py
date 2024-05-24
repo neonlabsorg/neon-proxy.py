@@ -100,7 +100,7 @@ class TxStatApi(AppDataApi):
 class MetricServer(AppDataServer):
     def __init__(self, cfg: Config, registry: StatRegistry) -> None:
         super().__init__(cfg)
-        self.listen(host="127.0.0.1", port=self._cfg.stat_port)
+        self.listen(host=self._cfg.stat_ip, port=self._cfg.stat_port)
         self._add_api(BlockStatApi(registry))
         self._add_api(TxStatApi(registry))
 

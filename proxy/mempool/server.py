@@ -17,7 +17,7 @@ class MempoolServer(MempoolServerAbc):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.listen(host="127.0.0.1", port=self._cfg.mp_port)
+        self.listen(host=self._cfg.mp_ip, port=self._cfg.mp_port)
 
         self._gas_price_calc = MpGasPriceCalculator(self)
         self._tx_executor = MpTxExecutor(self)

@@ -40,7 +40,7 @@ class _Server:
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
         port = cfg.neon_core_api_port + idx
-        self._host = f"127.0.0.1:{port}"
+        self._host = f"{cfg.neon_core_api_ip}:{port}"
         self._solana_url = solana_url
         self._process: mp.Process | None = None
         self._stop_event = mp.Event()
