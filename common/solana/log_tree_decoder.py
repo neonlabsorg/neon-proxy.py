@@ -213,7 +213,7 @@ class _SolLogDecoderCtx:
             return None
 
         while self._inner_ix_list_idx < ix_idx:
-            self._inner_ix_list = next(self._inner_ix_list_iter)
+            self._inner_ix_list = next(self._inner_ix_list_iter, None)
         self._inner_ix_iter = iter(self._inner_ix_list.instructions) if self._inner_ix_list_idx == ix_idx else None
 
         return ix
