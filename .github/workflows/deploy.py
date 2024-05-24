@@ -460,13 +460,13 @@ def get_runs_by_workflow_id(
     return result
 
 
-def get_runs_count(session: requests.Session, created_time: str = datetime.now().strftime(DATE_FORMAT)):
+def get_runs_count(session: requests.Session, created_time: str = datetime.now().strftime(DATE_FORMAT), ref: str = "main"):
     """
     Get all runs for Tracer CI from particular date.
     """
     payload = {"created": created_time}
-    resp = session.get("https://api.github.com/repos/neonlabsorg/tracer-api/actions/runs", params=payload).json()
-    return resp["total_count"]
+    resp = session.get(f"https://api.github.com/repos/neonlabsorg/tracer-api/actions/runs?branch={ref}", params=payload).json()
+    return len([run for run in resp["workflow_runs"]])
 
 
 def run_workflow(
@@ -551,7 +551,7 @@ def trigger_tracer_tests(ref, neon_tests_image, proxy_image_tag, proxy_image_nam
     workflow_id = find_workflow_id_by_key(workflows, "name", "tracer api main pipeline")
 
     runs_before_start = get_runs_by_workflow_id(session, workflow_id, created_time)
-    runs_count = get_runs_count(session, created_time)
+    runs_count = get_runs_count(session, created_time, ref)
     
     run_workflow(
         session,

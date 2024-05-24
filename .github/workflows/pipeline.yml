@@ -445,7 +445,7 @@ jobs:
         run: |
           python3 ./.github/workflows/deploy.py trigger_tracer_tests --proxy_image_tag=${{ needs.build-image.outputs.proxy_tag }} \
           --evm_loader_image_tag=${{ needs.build-image.outputs.neon_evm_tag }} \
-          --token=${{ secrets.GHTOKEN }} --ref=update_hardcoded_proxy_image_name
+          --token=${{ secrets.GHTOKEN }}
       - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
