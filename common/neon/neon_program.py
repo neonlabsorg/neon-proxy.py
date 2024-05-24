@@ -22,9 +22,10 @@ class NeonEvmProtocol(IntEnum):
     Unknown = -1
     v1004 = 1004  # 1.4  -> 1.004
     v1011 = 1011  # 1.11 -> 1.011
+    v1013 = 1013  # 1.13 -> 1.013
 
 
-SUPPORTED_VERSION_SET = frozenset([NeonEvmProtocol.v1011])
+SUPPORTED_VERSION_SET = frozenset((NeonEvmProtocol.v1011, NeonEvmProtocol.v1013,))
 
 
 # fmt: off
