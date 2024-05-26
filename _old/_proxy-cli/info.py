@@ -93,22 +93,6 @@ class InfoHandler:
                     f'{ str(neon_acct.neon_address.private_key) }'
                 )
 
-    def _neon_address_info(self, _) -> None:
-        total_balance_dict: Dict[str, Decimal] = dict()
-        key_info_list = get_key_info_list()
-        for key_info in key_info_list:
-            print(f'{ str(key_info.public_key) }:')
-            for neon_acct in key_info.neon_account_dict.values():
-                token_name = get_token_name(neon_acct.chain_id)
-                balance = self._get_neon_balance(neon_acct.neon_address)
-                total_balance_dict[token_name] = total_balance_dict.get(token_name, Decimal(0)) + balance
-
-                print(f'\t { neon_acct.neon_address.to_checksum_address() }\t { balance:,.18f} { token_name }')
-
-        print('total_balance:')
-        for token_name, balance in total_balance_dict.items():
-            print(f' { balance:,.18f} { token_name }')
-
     def _solana_accounts_info(self, _) -> None:
         total_balance = Decimal(0)
         resource_balance = Decimal(0)

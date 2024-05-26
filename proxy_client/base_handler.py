@@ -23,7 +23,7 @@ class BaseHandler:
         self._stop_task_list: list[Callable] = list()
 
     @classmethod
-    def new_arg_parser(cls, cfg: Config, action) -> Self:
+    async def new_arg_parser(cls, cfg: Config, action) -> Self:
         return cls(cfg)
 
     async def execute(self, arg_space) -> int:
