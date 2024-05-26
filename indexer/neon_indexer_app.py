@@ -35,14 +35,11 @@ class NeonIndexerApp:
         self._msg_filter = LogMsgFilter(cfg)
         self._sol_client = SolClient(cfg)
         self._core_api_server = CoreApiServer(cfg)
-        self._core_api_client = CoreApiClient(cfg=cfg, sol_client=self._sol_client)
+        self._stat_server = StatServer(cfg)
 
         db_conn = DbConnection(self._cfg)
         db_conn.enable_debug_query()
         self._db = IndexerDb(self._cfg, db_conn)
-
-        self._stat_server = StatServer(cfg)
-        self._stat_client = StatClient(cfg)
 
         self._first_slot = 0
         self._start_slot = 0
@@ -52,6 +49,7 @@ class NeonIndexerApp:
         self._reindex_ident = ""
         self._reindex_start_slot: int | None = None
         self._reindex_stop_slot = 0
+        self._reindex_process_list: list[_ReIndexer] = list()
 
     def start(self) -> int:
         exit_code = uvloop.run(self._run())
@@ -65,31 +63,51 @@ class NeonIndexerApp:
             await self._db.start()
             await self._db.init_slot_range()
             await self._init_slot_range()
+
             if reindex_slot_range_list := await self._get_reindex_slot_range_list():
                 self._run_reindexing(reindex_slot_range_list)
 
-            await self._run_indexing()
+            if self._cfg.start_slot == StartSlot.Disable:
+                # if indexing is disabled just wait for finishing the reindexing processes
+                for reindexer in self._reindex_process_list:
+                    reindexer.join()
+            else:
+                await self._run_indexing()
 
             await self._db.stop()
             self._stat_server.stop()
             self._core_api_server.stop()
             return 0
+
         except BaseException as exc:
             _LOG.error("error on Indexer run", exc_info=exc, extra=self._msg_filter)
             return 1
 
     async def _run_indexing(self) -> None:
-        indexer = Indexer(self._cfg, self._sol_client, self._core_api_client, self._stat_client, self._db)
+        core_api_client = CoreApiClient(cfg=self._cfg, sol_client=self._sol_client)
+        tracer_api_client = TracerApiClient(cfg=self._cfg)
+        stat_client = StatClient(self._cfg)
 
-        await self._stat_client.start()
+        indexer = Indexer(
+            self._cfg,
+            self._sol_client,
+            core_api_client,
+            tracer_api_client,
+            stat_client,
+            self._db,
+        )
+
         await self._sol_client.start()
-        await self._core_api_client.start()
+        await core_api_client.start()
+        await stat_client.start()
+        await tracer_api_client.start()
 
         await indexer.run()
 
-        await self._core_api_client.stop()
+        await core_api_client.stop()
+        await tracer_api_client.stop()
+        await stat_client.stop()
         await self._sol_client.stop()
-        await self._stat_client.stop()
 
     async def _init_slot_range(self) -> None:
         block_finder = SolFirstBlockFinder(self._sol_client)
@@ -432,8 +450,9 @@ class NeonIndexerApp:
             if not slot_range_list:
                 break
 
-            re_indexer = _ReIndexer(idx, self._cfg, slot_range_list)
-            re_indexer.start()
+            reindexer = _ReIndexer(idx, self._cfg, slot_range_list)
+            self._reindex_process_list.append(reindexer)
+            reindexer.start()
 
 
 class _ReIndexer:
@@ -446,11 +465,16 @@ class _ReIndexer:
         self._idx = idx
         self._cfg = cfg
         self._slot_range_list = slot_range_list
+        self._process: mp.Process | None = None
 
     def start(self) -> None:
         """Python has GIL... It can be resolved with separate processes"""
-        process = mp.Process(target=self._start)
-        process.start()
+        self._process = mp.Process(target=self._start)
+        self._process.start()
+
+    def join(self) -> None:
+        if self._process:
+            self._process.join()
 
     def _start(self) -> None:
         _LOG.info(f"start ReIndexer(%s)", self._idx)
@@ -461,17 +485,21 @@ class _ReIndexer:
 
         msg_filter = LogMsgFilter(self._cfg)
 
-        sol_client = SolClient(self._cfg)
-        core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client)
-        stat_client = StatClient(self._cfg)
+        try:
+            sol_client = SolClient(self._cfg)
+            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client)
+            stat_client = StatClient(self._cfg)
 
-        db_conn = DbConnection(self._cfg)
-        db = IndexerDb(self._cfg, db_conn)
+            db_conn = DbConnection(self._cfg)
+            db = IndexerDb(self._cfg, db_conn)
 
-        await sol_client.start()
-        await core_api_client.start()
-        await stat_client.start()
-        await db.start()
+            await sol_client.start()
+            await core_api_client.start()
+            await stat_client.start()
+            await db.start()
+        except BaseException as exc:
+            _LOG.error("error on ReIndexer initialization", exc_info=exc, extra=msg_filter)
+            return
 
         for slot_range in self._slot_range_list:
             with logging_context(reindex=slot_range.reindex_ident):
@@ -485,7 +513,7 @@ class _ReIndexer:
                     )
 
                     db.set_slot_range(slot_range)
-                    indexer = Indexer(self._cfg, sol_client, core_api_client, stat_client, db)
+                    indexer = Indexer(self._cfg, sol_client, core_api_client, None, stat_client, db)
                     await indexer.run()
                     await _done_slot_range(db, slot_range)
 
@@ -498,7 +526,7 @@ class _ReIndexer:
                 except BaseException as exc:
                     _LOG.error("error on ReIndexer run", exc_info=exc, extra=msg_filter)
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
         await db.stop()
         await sol_client.stop()
         await core_api_client.stop()
