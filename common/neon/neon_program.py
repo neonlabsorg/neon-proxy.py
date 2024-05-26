@@ -25,7 +25,12 @@ class NeonEvmProtocol(IntEnum):
     v1013 = 1013  # 1.13 -> 1.013
 
 
-SUPPORTED_VERSION_SET = frozenset((NeonEvmProtocol.v1011, NeonEvmProtocol.v1013,))
+SUPPORTED_VERSION_SET = frozenset(
+    (
+        NeonEvmProtocol.v1011,
+        NeonEvmProtocol.v1013,
+    )
+)
 
 
 # fmt: off
@@ -282,6 +287,7 @@ class NeonProg:
             program_id=self.ID,
             data=ix_data,
             accounts=(
+                SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
                 SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=neon_token_address, is_signer=False, is_writable=True),
