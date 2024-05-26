@@ -40,6 +40,11 @@
             "handlers": ["standard"],
             "propagate": false
         },
+        "proxy_client": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
         "": {
             "level": "INFO",
             "handlers": ["standard"],

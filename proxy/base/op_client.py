@@ -20,6 +20,9 @@ from .op_api import (
     OpSignerKeyListResp,
     OpWithdrawTokenRequest,
     OpWithdrawTokenResp,
+    OpGetEthAddressListRequest,
+    OpEthAddressListResp,
+    OpEthAddressModel,
 )
 
 
@@ -56,6 +59,11 @@ class OpResourceClient(AppDataClient):
         resp = await self._get_signer_key_list(req)
         return tuple(resp.signer_key_list)
 
+    async def get_eth_address_list(self, req_id: dict) -> tuple[OpEthAddressModel, ...]:
+        req = OpGetEthAddressListRequest(req_id=req_id)
+        resp = await self._get_eth_list(req)
+        return tuple(resp.eth_address_list)
+
     async def withdraw(self) -> None:
         # TODO: complete logic
         req = OpWithdrawTokenRequest(req_id=dict(ctx="todo"))
@@ -75,6 +83,9 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="getSignerKeyList")
     async def _get_signer_key_list(self, request: OpGetSignerKeyListRequest) -> OpSignerKeyListResp: ...
+
+    @AppDataClient.method(name="getEthAddressList")
+    async def _get_eth_list(self, request: OpGetEthAddressListRequest) -> OpEthAddressListResp: ...
 
     @AppDataClient.method(name="withdrawEarnedTokens")
     async def _withdraw(self, request: OpWithdrawTokenRequest) -> OpWithdrawTokenResp: ...

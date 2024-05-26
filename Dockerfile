@@ -1,6 +1,5 @@
 ARG NEON_EVM_COMMIT
 ARG DOCKERHUB_ORG_NAME
-ARG PROXY_REVISION
 
 FROM ${DOCKERHUB_ORG_NAME}/evm_loader:${NEON_EVM_COMMIT} AS spl
 
@@ -61,10 +60,16 @@ COPY --from=spl /opt/neon-api /spl/bin/neon-core-api
 COPY test-operator-keypairs/id.json /root/.config/solana/
 
 COPY . .
-RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'"$PROXY_REVISION"'/g' ./common/config/constants.py
-RUN ln -s /opt/neon-proxy/proxy-client/proxy-cli /opt/neon-proxy/proxy-cli
+
+# disable Robyn command line parser
+COPY patch/disable_robyn_argument_parser.py .venv/lib64/python3.10/site-packages/robyn/argument_parser.py
+
+ARG PROXY_REVISION
+RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'${PROXY_REVISION}'/g' ./common/config/constants.py
+RUN ln -s /opt/neon-proxy/proxy_client/proxy-cli /opt/neon-proxy/proxy-cli
+
 # for backward compatibility
-RUN ln -s /opt/neon-proxy/proxy-client/proxy-cli /opt/neon-proxy/proxy-cli.sh
+RUN ln -s /opt/neon-proxy/proxy_client/proxy-cli /opt/neon-proxy/proxy-cli.sh
 
 ENV PATH /venv/bin:/cli/bin/:/spl/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

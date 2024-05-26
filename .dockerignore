@@ -7,8 +7,9 @@
 !db
 !gas_tank
 !indexer
+!patch
 !proxy
-!proxy-client
+!proxy_client
 !statistic
 !test-operator-keypairs
 !tests
