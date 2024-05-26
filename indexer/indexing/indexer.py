@@ -14,6 +14,7 @@ from common.utils.json_logger import logging_context, log_msg
 from common.utils.metrics_logger import MetricsLogger
 from .alt_ix_collector import SolAltTxIxCollector
 from .stuck_obj_validator import StuckObjectValidator
+from .tracer_api_client import TracerApiClient
 from ..base.errors import SolHistoryError, SolFailedHistoryError
 from ..base.neon_ix_decoder import DummyIxDecoder, get_neon_ix_decoder_list
 from ..base.neon_ix_decoder_deprecate import get_neon_ix_decoder_deprecated_list
@@ -32,6 +33,7 @@ class Indexer:
         cfg: Config,
         sol_client: SolClient,
         core_api_client: CoreApiClient,
+        tracer_api_client: TracerApiClient | None,
         stat_client: StatClient,
         db: IndexerDb,
     ) -> None:
@@ -39,8 +41,7 @@ class Indexer:
         self._sol_client = sol_client
         self._db = db
 
-        # TODO: tracer
-        # self._tracer_api = TracerAPIClient(config)
+        self._tracer_api_client = tracer_api_client
 
         self._msg_filter = LogMsgFilter(cfg)
         self._counted_logger = MetricsLogger(cfg.metrics_log_skip_cnt)
@@ -289,8 +290,8 @@ class Indexer:
             self._last_confirmed_slot = await self._sol_client.get_slot(SolCommit.Confirmed)
             if result := self._last_processed_slot != self._last_confirmed_slot:
                 self._last_finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
-                # TODO: tracer
-                # self._last_tracer_slot = await self._tracer_api.max_slot()
+                if self._tracer_api_client:
+                    self._last_tracer_slot = await self._tracer_api_client.get_max_slot()
                 self._commit_progress_stat()
         return result
 
