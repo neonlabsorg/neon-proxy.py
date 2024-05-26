@@ -6,9 +6,10 @@ import enum
 import logging
 import re
 from dataclasses import dataclass
-from typing import Final, Sequence
+from typing import Final, Sequence, Annotated
 
 from eth_bloom import BloomFilter
+from pydantic import PlainValidator, PlainSerializer
 from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStrField
@@ -29,28 +30,38 @@ from ..utils.pydantic import BaseModel
 _LOG = logging.getLogger(__name__)
 
 
+class NeonTxEventModelType(enum.IntEnum):
+    Log = 1
+
+    EnterCall = 101
+    EnterCallCode = 102
+    EnterStaticCall = 103
+    EnterDelegateCall = 104
+    EnterCreate = 105
+    EnterCreate2 = 106
+
+    ExitStop = 201
+    ExitReturn = 202
+    ExitSelfDestruct = 203
+    ExitRevert = 204
+    ExitSendAll = 205
+
+    Return = 300
+    Cancel = 301
+    Lost = 302
+
+
+NeonTxEventModelTypeField = Annotated[
+    NeonTxEventModelType,
+    PlainValidator(lambda v: NeonTxEventModelType(v)),
+    PlainSerializer(lambda v: v.value, return_type=int),
+]
+
+
 class NeonTxEventModel(BaseModel):
-    class Type(enum.IntEnum):
-        Log = 1
+    Type: Final[NeonTxEventModelType] = NeonTxEventModelType
 
-        EnterCall = 101
-        EnterCallCode = 102
-        EnterStaticCall = 103
-        EnterDelegateCall = 104
-        EnterCreate = 105
-        EnterCreate2 = 106
-
-        ExitStop = 201
-        ExitReturn = 202
-        ExitSelfDestruct = 203
-        ExitRevert = 204
-        ExitSendAll = 205,
-
-        Return = 300
-        Cancel = 301
-        Lost = 302
-
-    event_type: Type
+    event_type: NeonTxEventModelTypeField
     is_hidden: bool
 
     neon_tx_hash: EthTxHashField

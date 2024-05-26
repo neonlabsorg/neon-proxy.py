@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Final
 
 from typing_extensions import Self
@@ -9,6 +10,7 @@ from typing_extensions import Self
 from common.config.config import Config
 from common.db.constant_db import ConstantDb
 from common.db.db_connect import DbConnection, DbTxCtx
+from common.utils.cached import cached_property, cached_method
 from .gas_less_usage_db import GasLessUsageDb
 from .neon_tx_db import NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
@@ -24,24 +26,68 @@ from ..base.objects import NeonIndexedBlockInfo
 _LOG = logging.getLogger(__name__)
 
 
-class IndexerDb:
-    _max_u64: Final[int] = 2**64 - 1
-    base_start_slot_name: Final[str] = "starting_block_slot"
-    base_min_used_slot_name: Final[str] = "min_receipt_block_slot"
-    finalized_slot_name: Final[str] = "finalized_block_slot"
-    latest_slot_name: Final[str] = "latest_block_slot"
+@dataclass(frozen=True)
+class IndexerDbSlotRange:
+    reindex_ident: str = ""
+    start_slot: int = 0
+    min_used_slot: int = 0
+    stop_slot: int = 2**64 - 1
+    max_slot: Final[int] = 2**64 - 1
 
-    def __init__(self, cfg: Config, db_conn: DbConnection, reindex_ident: str):
+    @property
+    def is_reindexing_mode(self) -> bool:
+        return len(self.reindex_ident) > 0
+
+    @cached_property
+    def start_slot_name(self) -> str:
+        return self._reindex_ident_prefix + "starting_block_slot"
+
+    @cached_property
+    def min_used_slot_name(self) -> str:
+        return self._reindex_ident_prefix + "min_receipt_block_slot"
+
+    @cached_property
+    def stop_slot_name(self) -> str:
+        return self._reindex_ident_prefix + "stop_block_slot"
+
+    @property
+    def finalized_slot_name(self) -> str:
+        return "finalized_block_slot"
+
+    @property
+    def latest_slot_name(self) -> str:
+        return "latest_block_slot"
+
+    @cached_property
+    def _reindex_ident_prefix(self) -> str:
+        if not self.reindex_ident:
+            return ""
+        return f"{self.reindex_ident}:{self.start_slot}:"
+
+    @cached_method
+    def to_string(self) -> str:
+        return self.reindex_ident if self.reindex_ident else "NORMAL-INDEXING"
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
+
+
+class IndexerDb:
+    def __init__(self, cfg: Config, db_conn: DbConnection, slot_range=IndexerDbSlotRange()):
         self._cfg = cfg
         self._db_conn = db_conn
 
-        self._reindex_ident = reindex_ident
-        if self.is_reindexing_mode:
-            reindex_ident += ":"
+        self._reindex_ident = slot_range.reindex_ident
+        self._is_reindexing_mode = slot_range.is_reindexing_mode
 
-        self._start_slot_name = reindex_ident + self.base_start_slot_name
-        self._stop_slot_name = reindex_ident + "stop_block_slot"
-        self._min_used_slot_name = reindex_ident + self.base_min_used_slot_name
+        self._start_slot_name = slot_range.start_slot_name
+        self._min_used_slot_name = slot_range.min_used_slot_name
+        self._finalized_slot_name: Final = slot_range.finalized_slot_name
+        self._latest_slot_name: Final = slot_range.latest_slot_name
+        self._stop_slot_name = slot_range.stop_slot_name
 
         self._constant_db = ConstantDb(db_conn)
         self._sol_block_db = SolBlockDb(db_conn)
@@ -84,53 +130,36 @@ class IndexerDb:
             self._stuck_neon_alt_db,
         )
 
-        self._start_slot = 0
         self._earliest_slot = -1
-        self._stop_slot = self._max_u64
-        self._min_used_slot = 0
+
+        self._start_slot = slot_range.start_slot
+        self._min_used_slot = slot_range.min_used_slot
+        self._stop_slot = slot_range.stop_slot
+
         self._latest_slot = 0
         self._finalized_slot = 0
 
-    @classmethod
-    async def from_db_conn(cls, cfg: Config, db: DbConnection, *, reindex_ident: str = "") -> Self:
-        _LOG.info("init db...")
-        db.enable_debug_query()
-        await db.start()
-        self = cls(cfg, db, reindex_ident)
-        await self.start()
-
+    async def init_slot_range(self) -> None:
         self._min_used_slot = await self._constant_db.get_int(None, self._min_used_slot_name, 0)
-        self._earliest_slot = await self._constant_db.get_int(None, self.base_start_slot_name, -1)
+        self._earliest_slot = await self._constant_db.get_int(None, self._start_slot_name, -1)
         self._start_slot = await self._constant_db.get_int(None, self._start_slot_name, self._min_used_slot)
-        self._stop_slot = await self._constant_db.get_int(None, self._stop_slot_name, self._max_u64)
-        _LOG.info("init db done")
-        return self
+        self._stop_slot = await self._constant_db.get_int(None, self._stop_slot_name, self._stop_slot)
+        await self._drop_not_finalized_history()
 
-    @classmethod
-    async def from_slot_range(
-        cls, cfg: Config, db: DbConnection, start_slot: int, *, reindex_ident: str = "", stop_slot: int = None
-    ) -> Self:
-        self = cls(cfg, db, reindex_ident)
-        await self.start()
+    def set_slot_range(self, slot_range: IndexerDbSlotRange) -> None:
+        self._reindex_ident = slot_range.reindex_ident
+        self._is_reindexing_mode = slot_range.is_reindexing_mode
 
-        self._start_slot = start_slot
-        self._min_used_slot = start_slot
-        self._stop_slot = stop_slot or self._max_u64
+        self._start_slot_name = slot_range.start_slot_name
+        self._min_used_slot_name = slot_range.min_used_slot_name
+        self._stop_slot_name = slot_range.stop_slot_name
 
-        task_list = list()
-        task_list.append(self._constant_db.set(None, self._min_used_slot_name, start_slot))
-
-        if self.is_reindexing_mode:
-            task_list.append(self._constant_db.set(None, self._start_slot_name, start_slot))
-            task_list.append(self._constant_db.set(None, self._stop_slot_name, stop_slot))
-
-        if await self._constant_db.get_int(None, self.base_start_slot_name, self._max_u64) > start_slot:
-            task_list.append(self._constant_db.set(None, self.base_start_slot_name, start_slot))
-
-        await asyncio.gather(*task_list)
-        return self
+        self._start_slot = slot_range.start_slot
+        self._min_used_slot = slot_range.min_used_slot
+        self._stop_slot = slot_range.stop_slot
 
     async def start(self) -> None:
+        await self._db_conn.start()
         await asyncio.gather(*[db.start() for db in self._db_list])
         if not self.is_reindexing_mode:
             self._latest_slot = await self.get_latest_slot()
@@ -138,6 +167,10 @@ class IndexerDb:
 
     async def stop(self) -> None:
         await self._db_conn.stop()
+
+    @property
+    def constant_db(self) -> ConstantDb:
+        return self._constant_db
 
     @property
     def reindex_ident(self) -> str:
@@ -153,18 +186,13 @@ class IndexerDb:
 
     @property
     def is_reindexing_mode(self) -> bool:
-        return len(self._reindex_ident) > 0
-
-    async def drop_not_finalized_history(self) -> None:
-        async def _tx(ctx: DbTxCtx) -> None:
-            await self._finalize_slot_list(ctx, self._latest_slot + 1, (self._finalized_slot,))
-
-        await self._db_conn.run_tx(_tx)
+        return self._is_reindexing_mode
 
     async def submit_block_list(self, min_used_slot: int, neon_block_queue: tuple[NeonIndexedBlockInfo, ...]) -> None:
         async def _tx(ctx: DbTxCtx) -> None:
             await self._submit_new_block_list(ctx, neon_block_queue)
             if self.is_reindexing_mode:
+                await self._set_min_used_slot(ctx, min_used_slot)
                 return
 
             first_block = neon_block_queue[0]
@@ -184,6 +212,12 @@ class IndexerDb:
         await self._db_conn.run_tx(_tx)
         for block in neon_block_queue:
             block.mark_done()
+
+    async def _drop_not_finalized_history(self) -> None:
+        async def _db_tx(ctx: DbTxCtx) -> None:
+            await self._finalize_slot_list(ctx, self._latest_slot + 1, (self._finalized_slot,))
+
+        await self._db_conn.run_tx(_db_tx)
 
     async def _submit_new_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
         new_block_list = tuple([block for block in block_list if not block.is_done])
@@ -227,19 +261,22 @@ class IndexerDb:
             await self._sol_block_db.activate_block_list(ctx, self._finalized_slot, slot_list)
 
     async def _set_finalized_slot(self, ctx: DbTxCtx, slot: int) -> None:
+        assert not self._is_reindexing_mode
         if self._finalized_slot < slot:
-            await self._constant_db.set(ctx, self.finalized_slot_name, slot)
+            await self._constant_db.set(ctx, self._finalized_slot_name, slot)
             self._finalized_slot = slot
 
     async def _set_latest_slot(self, ctx: DbTxCtx, slot: int) -> None:
+        assert not self._is_reindexing_mode
         if self._latest_slot < slot:
-            await self._constant_db.set(ctx, self.latest_slot_name, slot)
+            await self._constant_db.set(ctx, self._latest_slot_name, slot)
             self._latest_slot = slot
 
     async def _set_earliest_slot(self, ctx: DbTxCtx, slot: int) -> None:
+        assert not self._is_reindexing_mode
         if self._earliest_slot == -1:
             self._earliest_slot = slot
-            await self._constant_db.set(ctx, self.base_start_slot_name, slot)
+            await self._constant_db.set(ctx, self._start_slot_name, slot)
 
     async def _set_min_used_slot(self, ctx: DbTxCtx, slot: int) -> None:
         if self._min_used_slot < slot:
@@ -251,10 +288,10 @@ class IndexerDb:
             return
 
         await self._set_min_used_slot(None, slot)
-
-        self._start_slot = slot
         if self.is_reindexing_mode:
             await self._constant_db.set(None, self._start_slot_name, slot)
+
+        self._start_slot = slot
 
     async def set_stop_slot(self, slot: int) -> None:
         assert self.is_reindexing_mode
@@ -271,10 +308,10 @@ class IndexerDb:
         return await self._constant_db.get_int(None, self._start_slot_name, 0)
 
     async def get_latest_slot(self) -> int:
-        return await self._constant_db.get_int(None, self.latest_slot_name, 0)
+        return await self._constant_db.get_int(None, self._latest_slot_name, 0)
 
     async def get_finalized_slot(self) -> int:
-        return await self._constant_db.get_int(None, self.finalized_slot_name, 0)
+        return await self._constant_db.get_int(None, self._finalized_slot_name, 0)
 
     def get_min_used_slot(self) -> int:
         return self._min_used_slot

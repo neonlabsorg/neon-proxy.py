@@ -49,6 +49,9 @@ class SolNotEmptyBlockFinder:
         _LOG.warning("%s, NO not-empty slots in the range", ctx.caption)
         return None
 
+    async def get_stop_slot(self) -> int:
+        return await self._get_stop_slot()
+
     async def _bisect_left(self, ctx: _Ctx) -> int:
         """
         Return the index of the first not-empty slot.

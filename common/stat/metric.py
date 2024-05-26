@@ -5,7 +5,8 @@ StatRegistry = _base.Registry
 
 class _RemoveValueMixin:
     def reset(self, labels: _base.LabelsType) -> None:
-        self.values.pop(labels)  # NOQA
+        if labels in self.values:  # NOQA
+            del self.values[labels]  # NOQA
 
 
 class StatGauge(_base.Gauge, _RemoveValueMixin):

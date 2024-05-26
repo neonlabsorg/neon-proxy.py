@@ -398,7 +398,7 @@ class HolderAccountStatus(StrEnum):
             value = value.lower()
             return cls(value)
         except (BaseException,):
-            _LOG.error("unknown holder status %s from core-api", value.upper())
+            _LOG.error("unknown holder status %s from core-api", value)
             return cls.Error
 
 

@@ -1,8 +1,8 @@
 ARG NEON_EVM_COMMIT
 ARG DOCKERHUB_ORG_NAME
+ARG PROXY_REVISION
 
 FROM ${DOCKERHUB_ORG_NAME}/evm_loader:${NEON_EVM_COMMIT} AS spl
-FROM ${DOCKERHUB_ORG_NAME}/neon_test_invoke_program:develop AS neon_test_invoke_program
 
 FROM ubuntu:22.04
 
@@ -58,18 +58,9 @@ RUN chmod +x /spl/bin/create-test-accounts.sh
 # TODO: rename
 COPY --from=spl /opt/neon-api /spl/bin/neon-core-api
 
-COPY --from=spl \
-    /opt/solidity/ \
-    ./contracts/
-
-COPY --from=neon_test_invoke_program \
-    /opt/neon_test_invoke_program-keypair.json \
-    /spl/bin/
-
 COPY test-operator-keypairs/id.json /root/.config/solana/
 
 COPY . .
-ARG PROXY_REVISION
 RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'"$PROXY_REVISION"'/g' ./common/config/constants.py
 RUN ln -s /opt/neon-proxy/proxy-client/proxy-cli /opt/neon-proxy/proxy-cli
 # for backward compatibility

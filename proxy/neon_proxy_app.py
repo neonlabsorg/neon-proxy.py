@@ -3,7 +3,7 @@ import signal
 import time
 
 from common.config.config import Config
-from common.config.constants import NEON_PROXY_PKG_VER
+from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
 from common.neon_rpc.client import CoreApiClient
@@ -29,7 +29,7 @@ class NeonProxyApp:
     def __init__(self):
         Logger.setup()
         cfg = Config()
-        _LOG.info("running NeonProxy %s with the cfg: %s", NEON_PROXY_PKG_VER, cfg.to_string())
+        _LOG.info("running NeonProxy %s with the cfg: %s", NEON_PROXY_VER, cfg.to_string())
 
         self._recv_sig_num = signal.SIG_DFL
 
