@@ -103,7 +103,7 @@ class HttpServer(abc.ABC):
             assert self._route_list, "No route list?"
 
         # run Robyn HTTP server
-        _LOG.info("start Robyn HTTP Server v%s at the %s, pid=%s", _http_get_version(), self._http_socket, os.getpid())
+        _LOG.info("start Robyn HTTP Server v%s at the %s", _http_get_version(), self._http_socket)
 
         self._is_started = True
         self._robyn_server = server = _RobynServer()
@@ -184,7 +184,7 @@ HttpHandler = Union[
 def _start_process_event(self: HttpServer) -> Callable:
     async def _wrapper() -> None:
         await self._on_server_start()
-        _LOG.info("HttpWorker(pid=%d) is started", os.getpid())
+        _LOG.info("HttpWorker is started")
 
     return _wrapper
 
@@ -192,7 +192,7 @@ def _start_process_event(self: HttpServer) -> Callable:
 def _shutdown_process_event(self: HttpServer) -> Callable:
     async def _wrapper() -> None:
         await self._on_server_stop()
-        _LOG.info("HttpWorker(pid=%d) is stopped", os.getpid())
+        _LOG.info("HttpWorker is stopped")
 
     return _wrapper
 

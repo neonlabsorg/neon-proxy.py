@@ -256,16 +256,9 @@ class Indexer:
         with logging_context(last_slot=f"{dctx.sol_commit[:3]}-{dctx.stop_slot}"):
             await self._save_checkpoint(dctx)
 
-    async def start(self) -> None:
-        await self._stat_client.start()
+    async def run(self) -> None:
         await self._check_start_slot(self._db.get_min_used_slot())
-        await self._run()
 
-    async def stop(self) -> None:
-        await self._stat_client.stop()
-        await self._db.stop()
-
-    async def _run(self) -> None:
         check_sec = float(self._cfg.indexer_check_msec) / 1000
         while not self._is_done_parsing:
             if not (await self._has_new_blocks()):
@@ -280,7 +273,7 @@ class Indexer:
             finally:
                 self._decoder_stat.commit_timer()
 
-        if not self._db.reindex_ident:
+        if self._db.is_reindexing_mode:
             done_stat = NeonDoneReindexStat(reindex_ident=self._db.reindex_ident)
             self._stat_client.commit_done_reindex_stat(done_stat)
 

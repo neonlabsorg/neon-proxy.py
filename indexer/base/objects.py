@@ -478,7 +478,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
         def to_clean_copy(self) -> NeonTxEventModel:
             return NeonTxEventModel(
-                event_type=NeonTxEventModel.Type(self.event_type),
+                event_type=self.event_type,
                 is_hidden=self.is_hidden,
                 neon_tx_hash=self.neon_sig,
                 address=self.address,

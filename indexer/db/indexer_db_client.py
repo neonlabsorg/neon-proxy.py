@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Final
+from typing_extensions import Final
 
 from common.config.config import Config
 from common.db.constant_db import ConstantDb
@@ -13,7 +13,7 @@ from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.transaction_decoder import SolNeonTxIxMetaModel, SolNeonAltTxIxModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.solana.signature import SolTxSigSlotInfo
-from .indexer_db import IndexerDb
+from .indexer_db import IndexerDbSlotRange
 from .neon_tx_db import NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
 from .solana_alt_tx_db import SolAltTxDb
@@ -25,14 +25,13 @@ from .stuck_neon_tx_db import StuckNeonTxDb
 
 
 class IndexerDbClient:
-    _max_u64: Final[int] = 2**64 - 1
-    start_slot_name: Final[str] = IndexerDb.base_start_slot_name
-    finalized_slot_name: Final[str] = IndexerDb.finalized_slot_name
-    latest_slot_name: Final[str] = IndexerDb.latest_slot_name
-
-    def __init__(self, cfg: Config, db_conn: DbConnection):
+    def __init__(self, cfg: Config, db_conn: DbConnection, slot_range=IndexerDbSlotRange()) -> None:
         self._cfg = cfg
         self._db_conn = db_conn
+
+        self._start_slot_name: Final = slot_range.start_slot_name
+        self._latest_slot_name: Final = slot_range.latest_slot_name
+        self._finalized_slot_name: Final = slot_range.finalized_slot_name
 
         self._constant_db = ConstantDb(db_conn)
         self._sol_block_db = SolBlockDb(db_conn)
@@ -64,13 +63,13 @@ class IndexerDbClient:
         await self._db_conn.stop()
 
     async def get_earliest_slot(self) -> int:
-        return await self._constant_db.get_int(None, self.start_slot_name, 0)
+        return await self._constant_db.get_int(None, self._start_slot_name, 0)
 
     async def get_latest_slot(self) -> int:
-        return await self._constant_db.get_int(None, self.latest_slot_name, 0)
+        return await self._constant_db.get_int(None, self._latest_slot_name, 0)
 
     async def get_finalized_slot(self) -> int:
-        return await self._constant_db.get_int(None, self.finalized_slot_name, 0)
+        return await self._constant_db.get_int(None, self._finalized_slot_name, 0)
 
     async def get_block_by_slot(self, slot: int) -> NeonBlockHdrModel:
         slot_range = await self._get_slot_range()
@@ -95,7 +94,7 @@ class IndexerDbClient:
     async def _get_slot_range(self) -> SolSlotRange:
         slot_list = await self._constant_db.get_int_list(
             None,
-            key_list=tuple([self.start_slot_name, self.finalized_slot_name, self.latest_slot_name]),
+            key_list=tuple([self._start_slot_name, self._finalized_slot_name, self._latest_slot_name]),
             default=0,
         )
         return SolSlotRange(*slot_list)

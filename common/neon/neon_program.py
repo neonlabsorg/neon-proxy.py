@@ -131,7 +131,7 @@ class NeonProg:
     @classmethod
     def validate_protocol(cls) -> None:
         if cls._protocol_version not in SUPPORTED_VERSION_SET:
-            raise EthError(f"Neon-Proxy v{NEON_PROXY_VER} is not compatible with Neon-EVM v{cls._evm_version}")
+            raise EthError(f"Neon-Proxy {NEON_PROXY_VER} is not compatible with Neon-EVM v{cls._evm_version}")
 
     def init_token_address(self, token_sol_address: SolPubKey) -> Self:
         self._token_sol_address = token_sol_address

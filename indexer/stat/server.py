@@ -43,6 +43,7 @@ class BlockStatApi(AppDataApi):
     @AppDataApi.method(name="commitReindexDone")
     def on_done_reindex(self, data: NeonDoneReindexStat) -> None:
         label = {"reindex": data.reindex_ident}
+
         self._block_start.reset(label)
         self._block_parsed.reset(label)
         self._block_stop.reset(label)

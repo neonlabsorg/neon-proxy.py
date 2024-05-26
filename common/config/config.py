@@ -767,9 +767,9 @@ class Config:
     def reindex_range_len(self) -> int:
         return self._env_num(
             self.reindex_block_cnt_in_range_name,
-            self._1hour // ONE_BLOCK_SEC,
-            10 * self._1min // ONE_BLOCK_SEC,
-            self._1day // ONE_BLOCK_SEC,
+            int(self._1hour / ONE_BLOCK_SEC),
+            int((10 * self._1min) / ONE_BLOCK_SEC),
+            int(self._1day / ONE_BLOCK_SEC),
         )
 
     @cached_property

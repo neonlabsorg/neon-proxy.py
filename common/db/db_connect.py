@@ -143,13 +143,13 @@ class DbConnection:
                 _LOG.error("unexpected error on waiting event from DB", extra=self._msg_filter, exc_info=exc)
 
             finally:
-                _LOG.debug("lost db connection ...")
+                if not self._is_stopped:
+                    _LOG.debug("lost db connection ...")
 
                 self._is_connected = False
                 if conn_fileno is not None:
                     loop.remove_reader(conn_fileno)
                 conn_fileno = None
-                self._is_close_conn_event.clear()
 
             if self._is_stopped:
                 continue
