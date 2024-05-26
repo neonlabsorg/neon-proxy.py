@@ -92,6 +92,19 @@ class OpSignerKeyListResp(BaseModel):
     signer_key_list: list[SolPubKeyField]
 
 
+class OpGetEthAddressListRequest(BaseModel):
+    req_id: dict
+
+
+class OpEthAddressModel(BaseModel):
+    owner: SolPubKeyField
+    eth_address: EthAddressField
+
+
+class OpEthAddressListResp(BaseModel):
+    eth_address_list: list[OpEthAddressModel]
+
+
 class OpWithdrawTokenRequest(BaseModel):
     req_id: dict
 

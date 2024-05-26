@@ -6,6 +6,7 @@ import sys
 import uvloop
 
 from common.config.config import Config
+from common.utils.json_logger import Logger
 from .base_handler import BaseHandler
 from .operator_balance import OpBalanceHandler
 
@@ -14,8 +15,10 @@ async def _run(_handler: BaseHandler, _arg_parser) -> int:
     return await _handler.execute(_arg_parser)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Client command line utility for Neon Proxy.")
+def main() -> None:
+    Logger.setup()
+
+    parser = argparse.ArgumentParser(description="Client command line utility for NeonProxy.")
     arg_parser = parser.add_subparsers(title="command", dest="command", description="valid commands")
 
     cfg = Config()
@@ -32,3 +35,7 @@ if __name__ == "__main__":
 
     exit_code = uvloop.run(_run(handler, arg_space))
     sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

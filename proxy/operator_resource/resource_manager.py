@@ -24,7 +24,7 @@ from common.utils.json_logger import log_msg, logging_context
 from .key_info import OpSignerInfo, OpHolderInfo
 from .server_abc import OpResourceComponent
 from .transaction_list_signer import OpTxListSigner
-from ..base.op_api import OpResourceModel
+from ..base.op_api import OpResourceModel, OpEthAddressModel
 
 _LOG = logging.getLogger(__name__)
 
@@ -150,6 +150,13 @@ class OpResourceMng(OpResourceComponent):
             tx_list = await tx_signer.sign_tx_list(tx_list)
             _LOG.debug("done sign the tx-list: %s", tx_list)
         return tx_list
+
+    def get_eth_address_list(self) -> tuple[OpEthAddressModel, ...]:
+        generator = map(
+            lambda x: OpEthAddressModel(owner=x.owner, eth_address=x.eth_address),
+            self._active_signer_dict.values(),
+        )
+        return tuple(generator)
 
     async def withdraw(self) -> None:
         for op_signer in self._active_signer_dict.values():
