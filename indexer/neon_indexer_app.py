@@ -18,6 +18,7 @@ from common.solana_rpc.not_empty_block import SolFirstBlockFinder, SolNotEmptyBl
 from common.utils.json_logger import Logger, logging_context
 from .db.indexer_db import IndexerDb, IndexerDbSlotRange
 from .indexing.indexer import Indexer
+from .indexing.tracer_api_client import TracerApiClient
 from .stat.client import StatClient
 from .stat.server import StatServer
 
