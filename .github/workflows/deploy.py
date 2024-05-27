@@ -89,12 +89,9 @@ def check_neon_evm_tag(tag):
 
 def is_branch_exist(branch, repo):
     if branch:
-        proxy_branches_obj = requests.get(
-            f"https://api.github.com/repos/{GH_ORG_NAME}/{repo}/branches?per_page=100").json()
-        proxy_branches = [item["name"] for item in proxy_branches_obj]
-
-        if branch in proxy_branches:
-            click.echo(f"The same branch {branch} is found in {repo} repository")
+        response = requests.get(f"https://api.github.com/repos/{GH_ORG_NAME}/{repo}/branches/{branch}")
+        if response.status_code == 200:
+            click.echo(f"The branch {branch} exist in the {repo} repository")
             return True
     else:
         return False
