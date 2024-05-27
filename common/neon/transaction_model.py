@@ -15,7 +15,7 @@ from pydantic import Field
 
 
 _TX_MODEL_EXCLUDE_LIST = {
-    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "tx_chain_id"},
+    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "tx_chain_id", "chain_id"},
     2: {"gas_price"},
 }
 
@@ -166,7 +166,7 @@ class NeonTxModel(BaseModel):
             s=self.s,
         )
         for pop_field in _TX_MODEL_EXCLUDE_LIST[self.tx_type]:
-            ctr.pop(pop_field)
+            ctr.pop(pop_field, None)
 
         return EthTx(**ctr)
 
