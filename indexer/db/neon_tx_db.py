@@ -220,8 +220,22 @@ class _Record:
 
     logs: bytes | None
 
+    base_fee_per_gas: str
+    chain_id: int
+    priority_fee_per_gas: str
+
     @classmethod
     def from_tx(cls, neon_tx: NeonTxModel, neon_rcpt: NeonTxReceiptModel) -> Self:
+        base_fee_per_gas = None
+        priority_fee_per_gas = None
+        tx_chain_id = None
+        # Supported only for new transaction type
+        if neon_tx.tx_type == 2:
+            base_fee_per_gas = neon_tx.max_fee_per_gas - neon_tx.max_priority_fee_per_gas
+            priority_fee_per_gas = neon_tx.max_priority_fee_per_gas/base_fee_per_gas if base_fee_per_gas > 0 else 0
+            # For legacy transactions chain id will be calculated
+            # from v,r,s
+            tx_chain_id = neon_tx.tx_chain_id
         return cls(
             sol_sig=neon_rcpt.sol_tx_sig.to_string(),
             sol_ix_idx=neon_rcpt.sol_ix_idx,
@@ -247,6 +261,9 @@ class _Record:
             is_canceled=neon_rcpt.is_canceled,
             is_completed=neon_rcpt.is_completed,
             logs=cls._encode_event_list(neon_rcpt),
+            base_fee_per_gas=base_fee_per_gas,
+            chain_id=tx_chain_id,
+            priority_fee_per_gas=priority_fee_per_gas,
         )
 
     @staticmethod

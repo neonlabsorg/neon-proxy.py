@@ -169,9 +169,19 @@ CREATE TABLE IF NOT EXISTS neon_transactions (
     r TEXT,
     s TEXT,
 
+    base_fee_per_gas TEXT,
+    chain_id INT,
+    priority_fee_per_gas TEXT,
+
     calldata TEXT,
     logs BYTEA
 );
+
+ALTER TABLE neon_transactions
+    ADD COLUMN IF NOT EXISTS base_fee_per_gas TEXT ,
+    ADD COLUMN IF NOT EXISTS chain_id INT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS priority_fee_per_gas TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_neon_transactions_sol_sig_block ON neon_transactions(sol_sig, block_slot);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_neon_transactions_neon_sig_block ON neon_transactions(neon_sig, block_slot);
 DROP INDEX IF EXISTS idx_neon_transactions_sender_nonce_block;
