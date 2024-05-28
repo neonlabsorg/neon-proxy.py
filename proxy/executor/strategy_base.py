@@ -70,7 +70,7 @@ class SolTxCfg:
             ix_mode=NeonIxMode.Default,
             cu_limit=100_000,
             cu_price=10_000,
-            heap_size=100_000
+            heap_size=100_000,
         )
 
 
@@ -142,6 +142,19 @@ class BaseTxStrategy(abc.ABC):
     @abc.abstractmethod
     async def cancel(self) -> ExecTxRespCode | None:
         pass
+
+    @property
+    def _cu_price(self) -> int:
+        # Legacy transaction case (both stuck and not stuck), return value from the config.
+        if self._ctx.tx_type == 0:
+            return self._ctx.cfg.simple_cu_price
+
+        # For Dynamic Gas transaction:
+        base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
+        assert base_fee_per_gas > 0
+        max_priority_fee_per_gas = self._ctx.max_priority_fee_per_gas
+        # TODO EIP1559: conversion to micro lamports???
+        return max(1, int(max_priority_fee_per_gas * 5000.0 / (base_fee_per_gas * self._cu_limit)))
 
     @cached_property
     def _sol_tx_list_sender(self) -> SolTxListSender:
@@ -255,7 +268,7 @@ class BaseTxStrategy(abc.ABC):
         ix_mode: NeonIxMode = NeonIxMode.Unknown,
         cu_limit: int = 0,
         cu_price: int = 0,
-        heap_size: int = 0
+        heap_size: int = 0,
     ) -> SolTxCfg:
         if not cu_price:
             cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)

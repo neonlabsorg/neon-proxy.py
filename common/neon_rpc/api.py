@@ -480,6 +480,10 @@ class HolderAccountModel(BaseModel):
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
 
+    tx_type: int = Field(default=0)
+    max_fee_per_gas: int = Field(default=0)
+    max_priority_fee_per_gas: int = Field(default=0)
+
     @classmethod
     def new_empty(cls, address: SolPubKey) -> Self:
         return cls(
