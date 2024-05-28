@@ -314,7 +314,7 @@ class IndexerDb:
         return await self._constant_db.get_int(None, self._finalized_slot_name, 0)
 
     def get_min_used_slot(self) -> int:
-        return self._min_used_slot
+        return self._min_used_slot or 0
 
     async def get_stuck_neon_holder_list(self) -> tuple[int | None, tuple[dict, ...]]:
         return await self._stuck_neon_holder_db.get_obj_list(None, True)
