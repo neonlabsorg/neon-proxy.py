@@ -225,7 +225,7 @@ class NeonTxModel(BaseModel):
             return self.gas_price_legacy
         else:
             # TODO EIP1559: check usage across the code and validate if it's correct.
-            return self.max_priority_fee_per_gas
+            return self.max_fee_per_gas
 
     # Overriding BaseModel to exclude gas price related fields based on transaction type.
     def to_json(self) -> str:

@@ -6,8 +6,14 @@ from pydantic import AliasChoices, Field
 from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField, EthBinStr
-from common.ethereum.hash import EthAddressField, EthHash32Field, EthAddress, EthTxHash, EthBlockHashField, \
-    EthTxHashField
+from common.ethereum.hash import (
+    EthAddressField,
+    EthHash32Field,
+    EthAddress,
+    EthTxHash,
+    EthBlockHashField,
+    EthTxHashField,
+)
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
@@ -66,7 +72,7 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             data=self.data.to_bytes(),
             gas_limit=self.gas,
             gas_price=self.gasPrice,
-            chain_id=chain_id
+            chain_id=chain_id,
         )
 
     def to_neon_tx(self) -> NeonTxModel:
@@ -96,6 +102,8 @@ class RpcEthTxResp(BaseJsonRpcModel):
     fromAddress: EthAddressField = Field(serialization_alias="from")
     nonce: HexUIntField
     gasPrice: HexUIntField
+    maxPriorityFeePerGas: HexUIntField | None
+    maxFeePerGas: HexUIntField | None
     gas: HexUIntField
     toAddress: EthAddressField = Field(serialization_alias="to")
     value: HexUIntField
@@ -129,11 +137,19 @@ class RpcEthTxResp(BaseJsonRpcModel):
             txType=tx.tx_type,
             fromAddress=tx.from_address.to_string(),
             nonce=tx.nonce,
+            # gasPrice should return effective gas price spent by the User according the ETH RPC specs.
+            # In Neon, effective gas price is always max_fee_per_gas.
+            # So it works as expected for the Legacy and for the Dynamic Gas transactions.
             gasPrice=tx.gas_price,
+            maxPriorityFeePerGas=tx.max_priority_fee_per_gas,
+            maxFeePerGas=tx.max_fee_per_gas,
             gas=tx.gas_limit,
             toAddress=tx.to_address,
             value=tx.value,
             data=tx.call_data,
+            # chainId will be returned even for the legacy transactions.
+            # N.B. Various RPC providers differ in this regard.
+            # For example Infura claims to NOT return it for the legacy transaction in the docs, but they still do...
             chainId=tx.chain_id,
             v=tx.v,
             r=tx.r,
