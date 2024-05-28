@@ -138,8 +138,9 @@ class RpcEthTxResp(BaseJsonRpcModel):
             fromAddress=tx.from_address.to_string(),
             nonce=tx.nonce,
             # gasPrice should return effective gas price spent by the User according the ETH RPC specs.
-            # In Neon, effective gas price is always max_fee_per_gas.
-            # So it works as expected for the Legacy and for the Dynamic Gas transactions.
+            # In Neon, effective gas price is always max_fee_per_gas (almost, see TODO below).
+            # TODO EIP1559: adjust gas_price for Dynamic Gas transactions based on the iteration number
+            # from the receipt model, so it returns the actual gas price spent.
             gasPrice=tx.gas_price,
             maxPriorityFeePerGas=tx.max_priority_fee_per_gas,
             maxFeePerGas=tx.max_fee_per_gas,
