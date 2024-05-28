@@ -76,8 +76,8 @@ class HttpRequestCtx:
     @cached_property
     def ip_addr(self) -> str:
         if self.request.headers.contains(_X_FORWARDED_FOR):
-            ip_addr_list = self.request.headers.get(_X_FORWARDED_FOR)
-            ip_addr = ip_addr_list.split(",")[0].trim()
+            ip_addr_list: str = self.request.headers.get(_X_FORWARDED_FOR)
+            ip_addr = ip_addr_list.split(",")[0].strip()
         else:
             ip_addr = self.request.ip_addr
 
