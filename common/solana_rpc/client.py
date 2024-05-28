@@ -227,7 +227,7 @@ class SolClient(HttpClient):
         if not finalized_block.is_empty:
             return SolBlockStatus(slot, SolCommit.Finalized)
 
-        req = _SoldersGetBlockCommit(slot, SolCommit.Confirmed.to_rpc_commit())
+        req = _SoldersGetBlockCommit(slot, self._get_next_id())
         resp = await self._send_request(req, _SoldersGetBlockCommitResp)
 
         voted_stake = sum(resp.value.commitment or [0])
