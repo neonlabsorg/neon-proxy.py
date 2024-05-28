@@ -443,15 +443,11 @@ class _CrateModel(BaseModel):
     version: str
 
 
-class _CompilerModel(BaseModel):
-    version: str
-
-
 class _VersionModel(BaseModel):
     commit_id: str
     dirty: bool
-    branch: str
-    tags: list[str] = Field(default_factory=list)
+    branch: Any
+    tags: Any
 
 
 class CoreApiBuildModel(BaseModel):
@@ -459,7 +455,7 @@ class CoreApiBuildModel(BaseModel):
     profile: str
     optimization_level: str
     crate_info: _CrateModel
-    compiler: _CompilerModel
+    compiler: Any
     version_control: _VersionModel
 
 
