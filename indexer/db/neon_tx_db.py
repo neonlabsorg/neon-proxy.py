@@ -157,10 +157,6 @@ class NeonTxDb(HistoryDbTable):
         return _RecordWithBlock.to_meta(rec)
 
 
-class _NeonTxEventModelList(RootModel):
-    root: list[NeonTxEventModel]
-
-
 # TODO: remove after converting all records
 class _OldNeonTxEventModel(BaseModel):
     event_type: int = Field(1, validation_alias="neonEventType")
@@ -177,6 +173,7 @@ class _OldNeonTxEventModel(BaseModel):
     sol_inner_ix_idx: int | None = Field(validation_alias="neonInnerIxIdx")
 
     total_gas_used: int = 0
+    total_step_cnt: int = 0
     is_reverted: bool = Field(False, validation_alias="neonIsReverted")
     event_level: int = Field(0, validation_alias="neonEventLevel")
     event_order: int = Field(0, validation_alias="neonEventOrder")
@@ -186,6 +183,43 @@ class _OldNeonTxEventModel(BaseModel):
     neon_tx_idx: str = Field(validation_alias="transactionIndex")
     block_log_idx: str = Field(validation_alias="logIndex")
     neon_tx_log_idx: str = Field(validation_alias="transactionLogIndex")
+
+
+# TODO: remove after converting all records
+class _OldNeonTxEventModelV2(BaseModel):
+    event_type: int
+    is_hidden: bool
+
+    neon_tx_hash: str = Field(validation_alias="neon_sig")
+
+    address: str
+    topic_list: list[str]
+    data: str
+
+    sol_tx_sig: str = Field(validation_alias="sol_sig")
+    sol_ix_idx: int = Field(validation_alias="idx")
+    sol_inner_ix_idx: int | None = Field(validation_alias="inner_idx")
+
+    total_gas_used: int = 0
+    total_step_cnt: int = 0
+    is_reverted: bool = False
+    event_level: int = 0
+    event_order: int = 0
+
+    block_hash: str
+    slot: int = Field(validation_alias="block_slot")
+    neon_tx_idx: int = 0
+    block_log_idx: int | None = None
+    neon_tx_log_idx: int | None = None
+
+
+# TODO: remove after converting all records
+class _OldNeonTxEventModelV2List(RootModel):
+    root: list[_OldNeonTxEventModelV2]
+
+
+class _NeonTxEventModelList(RootModel):
+    root: list[NeonTxEventModel]
 
 
 @dataclass(frozen=True)
@@ -305,7 +339,13 @@ class _RecordWithBlock(_Record):
 
             if value.startswith(b"[") and value.endswith(b"]"):
                 json_data = str(value, "utf-8")
-                return _NeonTxEventModelList.from_json(json_data).root
+                if "sol_sig" in json_data:
+                    # TODO: remove after converting all records
+                    old_event_list = _OldNeonTxEventModelV2List.from_json(json_data).root
+                    event_list = [NeonTxEventModel.from_dict(event.to_dict()) for event in old_event_list]
+                    return event_list
+                else:
+                    return _NeonTxEventModelList.from_json(json_data).root
 
             # TODO: remove after converting all records
             value_list = pickle.loads(value)
