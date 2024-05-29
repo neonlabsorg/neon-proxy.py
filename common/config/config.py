@@ -98,6 +98,7 @@ class Config:
     rpc_process_cnt_name: Final[str] = "RPC_PROCESS_COUNT"
     rpc_worker_cnt_name: Final[str] = "RPC_WORKER_COUNT"
     # Neon Core API configuration
+    neon_core_api_server_cnt_name: Final[str] = "NEON_CORE_API_SERVER_COUNT"
     sol_key_for_evm_cfg_name: Final[str] = "SOLANA_KEY_FOR_EVM_CONFIG"
     # Postgres DB settings
     pg_host_name: Final[str] = "POSTGRES_HOST"
@@ -505,7 +506,7 @@ class Config:
 
     @cached_property
     def mp_exec_worker_cnt(self) -> int:
-        return self._env_num(self.mp_exec_worker_cnt_name,  1, 1)
+        return self._env_num(self.mp_exec_worker_cnt_name, 1, 1)
 
     @cached_property
     def mp_skip_stuck_tx(self) -> bool:
@@ -521,6 +522,10 @@ class Config:
     @cached_property
     def neon_core_api_port(self) -> int:
         return self.base_service_port + 4
+
+    @cached_property
+    def neon_core_api_server_cnt(self) -> int:
+        return self._env_num(self.neon_core_api_server_cnt_name, 1, 1)
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
@@ -838,6 +843,7 @@ class Config:
             self.mp_exec_worker_cnt_name: self.mp_exec_worker_cnt,
             self.mp_skip_stuck_tx_name: self.mp_skip_stuck_tx,
             # Neon Core API settings
+            self.neon_core_api_server_cnt_name: self.neon_core_api_server_cnt,
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,
             # Postgres DB settings
             self.pg_host_name: self.pg_host,

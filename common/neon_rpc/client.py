@@ -51,7 +51,7 @@ class CoreApiClient(SimpleAppDataClient):
     def __init__(self, cfg: Config, sol_client: SolClient) -> None:
         super().__init__(cfg)
 
-        client_cnt = len(cfg.sol_url_list)
+        client_cnt = len(cfg.sol_url_list) * cfg.neon_core_api_server_cnt
         base_port = cfg.neon_core_api_port
         for idx in range(client_cnt):
             port = base_port + idx
