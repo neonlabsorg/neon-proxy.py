@@ -16,7 +16,7 @@ class PrometheusServer:
 
     def start(self) -> None:
         loop = asyncio.get_event_loop()
-        self._start_task = loop.create_task(self._prometheus.start(addr="127.0.0.1", port=self._cfg.stat_public_port))
+        self._start_task = loop.create_task(self._prometheus.start(addr="0.0.0.0", port=self._cfg.stat_public_port))
 
     def stop(self) -> None:
         self._start_task = None
