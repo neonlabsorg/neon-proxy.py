@@ -76,11 +76,11 @@ class _RpcDefaultGasPriceModel(_RpcGasPriceModel):
 class _RpcNativeTokenResp(BaseJsonRpcModel):
     tokenName: str
     tokenMint: SolPubKeyField
-    tokenChainID: HexUIntField
+    tokenChainId: HexUIntField
 
     @classmethod
     def from_raw(cls, price: MpTokenGasPriceModel) -> Self:
-        return cls(tokenName=price.token_name, tokenMint=price.token_mint, tokenChainID=price.chain_id)
+        return cls(tokenName=price.token_name, tokenMint=price.token_mint, tokenChainId=price.chain_id)
 
 
 class _RpcGasCallRequest(BaseJsonRpcModel):
