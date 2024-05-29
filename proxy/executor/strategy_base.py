@@ -153,8 +153,7 @@ class BaseTxStrategy(abc.ABC):
         base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
         assert base_fee_per_gas > 0
         max_priority_fee_per_gas = self._ctx.max_priority_fee_per_gas
-        # TODO EIP1559: conversion to micro lamports???
-        return max(1, int(max_priority_fee_per_gas * 5000.0 / (base_fee_per_gas * self._cu_limit)))
+        return max(1, int(max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * self._cu_limit)))
 
     @cached_property
     def _sol_tx_list_sender(self) -> SolTxListSender:

@@ -13,7 +13,6 @@ from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
 from ..solana.pubkey import SolPubKey
 from ..solana.sys_program import SolSysProg
-from solders.sysvar import INSTRUCTIONS as INSTRUCTIONS_SYSVAR_ACCOUNT
 from ..utils.cached import reset_cached_method
 
 _LOG = logging.getLogger(__name__)
@@ -102,16 +101,19 @@ class NeonProg:
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1015
     _evm_version: ClassVar[str] = "v1.13.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
-    IX_SYSVAR_ID: ClassVar[SolPubKey] = INSTRUCTIONS_SYSVAR_ACCOUNT
 
+    # The notation is as follows:
+    #   The first, without +, goes required accounts for the Neon instruction.
+    #   Then, with + prefix, follows accounts that aren't listed in the Neon instruction, but are a part of Solana
+    #   transaction account list.
     # 1. holder
     # 2. payer
     # 3. treasury-pool-address
     # 4. payer-token-address
     # 5. SolSysProg.ID
-    # +6: NeonProg.ID
-    # +7: CbProg.ID
-    # +8: Instructions Sysvar account
+    # 6: SolSysProg.INSTRUCTIONS_SYSVAR
+    # +7: NeonProg.ID
+    # +8: CbProg.ID
     BaseAccountCnt: Final[int] = 8
 
     def __init__(self, payer: SolPubKey) -> None:
@@ -453,7 +455,7 @@ class NeonProg:
             SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
-            SolAccountMeta(pubkey=self.IX_SYSVAR_ID, is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=SolSysProg.INSTRUCTIONS_SYSVAR, is_signer=False, is_writable=False),
         ] + acct_meta_list
 
         return SolTxIx(program_id=self.ID, data=ix_data, accounts=tuple(acct_meta_list))
