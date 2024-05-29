@@ -275,7 +275,7 @@ class _Record:
             value=hex(neon_tx.value),
             calldata=neon_tx.call_data.to_string(),
             # TODO EIP1559: calc the actual gas price for dynamic gas tx when receipt has the iteration number.
-            gas_price=hex(neon_tx.gas_price),  
+            gas_price=hex(neon_tx.gas_price),
             max_fee_per_gas=hex(neon_tx.max_fee_per_gas) if neon_tx.max_fee_per_gas else None,
             max_priority_fee_per_gas=(
                 hex(neon_tx.max_priority_fee_per_gas) if neon_tx.max_priority_fee_per_gas else None
