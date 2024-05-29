@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import random
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -150,7 +151,9 @@ class HttpClient:
 
 
 async def _send_post_request(self: HttpClient, req: HttpClientRequest) -> str:
-    base_url_list = itertools.cycle(self._base_url_list)
+    base_url_list = self._base_url_list.copy()
+    random.shuffle(base_url_list)
+    base_url_list = itertools.cycle(base_url_list)
     for retry in itertools.count():
         base_url = next(base_url_list)
         req.build_url(base_url)
