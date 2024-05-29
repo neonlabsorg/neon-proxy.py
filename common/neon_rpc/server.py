@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import re
@@ -110,8 +111,13 @@ class _Server:
 
 
 class CoreApiServer:
-    def __init__(self, cfg: Config):
-        self._instance_list = tuple([_Server(cfg, idx, url) for idx, url in enumerate(cfg.sol_url_list)])
+    def __init__(self, cfg: Config) -> None:
+        self._instance_list: list[_Server] = list()
+
+        idx = itertools.count()
+        for _ in range(cfg.neon_core_api_server_cnt):
+            for url in cfg.sol_url_list:
+                self._instance_list.append(_Server(cfg, next(idx), url))
 
     def start(self) -> None:
         for instance in self._instance_list:
