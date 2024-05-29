@@ -105,9 +105,9 @@ class SolFirstBlockFinder(SolNotEmptyBlockFinder):
         first_slot = await self._sol_client.get_first_slot()
         if first_slot > 0:
             # in any case the solana doesn't have a full history
-            # so, the Indexer can skip first 512 blocks
+            # so, the Indexer can skip first 8192 blocks
             # the reason is to skip the working on edge case
-            first_slot += 512
+            first_slot += 8192
         else:
             # for the local stand with a test-validator, which doesn't have blocks in slots 2 and 3
             first_slot = 5
