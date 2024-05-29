@@ -233,6 +233,7 @@ class _Record:
     neon_sig: str
 
     tx_type: int
+    chain_id: int | None  # absent for the legacy transactions.
     from_addr: str
     nonce: str
     to_addr: str | None
@@ -240,6 +241,8 @@ class _Record:
     value: str
     calldata: str
     gas_price: str
+    max_fee_per_gas: str | None
+    max_priority_fee_per_gas: str | None
     gas_limit: str
     gas_used: str
     sum_gas_used: str
@@ -264,13 +267,19 @@ class _Record:
             tx_idx=neon_rcpt.neon_tx_idx,
             neon_sig=neon_tx.neon_tx_hash.to_string(),
             tx_type=neon_tx.tx_type,
+            chain_id=neon_tx.tx_chain_id,
             from_addr=neon_tx.from_address.to_string(),
             nonce=hex(neon_tx.nonce),
             to_addr=neon_tx.to_address.to_string(None),
             contract=neon_tx.contract.to_string(None),
             value=hex(neon_tx.value),
             calldata=neon_tx.call_data.to_string(),
-            gas_price=hex(neon_tx.gas_price),
+            # TODO EIP1559: calc the actual gas price for dynamic gas tx when receipt has the iteration number.
+            gas_price=hex(neon_tx.gas_price),  
+            max_fee_per_gas=hex(neon_tx.max_fee_per_gas) if neon_tx.max_fee_per_gas else None,
+            max_priority_fee_per_gas=(
+                hex(neon_tx.max_priority_fee_per_gas) if neon_tx.max_priority_fee_per_gas else None
+            ),
             gas_limit=hex(neon_tx.gas_limit),
             gas_used=hex(neon_rcpt.total_gas_used),
             sum_gas_used=hex(neon_rcpt.sum_gas_used),
@@ -301,14 +310,15 @@ class _RecordWithBlock(_Record):
         # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
         neon_tx = NeonTxModel(
             tx_type=self.tx_type,
-            # Only legacy are supported right now, chain_id is derived from the v.
-            tx_chain_id=None,
+            tx_chain_id=None if self.chain_id == 0 else self.chain_id,
             neon_tx_hash=self.neon_sig,
             from_address=self.from_addr,
             to_address=self.to_addr,
             contract=self.contract,
             nonce=self.nonce,
             gas_price_legacy=self.gas_price,
+            max_fee_per_gas=self.max_fee_per_gas,
+            max_priority_fee_per_gas=self.max_priority_fee_per_gas,
             gas_limit=self.gas_limit,
             value=self.value,
             call_data=self.calldata,
