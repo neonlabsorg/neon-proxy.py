@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Literal, Any, Iterator, Iterable, TypeVar
 
 from pydantic import Field
@@ -17,6 +16,7 @@ class JsonRpcRequest(BaseModel):
     id: HttpRequestIdField
     method: str
     params: list = Field(default_factory=list)
+    skipCache: bool = True
 
 
 JsonRpcListItem = TypeVar("JsonRpcListItem")
