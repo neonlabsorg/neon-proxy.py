@@ -30,6 +30,7 @@ class OpResourceModel(BaseModel):
     owner: SolPubKeyField
     holder_address: SolPubKeyField
     resource_id: int
+    chain_id: int | None
     eth_address: EthAddressField
     token_sol_address: SolPubKeyField
 
@@ -42,6 +43,7 @@ class OpResourceModel(BaseModel):
                 owner=SolPubKey.default(),
                 holder_address=SolPubKey.default(),
                 resource_id=0,
+                chain_id=0,
                 eth_address=EthAddress.default(),
                 token_sol_address=SolPubKey.default(),
             )

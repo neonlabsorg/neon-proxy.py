@@ -11,15 +11,21 @@ from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.signer import SolSigner
 from common.solana_rpc.client import SolClient
+from common.utils.cached import cached_property
 from ..base.mp_client import MempoolClient
 from ..base.op_api import OP_RESOURCE_ENDPOINT
 from ..base.server import BaseProxyServer, BaseProxyComponent
+from ..stat.client import StatClient
 
 
 class OpResourceComponent(BaseProxyComponent):
     def __init__(self, server: OpResourceServerAbc) -> None:
         super().__init__(server)
         self._server = server
+
+    @cached_property
+    def _stat_client(self) -> StatClient:
+        return self._server._stat_client  # noqa
 
 
 class OpResourceApi(OpResourceComponent, AppDataApi):
@@ -29,9 +35,17 @@ class OpResourceApi(OpResourceComponent, AppDataApi):
 
 
 class OpResourceServerAbc(BaseProxyServer, abc.ABC):
-    def __init__(self, cfg: Config, core_api_client: CoreApiClient, sol_client: SolClient, mp_client: MempoolClient):
+    def __init__(
+        self,
+        cfg: Config,
+        core_api_client: CoreApiClient,
+        sol_client: SolClient,
+        mp_client: MempoolClient,
+        stat_client: StatClient,
+    ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._mp_client = mp_client
+        self._stat_client = stat_client
 
     def _add_api(self, api: OpResourceApi) -> Self:
         return self.add_api(api, endpoint=OP_RESOURCE_ENDPOINT)

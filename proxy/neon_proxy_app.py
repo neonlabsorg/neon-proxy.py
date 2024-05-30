@@ -68,6 +68,7 @@ class NeonProxyApp:
             core_api_client=core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
+            stat_client=stat_client,
         )
 
         # Init Mempool
@@ -108,6 +109,8 @@ class NeonProxyApp:
             while self._recv_sig_num == signal.SIG_DFL:
                 time.sleep(1)
 
+            self._proxy_server.stop()
+            self._stat_server.stop()
             self._mp_server.stop()
             self._op_server.stop()
             self._exec_server.stop()
