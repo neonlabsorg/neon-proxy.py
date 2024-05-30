@@ -4,7 +4,7 @@ from typing import Union
 
 from typing_extensions import Self
 
-from ..ethereum.commit_level import EthCommit
+from ..ethereum.commit_level import EthCommit, EthCommitField
 from ..ethereum.hash import EthBlockHash, EthBlockHashField
 from ..solana.block import SolRpcBlockInfo
 from ..solana.commit_level import SolCommit
@@ -14,7 +14,7 @@ from ..utils.pydantic import BaseModel
 
 class NeonBlockHdrModel(BaseModel):
     slot: int
-    commit: EthCommit
+    commit: EthCommitField
     block_hash: EthBlockHashField
     block_time: int | None
     parent_slot: int | None
