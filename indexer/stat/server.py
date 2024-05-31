@@ -29,7 +29,8 @@ class BlockStatApi(AppDataApi):
         self._block_parsed.set(label, data.parsed_block)
         self._block_confirmed.set(label, data.confirmed_block)
         self._block_finalized.set(label, data.finalized_block)
-        self._block_tracer.set(label, data.tracer_block)
+        if data.tracer_block:
+            self._block_tracer.set(label, data.tracer_block)
 
     @AppDataApi.method(name="commitReindexBlock")
     def on_reindex_block(self, data: NeonReindexBlockStat) -> None:
