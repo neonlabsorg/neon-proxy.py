@@ -57,3 +57,11 @@ class OpResourceServerAbc(BaseProxyServer, abc.ABC):
         evm_cfg = await self._mp_client.get_evm_cfg()
         NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
         return evm_cfg
+
+    async def _on_server_start(self) -> None:
+        await super()._on_server_start()
+        await self._stat_client.start()
+
+    async def _on_server_stop(self) -> None:
+        await super()._on_server_stop()
+        await self._stat_client.stop()

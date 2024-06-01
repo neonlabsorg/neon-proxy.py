@@ -4,7 +4,6 @@ from common.app_data.client import AppDataClient
 from common.config.config import Config
 from common.stat.api import RpcCallData
 from common.stat.client import BaseStatClient, RpcStatClient
-
 from .api import (
     OpResourceEarnedTokensBalanceData,
     OpResourceHolderStatusData,

@@ -128,7 +128,7 @@ class NeonTxExecutor(ExecutorComponent):
         ctx.init_neon_prog(evm_cfg)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
-        return ExecTxResp(code=exit_code)
+        return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
         for _Strategy in tx_strategy_list:

@@ -1,7 +1,3 @@
-from dataclasses import dataclass
-
-from typing_extensions import TypedDict
-
 from common.ethereum.hash import EthAddressField
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import BaseModel, HexUIntField
@@ -20,7 +16,7 @@ class OpResourceHolderStatusData(BaseModel):
     free_holder_cnt: int
     used_holder_cnt: int
     disabled_holder_cnt: int
-    blocked_holder_addr_cnt: int
+    blocked_holder_cnt: int
 
 
 class OpResourceSpendingTokensBalanceData(BaseModel):

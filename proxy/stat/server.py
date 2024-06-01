@@ -38,7 +38,7 @@ class OpResourceStatApi(AppDataApi):
         self._holder_free_cnt: dict[SolPubKey, int] = {}
         self._holder_used_cnt: dict[SolPubKey, int] = {}
         self._holder_disabled_cnt: dict[SolPubKey, int] = {}
-        self._holder_blocked_addr_cnt: dict[SolPubKey, int] = {}
+        self._holder_blocked_cnt: dict[SolPubKey, int] = {}
 
         self._holder_free_cnt_stat = StatGauge(
             "op_resource_holder_free", "Operator holder accounts (free)", registry=registry
@@ -70,7 +70,7 @@ class OpResourceStatApi(AppDataApi):
 
         self._earned_tokens_balance[data.token_name][data.eth_address] = data.balance
 
-        label = dict(token_name=data.token_name, eth_address=data.eth_address._to_string())
+        label = dict(token_name=data.token_name, eth_address=data.eth_address.to_string())
         self._earned_tokens_balance_stat.set(label, data.balance)
 
         label = dict(token_name=data.token_name)
@@ -81,29 +81,30 @@ class OpResourceStatApi(AppDataApi):
         self._holder_free_cnt[data.owner] = data.free_holder_cnt
         self._holder_used_cnt[data.owner] = data.used_holder_cnt
         self._holder_disabled_cnt[data.owner] = data.disabled_holder_cnt
-        self._holder_blocked_addr_cnt[data.owner] = data.blocked_holder_addr_cnt
+        self._holder_blocked_cnt[data.owner] = data.blocked_holder_cnt
 
         label = dict(owner=data.owner.to_string())
         self._holder_free_cnt_stat.set(label, data.free_holder_cnt)
         self._holder_used_cnt_stat.set(label, data.used_holder_cnt)
         self._holder_disabled_cnt_stat.set(label, data.disabled_holder_cnt)
-        self._holder_blocked_addr_cnt_stat.set(label, data.blocked_holder_addr_cnt)
+        self._holder_blocked_addr_cnt_stat.set(label, data.blocked_holder_cnt)
         self._holder_total_cnt_stat.set(
             label,
-            data.free_holder_cnt + data.used_holder_cnt + data.disabled_holder_cnt + data.blocked_holder_addr_cnt,
+            data.free_holder_cnt + data.used_holder_cnt + data.disabled_holder_cnt + data.blocked_holder_cnt,
         )
 
         label = {}
-        self._holder_free_cnt_stat.set(label, sum(self._holder_free_cnt.values()))
-        self._holder_used_cnt_stat.set(label, sum(self._holder_used_cnt.values()))
-        self._holder_disabled_cnt_stat.set(label, sum(self._holder_disabled_cnt.values()))
-        self._holder_blocked_addr_cnt_stat.set(label, sum(self._holder_blocked_addr_cnt.values()))
+        holder_free_cnt = sum(self._holder_free_cnt.values())
+        holder_used_cnt = sum(self._holder_used_cnt.values())
+        holder_disabled_cnt = sum(self._holder_disabled_cnt.values())
+        holder_blocked_cnt = sum(self._holder_blocked_cnt.values())
+        self._holder_free_cnt_stat.set(label, holder_free_cnt)
+        self._holder_used_cnt_stat.set(label, holder_used_cnt)
+        self._holder_disabled_cnt_stat.set(label, holder_disabled_cnt)
+        self._holder_blocked_addr_cnt_stat.set(label, holder_blocked_cnt)
         self._holder_total_cnt_stat.set(
             label,
-            sum(self._holder_free_cnt.values())
-            + sum(self._holder_used_cnt.values())
-            + sum(self._holder_disabled_cnt.values())
-            + sum(self._holder_blocked_addr_cnt.values()),
+            holder_free_cnt + holder_used_cnt + holder_disabled_cnt + holder_blocked_cnt,
         )
 
     @AppDataApi.method(name="commitOpResourceSpendingTokensBalance")

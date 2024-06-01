@@ -63,6 +63,9 @@ class OpResourceModel(BaseModel):
     def is_empty(self) -> bool:
         return self.owner.is_empty
 
+    def set_chain_id(self, chain_id: int) -> None:
+        object.__setattr__(self, "chain_id", chain_id)
+
 
 class OpGetTokenSolAddressRequest(BaseModel):
     req_id: dict
