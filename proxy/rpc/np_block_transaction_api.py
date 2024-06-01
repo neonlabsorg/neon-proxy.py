@@ -507,7 +507,10 @@ class NpBlockTxApi(NeonProxyApi):
     async def _fill_block(self, block: NeonBlockHdrModel, full: bool) -> _RpcBlockResp:
         tx_list = tuple()
         if block.commit != EthCommit.Pending:
-            tx_list = await self._db.get_tx_list_by_slot(block.slot)
+            try:
+                tx_list = await self._db.get_tx_list_by_slot(block.slot)
+            except BaseException as exc:
+                _LOG.debug("error on loading txs", exc_info=exc, extra=self._msg_filter)
         return _RpcBlockResp.from_raw(block, tx_list, full)
 
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByNumber")
