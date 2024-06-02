@@ -308,6 +308,9 @@ class MpTxExecutor(MempoolComponent):
             self._stat_client.commit_tx_fail(TxFailData(time_nsec=tx.process_time_nsec))
 
         self._call_tx_schedule(tx.chain_id, action, tx, resp.state_tx_cnt)
+
+        if resp.chain_id:
+            resource.set_chain_id(resp.chain_id)
         await self._op_client.free_resource(dict(tx=tx.tx_id), is_good_resource, resource)
 
         if task := self._exec_task_dict.pop(tx.neon_tx_hash, None):

@@ -255,7 +255,7 @@ def destroy_terraform(proxy_tag, run_number):
     os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
     os.environ["TF_VAR_docker_username"] = DOCKER_USERNAME
     os.environ["TF_VAR_docker_password"] = DOCKER_PASSWORD
-    
+
     def format_tf_output(output):
         return re.sub(r'(?m)^', ' ' * TF_OUTPUT_OFFSET, str(output))
 
@@ -438,7 +438,7 @@ def process_output(output):
                 elif "stream" in line:
                     stream = re.sub("^\n", "", line["stream"])
                     stream = re.sub("\n$", "", stream)
-                    stream = re.sub("\n(\x1B\[0m)$", "\\1", stream)
+                    stream = re.sub("\n(\x1B\\[0m)$", "\\1", stream)
                     if stream:
                         click.echo(stream)
 
