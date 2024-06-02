@@ -1,4 +1,6 @@
 #!/bin/bash
+
+BINDIR="$(dirname $BASH_SOURCE)"
 COMPONENT=Proxy
 echo \{\"level\": \"INFO\", \"date\": \"$(date "+%F %X.%3N")\", \"module\": \"$(basename "$0"):${LINENO}\"\}, \"process\": $!, \"message\": \"Start ${COMPONENT} service\"\}
 
@@ -15,4 +17,4 @@ ln -s /opt/neon-proxy/test-operator-keypairs/id?*.json /root/.config/solana/
 export NUM_ACCOUNTS=30
 /spl/bin/create-test-accounts.sh $NUM_ACCOUNTS &
 
-proxy/run-proxy.sh
+$BINDIR/run-proxy.sh

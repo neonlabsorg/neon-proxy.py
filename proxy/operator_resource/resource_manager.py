@@ -25,6 +25,11 @@ from .key_info import OpSignerInfo, OpHolderInfo
 from .server_abc import OpResourceComponent
 from .transaction_list_signer import OpTxListSigner
 from ..base.op_api import OpResourceModel, OpEthAddressModel
+from ..stat.api import (
+    OpResourceEarnedTokensBalanceData,
+    OpResourceHolderStatusData,
+    OpResourceSpendingTokensBalanceData,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -73,7 +78,7 @@ class OpResourceMng(OpResourceComponent):
         if self._activate_signer_task:
             await self._activate_signer_task
 
-    def get_resource(self, chain_id: int | None) -> OpResourceModel:
+    async def get_resource(self, chain_id: int | None) -> OpResourceModel:
         if not (op_signer_list := list(self._active_signer_dict.values())):
             return OpResourceModel.default()
 
@@ -97,6 +102,7 @@ class OpResourceMng(OpResourceComponent):
                     owner=op_signer.owner,
                     holder_address=op_holder.address,
                     resource_id=op_holder.resource_id,
+                    chain_id=chain_id,
                     eth_address=op_signer.eth_address,
                     token_sol_address=owner_token_addr,
                 )
@@ -106,7 +112,7 @@ class OpResourceMng(OpResourceComponent):
 
         return OpResourceModel.default()
 
-    def free_resource(self, is_good_resource: bool, op_resource: OpResourceModel) -> None:
+    async def free_resource(self, is_good_resource: bool, op_resource: OpResourceModel) -> None:
         with logging_context(opkey=self._opkey(op_resource.owner)):
             if not (op_signer := self._find_op_signer(op_resource.owner)):
                 _LOG.error("error on trying to free an absent resource %s", op_resource)
@@ -121,6 +127,64 @@ class OpResourceMng(OpResourceComponent):
             else:
                 _LOG.debug("disable resource: %s", op_resource)
                 op_signer.disabled_holder_list.append(op_holder)
+
+            try:
+                is_valid, spending_tokens_balance = await self._validate_op_balance_impl(op_signer)
+
+                if not is_valid:
+                    if disabled_op_signer := self._active_signer_dict.pop(op_signer.owner, None):
+                        self._disabled_signer_dict[disabled_op_signer.owner] = disabled_op_signer
+
+                # Holder status
+
+                self._send_op_resource_holder_stat(op_signer)
+
+                # Spending tokens balance
+
+                self._stat_client.commit_op_resource_spending_tokens_balance(
+                    OpResourceSpendingTokensBalanceData(owner=op_resource.owner, balance=spending_tokens_balance)
+                )
+
+                # Earned tokens balance
+
+                if not op_resource.chain_id:
+                    return
+
+                evm_cfg = await self._server.get_evm_cfg()
+                neon_address = NeonAccount.from_raw(op_resource.eth_address, op_resource.chain_id)
+                neon_account = await self._core_api_client.get_neon_account(neon_address, None)
+
+                operator_account = await self._core_api_client.get_operator_account(
+                    evm_cfg, op_resource.owner, neon_address, None
+                )
+
+                self._stat_client.commit_op_resource_earned_tokens_balance(
+                    OpResourceEarnedTokensBalanceData(
+                        token_name=evm_cfg.chain_dict[op_resource.chain_id].name,
+                        eth_address=op_resource.eth_address,
+                        balance=neon_account.balance + operator_account.balance,
+                    )
+                )
+
+            except BaseException as exc:
+                _LOG.error("error on operator resource balance stat", exc_info=exc)
+
+    def _send_op_resource_holder_stat(self, op_signer: OpSignerInfo) -> None:
+        blocked_holder_cnt = 0
+
+        for _address, owner in self._blocked_holder_addr_dict.items():
+            if owner == op_signer.owner:
+                blocked_holder_cnt += 1
+
+        self._stat_client.commit_op_resource_holder_status(
+            OpResourceHolderStatusData(
+                owner=op_signer.owner,
+                free_holder_cnt=len(op_signer.free_holder_list),
+                used_holder_cnt=len(op_signer.used_holder_dict),
+                disabled_holder_cnt=len(op_signer.disabled_holder_list),
+                blocked_holder_cnt=blocked_holder_cnt,
+            )
+        )
 
     def get_token_address(self, owner: SolPubKey, chain_id: int) -> tuple[EthAddress, SolPubKey]:
         with logging_context(opkey=self._opkey(owner)):
@@ -142,11 +206,6 @@ class OpResourceMng(OpResourceComponent):
                 return tuple(tx_list)
 
             tx_signer = OpTxListSigner(signer=op_signer.signer)
-
-            if not await self._validate_op_balance(op_signer):
-                if op_signer := self._active_signer_dict.pop(op_signer.owner, None):
-                    self._disabled_signer_dict[op_signer.owner] = op_signer
-
             tx_list = await tx_signer.sign_tx_list(tx_list)
             _LOG.debug("done sign the tx-list: %s", tx_list)
         return tx_list
@@ -231,6 +290,7 @@ class OpResourceMng(OpResourceComponent):
             op_signer = self._init_op_signer(signer)
             self._deleted_holder_addr_set.update([h.address for h in op_signer.disabled_holder_list])
             self._disabled_signer_dict[signer.pubkey] = op_signer
+            self._send_op_resource_holder_stat(op_signer)
 
     def _init_op_signer(self, signer: SolSigner) -> OpSignerInfo:
         start_id = self._cfg.perm_account_id
@@ -267,6 +327,7 @@ class OpResourceMng(OpResourceComponent):
         for op_signer in tuple(op_signer_list):
             with logging_context(opkey=self._opkey(op_signer)):
                 if await self._activate_signer(op_signer, evm_cfg):
+                    self._send_op_resource_holder_stat(op_signer)
                     if op_signer := self._disabled_signer_dict.pop(op_signer.owner, None):
                         # move the key to the active list for using in tx processing
                         self._active_signer_dict[op_signer.owner] = op_signer
@@ -314,6 +375,10 @@ class OpResourceMng(OpResourceComponent):
         return await self._validate_op_balance(op_signer)
 
     async def _validate_op_balance(self, op_signer: OpSignerInfo) -> bool:
+        is_valid, _balance = await self._validate_op_balance_impl(op_signer)
+        return is_valid
+
+    async def _validate_op_balance_impl(self, op_signer: OpSignerInfo) -> tuple[bool, int]:
         # Validate operator's account has enough SOLs
         balance = await self._sol_client.get_balance(op_signer.owner)
         if balance <= self._cfg.min_op_balance_to_err:
@@ -327,7 +392,7 @@ class OpResourceMng(OpResourceComponent):
                 )
                 _LOG.error(msg)
             op_signer.error_cnt += 1
-            return False
+            return False, balance
         else:
             op_signer.error_cnt = 0
 
@@ -345,7 +410,7 @@ class OpResourceMng(OpResourceComponent):
         else:
             op_signer.warn_cnt = 0
 
-        return True
+        return True, balance
 
     async def _validate_holder_acct(self, signer: SolSigner, op_holder: OpHolderInfo) -> bool:
         holder = await self._core_api_client.get_holder_account(op_holder.address)
@@ -481,6 +546,8 @@ class OpResourceMng(OpResourceComponent):
                         self._deleted_holder_addr_set.discard(holder.address)
                         self._blocked_holder_addr_dict.pop(holder.address, None)
 
+                    self._send_op_resource_holder_stat(op_signer)
+
     async def _delete_holder_list(self, op_signer: OpSignerInfo) -> bool:
         if op_signer.used_holder_dict:
             # if the key has a used holder -> wait till the tx process is finished
@@ -514,6 +581,8 @@ class OpResourceMng(OpResourceComponent):
             return False
 
     async def _delete_blocked_holder_list(self) -> None:
+        changed_owner_set: set[SolPubKey] = set()
+
         for holder_addr, owner in list(self._blocked_holder_addr_dict.items()):
             if holder_addr in self._deleted_holder_addr_set:
                 continue
@@ -521,6 +590,7 @@ class OpResourceMng(OpResourceComponent):
             if not (op_signer := self._active_signer_dict.get(owner, None)):
                 _LOG.debug("no operator key %s for holder %s", owner, holder_addr)
                 self._blocked_holder_addr_dict.pop(holder_addr)
+                changed_owner_set.add(owner)
                 continue
 
             if holder_addr in op_signer.used_holder_dict:
@@ -540,10 +610,16 @@ class OpResourceMng(OpResourceComponent):
                         holder.resource_id,
                     )
                     await self._delete_holder_acct(op_signer.signer, holder)
+                    changed_owner_set.add(owner)
                     break
             else:
                 _LOG.debug("operator key %s doesn't have holder %s", owner, holder_addr)
                 self._blocked_holder_addr_dict.pop(holder_addr)
+                changed_owner_set.add(owner)
+
+        for owner in changed_owner_set:
+            if op_signer := self._find_op_signer(owner):
+                self._send_op_resource_holder_stat(op_signer)
 
     async def _send_tx(self, signer: SolSigner, tx: SolTx) -> bool:
         return await self._send_tx_list(signer, tuple([tx]))
