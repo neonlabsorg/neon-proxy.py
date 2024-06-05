@@ -181,8 +181,8 @@ class _OldNeonTxEventModel(BaseModel):
     block_hash: str = Field(validation_alias="blockHash")
     slot: str = Field(validation_alias="blockNumber")
     neon_tx_idx: str = Field(validation_alias="transactionIndex")
-    block_log_idx: str = Field(validation_alias="logIndex")
-    neon_tx_log_idx: str = Field(validation_alias="transactionLogIndex")
+    block_log_idx: str = Field("0x0", validation_alias="logIndex")
+    neon_tx_log_idx: str = Field("0x0", validation_alias="transactionLogIndex")
 
 
 # TODO: remove after converting all records
