@@ -9,7 +9,7 @@ from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context
-from .base_handler import BaseHandler
+from .cmd_handler import BaseNPCmdHandler
 
 _LOG = logging.getLogger(__name__)
 
@@ -21,8 +21,10 @@ class _OpBalance:
     token_balance_dict: dict[str, int]
 
 
-class OpBalanceHandler(BaseHandler):
+class OpBalanceHandler(BaseNPCmdHandler):
     command: ClassVar[str] = "operator-balance"
+    #
+    # protected:
     _percent: Final[str] = "PERCENT"
     _percent_postfix: Final[str] = "_PERCENT"
     _list: Final[str] = "list-earned-tokens"
@@ -33,9 +35,9 @@ class OpBalanceHandler(BaseHandler):
         self._token_list: list[str] = list()
 
     @classmethod
-    async def new_arg_parser(cls, cfg: Config, action) -> Self:
+    async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
         self = cls(cfg)
-        self._root_parser = action.add_parser(self.command)
+        self._root_parser = cmd_list_parser.add_parser(self.command)
         self._cmd_parser = self._root_parser.add_subparsers(
             title="command",
             dest="subcommand",

@@ -218,7 +218,7 @@ class NeonIndexerApp:
         start_slot = await self._db.constant_db.get_int(None, slot_range.start_slot_name, self._last_known_slot)
         min_used_slot = await self._db.constant_db.get_int(None, slot_range.min_used_slot_name, start_slot)
         stop_slot = await self._db.constant_db.get_int(None, slot_range.stop_slot_name, slot_range.max_slot)
-        return IndexerDbSlotRange(slot_range.reindex_ident, start_slot, min_used_slot, stop_slot)
+        return IndexerDbSlotRange(slot_range.reindex_ident, start_slot, min_used_slot, stop_slot=stop_slot)
 
     async def _add_new_reindex_range_list(
         self, slot_range_list: Sequence[IndexerDbSlotRange]
@@ -253,7 +253,7 @@ class NeonIndexerApp:
 
             stop_slot = min(start_slot + range_len, self._reindex_stop_slot)
 
-            slot_range = IndexerDbSlotRange(self._reindex_ident, start_slot, start_slot, stop_slot)
+            slot_range = IndexerDbSlotRange(self._reindex_ident, start_slot, start_slot, stop_slot=stop_slot)
             slot_range_list.append(slot_range)
 
             start_slot = stop_slot
@@ -286,7 +286,12 @@ class NeonIndexerApp:
         if new.start_slot - old.stop_slot > self._cfg.reindex_range_len:
             return _merge()
 
-        merged_slot_range = IndexerDbSlotRange(self._reindex_ident, old.start_slot, old.min_used_slot, new.stop_slot)
+        merged_slot_range = IndexerDbSlotRange(
+            self._reindex_ident,
+            old.start_slot,
+            old.min_used_slot,
+            stop_slot=new.stop_slot,
+        )
         await self._db.constant_db.set(None, merged_slot_range.stop_slot_name, merged_slot_range.stop_slot)
 
         slot_range_list = slot_range_list[:-1]

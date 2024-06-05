@@ -25,7 +25,17 @@
             "handlers": ["standard"],
             "propagate": false
         },
+        "proxy_client": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
         "indexer": {
+            "level": "DEBUG",
+            "handlers": ["standard"],
+            "propagate": false
+        },
+        "indexer_client": {
             "level": "DEBUG",
             "handlers": ["standard"],
             "propagate": false
@@ -36,11 +46,6 @@
             "propagate": false
         },
         "tests": {
-            "level": "DEBUG",
-            "handlers": ["standard"],
-            "propagate": false
-        },
-        "proxy_client": {
             "level": "DEBUG",
             "handlers": ["standard"],
             "propagate": false
