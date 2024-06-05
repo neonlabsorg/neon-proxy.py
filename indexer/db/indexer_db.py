@@ -31,8 +31,10 @@ class IndexerDbSlotRange:
     reindex_ident: str = ""
     start_slot: int = 0
     min_used_slot: int = 0
-    stop_slot: int = 2**64 - 1
-    max_slot: Final[int] = 2**64 - 1
+
+    max_slot: Final[int] = 2 ** 64 - 1
+    stop_slot: int = max_slot
+    term_slot: int = max_slot
 
     @property
     def is_reindexing_mode(self) -> bool:
@@ -135,6 +137,7 @@ class IndexerDb:
         self._start_slot = slot_range.start_slot
         self._min_used_slot = slot_range.min_used_slot
         self._stop_slot = slot_range.stop_slot
+        self._term_slot = slot_range.term_slot
 
         self._latest_slot = 0
         self._finalized_slot = 0
@@ -157,6 +160,7 @@ class IndexerDb:
         self._start_slot = slot_range.start_slot
         self._min_used_slot = slot_range.min_used_slot
         self._stop_slot = slot_range.stop_slot
+        self._term_slot = slot_range.term_slot
 
     async def start(self) -> None:
         await self._db_conn.start()
@@ -183,6 +187,10 @@ class IndexerDb:
     @property
     def stop_slot(self) -> int:
         return self._stop_slot
+
+    @property
+    def term_slot(self) -> int:
+        return self._term_slot
 
     @property
     def is_reindexing_mode(self) -> bool:
