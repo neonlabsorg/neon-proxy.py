@@ -292,6 +292,10 @@ class Indexer:
                 self._last_finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
                 if self._tracer_api_client:
                     self._last_tracer_slot = await self._tracer_api_client.get_max_slot()
+                    # if no connection to the tracer db, but config has a delay,
+                    #    limit indexing by finalized slot
+                    if (self._last_tracer_slot is None) and self._cfg.slot_processing_delay:
+                        self._last_confirmed_slot = self._last_finalized_slot
                 self._commit_progress_stat()
         return result
 
