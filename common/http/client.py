@@ -46,6 +46,7 @@ class HttpClient:
         self._base_url_list: list[HttpURL] = list()
         self._timeout = HttpClientTimeout(60)
         self._is_started = False
+        self._is_stopped = False
         self._raise_for_status = True
         self._max_retry_cnt = -1
         self._header_dict = {"Content-Type": "application/json; charset=utf-8"}
@@ -61,8 +62,10 @@ class HttpClient:
         pass
 
     async def stop(self) -> None:
-        if self.session:
+        self._is_stopped = True
+        if self._is_started:
             await self.session.close()
+            self._is_started = False
 
     @cached_property
     def session(self) -> HttpClientSession:
@@ -153,6 +156,9 @@ async def _send_post_request(self: HttpClient, req: HttpClientRequest) -> str:
     random.shuffle(base_url_list)
     base_url_list = itertools.cycle(base_url_list)
     for retry in itertools.count():
+        if self._is_stopped:
+            break
+
         base_url = next(base_url_list)
         req.build_url(base_url)
 

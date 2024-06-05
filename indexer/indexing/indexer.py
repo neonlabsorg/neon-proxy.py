@@ -57,7 +57,7 @@ class Indexer:
         self._alt_ix_collector = SolAltTxIxCollector(cfg, sol_client)
         self._sol_block_net_cache = SolBlockNetCache(cfg, sol_client)
 
-        self._term_slot = self._db.stop_slot + self._alt_ix_collector.check_depth
+        self._term_slot = min(db.stop_slot + self._alt_ix_collector.check_depth, db.term_slot)
 
         self._decoder_stat = SolNeonDecoderStat()
 
@@ -284,7 +284,8 @@ class Indexer:
             finalized_slot = await self._db.get_finalized_slot()
             # reindexing should stop on the terminated slot
             finalized_slot = min(self._term_slot, finalized_slot)
-            result = self._last_processed_slot < finalized_slot
+            if result := self._last_processed_slot < finalized_slot:
+                self._commit_progress_stat()
             self._last_finalized_slot = finalized_slot
         else:
             self._last_confirmed_slot = await self._sol_client.get_slot(SolCommit.Confirmed)
