@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS neon_transactions (
     gas_price TEXT,
     max_fee_per_gas TEXT,
     max_priority_fee_per_gas TEXT,
+    priority_fee_spent TEXT,
     gas_limit TEXT,
     value TEXT,
     gas_used TEXT,
@@ -179,7 +180,8 @@ CREATE TABLE IF NOT EXISTS neon_transactions (
 ALTER TABLE neon_transactions
     ADD COLUMN IF NOT EXISTS chain_id INT DEFAULT 0,
     ADD COLUMN IF NOT EXISTS max_fee_per_gas TEXT,
-    ADD COLUMN IF NOT EXISTS max_priority_fee_per_gas TEXT;
+    ADD COLUMN IF NOT EXISTS max_priority_fee_per_gas TEXT,
+    ADD COLUMN IF NOT EXISTS priority_fee_spent TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_neon_transactions_sol_sig_block ON neon_transactions(sol_sig, block_slot);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_neon_transactions_neon_sig_block ON neon_transactions(neon_sig, block_slot);

@@ -110,6 +110,7 @@ class NeonTxLogInfo:
     tx_ix_miner: EthAddress
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
+    tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
     is_truncated: bool
@@ -146,6 +147,16 @@ class NeonTxIxLogGasInfo:
 
 
 @dataclass(frozen=True)
+class NeonTxIxPriorityFeeInfo:
+    # Denominated in gas tokens.
+    priority_fee_paid: int
+
+    @classmethod
+    def default(cls) -> Self:
+        return cls(priority_fee_paid=0)
+
+
+@dataclass(frozen=True)
 class NeonTxIxStepInfo:
     step_cnt: int
     total_step_cnt: int
@@ -166,6 +177,7 @@ class _NeonTxLogDraft:
     tx_ix_miner: EthAddress
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
+    tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
     is_truncated: bool
@@ -179,6 +191,7 @@ class _NeonTxLogDraft:
             tx_ix_miner=EthAddress.default(),
             tx_ix_step=NeonTxIxStepInfo.default(),
             tx_ix_gas=NeonTxIxLogGasInfo.default(),
+            tx_ix_priority_fee=NeonTxIxPriorityFeeInfo.default(),
             tx_return=NeonTxLogReturnInfo.default(),
             tx_event_list=list(),
             is_truncated=False,
@@ -197,6 +210,7 @@ class _NeonTxLogDraft:
             tx_ix_miner=self.tx_ix_miner,
             tx_ix_step=self.tx_ix_step,
             tx_ix_gas=self.tx_ix_gas,
+            tx_ix_priority_fee=self.tx_ix_priority_fee,
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
             is_truncated=self.is_truncated,
@@ -309,6 +323,23 @@ class _NeonEvmGasLogDecoder(_NeonEvmLogDecoder):
         total_gas_used = int.from_bytes(bs, "little")
 
         log.tx_ix_gas = NeonTxIxLogGasInfo(gas_used=gas_used, total_gas_used=total_gas_used)
+
+
+class _NeonEvmPriorityFeeLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "PRIORITYFEE"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+        """PRIORITYFEE <32 bytes le priority fee as paid by the user>"""
+        if log.tx_ix_priority_fee.priority_fee_paid != 0:
+            _LOG.error("%s is specified twice", cls.name)
+            return
+        if len(data_list) != 1:
+            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
+            return
+
+        bs = base64.b64decode(data_list[0])
+        log.tx_ix_gas = NeonTxIxPriorityFeeInfo(priority_fee_paid=int.from_bytes(bs, "little"))
 
 
 class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
@@ -564,6 +595,7 @@ class NeonEvmLogDecoder:
         _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,
         _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
+        _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,

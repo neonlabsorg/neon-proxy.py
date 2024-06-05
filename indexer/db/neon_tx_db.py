@@ -243,6 +243,7 @@ class _Record:
     gas_price: str
     max_fee_per_gas: str | None
     max_priority_fee_per_gas: str | None
+    priority_fee_spent: str | None  # 0 for the legacy, total priority fee spent for dynamic gas neon transaction.
     gas_limit: str
     gas_used: str
     sum_gas_used: str
@@ -280,6 +281,7 @@ class _Record:
             max_priority_fee_per_gas=(
                 hex(neon_tx.max_priority_fee_per_gas) if neon_tx.max_priority_fee_per_gas else None
             ),
+            priority_fee_spent=hex(neon_rcpt.priority_fee_spent) if neon_rcpt.priority_fee_spent else None,
             gas_limit=hex(neon_tx.gas_limit),
             gas_used=hex(neon_rcpt.total_gas_used),
             sum_gas_used=hex(neon_rcpt.sum_gas_used),
@@ -337,6 +339,7 @@ class _RecordWithBlock(_Record):
             status=self.status,
             total_gas_used=self.gas_used,
             sum_gas_used=self.sum_gas_used,
+            priority_fee_spent=self.priority_fee_spent if self.priority_fee_spent else 0,
             is_completed=self.is_completed,
             is_canceled=self.is_canceled,
             event_list=self._decode_event_list(self.logs),
