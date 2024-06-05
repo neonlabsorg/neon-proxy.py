@@ -173,7 +173,7 @@ class RpcEthTxEventModel(BaseJsonRpcModel):
     transactionHash: EthTxHashField
     transactionIndex: HexUIntField
     logIndex: HexUIntField | None
-    transactionLogIndex: HexUIntField | None
+    # transactionLogIndex: HexUIntField | None
 
     removed: bool = False
 
@@ -192,7 +192,7 @@ class RpcEthTxEventModel(BaseJsonRpcModel):
             transactionHash=event.neon_tx_hash,
             transactionIndex=event.neon_tx_idx,
             logIndex=event.block_log_idx,
-            transactionLogIndex=event.neon_tx_log_idx,
+            # transactionLogIndex=event.neon_tx_log_idx,
         )
 
 
