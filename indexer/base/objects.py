@@ -760,6 +760,31 @@ class NeonIndexedAltInfo:
         last_ix_slot: int
         is_stuck: bool
 
+    # TODO: remove after migrating
+    class _DeprecatedInitData(BaseModel):
+        alt_key: str
+        neon_tx_sig: str
+        block_slot: int
+        next_check_slot: int
+        last_ix_slot: int
+        is_stuck: bool
+
+        @classmethod
+        def is_deprecated(cls, data: dict) -> bool:
+            return "neon_tx_sig" in data
+
+        def to_clean_copy(self) -> NeonIndexedAltInfo.InitData:
+            return NeonIndexedAltInfo.InitData(
+                key=self.alt_key,
+                neon_tx_hash=self.neon_tx_sig,
+                slot=self.block_slot,
+                next_check_slot=self.next_check_slot,
+                last_ix_slot=self.last_ix_slot,
+                is_stuck=self.is_stuck,
+            )
+
+    # TODO: done
+
     def __init__(
         self,
         key: Key,
