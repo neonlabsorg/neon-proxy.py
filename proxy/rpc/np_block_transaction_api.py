@@ -338,6 +338,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
 
     gasLimit: HexUIntField
     gasUsed: HexUIntField
+    baseFeePerGas: HexUIntField
     blockHash: EthBlockHashField | None = Field(serialization_alias="hash")
     number: HexUIntField
     parentHash: EthBlockHashField
@@ -349,7 +350,13 @@ class _RpcBlockResp(BaseJsonRpcModel):
     _sha3uncle_hash: Final[EthHash32Field] = "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
 
     @classmethod
-    def from_raw(cls, block: NeonBlockHdrModel, tx_list: tuple[NeonTxMetaModel, ...], full: bool) -> Self:
+    def from_raw(
+        cls,
+        block: NeonBlockHdrModel,
+        tx_list: tuple[NeonTxMetaModel, ...],
+        full: bool,
+        current_base_fee_per_gas: int | None,
+    ) -> Self:
         is_pending = block.commit == EthCommit.Pending
 
         total_gas_used = 0
@@ -369,6 +376,21 @@ class _RpcBlockResp(BaseJsonRpcModel):
             miner = None
             nonce = None
 
+        # Take base_fee_per_gas from dynamic gas transactions, if there are any.
+        base_fee_per_gas = 0
+        for tx_meta in tx_list:
+            # TODO EIP1559: prettify tx_type access via enum or a separate method.
+            if tx_meta.neon_tx.tx_type == 2:
+                base_fee_per_gas = max(
+                    base_fee_per_gas, tx_meta.neon_tx.max_fee_per_gas - tx_meta.neon_tx.max_priority_fee_per_gas
+                )
+        # If there are none, take the current gas price.
+        if base_fee_per_gas == 0:
+            base_fee_per_gas = current_base_fee_per_gas
+        # Failing assert would indicate the bug in the logic - because if the current gas price is false,
+        #   the exception in the logic fetching the gas price should have occurred.
+        assert bool(base_fee_per_gas), "base_fee_per_gas can't be zero or None."
+
         return cls(
             logsBloom=log_bloom,
             transactionsRoot=cls._fake_hash if tx_list else cls._empty_root,
@@ -385,6 +407,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
             #
             gasLimit=max(48_000_000_000_000, total_gas_used),
             gasUsed=total_gas_used,
+            baseFeePerGas=base_fee_per_gas,
             number=block.slot,
             parentHash=block.parent_block_hash,
             timestamp=block.block_time,
@@ -445,27 +468,39 @@ class NpBlockTxApi(NeonProxyApi):
         return RpcEthTxResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getBlockByNumber")
-    async def get_block_by_number(self, block_tag: RpcBlockRequest, full: bool) -> _RpcBlockResp | None:
+    async def get_block_by_number(
+        self, ctx: HttpRequestCtx, block_tag: RpcBlockRequest, full: bool
+    ) -> _RpcBlockResp | None:
         block = await self.get_block_by_tag(block_tag)
         if block.is_empty:
             return None
-        return await self._fill_block(block, full)
+        return await self._fill_block(ctx, block, full)
 
     @NeonProxyApi.method(name="eth_getBlockByHash")
-    async def get_block_by_hash(self, block_hash: EthBlockHashField, full: bool) -> _RpcBlockResp | None:
+    async def get_block_by_hash(
+        self, ctx: HttpRequestCtx, block_hash: EthBlockHashField, full: bool
+    ) -> _RpcBlockResp | None:
         block = await self._db.get_block_by_hash(block_hash)
         if block.is_empty:
             return None
-        return await self._fill_block(block, full)
+        return await self._fill_block(ctx, block, full)
 
-    async def _fill_block(self, block: NeonBlockHdrModel, full: bool) -> _RpcBlockResp:
+    async def _fill_block(self, ctx: HttpRequestCtx, block: NeonBlockHdrModel, full: bool) -> _RpcBlockResp:
         tx_list = tuple()
         if block.commit != EthCommit.Pending:
             try:
                 tx_list = await self._db.get_tx_list_by_slot(block.slot)
             except BaseException as exc:
                 _LOG.debug("error on loading txs", exc_info=exc, extra=self._msg_filter)
-        return _RpcBlockResp.from_raw(block, tx_list, full)
+
+        current_base_fee_per_gas = None
+        # Fetch current current gas price only if there's no dynamic gas transactions in the block (or block is empty).
+        if all(not tx_meta.neon_tx.tx_type == 2 for tx_meta in tx_list):
+            _, token_gas_price = await self.get_token_gas_price(ctx)
+            current_base_fee_per_gas = token_gas_price.suggested_gas_price
+        # Pass the gas price information into the response, because after EIP1559 blocks should include baseFeePerGas.
+        # If there are no dynamic gas transactions, this value is taken; otherwise, the maximum value among transactions is used.
+        return _RpcBlockResp.from_raw(block, tx_list, full, current_base_fee_per_gas)
 
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByNumber")
     async def get_tx_cnt_by_block_number(self, block_tag: RpcBlockRequest) -> HexUIntField:
