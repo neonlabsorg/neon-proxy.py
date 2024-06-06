@@ -17,7 +17,7 @@ class AppDataClient(SimpleAppDataClient):
         self._req_id = itertools.count()
 
     @classmethod
-    def _register_data_sender(cls, handler: SimpleAppDataClientSender, name: str, reraise_50x: bool) -> Callable:
+    def _register_data_sender(cls, handler: SimpleAppDataClientSender, name: str) -> Callable:
         method = AppDataMethod.from_handler(handler, name)
         assert method.is_async_def, "AppDataClient support only async methods"
         assert method.has_self, "AppDataClient support only object methods"
@@ -52,7 +52,7 @@ class AppDataClient(SimpleAppDataClient):
             req_id = str(next(self._req_id))
             req_data = AppRequest(id=req_id, data=data).to_json()
 
-            resp_data = await self._send_post_request(req_data, path=method_path, reraise_50x=reraise_50x)
+            resp_data = await self._send_post_request(req_data, path=method_path)
             resp = AppResp.from_json(resp_data)
             if resp.id != req_id:
                 raise BadRespError(error_list=f"Bad ID in the response {resp.id} != {req_id}")

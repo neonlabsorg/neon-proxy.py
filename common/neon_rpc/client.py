@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 from typing import Sequence, Final
 
@@ -57,10 +58,12 @@ class CoreApiClient(SimpleAppDataClient):
             port = base_port + idx
             self.connect(host=cfg.neon_core_api_ip, port=port, path="/api/")
 
-        self.set_timeout_sec(5).set_max_retry_cnt(30)
+        self.set_timeout_sec(35).set_max_retry_cnt(30)
 
         self._sol_client = sol_client
         self._evm_cfg = EvmConfigModel.default()
+
+        self._raise_for_status = False
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         try:
@@ -207,14 +210,24 @@ class CoreApiClient(SimpleAppDataClient):
             slot=self._get_slot(block),
         )
 
-        resp = await self._emulate_neon_call(req)
-        if resp.error:
-            raise EthError(resp.error)
+        for retry in itertools.count():
+            if retry >= self._max_retry_cnt:
+                raise EthError("No connection to Solana. Maximum retry count reached.")
+            if retry > 0:
+                _LOG.debug("attempt %d to repeat...", retry + 1)
 
-        resp = EmulNeonCallResp.from_dict(resp.value)
-        if check_result:
-            self._check_emulator_result(resp)
-        return resp
+            resp = await self._emulate_neon_call(req)
+            if resp.error_code:
+                if resp.error_code == 113:
+                    continue
+
+            if resp.error:
+                raise EthError(resp.error)
+
+            resp = EmulNeonCallResp.from_dict(resp.value)
+            if check_result:
+                self._check_emulator_result(resp)
+            return resp
 
     async def emulate_sol_tx_list(
         self,
@@ -257,7 +270,7 @@ class CoreApiClient(SimpleAppDataClient):
     @SimpleAppDataClient.method(name="emulate")
     async def _emulate_neon_call(self, request: EmulNeonCallRequest) -> CoreApiResp: ...
 
-    @SimpleAppDataClient.method(name="simulate_solana", reraise_50x=True)
+    @SimpleAppDataClient.method(name="simulate_solana")
     async def _emulate_sol_tx_list(self, request: EmulSolTxListRequest) -> CoreApiResp: ...
 
     @ttl_cached_method(ttl_sec=60)
