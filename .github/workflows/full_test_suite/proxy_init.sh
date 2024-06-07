@@ -21,13 +21,12 @@ cd /tmp
 
 # Set required environment variables
 export REVISION=${proxy_image_tag}
-export SOLANA_URL=http:\/\/${solana_ip}:8899
+export SOLANA_URL=http:\/\/${solana_ip}:8080
 export NEON_EVM_COMMIT=${neon_evm_commit}
 export FAUCET_COMMIT=${faucet_model_commit}
 export CI_PP_SOLANA_URL=${ci_pp_solana_url}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
 export PROXY_IMAGE_NAME=${proxy_image_name}
-
 
 
 # Generate docker-compose override file
@@ -117,6 +116,7 @@ function wait_service() {
 SOLANA_DATA='{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
 SOLANA_RESULT='"ok"'
 wait_service "solana" $SOLANA_URL $SOLANA_DATA $SOLANA_RESULT
+
 
 # Up all services
 docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d $SERVICES

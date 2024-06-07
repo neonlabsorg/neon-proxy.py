@@ -355,6 +355,37 @@ jobs:
       solana_ip: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       external_call: true
 
+  requests-report:
+    needs:
+      - prepare-infrastructure
+      - basic-tests
+      - build-image
+    if: always()
+    runs-on: test-runner
+    env:
+      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+           fetch-depth: 0
+      - name: Install pandas, tabulate
+        run: |
+          pip install pandas
+          pip install tabulate
+      - name: "Request report"
+        id: request_report
+        run: |
+          stats=$(python3 ./.github/workflows/deploy.py parse_logs --solana_ip=${{ env.SOLANA_IP }})
+          echo "stats<<EOF" >> $GITHUB_OUTPUT
+          echo "$stats" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "stats=$stats"
+      - name: "Post a comment with the report"
+        run: |
+          python3 ./.github/workflows/deploy.py post_comment --message="${{ steps.request_report.outputs.stats }}" \
+          --pull_request="${{ github.event.pull_request.number }}" \
+          --token=${{ secrets.GITHUB_TOKEN }}
+
   #  will be fixed by NDEV-2766
 #  economy-tests:
 #    if: needs.build-image.outputs.full_test_suite=='true'
@@ -391,6 +422,7 @@ jobs:
       - prepare-infrastructure
       - openzeppelin-tests
       - basic-tests
+      - requests-report
       - dapps-tests
       - build-image
     runs-on: test-runner
