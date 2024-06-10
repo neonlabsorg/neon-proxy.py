@@ -175,6 +175,10 @@ class MpTxExecutor(MempoolComponent):
             return False
 
         with logging_context(tx=stuck_tx.tx_id):
+            if stuck_tx.neon_tx_hash in self._exec_task_dict:
+                self._stuck_tx_dict.skip_tx(stuck_tx)
+                return True
+
             if tx := self._tx_dict.get_tx_by_hash(stuck_tx.neon_tx_hash):
                 result = self._call_tx_schedule(tx.chain_id, MpTxSchedule.drop_tx, tx.from_address, tx.nonce)
                 if not result:
@@ -186,11 +190,8 @@ class MpTxExecutor(MempoolComponent):
             if resource.is_empty:
                 return False
 
-            tx_hash = stuck_tx.neon_tx_hash
-            assert tx_hash not in self._exec_task_dict
-
             self._stuck_tx_dict.acquire_tx(stuck_tx)
-            self._exec_task_dict[tx_hash] = asyncio.create_task(self._exec_stuck_tx(stuck_tx, resource))
+            self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(self._exec_stuck_tx(stuck_tx, resource))
 
         return True
 
