@@ -118,14 +118,14 @@ class NeonTxExecutor(ExecutorComponent):
 
         ctx.set_chain_id(holder.chain_id)
 
+        # update NeonProg settings from EVM config
+        evm_cfg = await self._server.get_evm_cfg()
+        ctx.init_neon_prog(evm_cfg)
+
         # request the token address (based on chain-id) for receiving payments from user
         token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
         ctx.set_holder_account(holder)
-
-        # update NeonProg settings from EVM config
-        evm_cfg = await self._server.get_evm_cfg()
-        ctx.init_neon_prog(evm_cfg)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
         return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
