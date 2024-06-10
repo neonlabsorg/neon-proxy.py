@@ -386,7 +386,7 @@ class OpResourceMng(OpResourceComponent):
                 msg = log_msg(
                     "operator key {OpKeyAddress} has NOT enough SOLs; balance = {Balance}; "
                     "min_operator_balance_to_err = {MinBalance}",
-                    OpAddress=op_signer.owner,
+                    OpKeyAddress=op_signer.owner,
                     Balance=balance,
                     MinBalance=self._cfg.min_op_balance_to_err,
                 )
@@ -401,7 +401,7 @@ class OpResourceMng(OpResourceComponent):
                 msg = log_msg(
                     "operator account {OpKeyAddress} SOLs are running out; balance = {Balance}; "
                     "min_operator_balance_to_warn = {MinBalance}",
-                    OpAddress=op_signer.owner,
+                    OpKeyAddress=op_signer.owner,
                     Balance=balance,
                     MinBalance=self._cfg.min_op_balance_to_warn,
                 )
