@@ -49,7 +49,7 @@ class CoreApiResp(BaseModel):
     error: str = None
     error_code: int | None = None
 
-    value: dict | list[dict] | str | list[int]
+    value: dict | list[dict] | str | list[int] | None = None
     logs: list[dict] = Field(default_factory=list)
 
 
