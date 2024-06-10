@@ -724,7 +724,7 @@ class MpTxSchedule:
                     _LOG.error("error on clearing by heartbeat", exc_info=exc)
 
     def _check_heartbeat_and_drop(self, eviction_timeout_sec: int) -> None:
-        threshold: Final[int] = int(time.time()) - eviction_timeout_sec
+        threshold: Final[int] = int(time.monotonic()) - eviction_timeout_sec
         msg = log_msg(
             "clear mempool {ChainID} with {TxCnt}({PendingTxCnt} txs by heartbeat below {Threshold} sec",
             Threshold=threshold,
@@ -745,7 +745,11 @@ class MpTxSchedule:
             )
             _LOG.debug(msg)
 
-            self._tx_dict.pop_tx_list(pool.pop_tx_list())
+            tx_list = pool.pop_tx_list()
+            for tx in tx_list:
+                _LOG.debug(log_msg("drop tx {Tx} by heartbeat", Tx=tx))
+
+            self._tx_dict.pop_tx_list(tx_list)
             self._sync_sender_state(pool)
 
         msg = log_msg(
