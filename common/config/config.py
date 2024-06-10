@@ -142,6 +142,7 @@ class Config:
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
+    priority_fee_num_blocks_to_average_name: Final[str] = "PRIORITY_FEE_NUM_BLOCKS_TO_AVERAGE"
     # Operator resources
     holder_size_name: Final[str] = "HOLDER_SIZE"
     min_op_balance_to_warn_name: Final[str] = "MIN_OPERATOR_BALANCE_TO_WARN"
@@ -177,7 +178,7 @@ class Config:
     # Testing settings
     fuzz_fail_pct_name: Final[str] = "FUZZ_FAIL_PCT"
 
-    _pg_null_value: Final[object] = object()
+    _pg_null_value: Final[str] = ""  # to have a uniform (str) type returned by pg_* properties.
     _1min: Final[int] = 60
     _1hour: Final[int] = 60 * 60
     _1day: Final[int] = 24 * _1hour
@@ -720,6 +721,10 @@ class Config:
             const_gas_price = min_gas_price
         return const_gas_price * (10**9)
 
+    @cached_property
+    def priority_fee_num_blocks_to_average(self) -> int:
+        return self._env_num(self.priority_fee_num_blocks_to_average_name, 10, 1, 1000)
+
     #############################
     # Operator resource settings
 
@@ -923,6 +928,7 @@ class Config:
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,
+            self.priority_fee_num_blocks_to_average_name: self.priority_fee_num_blocks_to_average,
             # Operator resources
             self.holder_size_name: self.holder_size,
             self.min_op_balance_to_warn_name: self.min_op_balance_to_warn,

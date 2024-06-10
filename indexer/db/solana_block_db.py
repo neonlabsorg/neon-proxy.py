@@ -34,6 +34,7 @@ class SolBlockDb(HistoryDbTable):
         self._finalize_query = DbQueryBody()
         self._deactivate_query = DbQueryBody()
         self._activate_query = DbQueryBody()
+        self._priority_fee_percentiles_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -177,6 +178,21 @@ class SolBlockDb(HistoryDbTable):
             slot_list=DbSqlParam("slot_list"),
         )
 
+        priority_fee_percentiles_sql = DbSql(
+            """
+            SELECT 
+              a.priority_fee_percentiles
+            FROM 
+              {table_name} AS a
+            ORDER BY 
+              a.block_slot DESC
+            LIMIT {num_blocks}
+            """
+        ).format(
+            table_name=self._table_name,
+            num_blocks=DbSqlParam("num_blocks"),
+        )
+
         (
             self._block_time_query,
             self._block_by_slot_query,
@@ -184,6 +200,7 @@ class SolBlockDb(HistoryDbTable):
             self._finalize_query,
             self._deactivate_query,
             self._activate_query,
+            self._priority_fee_percentiles_query,
         ) = await self._db.sql_to_query(
             block_time_sql,
             block_by_slot_sql,
@@ -191,6 +208,7 @@ class SolBlockDb(HistoryDbTable):
             finalize_sql,
             deactivate_sql,
             activate_sql,
+            priority_fee_percentiles_sql,
         )
 
     @staticmethod
@@ -233,7 +251,10 @@ class SolBlockDb(HistoryDbTable):
             return NeonBlockHdrModel.new_empty(slot=0)
 
         if not (block_time := await self._generate_block_time(ctx, slot)):
-            return NeonBlockHdrModel(slot=slot)
+            return NeonBlockHdrModel(
+                slot=slot,
+                priority_fee_percentiles=[0] * 11,
+            )
 
         is_finalized = slot <= slot_range.finalized_slot
         sol_commit = EthCommit.Finalized if is_finalized else EthCommit.Latest
@@ -243,8 +264,9 @@ class SolBlockDb(HistoryDbTable):
             commit=sol_commit,
             block_hash=self._generate_fake_block_hash(slot),
             block_time=block_time,
-            parent_slot=slot-1,
+            parent_slot=slot - 1,
             parent_block_hash=self._generate_fake_block_hash(slot - 1),
+            priority_fee_percentiles=[0] * 11,
         )
 
     async def _block_from_value(
@@ -264,6 +286,7 @@ class SolBlockDb(HistoryDbTable):
             block_time=block_time,
             parent_slot=slot - 1,
             parent_block_hash=self._check_block_hash(slot - 1, rec.parent_block_hash),
+            priority_fee_percentiles=rec.priority_fee_percentiles,
         )
 
     async def get_block_by_slot(self, ctx: DbTxCtx, slot: int, slot_range: SolSlotRange) -> NeonBlockHdrModel:
@@ -312,6 +335,9 @@ class SolBlockDb(HistoryDbTable):
         await self._update_row(ctx, self._deactivate_query, by_slot_range)
         await self._update_row(ctx, self._activate_query, by_slot_range)
 
+    async def get_priority_fee_percentiles(self, ctx: DbTxCtx, num_blocks: int) -> list[list[int]]:
+        return await self._fetch_all(ctx, self._priority_fee_percentiles_query, _BlockCount(num_blocks))
+
 
 @dataclass(frozen=True)
 class _Record:
@@ -321,6 +347,7 @@ class _Record:
     parent_block_slot: int
     is_finalized: bool
     is_active: bool
+    priority_fee_percentiles: list[int]
 
     @classmethod
     def from_block_hdr(cls, hdr: NeonBlockHdrModel) -> Self:
@@ -331,6 +358,7 @@ class _Record:
             parent_block_slot=hdr.parent_slot,
             is_finalized=hdr.is_finalized,
             is_active=hdr.is_finalized,
+            priority_fee_percentiles=hdr.priority_fee_percentiles,
         )
 
 
@@ -362,3 +390,8 @@ class _BySlotRange:
     from_slot: int
     to_slot: int
     slot_list: list[int]
+
+
+@dataclass(frozen=True)
+class _BlockCount:
+    num_blocks: int

@@ -14,7 +14,7 @@ from common.neon.transaction_decoder import SolNeonTxIxMetaModel, SolNeonAltTxIx
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.solana.signature import SolTxSigSlotInfo
 from .indexer_db import IndexerDbSlotRange
-from .neon_tx_db import NeonTxDb
+from .neon_tx_db import BlockFeeGasData, NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
 from .solana_alt_tx_db import SolAltTxDb
 from .solana_block_db import SolBlockDb, SolSlotRange
@@ -93,6 +93,12 @@ class IndexerDbClient:
     async def get_finalized_block(self) -> NeonBlockHdrModel:
         slot_range = await self._get_slot_range()
         return await self._sol_block_db.get_block_by_slot(None, slot_range.finalized_slot, slot_range)
+
+    async def get_historical_base_fees(self, chain_id: int, num_blocks: int, latest_slot: int) -> list[BlockFeeGasData]:
+        return await self._neon_tx_db.get_base_fees(chain_id, num_blocks, latest_slot)
+
+    async def get_historical_priority_fees(self, num_blocks: int) -> list[list[int]]:
+        return await self._sol_block_db.get_priority_fee_percentiles(num_blocks)
 
     async def _get_slot_range(self) -> SolSlotRange:
         slot_list = await self._constant_db.get_int_list(

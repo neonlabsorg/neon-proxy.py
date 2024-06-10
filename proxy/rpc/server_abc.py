@@ -142,6 +142,7 @@ class NeonProxyAbc(BaseRpcServerAbc, abc.ABC):
             block_time=block_time,
             parent_slot=0,
             parent_block_hash=parent_hash,
+            priority_fee_percentiles=[0] * 11,
         )
 
         if not self._idx:

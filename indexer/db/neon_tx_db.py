@@ -29,6 +29,7 @@ class NeonTxDb(HistoryDbTable):
         self._select_by_nonce_query = DbQueryBody()
         self._select_by_block_query = DbQueryBody()
         self._select_by_index_query = DbQueryBody()
+        self._select_base_fees_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -96,16 +97,46 @@ class NeonTxDb(HistoryDbTable):
             index=DbSqlParam("index"),
         )
 
+        select_base_fees_sql = DbSql(
+            """
+            SELECT DISTINCT ON (a.slot)
+              a.slot,
+              a.average_base_fee,
+              a.total_gas_used
+            FROM (
+              SELECT
+                slot,
+                AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee,
+                MAX(Cast(sum_gas_used as BIGINT)) as total_gas_used
+              FROM
+                {table_name} as t
+              WHERE
+                t.chain_id = {chain_id}
+                AND t.max_fee_per_gas != ''
+              GROUP BY
+                slot
+            ) a
+            WHERE
+              a.slot <= {latest_slot}
+            ORDER BY
+              a.slot DESC
+            LIMIT {num_blocks}
+            """
+        ).format(
+            table_name=self._table_name,
+            chain_id=DbSqlParam("chain_id"),
+            num_blocks=DbSqlParam("num_blocks"),
+            latest_slot=DbSqlParam("latest_slot"),
+        )
+
         (
             self._select_by_tx_sig_query,
             self._select_by_nonce_query,
             self._select_by_block_query,
             self._select_by_index_query,
+            self._select_base_fees_query,
         ) = await self._db.sql_to_query(
-            select_by_tx_sig_sql,
-            select_by_nonce_sql,
-            select_by_block_sql,
-            select_by_index_sql,
+            select_by_tx_sig_sql, select_by_nonce_sql, select_by_block_sql, select_by_index_sql, select_base_fees_sql
         )
 
     async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
@@ -155,6 +186,16 @@ class NeonTxDb(HistoryDbTable):
             ctx, self._select_by_index_query, _ByIndex(slot, tx_idx), record_type=_RecordWithBlock
         )
         return _RecordWithBlock.to_meta(rec)
+
+    async def get_base_fees(
+        self, ctx: DbTxCtx, chain_id: int, num_blocks: int, latest_slot: int
+    ) -> list[BlockFeeGasData]:
+        return await self._fetch_all(
+            ctx,
+            self._select_base_fees_query,
+            _ByChainIdBlockCount(chain_id, num_blocks, latest_slot),
+            record_type=BlockFeeGasData,
+        )
 
 
 # TODO: remove after converting all records
@@ -376,6 +417,13 @@ class _RecordWithBlock(_Record):
 
 
 @dataclass(frozen=True)
+class BlockFeeGasData:
+    slot: int
+    average_base_fee: float
+    total_gas_used: int
+
+
+@dataclass(frozen=True)
 class _ByNeonTxSig:
     neon_tx_hash: str
 
@@ -396,3 +444,10 @@ class _ByBlock:
 class _ByIndex:
     slot: int
     index: int
+
+
+@dataclass(frozen=True)
+class _ByChainIdBlockCount:
+    chain_id: int
+    num_blocks: int
+    latest_slot: int

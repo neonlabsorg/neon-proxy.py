@@ -71,8 +71,11 @@ CREATE TABLE IF NOT EXISTS solana_blocks (
     block_time BIGINT,
     parent_block_slot BIGINT,
     is_finalized BOOL,
-    is_active BOOL
+    is_active BOOL,
+    priority_fee_percentiles INT ARRAY
 );
+ALTER TABLE solana_blocks
+    ADD COLUMN IF NOT EXISTS priority_fee_percentiles INT ARRAY;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_solana_blocks_slot ON solana_blocks(block_slot);
 CREATE INDEX IF NOT EXISTS idx_solana_blocks_hash ON solana_blocks(block_hash);
 CREATE INDEX IF NOT EXISTS idx_solana_blocks_slot_active ON solana_blocks(block_slot, is_active);
