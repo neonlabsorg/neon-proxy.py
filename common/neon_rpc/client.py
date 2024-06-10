@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Sequence, Final
+from typing import Sequence, Final, Callable, TypeVar
 
 from .api import (
     CoreApiResp,
@@ -44,8 +44,10 @@ from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
 from ..utils.cached import cached_method, ttl_cached_method
 from ..utils.json_logger import log_msg
+from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
+_RespType = TypeVar("_RespType", bound=BaseModel)
 
 
 class CoreApiClient(SimpleAppDataClient):
@@ -82,9 +84,13 @@ class CoreApiClient(SimpleAppDataClient):
                 return self._evm_cfg
 
             _LOG.debug("get EVM config on the slot: %s", exec_info.deployed_slot)
-            resp = await self._get_evm_cfg()
+            resp = await self._call_method(self._get_evm_cfg)
             if resp.result != CoreApiResultCode.Success:
-                _LOG.error("get error on reading EVM config: %s", resp.error, extra=self._msg_filter)
+                _LOG.error(
+                    "get error on reading EVM config: %s",
+                    resp.error,
+                    extra=self._msg_filter,
+                )
                 return self._evm_cfg
             evm_cfg = EvmConfigModel.from_dict(resp.value, deployed_slot=exec_info.deployed_slot)
 
@@ -102,10 +108,14 @@ class CoreApiClient(SimpleAppDataClient):
 
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
         req = HolderAccountRequest.from_raw(address)
-        resp = await self._get_holder_account(req)
+        resp = await self._call_method(self._get_holder_account, req)
         if resp.error:
             _LOG.error(
-                log_msg("error on reading holder account {Address}: {Error}", Address=address, Error=resp.error),
+                log_msg(
+                    "error on reading holder account {Address}: {Error}",
+                    Address=address,
+                    Error=resp.error,
+                ),
                 extra=self._msg_filter,
             )
             return HolderAccountModel.new_empty(address)
@@ -117,7 +127,7 @@ class CoreApiClient(SimpleAppDataClient):
         block: NeonBlockHdrModel | None,
     ) -> tuple[NeonAccountModel, ...]:
         req = NeonAccountListRequest.from_raw(account_list, self._get_slot(block))
-        resp = await self._get_neon_account_list(req)
+        resp: CoreApiResp = await self._call_method(self._get_neon_account_list, req)
         if resp.error:
             msg = log_msg(
                 "get error on reading balance accounts {Accounts}: {Error}",
@@ -139,12 +149,12 @@ class CoreApiClient(SimpleAppDataClient):
 
     async def get_neon_contract(self, account: NeonAccount, block: NeonBlockHdrModel | None) -> NeonContractModel:
         req = NeonContractRequest(contract=account.eth_address, slot=self._get_slot(block))
-        resp = await self._get_neon_contract(req)
+        resp: CoreApiResp = await self._call_method(self._get_neon_contract, req)
         return NeonContractModel.from_dict(resp.value[0], account=account)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
         req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
-        resp = await self._get_storage_at(req)
+        resp: CoreApiResp = await self._call_method(self._get_storage_at, req)
         return EthHash32.from_raw(bytes(resp.value))
 
     async def get_operator_account(
@@ -174,7 +184,10 @@ class CoreApiClient(SimpleAppDataClient):
         sol_acct = await self._sol_client.get_account(token_sol_addr)
         if not sol_acct.is_empty:
             status = NeonAccountStatus.Ok
-            balance = int.from_bytes(sol_acct.data[balance_offset : balance_offset + balance_len], byteorder="little")
+            balance = int.from_bytes(
+                sol_acct.data[balance_offset : balance_offset + balance_len],
+                byteorder="little",
+            )
         else:
             status = NeonAccountStatus.Empty
             balance = 0
@@ -209,25 +222,10 @@ class CoreApiClient(SimpleAppDataClient):
             sol_account_dict=emu_acct_dict,
             slot=self._get_slot(block),
         )
-
-        for retry in itertools.count():
-            if retry >= self._max_retry_cnt:
-                raise EthError("No connection to Solana. Maximum retry count reached.")
-            if retry > 0:
-                _LOG.debug("attempt %d to repeat...", retry + 1)
-
-            resp = await self._emulate_neon_call(req)
-            if resp.error_code:
-                if resp.error_code == 113:
-                    continue
-
-            if resp.error:
-                raise EthError(resp.error)
-
-            resp = EmulNeonCallResp.from_dict(resp.value)
-            if check_result:
-                self._check_emulator_result(resp)
-            return resp
+        resp: EmulNeonCallResp = await self._call_method(self._emulate_neon_call, req, EmulNeonCallResp)
+        if check_result:
+            self._check_emulator_result(resp)
+        return resp
 
     async def emulate_sol_tx_list(
         self,
@@ -244,10 +242,35 @@ class CoreApiClient(SimpleAppDataClient):
             tx_list=tuple(map(lambda tx: tx.to_bytes(), tx_list)),
         )
 
-        resp = await self._emulate_sol_tx_list(req)
-        resp = EmulSolTxListResp.from_dict(resp.value)
-
+        resp: EmulSolTxListResp = await self._call_method(self._emulate_sol_tx_list, req, EmulSolTxListResp)
         return tuple([EmulSolTxInfo(tx, meta) for tx, meta in zip(tx_list, resp.meta_list)])
+
+    async def _call_method(
+        self,
+        method: Callable,
+        request: BaseModel | None = None,
+        response_type: type[_RespType] | None = None,
+    ) -> _RespType:
+        for retry in itertools.count():
+            if retry >= self._max_retry_cnt:
+                raise EthError("No connection to Solana. Maximum retry count reached.")
+            if retry > 0:
+                _LOG.debug("attempt %d to repeat...", retry + 1)
+
+            if request is None:
+                resp = await method()
+            else:
+                resp = await method(request)
+
+            if (resp.error_code or 0) == 113:  # Solana client error
+                continue
+
+            if response_type is None:
+                return resp
+            elif resp.error:
+                raise EthError(resp.error)
+
+            return response_type.from_dict(resp.value)
 
     @SimpleAppDataClient.method(name="config")
     async def _get_evm_cfg(self) -> CoreApiResp: ...
@@ -291,7 +314,11 @@ class CoreApiClient(SimpleAppDataClient):
             if not (result_value := self._decode_revert_message(revert_data[2:])):  # remove 0x
                 raise EthError(code=3, message="execution reverted", data=revert_data)
             else:
-                raise EthError(code=3, message="execution reverted: " + result_value, data=revert_data)
+                raise EthError(
+                    code=3,
+                    message="execution reverted: " + result_value,
+                    data=revert_data,
+                )
 
         if resp.exit_code != EmulNeonCallExitCode.Succeed:
             _LOG.debug("got failed emulate exit code: %s", resp.exit_code)
@@ -303,7 +330,11 @@ class CoreApiClient(SimpleAppDataClient):
             return None
 
         if (data_len := len(data)) < 8:
-            raise EthError(code=3, message=f"Too less bytes to decode revert signature: {data_len}", data=data)
+            raise EthError(
+                code=3,
+                message=f"Too less bytes to decode revert signature: {data_len}",
+                data=data,
+            )
 
         if data[:8] == "4e487b71":  # keccak256("Panic(uint256)")
             return None
@@ -313,15 +344,27 @@ class CoreApiClient(SimpleAppDataClient):
             return None
 
         if data_len < 8 + 64:
-            raise EthError(code=3, message=f"Too less bytes to decode revert msg offset: {data_len}", data=data)
+            raise EthError(
+                code=3,
+                message=f"Too less bytes to decode revert msg offset: {data_len}",
+                data=data,
+            )
         offset = int(data[8 : 8 + 64], 16) * 2
 
         if data_len < 8 + offset + 64:
-            raise EthError(code=3, message=f"Too less bytes to decode revert msg len: {data_len}", data=data)
+            raise EthError(
+                code=3,
+                message=f"Too less bytes to decode revert msg len: {data_len}",
+                data=data,
+            )
         length = int(data[8 + offset : 8 + offset + 64], 16) * 2
 
         if data_len < 8 + offset + 64 + length:
-            raise EthError(code=3, message=f"Too less bytes to decode revert msg: {data_len}", data=data)
+            raise EthError(
+                code=3,
+                message=f"Too less bytes to decode revert msg: {data_len}",
+                data=data,
+            )
 
         message = str(bytes.fromhex(data[8 + offset + 64 : 8 + offset + 64 + length]), "utf8")
         return message
