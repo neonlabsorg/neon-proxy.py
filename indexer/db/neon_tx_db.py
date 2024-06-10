@@ -14,7 +14,7 @@ from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
-from common.utils.pydantic import RootModel, BaseModel
+from common.utils.pydantic import RootModel, BaseModel, HexUIntField
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
 
@@ -179,10 +179,10 @@ class _OldNeonTxEventModel(BaseModel):
     event_order: int = Field(0, validation_alias="neonEventOrder")
 
     block_hash: str = Field(validation_alias="blockHash")
-    slot: str = Field(validation_alias="blockNumber")
-    neon_tx_idx: str = Field(validation_alias="transactionIndex")
-    block_log_idx: str = Field("0x0", validation_alias="logIndex")
-    neon_tx_log_idx: str = Field("0x0", validation_alias="transactionLogIndex")
+    slot: HexUIntField = Field(validation_alias="blockNumber")
+    neon_tx_idx: HexUIntField = Field(validation_alias="transactionIndex")
+    block_log_idx: HexUIntField = Field("0x0", validation_alias="logIndex")
+    neon_tx_log_idx: HexUIntField = Field("0x0", validation_alias="transactionLogIndex")
 
 
 # TODO: remove after converting all records
