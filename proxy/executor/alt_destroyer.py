@@ -129,12 +129,13 @@ class SolAltDestroyer(ExecutorComponent):
             self._alt_queue = deque(new_destroy_queue)
 
     async def _destroy_alt(self, alt: _NeonAltInfo, slot: int) -> int:
-        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Finalized)
+        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)
         if acct.is_empty:
             msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.debug(msg)
             return 0
 
+        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Finalized)
         if alt.attempt_cnt >= 1024:
             msg = log_msg("too many attempts to destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.warning(msg)
