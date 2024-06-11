@@ -21,13 +21,11 @@ _LOG = logging.getLogger(__name__)
 class NeonEvmProtocol(IntEnum):
     Unknown = -1
     v1004 = 1004  # 1.4  -> 1.004
-    v1013 = 1013  # 1.13 -> 1.013
     v1014 = 1014  # 1.14 -> 1.014
 
 
 SUPPORTED_VERSION_SET = frozenset(
     (
-        NeonEvmProtocol.v1013,
         NeonEvmProtocol.v1014,
     )
 )
@@ -84,8 +82,8 @@ class NeonIxMode(IntEnum):
 class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
-    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1013
-    _evm_version: ClassVar[str] = "v1.13.0"
+    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1014
+    _evm_version: ClassVar[str] = "v1.14.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
     # 1. holder
