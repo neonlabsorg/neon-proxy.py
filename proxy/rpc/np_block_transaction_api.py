@@ -370,8 +370,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
         # Take base_fee_per_gas from dynamic gas transactions, if there are any.
         base_fee_per_gas = 0
         for tx_meta in tx_list:
-            # TODO EIP1559: prettify tx_type access via enum or a separate method.
-            if tx_meta.neon_tx.tx_type == 2:
+            if tx_meta.neon_tx.is_dynamic_gas_tx:
                 base_fee_per_gas = max(
                     base_fee_per_gas, tx_meta.neon_tx.max_fee_per_gas - tx_meta.neon_tx.max_priority_fee_per_gas
                 )

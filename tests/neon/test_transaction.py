@@ -109,7 +109,7 @@ class TestNeonTx(unittest.TestCase):
 
         neon_tx_str = (
             "NeonTxModel("
-            "tx_type=0, "
+            "tx_type=Legacy, "
             "neon_tx_hash=0x14a298c1eea89f42285948b7d51eeac2876ca7406c9784b9b90dd3591d156d64, "
             "from_address=0x8d900bfA2353548a4631bE870f99939575551B60, "
             "to_address=0x7917bC33EeA648809c285607579c9919FB864F8F, "
@@ -270,7 +270,7 @@ class TestNeonTx(unittest.TestCase):
 
         neon_tx_str = (
             "NeonTxModel("
-            "tx_type=2, "
+            "tx_type=DynamicGas, "
             "neon_tx_hash=0x698787452047f9e2187f653a6e66fac0f8ea30d3c78bdeae80a7317c2a30fdd8, "
             "from_address=0x8d99C04eDe67EF5c2936215f95Af1A11045EA298, "
             "to_address=0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD, "

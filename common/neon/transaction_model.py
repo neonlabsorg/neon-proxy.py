@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Union, Any
+from enum import IntEnum
+from typing import Annotated, Union, Any
 
 from typing_extensions import Self
 
@@ -9,9 +10,9 @@ from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddressField, EthAddre
 from ..ethereum.transaction import EthTx
 from ..utils.cached import cached_method, cached_property
 from ..utils.format import str_fmt_object
-from ..utils.pydantic import BaseModel, HexUIntField
+from ..utils.pydantic import BaseModel, HexUIntField, HexUIntGenericSerializer
 
-from pydantic import Field
+from pydantic import Field, PlainValidator
 
 
 _TX_MODEL_EXCLUDE_LIST = {
@@ -20,8 +21,21 @@ _TX_MODEL_EXCLUDE_LIST = {
 }
 
 
+class NeonTxType(IntEnum):
+    Legacy = 0
+    # AccessList = 1 is yet to be supported.
+    DynamicGas = 2
+
+
+NeonTxTypeField = Annotated[
+    NeonTxType,
+    PlainValidator(lambda v: NeonTxType(v)),
+    HexUIntGenericSerializer(lambda v: v.value),
+]
+
+
 class NeonTxModel(BaseModel):
-    tx_type: HexUIntField
+    tx_type: NeonTxTypeField
     # None for legacy transaction (calculated from v), present for dynamic gas transaction.
     tx_chain_id: HexUIntField | None = Field(default=None, serialization_alias="chain_id")
     neon_tx_hash: EthTxHashField
@@ -65,14 +79,14 @@ class NeonTxModel(BaseModel):
     @classmethod
     def default(cls) -> Self:
         return cls(
-            # TODO EIP1559: use tx_type=2 when ready.
-            tx_type=0,
+            tx_type=NeonTxType.DynamicGas,
             neon_tx_hash=EthTxHash.default(),
             from_address=EthAddress.default(),
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
             nonce=0,
-            gas_price_legacy=0,
+            max_fee_per_gas=0,
+            max_priority_fee_per_gas=0,
             gas_limit=0,
             value=0,
             call_data=EthBinStr.default(),
@@ -110,14 +124,14 @@ class NeonTxModel(BaseModel):
 
             return cls(
                 error=str(exc),
-                # TODO EIP1559: use tx_type=2 when ready.
-                tx_type=0,
+                tx_type=NeonTxType.DynamicGas,
                 neon_tx_hash=EthTxHash.default(),
                 from_address=EthAddress.default(),
                 to_address=EthAddress.default(),
                 contract=EthAddress.default(),
                 nonce=0,
-                gas_price_legacy=0,
+                max_fee_per_gas=0,
+                max_priority_fee_per_gas=0,
                 gas_limit=0,
                 value=0,
                 call_data=EthBinStr.default(),
@@ -174,13 +188,13 @@ class NeonTxModel(BaseModel):
     def _from_tx_hash(cls, neon_tx_hash: EthTxHash) -> Self:
         return cls(
             neon_tx_hash=neon_tx_hash,
-            # TODO EIP1559: use tx_type=2 when ready.
-            tx_type=0,
+            tx_type=NeonTxType.DynamicGas,
             from_address=EthAddress.default(),
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
             nonce=0,
-            gas_price_legacy=0,
+            max_fee_per_gas=0,
+            max_priority_fee_per_gas=0,
             gas_limit=0,
             value=0,
             call_data=EthBinStr.default(),
@@ -189,6 +203,14 @@ class NeonTxModel(BaseModel):
             s=0,
             error=None,
         )
+
+    @cached_property
+    def is_dynamic_gas_tx(self):
+        return self.tx_type == NeonTxType.DynamicGas
+
+    @cached_property
+    def is_legacy_tx(self):
+        return self.tx_type == NeonTxType.Legacy
 
     def to_rlp_tx(self) -> bytes:
         return self._to_eth_tx().to_bytes()
@@ -224,7 +246,6 @@ class NeonTxModel(BaseModel):
         if self.tx_type == 0:
             return self.gas_price_legacy
         else:
-            # TODO EIP1559: check usage across the code and validate if it's correct.
             return self.max_fee_per_gas
 
     # Overriding BaseModel to exclude gas price related fields based on transaction type.

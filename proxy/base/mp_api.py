@@ -58,6 +58,7 @@ class MpTxModel(BaseModel):
     @property
     def gas_price(self) -> int:
         # this property is used for sorting, and can be changed by the mempool logic
+        # TODO EIP1559: should we rely upon max_priority_fee_per_gas?
         return self.order_gas_price or self.neon_tx.gas_price
 
     @property
