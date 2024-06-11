@@ -86,15 +86,6 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
         tx = neon_tx_meta.neon_tx
         rcpt = neon_tx_meta.neon_tx_rcpt
 
-        effective_gas_price = tx.gas_price
-        # TODO EIP1559: expose transaction type as an enum and use it here.
-        if tx.tx_type == 2:
-            # Effective gas price is equal to base_fee_per_gas + math.ceil(priority_fee_spent / total_gas_used).
-            effective_gas_price = tx.max_fee_per_gas - tx.max_priority_fee_per_gas
-            # However, math.ceil does floating-point math and sometimes gives incorrect results due to precision.
-            # So, it's better to use a little trick: ceildiv(a,b) := -(a // -b).
-            effective_gas_price -= rcpt.priority_fee_spent // -rcpt.total_gas_used
-
         return dict(
             transactionHash=tx.neon_tx_hash,
             transactionIndex=rcpt.neon_tx_idx,
@@ -103,7 +94,7 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
             blockNumber=rcpt.slot,
             fromAddress=tx.from_address,
             toAddress=tx.to_address,
-            effectiveGasPrice=effective_gas_price,
+            effectiveGasPrice=neon_tx_meta.effective_gas_price,
             gasUsed=rcpt.total_gas_used,
             cumulativeGasUsed=rcpt.sum_gas_used,
             contractAddress=tx.contract,

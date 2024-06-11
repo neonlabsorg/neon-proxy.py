@@ -122,12 +122,16 @@ class RpcEthTxResp(BaseJsonRpcModel):
             blockhash = rcpt.block_hash
             slot = rcpt.slot
             tx_idx = rcpt.neon_tx_idx
+            gas_price = meta.effective_gas_price
         else:
             tx = meta
 
             blockhash = None
             slot = None
             tx_idx = None
+            # if tx model is passed (instead of tx meta model with full receipt), then the best we can return is
+            # "theoretical" gas price: max_fee_per_gas for Dynamic Gas tx and usual gas_price for legacy.
+            gas_price = tx.gas_price
 
         return cls(
             blockHash=blockhash,
@@ -137,11 +141,7 @@ class RpcEthTxResp(BaseJsonRpcModel):
             txType=tx.tx_type,
             fromAddress=tx.from_address.to_string(),
             nonce=tx.nonce,
-            # gasPrice should return effective gas price spent by the User according the ETH RPC specs.
-            # In Neon, effective gas price is always max_fee_per_gas (almost, see TODO below).
-            # TODO EIP1559: adjust gas_price for Dynamic Gas transactions based on the iteration number
-            # from the receipt model, so it returns the actual gas price spent.
-            gasPrice=tx.gas_price,
+            gasPrice=gas_price,
             maxPriorityFeePerGas=tx.max_priority_fee_per_gas,
             maxFeePerGas=tx.max_fee_per_gas,
             gas=tx.gas_limit,
