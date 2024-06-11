@@ -84,8 +84,8 @@ class NeonIxMode(IntEnum):
 class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
-    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1011
-    _evm_version: ClassVar[str] = "v1.11.x"
+    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1013
+    _evm_version: ClassVar[str] = "v1.13.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
     # 1. holder
