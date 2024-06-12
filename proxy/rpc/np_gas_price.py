@@ -219,10 +219,10 @@ class NpGasPriceApi(NeonProxyApi):
         # Infura and Alchemy currently do the same.
         num_blocks = max(1, min(num_blocks, 1024))
         # Fetching the data stage.
-        fee_gas_data: list[BlockFeeGasData] = self._db.get_historical_base_fees(
+        fee_gas_data: list[BlockFeeGasData] = await self._db.get_historical_base_fees(
             self.get_chain_id(ctx), num_blocks, latest_slot
         )
-        priority_fees_data: list[list[int]] = self._db.get_historical_priority_fees(num_blocks)
+        priority_fees_data: list[list[int]] = await self._db.get_historical_priority_fees(num_blocks)
 
         # Since we are effectively querying different table, let's reconcile length of the data,
         # so we return consistent data in case one array is bigger than the other.
