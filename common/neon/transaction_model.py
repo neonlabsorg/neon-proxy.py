@@ -62,14 +62,15 @@ class NeonTxModel(BaseModel):
         if self.tx_type == NeonTxType.Legacy:
             if self.gas_price_legacy is None:
                 raise ValueError("gas_price is not specified for the Legacy transaction.")
-            self.max_fee_per_gas = None
-            self.max_priority_fee_per_gas = None
+            if self.max_fee_per_gas is not None or self.max_priority_fee_per_gas is not None:
+                raise ValueError("max_fee_per_gas and max_priority_fee_per_gas should not be present.")
         elif self.tx_type == NeonTxType.DynamicGas:
             if self.max_priority_fee_per_gas is None or self.max_fee_per_gas is None:
                 raise ValueError(
-                    "max_priority_fee_per_gas or max_fee_per_gas is absent for the Dynamic Gas transaction."
+                    "max_priority_fee_per_gas or max_fee_per_gas is not specified for the Dynamic Gas transaction."
                 )
-            self.gas_price_legacy = None
+            if self.gas_price_legacy is not None:
+                raise ValueError("gas_price should not be present.")
 
     @classmethod
     def default(cls) -> Self:
@@ -136,8 +137,16 @@ class NeonTxModel(BaseModel):
             )
 
     @classmethod
+    def pop_ctr_params(cls, params_dict: dict) -> None:
+        if params_dict["tx_type"] == 0:
+            params_dict.pop("max_fee_per_gas", None)
+            params_dict.pop("max_priority_fee_per_gas", None)
+        elif params_dict["tx_type"] == 2:
+            params_dict.pop("gas_price_legacy", None)
+
+    @classmethod
     def _from_eth_tx(cls, tx: EthTx) -> Self:
-        return cls(
+        params = dict(
             tx_type=tx.type,
             tx_chain_id=tx.chain_id,
             neon_tx_hash=tx.neon_tx_hash,
@@ -156,6 +165,8 @@ class NeonTxModel(BaseModel):
             call_data=tx.call_data,
             error=None,
         )
+        cls.pop_ctr_params(params)
+        return cls(**params)
 
     @cached_method
     def _to_eth_tx(self) -> EthTx:

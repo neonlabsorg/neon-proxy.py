@@ -317,9 +317,9 @@ class _Record:
             value=hex(neon_tx.value),
             calldata=neon_tx.call_data.to_string(),
             gas_price=hex(NeonTxMetaModel(neon_tx=neon_tx, neon_tx_rcpt=neon_rcpt).effective_gas_price),
-            max_fee_per_gas=hex(neon_tx.max_fee_per_gas) if neon_tx.max_fee_per_gas else None,
+            max_fee_per_gas=hex(neon_tx.max_fee_per_gas) if neon_tx.max_fee_per_gas is not None else None,
             max_priority_fee_per_gas=(
-                hex(neon_tx.max_priority_fee_per_gas) if neon_tx.max_priority_fee_per_gas else None
+                hex(neon_tx.max_priority_fee_per_gas) if neon_tx.max_priority_fee_per_gas is not None else None
             ),
             priority_fee_spent=hex(neon_rcpt.priority_fee_spent) if neon_rcpt.priority_fee_spent else None,
             gas_limit=hex(neon_tx.gas_limit),
@@ -349,8 +349,7 @@ class _RecordWithBlock(_Record):
         if not self:
             return None
 
-        # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
-        neon_tx = NeonTxModel(
+        params = dict(
             tx_type=self.tx_type,
             tx_chain_id=None if self.chain_id == 0 else self.chain_id,
             neon_tx_hash=self.neon_sig,
@@ -368,6 +367,10 @@ class _RecordWithBlock(_Record):
             r=self.r,
             s=self.s,
         )
+        # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
+        # Alternatively, allow non-frozen model and modify it in the model_post_init.
+        NeonTxModel.pop_ctr_params(params)
+        neon_tx = NeonTxModel(**params)
 
         neon_tx_rcpt = NeonTxReceiptModel(
             slot=self.block_slot,
