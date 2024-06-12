@@ -99,13 +99,13 @@ class NeonTxDb(HistoryDbTable):
 
         select_base_fees_sql = DbSql(
             """
-            SELECT DISTINCT ON (a.slot)
-              a.slot,
+            SELECT DISTINCT ON (a.block_slot)
+              a.block_slot,
               a.average_base_fee,
               a.total_gas_used
             FROM (
               SELECT
-                slot,
+                block_slot,
                 AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee,
                 MAX(Cast(sum_gas_used as BIGINT)) as total_gas_used
               FROM
@@ -114,12 +114,12 @@ class NeonTxDb(HistoryDbTable):
                 t.chain_id = {chain_id}
                 AND t.max_fee_per_gas != ''
               GROUP BY
-                slot
+                block_slot
             ) a
             WHERE
-              a.slot <= {latest_slot}
+              a.block_slot <= {latest_slot}
             ORDER BY
-              a.slot DESC
+              a.block_slot DESC
             LIMIT {num_blocks}
             """
         ).format(

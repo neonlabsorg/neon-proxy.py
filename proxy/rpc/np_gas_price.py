@@ -199,8 +199,12 @@ class NpGasPriceApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         num_blocks: HexUIntField,
         block_tag: RpcBlockRequest,
-        priority_fee_percentiles: list[int],
+        priority_fee_percentiles: list[int] | None,
     ) -> _RpcFeeHistoryResp | None:
+        if not priority_fee_percentiles:
+            # In case the User was lazy to request any percentiles, let's return "median"
+            # so the response makes sense.
+            priority_fee_percentiles = [50]
         # Validate percentiles first before querying anything.
         for p in priority_fee_percentiles:
             if p < 0 or p > 100:
@@ -224,9 +228,15 @@ class NpGasPriceApi(NeonProxyApi):
         )
         priority_fees_data: list[list[int]] = await self._db.get_historical_priority_fees(num_blocks)
 
-        # Since we are effectively querying different table, let's reconcile length of the data,
-        # so we return consistent data in case one array is bigger than the other.
+        # Since we are effectively querying different tables, let's reconcile length of the data,
+        # so we return consistent data (in case one array is bigger than the other).
         num_blocks = min(len(fee_gas_data), len(priority_fees_data))
+        if num_blocks == 0:
+            # For some reason, the number of "blocks" we have is zero, so return the current base fee price.
+            _, token_gas_price = await self.get_token_gas_price(ctx)
+            current_gas_price: int = token_gas_price.suggested_gas_price
+            return _RpcFeeHistoryResp.from_raw([current_gas_price], [], 0, [])
+
         fee_gas_data = fee_gas_data[-num_blocks:]
         priority_fees_data = priority_fees_data[-num_blocks:]
 
@@ -260,14 +270,15 @@ class NpGasPriceApi(NeonProxyApi):
             start_val = values[biggest_known_p_idx - 1]
             end_val = values[biggest_known_p_idx]
             # 10 is a gap between consequtive percentiles.
-            return start_val + (end_val - start_val) * (_REWARD_PERCENTILES[biggest_known_p_idx] - percentile) / 10
+            return start_val + (end_val - start_val) * (percentile - _REWARD_PERCENTILES[biggest_known_p_idx - 1]) / 10
 
         # Calculate priority fee in gas tokens according to input percentiles.
-        def _calc_priority_fee_list(percentiles: list[int], values: list[int]) -> float:
+        def _calc_priority_fee_list(percentiles: list[int], values: list[int]) -> list[int]:
             # Because we extrapolate from compute unit prices denominated in microlamports,
             # conversion to lamports and into the gas token should apply.
             return [
-                _calc_single_priority_fee_extrapolated(p, values) * current_gas_price / 1_000_000 for p in percentiles
+                math.ceil(_calc_single_priority_fee_extrapolated(p, values) * current_gas_price / 1_000_000)
+                for p in percentiles
             ]
 
         rewards: list[list[int]] = [
