@@ -20,8 +20,14 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolOutOfMemoryError,
 )
-from .errors import BadResourceError, StuckTxError, TxAccountCntTooHighError, WrongStrategyError
+from .errors import (
+    BadResourceError,
+    StuckTxError,
+    TxAccountCntTooHighError,
+    WrongStrategyError,
+)
 from .server_abc import ExecutorComponent
+from .stategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
 from .strategy_iterative_holder import HolderTxStrategy, AltHolderTxStrategy
@@ -68,6 +74,11 @@ class NeonTxExecutor(ExecutorComponent):
         SimpleHolderTxSolanaCallStrategy,
         #     + alt + holder
         AltSimpleHolderTxSolanaCallStrategy,
+        # multi-iteration
+        #     + holder
+        HolderTxSolanaCallStrategy,
+        #     + alt + holder
+        AltHolderTxSolanaCallStrategy,
     ]
 
     _stuck_tx_strategy_list: ClassVar[_BaseTxStrategyList] = [
@@ -81,7 +92,11 @@ class NeonTxExecutor(ExecutorComponent):
     async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
         holder = await self._core_api_client.get_holder_account(ctx.holder_address)
         if holder.status == HolderAccountStatus.Active and holder.neon_tx_hash != ctx.neon_tx_hash:
-            _LOG.debug("holder %s contains stuck NeonTx %s", ctx.holder_address, ctx.neon_tx_hash)
+            _LOG.debug(
+                "holder %s contains stuck NeonTx %s",
+                ctx.holder_address,
+                ctx.neon_tx_hash,
+            )
             raise StuckTxError(holder)
 
         try:
@@ -113,7 +128,11 @@ class NeonTxExecutor(ExecutorComponent):
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
         holder = await self._core_api_client.get_holder_account(ctx.holder_address)
         if holder.status != HolderAccountStatus.Active or holder.neon_tx_hash != ctx.neon_tx_hash:
-            _LOG.debug("holder %s doesn't contain NeonTx %s", ctx.holder_address, ctx.neon_tx_hash)
+            _LOG.debug(
+                "holder %s doesn't contain NeonTx %s",
+                ctx.holder_address,
+                ctx.neon_tx_hash,
+            )
             return ExecTxResp(code=ExecTxRespCode.Failed)
 
         ctx.set_chain_id(holder.chain_id)
@@ -179,7 +198,12 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.warning("bad resource error: %s", str(exc))
                 return ExecTxRespCode.BadResource
 
-            except (WrongStrategyError, SolCbExceededError, SolNeonRequireResizeIterError, SolTxSizeError) as exc:
+            except (
+                WrongStrategyError,
+                SolCbExceededError,
+                SolNeonRequireResizeIterError,
+                SolTxSizeError,
+            ) as exc:
                 _LOG.debug("wrong strategy error: %s", str(exc))
                 return None
 
@@ -213,7 +237,11 @@ class NeonTxExecutor(ExecutorComponent):
                 await asyncio.sleep(ONE_BLOCK_SEC)
 
             except BaseException as exc:
-                _LOG.error("unexpected error on cancel NeonTx", exc_info=exc, extra=self._msg_filter)
+                _LOG.error(
+                    "unexpected error on cancel NeonTx",
+                    exc_info=exc,
+                    extra=self._msg_filter,
+                )
                 return None
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
