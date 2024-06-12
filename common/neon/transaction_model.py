@@ -16,7 +16,7 @@ from pydantic import Field, PlainValidator
 
 
 _TX_MODEL_EXCLUDE_LIST = {
-    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "tx_chain_id", "chain_id"},
+    0: {"max_priority_fee_per_gas", "max_fee_per_gas", "tx_chain_id", "chain_id", "access_list"},
     2: {"gas_price"},
 }
 
@@ -181,6 +181,7 @@ class NeonTxModel(BaseModel):
             to_address=self.to_address.to_bytes(),
             value=self.value,
             call_data=self.call_data.to_bytes(),
+            access_list=[],  # Access list of not yet supported
             v=self.v,
             r=self.r,
             s=self.s,
