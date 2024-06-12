@@ -155,6 +155,10 @@ class NeonTxIxPriorityFeeInfo:
     def default(cls) -> Self:
         return cls(priority_fee_paid=0)
 
+    @property
+    def is_empty(self) -> bool:
+        return self.priority_fee_paid == 0
+
 
 @dataclass(frozen=True)
 class NeonTxIxStepInfo:
@@ -331,7 +335,7 @@ class _NeonEvmPriorityFeeLogDecoder(_NeonEvmLogDecoder):
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
         """PRIORITYFEE <32 bytes le priority fee as paid by the user>"""
-        if log.tx_ix_priority_fee.priority_fee_paid != 0:
+        if not log.tx_ix_priority_fee.is_empty:
             _LOG.error("%s is specified twice", cls.name)
             return
         if len(data_list) != 1:
@@ -339,7 +343,7 @@ class _NeonEvmPriorityFeeLogDecoder(_NeonEvmLogDecoder):
             return
 
         bs = base64.b64decode(data_list[0])
-        log.tx_ix_gas = NeonTxIxPriorityFeeInfo(priority_fee_paid=int.from_bytes(bs, "little"))
+        log.tx_ix_priority_fee = NeonTxIxPriorityFeeInfo(priority_fee_paid=int.from_bytes(bs, "little"))
 
 
 class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):

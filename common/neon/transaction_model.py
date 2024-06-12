@@ -59,22 +59,17 @@ class NeonTxModel(BaseModel):
     error: str | None = None
 
     def model_post_init(self, _ctx: Any) -> None:
-        if self.tx_type not in (0, 2):
-            raise ValueError("Unsupported transaction type.")
-        if self.tx_type == 0:
+        if self.tx_type == NeonTxType.Legacy:
             if self.gas_price_legacy is None:
                 raise ValueError("gas_price is not specified for the Legacy transaction.")
-            if self.max_priority_fee_per_gas is not None or self.max_fee_per_gas is not None:
-                raise ValueError(
-                    "max_priority_fee_per_gas or max_fee_per_gas should be absent for the Legacy transaction."
-                )
-        else:
-            if self.gas_price_legacy is not None:
-                raise ValueError("gas_price shouldn't be specified for the Dynamic Gas transaction.")
+            self.max_fee_per_gas = None
+            self.max_priority_fee_per_gas = None
+        elif self.tx_type == NeonTxType.DynamicGas:
             if self.max_priority_fee_per_gas is None or self.max_fee_per_gas is None:
                 raise ValueError(
                     "max_priority_fee_per_gas or max_fee_per_gas is absent for the Dynamic Gas transaction."
                 )
+            self.gas_price_legacy = None
 
     @classmethod
     def default(cls) -> Self:

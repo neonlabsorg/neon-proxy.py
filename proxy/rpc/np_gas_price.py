@@ -174,7 +174,7 @@ class NpGasPriceApi(NeonProxyApi):
         # Fetch the compute units price across last several blocks (as specified in the cfg).
         num_blocks = self._cfg.priority_fee_num_blocks_to_average
         assert num_blocks > 0
-        historical_priority_fees: list[list[int]] = self._db.get_historical_priority_fees(num_blocks)
+        historical_priority_fees: list[list[int]] = await self._db.get_historical_priority_fees(num_blocks)
         assert num_blocks == len(historical_priority_fees)
 
         # Take the weighted average across fetched blocks.
@@ -183,7 +183,7 @@ class NpGasPriceApi(NeonProxyApi):
             # Sanity check to avoid division by zero.
             average_block_priority_fee = 0
             if len(block_priority_fees) != 0:
-                average_block_priority_fee = sum(average_block_priority_fee) / len(average_block_priority_fee)
+                average_block_priority_fee = sum(block_priority_fees) / len(block_priority_fees)
             # The most recent block goes with the biggest weight.
             average_weighted_max_priority_fee += average_block_priority_fee * (num_blocks - idx)
         average_block_priority_fee /= num_blocks * (num_blocks + 1) / 2

@@ -336,7 +336,10 @@ class SolBlockDb(HistoryDbTable):
         await self._update_row(ctx, self._activate_query, by_slot_range)
 
     async def get_priority_fee_percentiles(self, ctx: DbTxCtx, num_blocks: int) -> list[list[int]]:
-        return await self._fetch_all(ctx, self._priority_fee_percentiles_query, _BlockCount(num_blocks))
+        rec_list: list[_PriorityFeePercentiles] = await self._fetch_all(
+            ctx, self._priority_fee_percentiles_query, _BlockCount(num_blocks), record_type=_PriorityFeePercentiles
+        )
+        return [r.priority_fee_percentiles for r in rec_list]
 
 
 @dataclass(frozen=True)
@@ -395,3 +398,8 @@ class _BySlotRange:
 @dataclass(frozen=True)
 class _BlockCount:
     num_blocks: int
+
+
+@dataclass(frozen=True)
+class _PriorityFeePercentiles:
+    priority_fee_percentiles: list[int]
