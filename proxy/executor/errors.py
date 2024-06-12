@@ -37,20 +37,3 @@ class StuckTxError(Exception):
 
     def __repr__(self) -> str:
         return self.to_string()
-
-
-class TxAccountCntTooHighError(Exception):
-    def __init__(self, current_cnt: int, limit_cnt: int) -> None:
-        msg = f"The transaction requests {current_cnt} accounts and exceeds the upper limit of {limit_cnt}"
-        super().__init__(msg)
-
-        self._current_cnt = current_cnt
-        self._limit_cnt = limit_cnt
-
-    @property
-    def current_amount(self) -> int:
-        return self._current_cnt
-
-    @property
-    def limit_amount(self) -> int:
-        return self._limit_cnt
