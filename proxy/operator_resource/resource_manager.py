@@ -26,9 +26,9 @@ from .server_abc import OpResourceComponent
 from .transaction_list_signer import OpTxListSigner
 from ..base.op_api import OpResourceModel, OpEthAddressModel
 from ..stat.api import (
-    OpResourceEarnedTokensBalanceData,
+    OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
-    OpResourceSpendingTokensBalanceData,
+    OpExecutionTokenBalanceData,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -139,10 +139,10 @@ class OpResourceMng(OpResourceComponent):
 
                 self._send_op_resource_holder_stat(op_signer)
 
-                # Spending tokens balance
+                # Execution tokens balance
 
-                self._stat_client.commit_op_resource_spending_tokens_balance(
-                    OpResourceSpendingTokensBalanceData(owner=op_resource.owner, balance=spending_tokens_balance)
+                self._stat_client.commit_op_execution_token_balance(
+                    OpExecutionTokenBalanceData(owner=op_resource.owner, balance=spending_tokens_balance)
                 )
 
                 # Earned tokens balance
@@ -158,8 +158,8 @@ class OpResourceMng(OpResourceComponent):
                     evm_cfg, op_resource.owner, neon_address, None
                 )
 
-                self._stat_client.commit_op_resource_earned_tokens_balance(
-                    OpResourceEarnedTokensBalanceData(
+                self._stat_client.commit_op_earned_tokens_balance(
+                    OpEarnedTokenBalanceData(
                         token_name=evm_cfg.chain_dict[op_resource.chain_id].name,
                         eth_address=op_resource.eth_address,
                         balance=neon_account.balance + operator_account.balance,

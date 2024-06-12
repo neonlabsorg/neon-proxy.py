@@ -10,9 +10,9 @@ from common.stat.prometheus import PrometheusServer
 from common.utils.process_pool import ProcessPool
 
 from .api import (
-    OpResourceEarnedTokensBalanceData,
+    OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
-    OpResourceSpendingTokensBalanceData,
+    OpExecutionTokenBalanceData,
     STATISTIC_ENDPOINT,
     TxPoolData,
     TxFailData,
@@ -28,9 +28,14 @@ class OpResourceStatApi(AppDataApi):
 
         # Earned tokens balance
 
-        self._earned_tokens_balance: dict[str, dict[EthAddress, int]] = {}
-        self._earned_tokens_balance_stat = StatGauge(
-            "op_resource_earned_tokens_balance", "Operator earned token balance", registry=registry
+        self._earned_token_balance: dict[str, dict[EthAddress, int]] = {}
+        self._earned_token_balance_stat = StatGauge(
+            "operator_earned_token_balance", "Operator earned token balance", registry=registry
+        )
+
+        # legacy
+        self._neon_balance_stat = StatGauge(
+            "operator_neon_balance", "Operator NEON balance", registry=registry
         )
 
         # Holder account status
@@ -41,40 +46,52 @@ class OpResourceStatApi(AppDataApi):
         self._holder_blocked_cnt: dict[SolPubKey, int] = {}
 
         self._holder_free_cnt_stat = StatGauge(
-            "op_resource_holder_free", "Operator holder accounts (free)", registry=registry
+            "operator_resource_holder_free", "Operator holder accounts (free)", registry=registry
         )
         self._holder_used_cnt_stat = StatGauge(
-            "op_resource_holder_used", "Operator holder accounts (used)", registry=registry
+            "operator_resource_holder_used", "Operator holder accounts (used)", registry=registry
         )
         self._holder_disabled_cnt_stat = StatGauge(
-            "op_resource_holder_disabled", "Operator holder accounts (disabled)", registry=registry
+            "operator_resource_holder_disabled", "Operator holder accounts (disabled)", registry=registry
         )
         self._holder_blocked_addr_cnt_stat = StatGauge(
-            "op_resource_holder_blocked", "Operator holder accounts (blocked)", registry=registry
+            "operator_resource_holder_blocked", "Operator holder accounts (blocked)", registry=registry
         )
         self._holder_total_cnt_stat = StatGauge(
-            "op_resource_holder_total", "Operator holder accounts (total)", registry=registry
+            "operator_resource_holder_total", "Operator holder accounts (total)", registry=registry
         )
 
-        # Spending tokens balance
+        # Execution tokens balance
 
-        self._spending_tokens_balance: dict[SolPubKey, int] = {}
-        self._spending_tokens_balance_stat = StatGauge(
-            "op_resource_spending_tokens_balance", "Operator spending token balance", registry=registry
+        self._execution_token_balance: dict[SolPubKey, int] = {}
+        self._execution_token_balance_stat = StatGauge(
+            "operator_execution_token_balance", "Operator token balance for execution",
+            registry=registry
+        )
+        # legacy
+        self._sol_balance_stat = StatGauge(
+            "operator_sol_balance", "Operator SOL balance", registry=registry
         )
 
-    @AppDataApi.method(name="commitOpResourceEarnedTokensBalance")
-    def on_op_resource_earned_tokens_balance(self, data: OpResourceEarnedTokensBalanceData) -> None:
-        if data.token_name not in self._earned_tokens_balance:
-            self._earned_tokens_balance[data.token_name] = {}
+    @AppDataApi.method(name="commitOpEarnedTokensBalance")
+    def on_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None:
+        if data.token_name not in self._earned_token_balance:
+            self._earned_token_balance[data.token_name] = {}
 
-        self._earned_tokens_balance[data.token_name][data.eth_address] = data.balance
+        self._earned_token_balance[data.token_name][data.eth_address] = data.balance
 
         label = dict(token_name=data.token_name, eth_address=data.eth_address.to_string())
-        self._earned_tokens_balance_stat.set(label, data.balance)
+        self._earned_token_balance_stat.set(label, data.balance)
 
         label = dict(token_name=data.token_name)
-        self._earned_tokens_balance_stat.set(label, sum(self._earned_tokens_balance[data.token_name].values()))
+        total_balance = sum(self._earned_token_balance[data.token_name].values())
+        self._earned_token_balance_stat.set(label, total_balance)
+
+        if data.token_name == "NEON":
+            label = dict(eth_address=data.eth_address.to_string())
+            self._neon_balance_stat.set(label, data.balance)
+            label = {}
+            self._neon_balance_stat.set(label, total_balance)
 
     @AppDataApi.method(name="commitOpResourceHolderStatus")
     def on_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
@@ -107,15 +124,18 @@ class OpResourceStatApi(AppDataApi):
             holder_free_cnt + holder_used_cnt + holder_disabled_cnt + holder_blocked_cnt,
         )
 
-    @AppDataApi.method(name="commitOpResourceSpendingTokensBalance")
-    def on_op_resource_spending_tokens_balance(self, data: OpResourceSpendingTokensBalanceData) -> None:
-        self._spending_tokens_balance[data.owner] = data.balance
+    @AppDataApi.method(name="commitOpExecutionTokenBalance")
+    def on_op_exec_token_balance(self, data: OpExecutionTokenBalanceData) -> None:
+        self._execution_token_balance[data.owner] = data.balance
 
         label = dict(owner=data.owner.to_string())
-        self._spending_tokens_balance_stat.set(label, data.balance)
+        self._execution_token_balance_stat.set(label, data.balance)
+        self._sol_balance_stat.set(label, data.balance)
 
         label = {}
-        self._spending_tokens_balance_stat.set(label, sum(self._spending_tokens_balance.values()))
+        total_balance = sum(self._execution_token_balance.values())
+        self._execution_token_balance_stat.set(label, total_balance)
+        self._sol_balance_stat.set(label, total_balance)
 
 
 class RpcStatApi(AppDataApi):

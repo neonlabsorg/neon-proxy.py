@@ -5,9 +5,9 @@ from common.config.config import Config
 from common.stat.api import RpcCallData
 from common.stat.client import BaseStatClient, RpcStatClient
 from .api import (
-    OpResourceEarnedTokensBalanceData,
+    OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
-    OpResourceSpendingTokensBalanceData,
+    OpExecutionTokenBalanceData,
     STATISTIC_ENDPOINT,
     TxDoneData,
     TxFailData,
@@ -30,14 +30,14 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
         await AppDataClient.stop(self)
         await BaseStatClient.stop(self)
 
-    def commit_op_resource_earned_tokens_balance(self, data: OpResourceEarnedTokensBalanceData) -> None:
-        self._put_to_queue(self._commit_op_resource_earned_tokens_balance, data)
+    def commit_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None:
+        self._put_to_queue(self._commit_op_earned_tokens_balance, data)
 
     def commit_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
         self._put_to_queue(self._commit_op_resource_holder_status, data)
 
-    def commit_op_resource_spending_tokens_balance(self, data: OpResourceSpendingTokensBalanceData) -> None:
-        self._put_to_queue(self._commit_op_resource_spending_tokens_balance, data)
+    def commit_op_execution_token_balance(self, data: OpExecutionTokenBalanceData) -> None:
+        self._put_to_queue(self._commit_op_exec_token_balance, data)
 
     def commit_tx_done(self, data: TxDoneData) -> None:
         self._put_to_queue(self._commit_tx_done, data)
@@ -48,14 +48,14 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     def commit_tx_pool(self, data: TxPoolData) -> None:
         self._put_to_queue(self._commit_tx_pool, data)
 
-    @AppDataClient.method(name="commitOpResourceEarnedTokensBalance")
-    async def _commit_op_resource_earned_tokens_balance(self, data: OpResourceEarnedTokensBalanceData) -> None: ...
+    @AppDataClient.method(name="commitOpEarnedTokensBalance")
+    async def _commit_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None: ...
 
     @AppDataClient.method(name="commitOpResourceHolderStatus")
     async def _commit_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None: ...
 
-    @AppDataClient.method(name="commitOpResourceSpendingTokensBalance")
-    async def _commit_op_resource_spending_tokens_balance(self, data: OpResourceSpendingTokensBalanceData) -> None: ...
+    @AppDataClient.method(name="commitOpExecutionTokenBalance")
+    async def _commit_op_exec_token_balance(self, data: OpExecutionTokenBalanceData) -> None: ...
 
     @AppDataClient.method(name="commitRpcCall")
     async def _commit_rpc_call(self, data: RpcCallData) -> None: ...

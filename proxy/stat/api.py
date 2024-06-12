@@ -5,7 +5,7 @@ from common.utils.pydantic import BaseModel, HexUIntField
 STATISTIC_ENDPOINT = "/api/v1/statistic/"
 
 
-class OpResourceEarnedTokensBalanceData(BaseModel):
+class OpEarnedTokenBalanceData(BaseModel):
     token_name: str
     eth_address: EthAddressField
     balance: HexUIntField
@@ -19,7 +19,7 @@ class OpResourceHolderStatusData(BaseModel):
     blocked_holder_cnt: int
 
 
-class OpResourceSpendingTokensBalanceData(BaseModel):
+class OpExecutionTokenBalanceData(BaseModel):
     owner: SolPubKeyField
     balance: int
 
