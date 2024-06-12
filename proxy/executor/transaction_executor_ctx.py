@@ -129,8 +129,18 @@ class NeonExecTxCtx:
         else:
             self._get_account_key_list.reset_cache(self)
             self._acct_meta_list = acct_meta_list
-            self._neon_prog.init_account_meta_list(self._acct_meta_list)
-            self._test_neon_prog.init_account_meta_list(self._acct_meta_list)
+            acct_meta_cnt_limit = NeonProg.BaseAccountCnt + len(acct_meta_list)
+            if acct_meta_cnt_limit > self._cfg.max_tx_account_cnt:
+                _LOG.warning(
+                    "account list is too long, %d > %d(limit)",
+                    acct_meta_cnt_limit,
+                    self._cfg.max_tx_account_cnt,
+                )
+                prog_acct_meta_list = self._acct_meta_list[: self._cfg.max_tx_account_cnt]
+            else:
+                prog_acct_meta_list = self._acct_meta_list
+            self._neon_prog.init_account_meta_list(prog_acct_meta_list)
+            self._test_neon_prog.init_account_meta_list(prog_acct_meta_list)
             _LOG.debug("emulator result contains %d accounts: %s", len(resp.raw_meta_list), self._FmtAcctMeta(self))
 
         self._emulator_resp = resp
