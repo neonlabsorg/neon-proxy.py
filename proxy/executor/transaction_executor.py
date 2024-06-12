@@ -7,7 +7,6 @@ from typing import ClassVar
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
-from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EmulNeonCallModel, HolderAccountStatus
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
@@ -20,12 +19,7 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolOutOfMemoryError,
 )
-from .errors import (
-    BadResourceError,
-    StuckTxError,
-    TxAccountCntTooHighError,
-    WrongStrategyError,
-)
+from .errors import BadResourceError, StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
 from .stategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
 from .strategy_base import BaseTxStrategy
@@ -118,11 +112,6 @@ class NeonTxExecutor(ExecutorComponent):
             exit_code = ExecTxRespCode.NonceTooHigh
             state_tx_cnt = exc.state_tx_cnt
 
-        except TxAccountCntTooHighError as exc:
-            _LOG.debug("%s", str(exc))
-            exit_code = ExecTxRespCode.Failed
-            state_tx_cnt = await self._get_state_tx_cnt(ctx)
-
         return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
 
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
@@ -212,7 +201,6 @@ class NeonTxExecutor(ExecutorComponent):
                 SolCbExceededCriticalError,
                 SolOutOfMemoryError,
                 SolUnknownReceiptError,
-                TxAccountCntTooHighError,
             ) as exc:
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
@@ -261,15 +249,8 @@ class NeonTxExecutor(ExecutorComponent):
             check_result=False,
         )
 
-        acct_meta_cnt = NeonProg.BaseAccountCnt + len(emul_resp.raw_meta_list)
-        if acct_meta_cnt > self._cfg.max_tx_account_cnt:
-            if not ctx.has_good_sol_tx_receipt:
-                raise TxAccountCntTooHighError(acct_meta_cnt, self._cfg.max_tx_account_cnt)
-        else:
-            # it's a bad idea to block the tx execution by additional accounts in Solana txs
-            #  so don't change the list of accounts if there is a good receipt
-            slot = await self._sol_client.get_slot(SolCommit.Confirmed)
-            ctx.set_emulator_result(slot, emul_resp)
+        slot = await self._sol_client.get_slot(SolCommit.Confirmed)
+        ctx.set_emulator_result(slot, emul_resp)
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
         if ctx.has_good_sol_tx_receipt:
