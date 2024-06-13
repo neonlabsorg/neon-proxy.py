@@ -107,7 +107,7 @@ class NeonTxDb(HistoryDbTable):
               SELECT
                 block_slot,
                 AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee,
-                MAX(Cast(sum_gas_used as BIGINT)) as total_gas_used
+                MAX(Cast(Cast(sum_gas_used as Float) as BIGINT)) as total_gas_used
               FROM
                 {table_name} as t
               WHERE
