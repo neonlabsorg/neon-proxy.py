@@ -69,6 +69,14 @@ class NeonEvmIxCode(IntEnum):
 
     OldCancelWithHashV1004 = 0x23              # 35
 
+    @classmethod
+    def from_raw(cls, raw: int) -> Self:
+        try:
+            return cls(raw)
+        except (BaseException,):
+            return cls.Unknown
+# fmt: on
+
 
 class NeonIxMode(IntEnum):
     Readable = 1
@@ -76,7 +84,6 @@ class NeonIxMode(IntEnum):
     FullWritable = 3
 
     Default = Readable
-# fmt: on
 
 
 class NeonProg:

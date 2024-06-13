@@ -17,11 +17,19 @@ _LOG = logging.getLogger(__name__)
 
 
 class SolAltIxCode(IntEnum):
+    Unknown = -1
     Create = 0
     Freeze = 1
     Extend = 2
     Deactivate = 3
     Close = 4
+
+    @classmethod
+    def from_raw(cls, raw: int) -> Self:
+        try:
+            return cls(raw)
+        except (BaseException,):
+            return cls.Unknown
 
 
 class SolAltID(BaseModel):
