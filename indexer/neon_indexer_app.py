@@ -72,6 +72,7 @@ class NeonIndexerApp:
                 for reindexer in self._reindex_process_list:
                     reindexer.join()
             else:
+                await self._db.set_start_slot(self._start_slot)
                 await self._run_indexing()
 
             await self._db.stop()
