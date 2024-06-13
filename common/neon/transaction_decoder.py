@@ -197,7 +197,7 @@ class SolNeonTxIxMetaInfo:
 
     @cached_property
     def req_id(self) -> str:
-        return "_".join(str(s)[:7] for s in self.ident)
+        return "_".join(str(s)[:10] for s in self.ident)
 
     @property
     def neon_tx_return(self) -> NeonTxLogReturnInfo:

@@ -810,7 +810,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             #  iteration 1 (step 10, gas 10'000)
             #  iteration 2 (step 10, gas 20'000) <--- we are here: the place of tx-restart
             #  iteration 3 (step 20, gas 30'000)
-            elif (event.total_step_cnt == total_step_cnt) and (event.total_step_cnt > total_gas_used):
+            elif (event.total_step_cnt == total_step_cnt) and (event.total_gas_used > total_gas_used):
                 is_tx_restart = True
 
             if is_tx_restart:
@@ -1398,7 +1398,7 @@ class NeonIndexedBlockInfo:
         for sol_neon_ix in self._sol_neon_ix_list:
             stat = tx_stat_dict.get(sol_neon_ix.neon_ix_code, None)
             if not stat:
-                stat = _NeonTxStatDraft(tx_type=NeonEvmIxCode(sol_neon_ix.neon_ix_code).name)
+                stat = _NeonTxStatDraft(tx_type=NeonEvmIxCode.from_raw(sol_neon_ix.neon_ix_code).name)
                 tx_stat_dict[sol_neon_ix.neon_ix_code] = stat
 
             sol_tx_sig = sol_neon_ix.sol_tx_sig
@@ -1427,7 +1427,7 @@ class NeonIndexedBlockInfo:
 
             stat = tx_stat_dict.get(sol_alt_ix.alt_ix_code, None)
             if not stat:
-                stat = _NeonTxStatDraft(tx_type=SolAltIxCode(sol_alt_ix.alt_ix_code).name)
+                stat = _NeonTxStatDraft(tx_type=SolAltIxCode.from_raw(sol_alt_ix.alt_ix_code).name)
                 tx_stat_dict[sol_alt_ix.alt_ix_code] = stat
 
             stat.sol_tx_cnt += 1
