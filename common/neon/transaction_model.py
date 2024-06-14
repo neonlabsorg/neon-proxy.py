@@ -15,7 +15,7 @@ from ..utils.pydantic import BaseModel, HexUIntField
 
 _TX_MODEL_EXCLUDE_LIST = {
     0: {"max_priority_fee_per_gas", "max_fee_per_gas", "tx_chain_id", "chain_id", "access_list"},
-    2: {"gas_price_legacy"},
+    2: {"gas_price_legacy", "gas_price"},
 }
 
 
@@ -204,11 +204,11 @@ class NeonTxModel(BaseModel):
             error=None,
         )
 
-    @cached_property
+    @property
     def is_dynamic_gas_tx(self):
         return self.tx_type == NeonTxType.DynamicGas
 
-    @cached_property
+    @property
     def is_legacy_tx(self):
         return self.tx_type == NeonTxType.Legacy
 

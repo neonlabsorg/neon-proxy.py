@@ -258,7 +258,7 @@ class NpGasPriceApi(NeonProxyApi):
         ]
 
         # OldestBlock:
-        oldest_block = fee_gas_data[-1].slot if len(fee_gas_data) > 0 else 0
+        oldest_block = fee_gas_data[-1].block_slot if len(fee_gas_data) > 0 else 0
 
         # Reward:
         # Because we store only 10th percentiles for priority fees, let's linearly extrapolate for other data points.
