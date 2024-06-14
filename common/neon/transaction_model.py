@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Annotated, Union, Any
+from typing import Union, Any
 
 from typing_extensions import Self
 
@@ -64,6 +64,8 @@ class NeonTxModel(BaseModel):
                 )
             if self.gas_price_legacy is not None:
                 raise ValueError("gas_price should not be present.")
+            if self.max_priority_fee_per_gas > self.max_fee_per_gas:
+                raise ValueError("max priority fee per gas higher than max fee per gas.")
 
     @classmethod
     def default(cls) -> Self:
