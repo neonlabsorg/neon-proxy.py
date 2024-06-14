@@ -64,7 +64,7 @@ services:
       POSTGRES_USER: neon-proxy
       POSTGRES_PASSWORD: neon-proxy-pass
       POSTGRES_HOST: postgres
-      DEBUG_CMD_LINE: "NO"
+      DEBUG_CMD_LINE: "YES"
       FUZZ_FAIL_PCT: 0
       GATHER_STATISTICS: "YES"
       MIN_OPERATOR_BALANCE_TO_WARN: 4565760000 # = 913152000 * 5 (5 storage accounts) = 4.56576 SOL
