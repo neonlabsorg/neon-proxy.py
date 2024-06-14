@@ -135,9 +135,6 @@ HexUInt64Field = Annotated[int, PlainValidator(_hex_to_uint64), PlainSerializer(
 Hex256UIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint256_to_hex)]
 UIntFromHexField = Annotated[int, PlainValidator(_hex_to_uint)]
 
-# For outside the module serialization customization, to not expose _uint_to_hex directly.
-HexUIntGenericSerializer = lambda f: PlainSerializer(lambda v: _uint_to_hex(f(v)))
-
 
 # Allows: None | "1" | 1
 def _dec_to_int(value: str | int | None) -> int | None:

@@ -87,10 +87,10 @@ class TestNeonTx(unittest.TestCase):
         neon_tx_json = {
             "tx_type": "0x0",
             "nonce": "0x0",
-            "gas_price": "0xba43b7400",
+            "gas_price_legacy": "0xba43b7400",
             "gas_limit": "0x5208",
             "value": "0x3baf82d03a000",
-            "chain_id": "0x1",
+            "tx_chain_id": "0x1",
             "to_address": "0x7917bC33EeA648809c285607579c9919FB864F8F",
             "neon_tx_hash": "0x14a298c1eea89f42285948b7d51eeac2876ca7406c9784b9b90dd3591d156d64",
             "r": "0x67940651530790861714b2e8fd8b080361d1ada048189000c07a66848afde46",
@@ -109,7 +109,7 @@ class TestNeonTx(unittest.TestCase):
 
         neon_tx_str = (
             "NeonTxModel("
-            "tx_type=Legacy, "
+            "tx_type=0, "
             "neon_tx_hash=0x14a298c1eea89f42285948b7d51eeac2876ca7406c9784b9b90dd3591d156d64, "
             "from_address=0x8d900bfA2353548a4631bE870f99939575551B60, "
             "to_address=0x7917bC33EeA648809c285607579c9919FB864F8F, "
@@ -246,12 +246,12 @@ class TestNeonTx(unittest.TestCase):
         neon_tx_json = {
             "tx_type": "0x2",
             "nonce": "0x536",
-            "gas_price": None,
+            "gas_price_legacy": None,
             "max_priority_fee_per_gas": "0xf4240",
             "max_fee_per_gas": "0x19924a33e",
             "gas_limit": "0x7849a",
             "value": "0x16345785d8a0000",
-            "chain_id": "0x1",
+            "tx_chain_id": "0x1",
             "to_address": "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",
             "neon_tx_hash": "0x698787452047f9e2187f653a6e66fac0f8ea30d3c78bdeae80a7317c2a30fdd8",
             "r": "0xeeec2a7c8865c5e94ae462d5ab7e9492a93c6fe90fff0296d670b7dad640728",
@@ -270,7 +270,7 @@ class TestNeonTx(unittest.TestCase):
 
         neon_tx_str = (
             "NeonTxModel("
-            "tx_type=DynamicGas, "
+            "tx_type=2, "
             "neon_tx_hash=0x698787452047f9e2187f653a6e66fac0f8ea30d3c78bdeae80a7317c2a30fdd8, "
             "from_address=0x8d99C04eDe67EF5c2936215f95Af1A11045EA298, "
             "to_address=0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD, "
@@ -287,6 +287,11 @@ class TestNeonTx(unittest.TestCase):
             "chain_id=1)"
         )
         self.assertEqual(neon_tx_info.to_string(), neon_tx_str)
+
+    def test_eip1559_neon_tx_model_serialization_deserialization(self):
+        neon_tx_info = NeonTxModel.from_raw(self.eip1559_raw_tx)
+        NeonTxModel.from_json(neon_tx_info.to_json())
+        NeonTxModel.from_dict(neon_tx_info.to_dict())
 
 
 if __name__ == "__main__":
