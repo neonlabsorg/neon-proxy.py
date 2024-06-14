@@ -420,7 +420,7 @@ class _RecordWithBlock(_Record):
 
 @dataclass(frozen=True)
 class BlockFeeGasData:
-    slot: int
+    block_slot: int
     average_base_fee: float
     total_gas_used: int
 
