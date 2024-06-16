@@ -21,7 +21,7 @@ from common.solana_rpc.errors import (
 )
 from .errors import BadResourceError, StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
-from .stategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
+from .strategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
 from .strategy_iterative_holder import HolderTxStrategy, AltHolderTxStrategy
