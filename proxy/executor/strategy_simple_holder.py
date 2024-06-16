@@ -17,6 +17,14 @@ class SimpleHolderTxStrategy(SimpleTxStrategy):
     def _build_tx(self, **kwargs) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_account_ix())
 
+    async def _validate(self) -> bool:
+        return (
+            self._validate_not_stuck_tx()
+            and self._validate_no_sol_call()
+            and self._validate_has_chain_id()
+            and self._validate_no_resize_iter()
+        )
+
 
 @alt_strategy
 class AltSimpleHolderTxStrategy(SimpleHolderTxStrategy):

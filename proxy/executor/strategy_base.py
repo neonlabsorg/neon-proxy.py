@@ -4,12 +4,13 @@ import abc
 import logging
 from typing import Sequence, Final, ClassVar
 
-from common.neon.neon_program import NeonIxMode
+from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.commit_level import SolCommit
+from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
-from common.solana.transaction import SolTx, SolTxIx
+from common.solana.transaction import SolTx, SolTxIx, SOL_PACKET_SIZE
 from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
@@ -155,6 +156,17 @@ class BaseTxStrategy(abc.ABC):
             return True
         self._validation_error_msg = f"Has {self._ctx.resize_iter_cnt} resize iterations"
         return False
+
+    def _validate_neon_tx_size(self) -> bool:
+        neon_tx_size = len(self._ctx.neon_prog.holder_msg)
+        if len(self._ctx.neon_prog.holder_msg) < self._base_sol_pkt_size:
+            return True
+        self._validation_error_msg = f"NeonTx has size {neon_tx_size} > {self._base_sol_pkt_size}"
+        return False
+
+    @cached_property
+    def _base_sol_pkt_size(self) -> int:
+        return SOL_PACKET_SIZE - NeonProg.BaseAccountCnt * SolPubKey.KeySize
 
     async def _build_prep_tx_list(self) -> list[list[SolTx]]:
         tx_list_list: list[list[SolTx]] = list()

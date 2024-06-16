@@ -290,6 +290,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             self._validate_not_stuck_tx()
             and self._validate_no_sol_call()
             and self._validate_has_chain_id()
+            and self._validate_neon_tx_size()
         )
         # fmt: on
 
