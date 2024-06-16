@@ -87,6 +87,7 @@ class SimpleTxStrategy(BaseTxStrategy):
             and self._validate_no_sol_call()
             and self._validate_has_chain_id()
             and self._validate_no_resize_iter()
+            and self._validate_neon_tx_size()
         )
 
 
