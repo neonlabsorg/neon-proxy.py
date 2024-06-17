@@ -18,6 +18,8 @@ RUN apt update && \
             ca-certificates \
             python3-pip \
             python3-venv \
+            git \
+            cargo \
             postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
