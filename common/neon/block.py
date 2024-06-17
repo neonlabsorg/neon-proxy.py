@@ -1,28 +1,30 @@
 from __future__ import annotations
 
 import math
-from typing import Union
+from typing import Final, Union
 
 from typing_extensions import Self
-
-from common.solana.transaction_decoder import SolTxMetaInfo
 
 from ..ethereum.commit_level import EthCommit, EthCommitField
 from ..ethereum.hash import EthBlockHash, EthBlockHashField
 from ..solana.block import SolRpcBlockInfo
 from ..solana.commit_level import SolCommit
+from ..solana.transaction_decoder import SolTxMetaInfo
 from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
 
 
 class NeonBlockHdrModel(BaseModel):
+    PercentileStep: Final[int] = 10  # Percentiles are a multiple of 10.
+    PercentileCount: Final[int] = 11  # 100 / step + 1.
+
     slot: int
     commit: EthCommitField
     block_hash: EthBlockHashField
     block_time: int | None
     parent_slot: int | None
     parent_block_hash: EthBlockHashField
-    priority_fee_percentiles: list[int]
+    cu_price_percentile_list: list[int]
 
     @classmethod
     def default(cls) -> Self:
@@ -33,7 +35,8 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
-            priority_fee_percentiles=[0] * 11,  # Although this path is not used, let's make it future-proof.
+            cu_price_percentile_list=[0]
+            * NeonBlockHdrModel.PercentileCount,  # Although this path is not used, let's make it future-proof.
         )
 
     @classmethod
@@ -45,7 +48,8 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
-            priority_fee_percentiles=[0] * 11,  # Although this path is not used, let's make it future-proof.
+            cu_price_percentile_list=[0]
+            * NeonBlockHdrModel.PercentileCount,  # Although this path is not used, let's make it future-proof.
         )
 
     @classmethod
@@ -71,24 +75,27 @@ class NeonBlockHdrModel(BaseModel):
             block_time=raw.block_time,
             parent_slot=raw.parent_slot,
             parent_block_hash=EthBlockHash.from_raw(raw.parent_block_hash.to_bytes()),
-            priority_fee_percentiles=cls._calculate_priority_fee_stats(raw),
+            cu_price_percentile_list=cls._calc_cu_price_stat(raw),
         )
 
     @classmethod
-    def _calculate_priority_fee_stats(cls, sol_block: SolRpcBlockInfo) -> list[int]:
+    def _calc_cu_price_stat(cls, sol_block: SolRpcBlockInfo) -> list[int]:
         # In case for some reason, Solana block does not have any transactions.
         if not sol_block.tx_list:
-            return [0] * 11
+            return [0] * NeonBlockHdrModel.PercentileCount
 
         # Build a full list of compute unit prices in the solana block.
-        prices: list[int] = list()
+        price_list: list[int] = list()
         for sol_tx in sol_block.tx_list:
             sol_tx_meta = SolTxMetaInfo.from_raw(sol_block.slot, sol_tx)
-            prices.append(sol_tx_meta.sol_tx_cu.cu_price)
+            price_list.append(sol_tx_meta.sol_tx_cu.cu_price)
         # Sort.
-        prices.sort()
+        price_list.sort()
         # Take every i * 10 percentile (i:=0..10) in a sorted list.
-        return [prices[math.ceil(p * (len(prices) - 1) / 100)] for p in range(0, 101, 10)]
+        return [
+            price_list[math.floor((len(price_list) - 1) * p * NeonBlockHdrModel.PercentileStep / 100)]
+            for p in range(NeonBlockHdrModel.PercentileCount)
+        ]
 
     def to_pending(self) -> Self:
         return NeonBlockHdrModel(
@@ -98,7 +105,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=self.block_hash,
-            priority_fee_percentiles=self.priority_fee_percentiles,
+            cu_price_percentile_list=self.cu_price_percentile_list,
         )
 
     def to_genesis_child(self, genesis_hash: EthBlockHash) -> Self:
@@ -109,7 +116,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=genesis_hash,
-            priority_fee_percentiles=self.priority_fee_percentiles,
+            cu_price_percentile_list=self.cu_price_percentile_list,
         )
 
     @property

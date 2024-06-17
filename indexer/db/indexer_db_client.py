@@ -95,10 +95,10 @@ class IndexerDbClient:
         return await self._sol_block_db.get_block_by_slot(None, slot_range.finalized_slot, slot_range)
 
     async def get_historical_base_fees(self, chain_id: int, num_blocks: int, latest_slot: int) -> list[BlockFeeGasData]:
-        return await self._neon_tx_db.get_base_fees(None, chain_id, num_blocks, latest_slot)
+        return await self._neon_tx_db.get_base_fee_list(None, chain_id, num_blocks, latest_slot)
 
     async def get_historical_priority_fees(self, num_blocks: int) -> list[list[int]]:
-        return await self._sol_block_db.get_priority_fee_percentiles(None, num_blocks)
+        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks)
 
     async def _get_slot_range(self) -> SolSlotRange:
         slot_list = await self._constant_db.get_int_list(

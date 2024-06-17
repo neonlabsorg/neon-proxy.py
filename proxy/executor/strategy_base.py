@@ -143,7 +143,7 @@ class BaseTxStrategy(abc.ABC):
     async def cancel(self) -> ExecTxRespCode | None:
         pass
 
-    @property
+    @cached_property
     def _cu_price(self) -> int:
         # Legacy transaction case (both stuck and not stuck), return value from the config.
         if self._ctx.tx_type == 0:
