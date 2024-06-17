@@ -138,10 +138,10 @@ class IterativeTxStrategy(BaseTxStrategy):
         step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
         total_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
         max_exec_iter_cnt: Final[int] = self._calc_exec_iter_cnt(total_step_cnt)
-        wrap_iter_cnt: Final[int] = self._calc_wrap_iter_cnt()
+        mode: Final[NeonIxMode] = self._calc_ix_mode()
+        wrap_iter_cnt: Final[int] = self._calc_wrap_iter_cnt(mode)
         max_used_cu_limit: Final[int] = int(self._cu_limit * 0.85)  # 85% of the maximum
         mult_factor: Final[int] = max_exec_iter_cnt * 2
-        mode: Final[NeonIxMode] = self._calc_ix_mode()
 
         # 5? attempts looks enough for evm steps calculations:
         #   1 step:
@@ -218,7 +218,8 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     def _get_def_iter_list_info(self) -> _IterListInfo:
         step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
-        iter_cnt = self._calc_exec_iter_cnt() + self._calc_wrap_iter_cnt()
+        mode = self._calc_ix_mode()
+        iter_cnt = self._calc_exec_iter_cnt() + self._calc_wrap_iter_cnt(mode)
 
         _LOG.debug(
             "use defaults: %s EVM steps per iteration, %s iterations (%s total EVM steps, %s completed EVM steps)",
@@ -228,7 +229,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             self._completed_evm_step_cnt,
         )
 
-        return self._IterListInfo(step_cnt_per_iter, iter_cnt, tuple(), self._calc_ix_mode(), is_default=True)
+        return self._IterListInfo(step_cnt_per_iter, iter_cnt, tuple(), mode, is_default=True)
 
     def _get_final_iter_list_info(self) -> _IterListInfo | None:
         if not self._ctx.is_stuck_tx:
@@ -265,13 +266,19 @@ class IterativeTxStrategy(BaseTxStrategy):
         step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
         return max((total_step_cnt + step_cnt_per_iter - 1) // step_cnt_per_iter, 1)
 
-    def _calc_wrap_iter_cnt(self) -> int:
+    def _calc_wrap_iter_cnt(self, mode: NeonIxMode) -> int:
         # if there are NO completed evm steps,
         #   it means that we should execute the following iterations:
         #     - begin iteration
         #     - resize iterationS
-        #     - but !don't! include 1 FINALIZATION iteration, because it should be WRITABLE
-        return max((self._ctx.wrap_iter_cnt - 1) if (not self._completed_evm_step_cnt) else 0, 0)
+        #     - but if mode is not writeable, !don't! include 1 FINALIZATION iteration
+
+        base_iter_cnt = self._ctx.wrap_iter_cnt
+        if mode == NeonIxMode.Readable:
+            base_iter_cnt -= 1
+
+        iter_cnt = max(base_iter_cnt if (not self._completed_evm_step_cnt) else 0, 0)
+        return iter_cnt
 
     def _calc_ix_mode(self) -> NeonIxMode:
         if self._ctx.is_stuck_tx:
