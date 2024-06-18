@@ -153,6 +153,7 @@ class NeonExecTxCtx:
         self._calc_resize_iter_cnt.reset_cache(self)
 
     def set_ro_address_list(self, addr_list: Sequence[SolPubKey]) -> None:
+        _LOG.debug("readonly accounts %s: %s", len(addr_list), addr_list)
         self._neon_prog.init_ro_address_list(addr_list)
         self._test_neon_prog.init_ro_address_list(addr_list)
 
