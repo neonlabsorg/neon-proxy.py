@@ -98,6 +98,10 @@ class IterativeTxStrategy(BaseTxStrategy):
                 if self._ix_mode is None:
                     _LOG.warning("unexpected error on iterative transaction, try to use accounts in writable mode")
                     self._ix_mode = NeonIxMode.Writable
+
+                    if not (iter_list_info := self._get_final_iter_list_info()):
+                        iter_list_info = await self._get_iter_list_info()
+
                     continue
                 elif self._ix_mode == NeonIxMode.Writable:
                     _LOG.warning("unexpected error on iterative transaction, try to use ALL accounts in writable mode")
