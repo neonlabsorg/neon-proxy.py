@@ -37,6 +37,7 @@ from ..neon.account import NeonAccount
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
 from ..simple_app_data.client import SimpleAppDataClient
+from ..simple_app_data.errors import BadRespError
 from ..solana.account import SolAccountModel
 from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
@@ -257,10 +258,14 @@ class CoreApiClient(SimpleAppDataClient):
             if retry > 0:
                 _LOG.debug("attempt %d to repeat...", retry + 1)
 
-            if request is None:
-                resp = await method()
-            else:
-                resp = await method(request)
+            try:
+                if request is None:
+                    resp = await method()
+                else:
+                    resp = await method(request)
+            except BadRespError as exc:
+                _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
+                continue
 
             if (resp.error_code or 0) == 113:  # Solana client error
                 continue
