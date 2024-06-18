@@ -1,12 +1,15 @@
+import logging
 from typing import ClassVar
 
 from common.app_data.server import AppDataServer, AppDataApi
 from common.ethereum.hash import EthAddress
+from common.http.utils import HttpRequestCtx
 from common.config.config import Config
 from common.solana.pubkey import SolPubKey
 from common.stat.api import RpcCallData
 from common.stat.metric import StatRegistry, StatSummary, StatGauge
 from common.stat.prometheus import PrometheusServer
+from common.utils.json_logger import logging_context
 from common.utils.process_pool import ProcessPool
 
 from .api import (
@@ -18,6 +21,8 @@ from .api import (
     TxFailData,
     TxDoneData,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class OpResourceStatApi(AppDataApi):
@@ -74,69 +79,77 @@ class OpResourceStatApi(AppDataApi):
         )
 
     @AppDataApi.method(name="commitOpEarnedTokensBalance")
-    def on_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None:
-        if data.token_name not in self._earned_token_balance:
-            self._earned_token_balance[data.token_name] = {}
+    def on_op_earned_tokens_balance(self, ctx: HttpRequestCtx, data: OpEarnedTokenBalanceData) -> None:
+        with logging_context(method="commitOpEarnedTokensBalance", resp_time=ctx.process_time_msec):
+            if data.token_name not in self._earned_token_balance:
+                self._earned_token_balance[data.token_name] = {}
 
-        self._earned_token_balance[data.token_name][data.eth_address] = data.balance
+            self._earned_token_balance[data.token_name][data.eth_address] = data.balance
 
-        label = dict(token_name=data.token_name, eth_address=data.eth_address.to_string())
-        self._earned_token_balance_stat.set(label, data.balance)
+            label = dict(token_name=data.token_name, eth_address=data.eth_address.to_string())
+            self._earned_token_balance_stat.set(label, data.balance)
 
-        label = dict(token_name=data.token_name)
-        total_balance = sum(self._earned_token_balance[data.token_name].values())
-        self._earned_token_balance_stat.set(label, total_balance)
+            label = dict(token_name=data.token_name)
+            total_balance = sum(self._earned_token_balance[data.token_name].values())
+            self._earned_token_balance_stat.set(label, total_balance)
 
-        if data.token_name == "NEON":
-            label = dict(eth_address=data.eth_address.to_string())
-            self._neon_balance_stat.set(label, data.balance)
-            label = {}
-            self._neon_balance_stat.set(label, total_balance)
+            if data.token_name == "NEON":
+                label = dict(eth_address=data.eth_address.to_string())
+                self._neon_balance_stat.set(label, data.balance)
+                label = {}
+                self._neon_balance_stat.set(label, total_balance)
+
+            _LOG.info("done request >>>")
 
     @AppDataApi.method(name="commitOpResourceHolderStatus")
-    def on_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
-        self._holder_free_cnt[data.owner] = data.free_holder_cnt
-        self._holder_used_cnt[data.owner] = data.used_holder_cnt
-        self._holder_disabled_cnt[data.owner] = data.disabled_holder_cnt
-        self._holder_blocked_cnt[data.owner] = data.blocked_holder_cnt
+    def on_op_resource_holder_status(self, ctx: HttpRequestCtx, data: OpResourceHolderStatusData) -> None:
+        with logging_context(method="commitOpResourceHolderStatus", resp_time=ctx.process_time_msec):
+            self._holder_free_cnt[data.owner] = data.free_holder_cnt
+            self._holder_used_cnt[data.owner] = data.used_holder_cnt
+            self._holder_disabled_cnt[data.owner] = data.disabled_holder_cnt
+            self._holder_blocked_cnt[data.owner] = data.blocked_holder_cnt
 
-        label = dict(owner=data.owner.to_string())
-        self._holder_free_cnt_stat.set(label, data.free_holder_cnt)
-        self._holder_used_cnt_stat.set(label, data.used_holder_cnt)
-        self._holder_disabled_cnt_stat.set(label, data.disabled_holder_cnt)
-        self._holder_blocked_addr_cnt_stat.set(label, data.blocked_holder_cnt)
-        self._holder_total_cnt_stat.set(
-            label,
-            data.free_holder_cnt + data.used_holder_cnt + data.disabled_holder_cnt + data.blocked_holder_cnt,
-        )
+            label = dict(owner=data.owner.to_string())
+            self._holder_free_cnt_stat.set(label, data.free_holder_cnt)
+            self._holder_used_cnt_stat.set(label, data.used_holder_cnt)
+            self._holder_disabled_cnt_stat.set(label, data.disabled_holder_cnt)
+            self._holder_blocked_addr_cnt_stat.set(label, data.blocked_holder_cnt)
+            self._holder_total_cnt_stat.set(
+                label,
+                data.free_holder_cnt + data.used_holder_cnt + data.disabled_holder_cnt + data.blocked_holder_cnt,
+            )
 
-        label = {}
-        holder_free_cnt = sum(self._holder_free_cnt.values())
-        holder_used_cnt = sum(self._holder_used_cnt.values())
-        holder_disabled_cnt = sum(self._holder_disabled_cnt.values())
-        holder_blocked_cnt = sum(self._holder_blocked_cnt.values())
-        self._holder_free_cnt_stat.set(label, holder_free_cnt)
-        self._holder_used_cnt_stat.set(label, holder_used_cnt)
-        self._holder_disabled_cnt_stat.set(label, holder_disabled_cnt)
-        self._holder_blocked_addr_cnt_stat.set(label, holder_blocked_cnt)
-        self._holder_total_cnt_stat.set(
-            label,
-            holder_free_cnt + holder_used_cnt + holder_disabled_cnt + holder_blocked_cnt,
-        )
+            label = {}
+            holder_free_cnt = sum(self._holder_free_cnt.values())
+            holder_used_cnt = sum(self._holder_used_cnt.values())
+            holder_disabled_cnt = sum(self._holder_disabled_cnt.values())
+            holder_blocked_cnt = sum(self._holder_blocked_cnt.values())
+            self._holder_free_cnt_stat.set(label, holder_free_cnt)
+            self._holder_used_cnt_stat.set(label, holder_used_cnt)
+            self._holder_disabled_cnt_stat.set(label, holder_disabled_cnt)
+            self._holder_blocked_addr_cnt_stat.set(label, holder_blocked_cnt)
+            self._holder_total_cnt_stat.set(
+                label,
+                holder_free_cnt + holder_used_cnt + holder_disabled_cnt + holder_blocked_cnt,
+            )
+
+            _LOG.info("done request >>>")
 
     @AppDataApi.method(name="commitOpExecutionTokenBalance")
-    def on_op_exec_token_balance(self, data: OpExecutionTokenBalanceData) -> None:
-        self._execution_token_balance[data.owner] = data.balance
+    def on_op_exec_token_balance(self, ctx: HttpRequestCtx, data: OpExecutionTokenBalanceData) -> None:
+        with logging_context(method="commitOpExecutionTokenBalance", resp_time=ctx.process_time_msec):
+            self._execution_token_balance[data.owner] = data.balance
 
-        label = dict(owner=data.owner.to_string())
-        self._execution_token_balance_stat.set(label, data.balance)
-        self._sol_balance_stat.set(label, data.balance)
+            label = dict(owner=data.owner.to_string())
+            self._execution_token_balance_stat.set(label, data.balance)
+            self._sol_balance_stat.set(label, data.balance)
 
-        label = {}
-        total_balance = sum(self._execution_token_balance.values())
-        self._execution_token_balance_stat.set(label, total_balance)
-        self._sol_balance_stat.set(label, total_balance)
+            label = {}
+            total_balance = sum(self._execution_token_balance.values())
+            self._execution_token_balance_stat.set(label, total_balance)
+            self._sol_balance_stat.set(label, total_balance)
 
+            _LOG.info("done request >>>")
 
 class RpcStatApi(AppDataApi):
     name: ClassVar[str] = "ProxyStatistic::RPC"
@@ -146,13 +159,16 @@ class RpcStatApi(AppDataApi):
         self._request = StatSummary("request", "Request on public RPC", registry=registry)
 
     @AppDataApi.method(name="commitRpcCall")
-    def on_rpc_call(self, data: RpcCallData) -> None:
-        label = dict(
-            service=data.service,
-            method=data.method,
-            is_error=data.is_error,
-        )
-        self._request.add(label, data.time_nsec / (10**9))
+    def on_rpc_call(self, ctx: HttpRequestCtx, data: RpcCallData) -> None:
+        with logging_context(method="commitRpcCall", resp_time=ctx.process_time_msec):
+            label = dict(
+                service=data.service,
+                method=data.method,
+                is_error=data.is_error,
+            )
+            self._request.add(label, data.time_nsec / (10**9))
+
+            _LOG.info("done request >>>")
 
 
 class TxPoolStatApi(AppDataApi):
@@ -172,24 +188,33 @@ class TxPoolStatApi(AppDataApi):
         )
 
     @AppDataApi.method(name="commitTransactionDone")
-    def on_tx_done(self, data: TxDoneData) -> None:
-        label = {}
-        self._tx_done.add(label, data.time_nsec / (10**9))
+    def on_tx_done(self, ctx: HttpRequestCtx, data: TxDoneData) -> None:
+        with logging_context(method="commitTransactionDone", resp_time=ctx.process_time_msec):
+            label = {}
+            self._tx_done.add(label, data.time_nsec / (10**9))
+
+            _LOG.info("done request >>>")
 
     @AppDataApi.method(name="commitTransactionFail")
-    def on_tx_fail(self, data: TxFailData) -> None:
-        label = {}
-        self._tx_fail.add(label, data.time_nsec / (10**9))
+    def on_tx_fail(self, ctx: HttpRequestCtx, data: TxFailData) -> None:
+        with logging_context(method="commitTransactionFail", resp_time=ctx.process_time_msec):
+            label = {}
+            self._tx_fail.add(label, data.time_nsec / (10**9))
+
+            _LOG.info("done request >>>")
 
     @AppDataApi.method(name="commitPool")
-    def on_tx_pool(self, data: TxPoolData) -> None:
-        for pool in data.scheduling_queue:
-            self._tx_pool.set({"token": pool.token}, pool.queue_len)
+    def on_tx_pool(self, ctx: HttpRequestCtx, data: TxPoolData) -> None:
+        with logging_context(method="commitPool", resp_time=ctx.process_time_msec):
+            for pool in data.scheduling_queue:
+                self._tx_pool.set({"token": pool.token}, pool.queue_len)
 
-        label = {}
-        self._tx_process.set(label, data.processing_queue_len)
-        self._tx_stuck_pool.set(label, data.stuck_queue_len)
-        self._tx_stuck_process.set(label, data.processing_stuck_queue_len)
+            label = {}
+            self._tx_process.set(label, data.processing_queue_len)
+            self._tx_stuck_pool.set(label, data.stuck_queue_len)
+            self._tx_stuck_process.set(label, data.processing_stuck_queue_len)
+
+            _LOG.info("done request >>>")
 
 
 class MetricServer(AppDataServer):
