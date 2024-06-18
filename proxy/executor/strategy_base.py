@@ -62,6 +62,7 @@ class SolTxCfg:
 
 class BaseTxStrategy(abc.ABC):
     name: ClassVar[str] = "UNKNOWN STRATEGY"
+    is_simple: ClassVar[bool] = True
 
     def __init__(self, ctx: NeonExecTxCtx) -> None:
         self._ctx = ctx

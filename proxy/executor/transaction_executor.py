@@ -49,10 +49,10 @@ class NeonTxExecutor(ExecutorComponent):
         AltSimpleHolderTxStrategy,
         # multi-iteration
         IterativeTxStrategy,
-        #     + alt
-        AltIterativeTxStrategy,
         #     + holder
         HolderTxStrategy,
+        #     + alt
+        AltIterativeTxStrategy,
         #     + alt + holder
         AltHolderTxStrategy,
         # without-chain-id
@@ -141,6 +141,10 @@ class NeonTxExecutor(ExecutorComponent):
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
         for _Strategy in tx_strategy_list:
+            if ctx.skip_simple_strategy and _Strategy.is_simple:
+                _LOG.debug("skip simple strategy %s", _Strategy.name)
+                continue
+
             strategy = _Strategy(ctx)
             if not await strategy.validate():
                 _LOG.debug("skip strategy %s: %s", strategy.name, strategy.validation_error_msg)
@@ -194,6 +198,7 @@ class NeonTxExecutor(ExecutorComponent):
                 SolNeonRequireResizeIterError,
                 SolTxSizeError,
             ) as exc:
+                ctx.mark_skip_simple_strategy()
                 _LOG.debug("wrong strategy error: %s", str(exc))
                 return None
 
@@ -203,6 +208,7 @@ class NeonTxExecutor(ExecutorComponent):
                 SolOutOfMemoryError,
                 SolUnknownReceiptError,
             ) as exc:
+                ctx.mark_skip_simple_strategy()
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
@@ -211,6 +217,7 @@ class NeonTxExecutor(ExecutorComponent):
                 await asyncio.sleep(ONE_BLOCK_SEC / 2)
 
             except BaseException as exc:
+                ctx.mark_skip_simple_strategy()
                 _LOG.debug("unexpected error", extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(strategy)
 

@@ -61,6 +61,7 @@ class NeonExecTxCtx:
         self._emulator_resp: EmulNeonCallResp | None = None
         self._emulator_slot = 0
 
+        self._skip_simple_strategy = False
         self._test_mode = False
 
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
@@ -106,6 +107,13 @@ class NeonExecTxCtx:
     @reset_cached_method
     def _get_account_key_list(self) -> tuple[SolPubKey, ...]:
         return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
+
+    @property
+    def skip_simple_strategy(self) -> bool:
+        return self._skip_simple_strategy
+
+    def mark_skip_simple_strategy(self) -> None:
+        self._skip_simple_strategy = True
 
     def set_sender_sol_address(self, sol_address: SolPubKey) -> None:
         self._sender_sol_address = sol_address
