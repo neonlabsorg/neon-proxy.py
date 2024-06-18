@@ -95,13 +95,18 @@ class IterativeTxStrategy(BaseTxStrategy):
                 return await self._send_tx_list(tx_list)
 
             except SolUnknownReceiptError:
-                if self._ix_mode:
+                if self._ix_mode is None:
+                    _LOG.warning("unexpected error on iterative transaction, try to use accounts in writable mode")
+                    self._ix_mode = NeonIxMode.Writable
+                    continue
+                elif self._ix_mode == NeonIxMode.Writable:
+                    _LOG.warning("unexpected error on iterative transaction, try to use ALL accounts in writable mode")
+                    self._ix_mode = NeonIxMode.FullWritable
+                    iter_list_info = self._get_def_iter_list_info()
+                    continue
+                else:
                     raise
 
-                _LOG.warning("unexpected error on iterative transaction, try to use all accounts in writable mode")
-
-                self._ix_mode = NeonIxMode.FullWritable
-                iter_list_info = self._get_def_iter_list_info()
             except SolCbExceededError:
                 if (retry == 0) and (not iter_list_info.is_default):
                     _LOG.warning(
