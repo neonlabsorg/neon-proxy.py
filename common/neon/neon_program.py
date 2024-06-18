@@ -111,6 +111,7 @@ class NeonProg:
         self._token_sol_address = SolPubKey.default()
         self._holder_address = SolPubKey.default()
         self._acct_meta_list: list[SolAccountMeta] = list()
+        self._ro_addr_set: set[SolPubKey] = set()
         self._eth_rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
         self._sender_sol_address = SolPubKey.default()
@@ -177,6 +178,11 @@ class NeonProg:
         self._acct_meta_list = list(account_meta_list)
         self._get_readable_acct_meta_list.reset_cache(self)
         self._get_writable_acct_meta_list.reset_cache(self)
+        self._ro_addr_set.clear()
+        return self
+
+    def init_ro_address_list(self, address_list: Sequence[SolPubKey]) -> Self:
+        self._ro_addr_set = set(address_list)
         return self
 
     @property
@@ -445,4 +451,13 @@ class NeonProg:
 
     @reset_cached_method
     def _get_writable_acct_meta_list(self) -> list[SolAccountMeta]:
-        return list(map(lambda x: SolAccountMeta(x.pubkey, x.is_signer, is_writable=True), self._acct_meta_list))
+        return list(
+            map(
+                lambda x: SolAccountMeta(
+                    x.pubkey,
+                    x.is_signer,
+                    is_writable=(x.pubkey not in self._ro_addr_set),
+                ),
+                self._acct_meta_list,
+            )
+        )
