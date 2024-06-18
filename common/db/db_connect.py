@@ -217,7 +217,14 @@ class DbConnection:
                 await self._on_fail_execute(retry, exc)
 
     async def _on_fail_execute(self, retry: int, exc: BaseException) -> None:
-        if isinstance(exc, (_pg.OperationalError, _pg.InterfaceError)):
+        if isinstance(exc, _pg_pool.PoolClosed):
+            _LOG.warning(
+                log_msg("PoolClosed error on {Retry} try to execute query on DB connection", Retry=retry),
+                exc_info=exc,
+                extra=self._msg_filter,
+            )
+            raise
+        elif isinstance(exc, (_pg.OperationalError, _pg.InterfaceError)):
             if retry > 1:
                 _LOG.warning(
                     log_msg(
