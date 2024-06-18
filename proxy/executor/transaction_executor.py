@@ -134,6 +134,7 @@ class NeonTxExecutor(ExecutorComponent):
         token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
         ctx.set_holder_account(holder)
+        await self._init_ro_acct_list(ctx)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
         return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
@@ -251,6 +252,13 @@ class NeonTxExecutor(ExecutorComponent):
 
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)
         ctx.set_emulator_result(slot, emul_resp)
+
+        await self._init_ro_acct_list(ctx)
+
+    async def _init_ro_acct_list(self, ctx: NeonExecTxCtx) -> None:
+        acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)
+        ro_addr_list = [acct.address for acct in acct_list if acct.executable]
+        ctx.set_ro_address_list(ro_addr_list)
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
         if ctx.has_good_sol_tx_receipt:
