@@ -42,6 +42,9 @@ class IterativeTxStrategy(BaseTxStrategy):
     async def execute(self) -> ExecTxRespCode:
         assert self.is_valid
 
+        if await self._is_finalized_holder():
+            return ExecTxRespCode.Failed
+
         if not await self._recheck_tx_list(self.name):
             if not self._ctx.is_stuck_tx:
                 await self._emulate_and_send_tx_list()
@@ -58,13 +61,13 @@ class IterativeTxStrategy(BaseTxStrategy):
         raise SolNoMoreRetriesError()
 
     async def cancel(self) -> ExecTxRespCode | None:
-        if await self._recheck_tx_list(self._cancel_name):
-            # cancel is completed
-            return ExecTxRespCode.Failed
-
         holder = await self._get_holder_acct()
         if (holder.status != HolderAccountStatus.Active) or (holder.neon_tx_hash != self._ctx.neon_tx_hash):
             _LOG.debug("holder %s doesn't contain %s NeonTx", holder.address, self._ctx.neon_tx_hash)
+            return ExecTxRespCode.Failed
+
+        if await self._recheck_tx_list(self._cancel_name):
+            # cancel is completed
             return ExecTxRespCode.Failed
 
         if await self._send_tx_list([self._build_cancel_tx()]):
