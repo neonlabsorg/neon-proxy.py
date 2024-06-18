@@ -27,6 +27,7 @@ _LOG = logging.getLogger(__name__)
 
 class IterativeTxStrategy(BaseTxStrategy):
     name: ClassVar[str] = NeonEvmIxCode.TxStepFromData.name
+    is_simple: ClassVar[bool] = False
     _cancel_name: ClassVar[str] = NeonEvmIxCode.CancelWithHash.name
 
     def __init__(self, *args, **kwargs) -> None:
@@ -322,7 +323,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         cu_limit = self._ctx.cb_prog.DefCuLimit
         cu_price = self._ctx.cb_prog.MaxCuLimit // cu_limit * self._cu_price
         cfg = SolTxCfg(
-            name="CancelWithHash",
+            name=self._cancel_name,
             cu_limit=cu_limit,
             cu_price=cu_price,
         )
