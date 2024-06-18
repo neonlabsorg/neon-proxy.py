@@ -68,7 +68,7 @@ class NeonTxExecutor(ExecutorComponent):
         SimpleHolderTxSolanaCallStrategy,
         #     + alt + holder
         AltSimpleHolderTxSolanaCallStrategy,
-        # multi-iteration
+        # multi-iteration with Solana call
         #     + holder
         HolderTxSolanaCallStrategy,
         #     + alt + holder
