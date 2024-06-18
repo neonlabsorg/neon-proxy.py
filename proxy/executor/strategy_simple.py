@@ -8,7 +8,7 @@ from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from .errors import WrongStrategyError
-from .strategy_base import BaseTxStrategy
+from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
 from ..base.ex_api import ExecTxRespCode
@@ -78,8 +78,8 @@ class SimpleTxStrategy(BaseTxStrategy):
         tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
         return await self._send_tx_list(tx_list)
 
-    def _build_tx(self, **kwargs) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix())
+    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
+        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), cfg)
 
     async def _validate(self) -> bool:
         return (

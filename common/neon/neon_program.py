@@ -108,15 +108,15 @@ class NeonProg:
         assert self._treasury_pool_cnt is not None, "NeonIxBuilder should be initialized: NeonIxBuilder.init_prog"
 
         self._payer = payer
-        self._token_sol_address = SolPubKey.default()
-        self._holder_address = SolPubKey.default()
+        self._token_sol_addr = SolPubKey.default()
+        self._holder_addr = SolPubKey.default()
         self._acct_meta_list: list[SolAccountMeta] = list()
         self._ro_addr_set: set[SolPubKey] = set()
         self._eth_rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
-        self._sender_sol_address = SolPubKey.default()
+        self._sender_sol_addr = SolPubKey.default()
         self._treasury_pool_index_buf = bytes()
-        self._treasury_pool_account = SolPubKey.default()
+        self._treasury_pool_addr = SolPubKey.default()
 
     @classmethod
     def init_prog(cls, treasury_pool_cnt: int, treasury_pool_seed: bytes, evm_version: str) -> None:
@@ -147,11 +147,11 @@ class NeonProg:
             raise EthError(f"Neon-Proxy {NEON_PROXY_VER} is not compatible with Neon-EVM v{cls._evm_version}")
 
     def init_token_address(self, token_sol_address: SolPubKey) -> Self:
-        self._token_sol_address = token_sol_address
+        self._token_sol_addr = token_sol_address
         return self
 
     def init_holder_address(self, holder_address: SolPubKey) -> Self:
-        self._holder_address = holder_address
+        self._holder_addr = holder_address
         return self
 
     def init_neon_tx(self, neon_tx_hash: EthTxHash, eth_rlp_tx: bytes) -> Self:
@@ -161,7 +161,7 @@ class NeonProg:
         base_index = int().from_bytes(self._neon_tx_hash.to_bytes()[:4], "little")
         treasury_pool_index = base_index % self._treasury_pool_cnt
         self._treasury_pool_index_buf = treasury_pool_index.to_bytes(4, "little")
-        self._treasury_pool_account, _ = SolPubKey.find_program_address(
+        self._treasury_pool_addr, _ = SolPubKey.find_program_address(
             seed_list=(
                 self._treasury_pool_seed,
                 self._treasury_pool_index_buf,
@@ -171,13 +171,13 @@ class NeonProg:
         return self
 
     def init_sender_sol_address(self, value: SolPubKey) -> Self:
-        self._sender_sol_address = value
+        self._sender_sol_addr = value
         return self
 
     def init_account_meta_list(self, account_meta_list: Sequence[SolAccountMeta]) -> Self:
         self._acct_meta_list = list(account_meta_list)
-        self._get_readable_acct_meta_list.reset_cache(self)
-        self._get_writable_acct_meta_list.reset_cache(self)
+        self._get_ro_acct_meta_list.reset_cache(self)
+        self._get_rw_acct_meta_list.reset_cache(self)
         self._ro_addr_set.clear()
         return self
 
@@ -193,11 +193,11 @@ class NeonProg:
     def make_delete_holder_ix(self) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("deleteHolderIx %s with the refund to the account %s", self._holder_address, self._payer)
+        _LOG.debug("deleteHolderIx %s with the refund to the account %s", self._holder_addr, self._payer)
         ix_data = NeonEvmIxCode.HolderDelete.value.to_bytes(1, byteorder="little")
         return SolTxIx(
             accounts=(
-                SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
+                SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             ),
             program_id=self.ID,
@@ -207,7 +207,7 @@ class NeonProg:
     def make_create_holder_ix(self, seed: str) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("createHolderIx %s by the payer account %s", self._holder_address, self._payer)
+        _LOG.debug("createHolderIx %s by the payer account %s", self._holder_addr, self._payer)
 
         seed = bytes(seed, "utf-8")
         ix_data_list = (
@@ -217,7 +217,7 @@ class NeonProg:
         )
         return SolTxIx(
             accounts=(
-                SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
+                SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             ),
             program_id=self.ID,
@@ -259,7 +259,7 @@ class NeonProg:
     def make_create_operator_balance_ix(self, neon_account: NeonAccount) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("Create operator token account: %s, solana address: %s", neon_account, self._token_sol_address)
+        _LOG.debug("Create operator token account: %s, solana address: %s", neon_account, self._token_sol_addr)
 
         ix_data_list = (
             NeonEvmIxCode.CreateOperatorBalance.value.to_bytes(1, byteorder="little"),
@@ -273,12 +273,12 @@ class NeonProg:
             accounts=(
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
                 SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
-                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+                SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
             ),
         )
 
     def make_delete_operator_balance_ix(self) -> SolTxIx:
-        _LOG.debug("Delete operator token account, solana address: %s", self._token_sol_address)
+        _LOG.debug("Delete operator token account, solana address: %s", self._token_sol_addr)
 
         ix_data = NeonEvmIxCode.DeleteOperatorBalance.value.to_bytes(1, byteorder="little")
 
@@ -287,12 +287,12 @@ class NeonProg:
             data=ix_data,
             accounts=(
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+                SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
             ),
         )
 
     def make_withdraw_operator_balance_ix(self, neon_token_address: SolPubKey) -> SolTxIx:
-        _LOG.debug("Withdraw from operator balance %s to neon balance %s", self._token_sol_address, neon_token_address)
+        _LOG.debug("Withdraw from operator balance %s to neon balance %s", self._token_sol_addr, neon_token_address)
 
         ix_data = NeonEvmIxCode.WithdrawOperatorBalance.value.to_bytes(1, byteorder="little")
 
@@ -302,7 +302,7 @@ class NeonProg:
             accounts=(
                 SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-                SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+                SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=neon_token_address, is_signer=False, is_writable=True),
             ),
         )
@@ -320,7 +320,7 @@ class NeonProg:
             program_id=self.ID,
             data=bytes().join(ix_data_list),
             accounts=(
-                SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
+                SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
                 SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=False),
             ),
         )
@@ -363,10 +363,10 @@ class NeonProg:
         )
 
         acct_meta_list = [
-            SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
-        ] + self._acct_meta_list
+            SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
+        ] + self._ro_acct_meta_list
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 
@@ -382,8 +382,8 @@ class NeonProg:
         )
         acct_meta_list = [
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self._treasury_pool_account, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
         ] + self._acct_meta_list
 
@@ -409,48 +409,48 @@ class NeonProg:
             ix_data += data
 
         if mode == NeonIxMode.Readable:
-            return self._make_holder_ix(ix_data, self._readable_acct_meta_list)
+            return self._make_holder_ix(ix_data, self._ro_acct_meta_list)
         elif mode == NeonIxMode.Writable:
             return self._make_holder_ix(ix_data, self._acct_meta_list)
 
-        return self._make_holder_ix(ix_data, self._writable_acct_meta_list)
+        return self._make_holder_ix(ix_data, self._rw_acct_meta_list)
 
     def _make_holder_ix(self, ix_data: bytes, acct_meta_list: list[SolAccountMeta]) -> SolTxIx:
         self.validate_protocol()
 
         acct_meta_list = [
-            SolAccountMeta(pubkey=self._holder_address, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self._treasury_pool_account, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=self._token_sol_address, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
         ] + acct_meta_list
 
         return SolTxIx(program_id=self.ID, data=ix_data, accounts=tuple(acct_meta_list))
 
     @property
-    def _readable_acct_meta_list(self) -> list[SolAccountMeta]:
-        return self._get_readable_acct_meta_list()
+    def _ro_acct_meta_list(self) -> list[SolAccountMeta]:
+        return self._get_ro_acct_meta_list()
 
     @reset_cached_method
-    def _get_readable_acct_meta_list(self) -> list[SolAccountMeta]:
+    def _get_ro_acct_meta_list(self) -> list[SolAccountMeta]:
         return list(
             map(
                 lambda x: SolAccountMeta(
                     x.pubkey,
                     x.is_signer,
-                    is_writable=(x.pubkey == self._sender_sol_address != self._sender_sol_address.default()),
+                    is_writable=(x.pubkey == self._sender_sol_addr != self._sender_sol_addr.default()),
                 ),
                 self._acct_meta_list,
             )
         )
 
     @property
-    def _writable_acct_meta_list(self) -> list[SolAccountMeta]:
-        return self._get_writable_acct_meta_list()
+    def _rw_acct_meta_list(self) -> list[SolAccountMeta]:
+        return self._get_rw_acct_meta_list()
 
     @reset_cached_method
-    def _get_writable_acct_meta_list(self) -> list[SolAccountMeta]:
+    def _get_rw_acct_meta_list(self) -> list[SolAccountMeta]:
         return list(
             map(
                 lambda x: SolAccountMeta(
