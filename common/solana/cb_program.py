@@ -16,6 +16,7 @@ class SolCuIxCode(IntEnum):
 class SolCbProg:
     ID: Final[SolPubKey] = SolPubKey.from_raw(_cb.ID)
     MaxCuLimit: Final[int] = 1_400_000
+    DefCuLimit: Final[int] = 200_000
     MaxHeapSize: Final[int] = 256 * 1024
 
     @classmethod

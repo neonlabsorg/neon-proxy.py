@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import logging
+from dataclasses import dataclass
 from typing import Sequence, Final, ClassVar
 
 from common.neon.neon_program import NeonIxMode, NeonProg
@@ -42,6 +43,21 @@ class BaseTxPrepStage(abc.ABC):
     @abc.abstractmethod
     async def update_after_emulate(self) -> None:
         pass
+
+
+@dataclass(frozen=True)
+class SolTxCfg:
+    name: str = ""
+    evm_step_cnt: int = 0
+    ix_mode: NeonIxMode = NeonIxMode.Default
+
+    cu_price: int = 0
+    cu_limit: int = 0
+    heap_size: int = 0
+
+    @classmethod
+    def default(cls) -> SolTxCfg:
+        return SolTxCfg()
 
 
 class BaseTxStrategy(abc.ABC):
@@ -209,20 +225,19 @@ class BaseTxStrategy(abc.ABC):
         tx_list_sender = self._ctx.sol_tx_list_sender
         self._ctx.add_sol_tx_list([tx_state.tx for tx_state in tx_list_sender.tx_state_list])
 
-    def _build_cu_tx(self, ix: SolTxIx, name: str = "") -> SolLegacyTx:
+    def _build_cu_tx(self, ix: SolTxIx, cfg: SolTxCfg) -> SolLegacyTx:
         cb_prog = self._ctx.cb_prog
-        cu_limit = self._cu_limit
-        cu_price = self._cu_price
 
-        ix_list = [
-            cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize),
-            cb_prog.make_cu_limit_ix(cu_limit),
-        ]
-        if cu_price:
+        ix_list: list[SolTxIx] = list()
+
+        if cu_price := cfg.cu_price or self._cu_price:
             ix_list.append(cb_prog.make_cu_price_ix(cu_price))
+        ix_list.append(cb_prog.make_heap_size_ix(cfg.heap_size or cb_prog.MaxHeapSize))
+        ix_list.append(cb_prog.make_cu_limit_ix(cfg.cu_limit or self._cu_limit))
+
         ix_list.append(ix)
 
-        return SolLegacyTx(name=name or self.name, ix_list=ix_list)
+        return SolLegacyTx(name=cfg.name or self.name, ix_list=ix_list)
 
     async def _emulate_tx_list(self, tx_list: Sequence[SolTx], *, mult_factor: int = 0) -> tuple[EmulSolTxInfo, ...]:
         blockhash = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Confirmed)
@@ -249,7 +264,7 @@ class BaseTxStrategy(abc.ABC):
         return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @abc.abstractmethod
-    def _build_tx(self, *, mode: NeonIxMode = NeonIxMode.Default, evm_step_cnt: int = 0) -> SolLegacyTx:
+    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
         pass
 
     @abc.abstractmethod
