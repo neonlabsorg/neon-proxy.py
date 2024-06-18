@@ -397,6 +397,7 @@ class SolTxListSender:
             # no exception: neon account exists - the goal is reached
             return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)
         elif tx_error_parser.check_if_invalid_ix_data():
+            _LOG.debug("invalid ix receipt %s: %s", tx, tx_receipt)
             return self._DecodeResult(status.InvalidIxDataError, None)
         elif tx_error_parser.check_if_cb_exceeded():
             return self._DecodeResult(status.CbExceededError, SolCbExceededError())
