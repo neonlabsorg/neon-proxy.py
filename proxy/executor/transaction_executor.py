@@ -207,6 +207,7 @@ class NeonTxExecutor(ExecutorComponent):
                 SolCbExceededCriticalError,
                 SolOutOfMemoryError,
                 SolUnknownReceiptError,
+                SolNoMoreRetriesError,
             ) as exc:
                 ctx.mark_skip_simple_strategy()
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
