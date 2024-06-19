@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from common.config.config import Config
 from common.ethereum.errors import EthError
-from common.ethereum.hash import EthTxHash
+from common.ethereum.hash import EthTxHash, EthAddress
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel
@@ -46,6 +46,7 @@ class NeonExecTxCtx:
         self._op_client = op_client
 
         self._tx_request = tx_request
+        self._tx_sender = EthAddress.default()
         self._token_sol_addr = tx_request.resource.token_sol_address
 
         self._chain_id: int = tx_request.tx.chain_id if isinstance(tx_request, ExecTxRequest) else None
@@ -179,6 +180,8 @@ class NeonExecTxCtx:
         assert self.is_stuck_tx
         assert holder.neon_tx_hash == self.neon_tx_hash
 
+        self._tx_sender = holder.sender
+
         # !don't! sort accounts, use order from the holder
         acct_meta_list = tuple(
             map(lambda x: SolAccountMeta(x, is_signer=False, is_writable=True), holder.account_key_list)
@@ -303,7 +306,8 @@ class NeonExecTxCtx:
 
     @cached_property
     def sender(self) -> NeonAccount:
-        assert not self.is_stuck_tx
+        if self.is_stuck_tx:
+            return NeonAccount.from_raw(self._tx_sender, self.chain_id)
         return NeonAccount.from_raw(self._tx_request.tx.sender, self.chain_id)
 
     def next_uniq_idx(self) -> int:
