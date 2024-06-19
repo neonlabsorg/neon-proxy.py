@@ -325,8 +325,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         return self._build_cu_tx(prog.make_tx_step_from_data_ix(cfg.ix_mode, step_cnt, uniq_idx), cfg)
 
     def _build_cancel_tx(self) -> SolLegacyTx:
-        cu_limit = self._ctx.cb_prog.DefCuLimit
-        cu_price = self._ctx.cb_prog.MaxCuLimit // cu_limit * self._cu_price
+        cu_limit = self._cu_limit // 2
+        cu_price = self._cu_price * 2
         cfg = SolTxCfg(
             name=self._cancel_name,
             cu_limit=cu_limit,
