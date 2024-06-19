@@ -176,11 +176,12 @@ class NeonExecTxCtx:
     def emulator_slot(self) -> int:
         return self._emulator_slot
 
+    def set_tx_address(self, sender: EthAddress) -> None:
+        self._tx_sender = sender
+
     def set_holder_account(self, holder: HolderAccountModel) -> None:
         assert self.is_stuck_tx
         assert holder.neon_tx_hash == self.neon_tx_hash
-
-        self._tx_sender = holder.sender
 
         # !don't! sort accounts, use order from the holder
         acct_meta_list = tuple(
