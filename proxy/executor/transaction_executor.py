@@ -134,6 +134,7 @@ class NeonTxExecutor(ExecutorComponent):
         token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
         ctx.set_holder_account(holder)
+        await self._get_state_tx_cnt(ctx)
         await self._init_ro_acct_list(ctx)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
