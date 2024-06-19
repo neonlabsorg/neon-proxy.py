@@ -71,7 +71,7 @@ class SolV0Tx(SolTx):
 
     def _sign(self, signer: SolSigner) -> None:
         legacy_msg = self._solders_legacy_tx.message
-        alt_filter = SolAltListFilter(legacy_msg)
+        alt_filter = SolAltListFilter(legacy_msg, tuple())
 
         rw_key_set = alt_filter.rw_account_key_set
         ro_key_set = alt_filter.ro_account_key_set

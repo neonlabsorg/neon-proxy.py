@@ -1,3 +1,5 @@
+from typing import Sequence
+
 from .alt_program import SolAltProg
 from .errors import SolAltError
 from .pubkey import SolPubKey
@@ -6,8 +8,9 @@ from ..utils.cached import cached_property
 
 
 class SolAltListFilter:
-    def __init__(self, legacy_msg: SolLegacyMsg) -> None:
+    def __init__(self, legacy_msg: SolLegacyMsg, ignore_key_list: Sequence[SolPubKey]) -> None:
         self._msg = legacy_msg
+        self._ignore_key_set = set(ignore_key_list)
         self._validate_legacy_msg()
 
     @cached_property
@@ -58,7 +61,9 @@ class SolAltListFilter:
             raise SolAltError("Zero number of static transaction accounts")
         elif len(tx_acct_key_set) != len(required_key_set) + len(self._prog_id_set):
             raise SolAltError("Transaction uses signature from a program?")
-        elif len(tx_acct_key_set) > SolAltProg.MaxTxAccountCnt:
+
+        tx_acct_key_set = tx_acct_key_set.union(self._ignore_key_set)
+        if len(tx_acct_key_set) > SolAltProg.MaxTxAccountCnt:
             raise SolAltError(
                 f"Too big number of transactions account keys: {len(tx_acct_key_set)} > {SolAltProg.MaxTxAccountCnt}"
             )

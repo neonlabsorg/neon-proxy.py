@@ -64,16 +64,26 @@ class SolAltTxBuilder:
     def tx_name_list(self) -> tuple[str, ...]:
         return tuple([self._create_name, self._extend_name])
 
-    async def build_alt_info(self, legacy_tx: SolLegacyTx) -> SolAltInfo:
+    async def build_alt_info(self, legacy_tx: SolLegacyTx, ignore_key_list: Sequence[SolPubKey]) -> SolAltInfo:
         recent_slot = await self._get_recent_slot()
-        return self._build_alt_info(legacy_tx, recent_slot)
+        return self._build_alt_info(legacy_tx, recent_slot, ignore_key_list)
 
-    def build_fake_alt_info(self, legacy_tx: SolLegacyTx, recent_slot=10) -> SolAltInfo:
-        return self._build_alt_info(legacy_tx, recent_slot)
+    def build_fake_alt_info(
+        self,
+        legacy_tx: SolLegacyTx,
+        ignore_key_list: Sequence[SolPubKey],
+        recent_slot=10,
+    ) -> SolAltInfo:
+        return self._build_alt_info(legacy_tx, recent_slot, ignore_key_list)
 
-    def _build_alt_info(self, legacy_tx: SolLegacyTx, recent_slot: int) -> SolAltInfo:
+    def _build_alt_info(
+        self,
+        legacy_tx: SolLegacyTx,
+        recent_slot: int,
+        ignore_key_list: Sequence[SolPubKey],
+    ) -> SolAltInfo:
         alt_ident = self._alt_prog.derive_alt_address(recent_slot)
-        alt_info = SolAltInfo.from_legacy_tx(alt_ident, legacy_tx)
+        alt_info = SolAltInfo.from_legacy_tx(alt_ident, legacy_tx, ignore_key_list)
         return alt_info
 
     def build_alt_tx_set(self, alt_info: SolAltInfo) -> SolAltTxSet:

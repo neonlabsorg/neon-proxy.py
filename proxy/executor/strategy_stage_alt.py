@@ -35,7 +35,7 @@ class AltTxPrepStage(BaseTxPrepStage):
     async def build_tx_list(self) -> list[list[SolTx]]:
         self._last_alt_info = None
         self._alt_info_dict.clear()
-        actual_alt_info = await self._alt_builder.build_alt_info(self._legacy_tx)
+        actual_alt_info = await self._alt_builder.build_alt_info(self._legacy_tx, self._ctx.ro_address_list)
 
         alt_info_list = await self._filter_alt_info_list(actual_alt_info)
         if self._alt_info_dict and self._tx_has_valid_size(self._legacy_tx):
@@ -62,7 +62,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         return SolV0Tx(name=legacy_tx.name, ix_list=legacy_tx.ix_list, alt_info_list=alt_info_list)
 
     def validate_v0_tx_size(self, legacy_tx: SolLegacyTx) -> bool:
-        test_alt_info = self._alt_builder.build_fake_alt_info(legacy_tx)  # <- SolAltError
+        test_alt_info = self._alt_builder.build_fake_alt_info(legacy_tx, self._ctx.ro_address_list)  # <- SolAltError
         self.build_tx(legacy_tx, [test_alt_info]).validate(SolSigner.fake())  # <- SolTxSize?
         return True
 

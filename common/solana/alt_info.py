@@ -28,11 +28,11 @@ class SolAltInfo:
         self._is_exist = False
 
     @classmethod
-    def from_legacy_tx(cls, ident: SolAltID, legacy_tx: SolLegacyTx) -> Self:
+    def from_legacy_tx(cls, ident: SolAltID, legacy_tx: SolLegacyTx, ignore_key_list: Sequence[SolPubKey]) -> Self:
         self = cls(ident)
 
         legacy_msg = legacy_tx.message
-        alt_filter = SolAltListFilter(legacy_msg)
+        alt_filter = SolAltListFilter(legacy_msg, ignore_key_list)
 
         self._acct_key_list = list(alt_filter.alt_account_key_set)
         self._new_acct_key_set = set(self._acct_key_list)
