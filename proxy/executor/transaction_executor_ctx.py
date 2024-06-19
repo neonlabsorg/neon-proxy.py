@@ -57,6 +57,7 @@ class NeonExecTxCtx:
         self._has_completed_receipt = False
 
         self._sender_sol_address: SolPubKey = SolPubKey.default()
+        self._ro_addr_list: tuple[SolPubKey] = tuple()
         self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
         self._emulator_resp: EmulNeonCallResp | None = None
         self._emulator_slot = 0
@@ -160,8 +161,13 @@ class NeonExecTxCtx:
         self._calc_wrap_iter_cnt.reset_cache(self)
         self._calc_resize_iter_cnt.reset_cache(self)
 
+    @property
+    def ro_address_list(self) -> tuple[SolPubKey, ...]:
+        return self._ro_addr_list
+
     def set_ro_address_list(self, addr_list: Sequence[SolPubKey]) -> None:
         _LOG.debug("readonly accounts %s: %s", len(addr_list), addr_list)
+        self._ro_addr_list = tuple(addr_list)
         self._neon_prog.init_ro_address_list(addr_list)
         self._test_neon_prog.init_ro_address_list(addr_list)
 
