@@ -425,7 +425,9 @@ class HolderAccountModel(BaseModel):
     size: int = Field(default=0, validation_alias="len")
     owner: SolPubKeyField = Field(default=SolPubKey.default())
 
+    sender: EthAddressField = Field(default=EthAddress.default(), validation_alias="origin")
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
+
     chain_id: int = Field(default=0)
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
