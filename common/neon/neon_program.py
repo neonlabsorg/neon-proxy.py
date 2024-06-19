@@ -171,6 +171,7 @@ class NeonProg:
         return self
 
     def init_sender_sol_address(self, value: SolPubKey) -> Self:
+        _LOG.debug("set sender solana address %s", value)
         self._sender_sol_addr = value
         return self
 
@@ -378,7 +379,14 @@ class NeonProg:
             SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
-        ] + self._ro_acct_meta_list
+        ]
+
+        if self._sender_sol_addr.is_empty:
+            _LOG.debug("Cancel uses normal address list")
+            acct_meta_list.extend(self._acct_meta_list)
+        else:
+            _LOG.debug("Cancel uses readonly address list")
+            acct_meta_list.extend(self._ro_acct_meta_list)
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 
