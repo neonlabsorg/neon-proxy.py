@@ -181,6 +181,18 @@ class NeonProg:
 
     def init_ro_address_list(self, address_list: Sequence[SolPubKey]) -> Self:
         self._ro_addr_set = set(address_list)
+
+        self._get_ro_acct_meta_list.reset_cache(self)
+        self._get_rw_acct_meta_list.reset_cache(self)
+
+        for idx, acct in enumerate(self._acct_meta_list):
+            if acct.pubkey in self._ro_addr_set:
+                self._acct_meta_list[idx] = SolAccountMeta(
+                    acct.pubkey,
+                    acct.is_signer,
+                    is_writable=False,
+                )
+
         return self
 
     @property
