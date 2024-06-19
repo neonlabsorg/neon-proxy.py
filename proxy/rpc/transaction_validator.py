@@ -33,8 +33,7 @@ class NpTxValidator(NeonProxyComponent):
 
         return neon_acct
 
-    def _get_chain_id(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel) -> int:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = ctx.chain_id
         tx_chain_id = neon_tx.chain_id
         if not tx_chain_id:
             if not self.is_default_chain_id(ctx):

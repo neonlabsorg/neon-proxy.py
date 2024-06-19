@@ -52,7 +52,7 @@ class _BaseHash:
     @classmethod
     def from_not_none(cls, raw: _RawHash) -> Self:
         if raw is None:
-            raise ValueError(f"Wrong input: null")
+            raise ValueError("Wrong input: null")
         return cls.from_raw(raw)
 
     @property

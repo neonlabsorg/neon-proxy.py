@@ -3,12 +3,14 @@ from __future__ import annotations
 import random
 from typing import Final, Annotated, Union
 
+import eth_account
 import eth_keys
 import eth_utils
 from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
 from typing_extensions import Self
 
+from ..ethereum.transaction import EthTx
 from ..ethereum.hash import EthAddress
 from ..utils.cached import cached_method, cached_property
 from ..utils.format import bytes_to_hex, hex_to_bytes, hex_to_int
@@ -144,6 +146,15 @@ class NeonAccount:
     def private_key(self) -> eth_keys.keys.PrivateKey:
         assert self._private_key
         return self._private_key
+
+    def sign_msg(self, data: bytes) -> eth_keys.keys.Signature:
+        return self.private_key.sign_msg(data)
+
+    def sign_transaction(self, tx: EthTx, chain_id: int) -> str:
+        tx = tx.to_dict()
+        tx["chainId"] = chain_id
+        signed_tx = eth_account.Account.sign_transaction(tx, self.private_key)
+        return signed_tx.raw_transaction.to_0x_hex()
 
     def __str__(self) -> str:
         return self.to_string()

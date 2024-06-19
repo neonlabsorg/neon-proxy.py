@@ -104,7 +104,7 @@ class NpCallApi(NeonProxyApi):
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
         object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
     ) -> EthBinStrField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = ctx.chain_id
         if call.chainId and call.chainId != chain_id:
             raise EthWrongChainIdError()
 
@@ -126,7 +126,7 @@ class NpCallApi(NeonProxyApi):
         call: RpcCallRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = ctx.chain_id
         if call.chainId and call.chainId != chain_id:
             raise EthWrongChainIdError()
 
@@ -141,7 +141,7 @@ class NpCallApi(NeonProxyApi):
         neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = ctx.chain_id
         if call.chainId and call.chainId != chain_id:
             raise EthWrongChainIdError()
 
@@ -158,14 +158,13 @@ class NpCallApi(NeonProxyApi):
     ) -> _RpcEmulatorResp:
         """Executes emulator with given transaction"""
         evm_cfg = await self.get_evm_cfg()
-        chain_id = self.get_chain_id(ctx)
         block = await self.get_block_by_tag(block_tag)
 
         neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes())
 
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            EmulNeonCallModel.from_neon_tx(neon_tx, chain_id),
+            EmulNeonCallModel.from_neon_tx(neon_tx, ctx.chain_id),
             check_result=False,
             sol_account_dict=neon_call.sol_account_dict,
             block=block,

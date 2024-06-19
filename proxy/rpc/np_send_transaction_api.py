@@ -40,9 +40,10 @@ class NpExecTxApi(NeonProxyApi):
                 return neon_tx.neon_tx_hash
 
             try:
-                ctx_id = self.get_ctx_id(ctx)
                 acct = await self._tx_validator.validate(ctx, neon_tx)
-                resp = await self._mp_client.send_raw_transaction(ctx_id, eth_tx_rlp, acct.chain_id, acct.state_tx_cnt)
+                resp = await self._mp_client.send_raw_transaction(
+                    ctx.ctx_id, eth_tx_rlp, acct.chain_id, acct.state_tx_cnt
+                )
 
                 if resp.code in (MpTxRespCode.Success, MpTxRespCode.AlreadyKnown):
                     return neon_tx.neon_tx_hash

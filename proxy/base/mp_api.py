@@ -221,5 +221,5 @@ class MpGetTxResp(BaseModel):
 
 
 class MpTxPoolContentResp(BaseModel):
-    pending_list: tuple[NeonTxModel, ...]
-    queued_list: tuple[NeonTxModel, ...]
+    pending_list: list[NeonTxModel]
+    queued_list: list[NeonTxModel]

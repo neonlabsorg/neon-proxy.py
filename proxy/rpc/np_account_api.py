@@ -55,12 +55,11 @@ class NpAccountApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
     ) -> HexUIntField:
         block = await self.get_block_by_tag(block_tag)
-        chain_id = self.get_chain_id(ctx)
-        acct = NeonAccount.from_raw(address, chain_id)
+        acct = NeonAccount.from_raw(address, ctx.chain_id)
 
         mp_tx_nonce: int | None = None
         if block.commit == EthCommit.Pending:
-            mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(self.get_ctx_id(ctx), acct)
+            mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(ctx.ctx_id, acct)
             _LOG.debug("pending tx count for %s is %s", acct, mp_tx_nonce)
 
         tx_cnt = await self._core_api_client.get_state_tx_cnt(acct, block)
@@ -73,7 +72,7 @@ class NpAccountApi(NeonProxyApi):
         address: EthNotNoneAddressField,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = ctx.chain_id
         block = await self.get_block_by_tag(block_tag)
         acct = await self._core_api_client.get_neon_account(NeonAccount.from_raw(address, chain_id), block)
 
@@ -92,8 +91,7 @@ class NpAccountApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
     ) -> EthBinStrField:
         block = await self.get_block_by_tag(block_tag)
-        chain_id = self.get_chain_id(ctx)
-        neon_acct = NeonAccount.from_raw(address, chain_id)
+        neon_acct = NeonAccount.from_raw(address, ctx.chain_id)
         resp = await self._core_api_client.get_neon_contract(neon_acct, block)
         return resp.code
 
@@ -115,8 +113,7 @@ class NpAccountApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
     ) -> _NeonRpcAccountResp:
         block = await self.get_block_by_tag(block_tag)
-        chain_id = self.get_chain_id(ctx)
-        acct = NeonAccount.from_raw(address, chain_id)
+        acct = NeonAccount.from_raw(address, ctx.chain_id)
 
         resp = await self._core_api_client.get_neon_account(acct, block)
         return _NeonRpcAccountResp.from_raw(resp)

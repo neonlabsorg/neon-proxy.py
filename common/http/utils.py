@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import inspect
 import re
 import time
@@ -65,6 +66,23 @@ class HttpRequestCtx:
             self.set_property_value(prop_name, getattr(ctx, prop_name))
 
         return self
+
+    @cached_property
+    def ctx_id(self) -> str:
+        if ctx_id := getattr(self, "_ctx_id", None):
+            return ctx_id
+
+        size = len(self.request.body)
+        raw_value = f"{self.ip_addr}:{size}:{self.start_time_nsec}"
+        ctx_id = hashlib.md5(bytes(raw_value, "utf-8")).hexdigest()[:8]
+        self.set_property_value("_ctx_id", ctx_id)
+        return ctx_id
+
+    @cached_property
+    def chain_id(self) -> int:
+        chain_id = getattr(self, "_chain_id", None)
+        assert chain_id is not None
+        return chain_id
 
     @cached_property
     def body(self) -> str:
@@ -173,7 +191,7 @@ def http_validate_method_name(name: str) -> None:
 def _validate_request_id(value: HttpRequestId) -> HttpRequestId:
     if (value is None) or isinstance(value, int) or isinstance(value, str):
         return value
-    raise ValueError(f"'id' must be a string or integer")
+    raise ValueError("'id' must be a string or integer")
 
 
 HttpRequestIdField = Annotated[HttpRequestId, PlainValidator(_validate_request_id)]

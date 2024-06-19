@@ -103,7 +103,7 @@ class MpTxExecutor(MempoolComponent):
             cont = tx_schedule.get_content()
             pending_list.extend(cont.pending_list)
             queued_list.extend(cont.queued_list)
-        return MpTxPoolContentResp(pending_list=tuple(pending_list), queued_list=tuple(queued_list))
+        return MpTxPoolContentResp(pending_list=pending_list, queued_list=queued_list)
 
     async def _update_tx_order(self, tx: MpTxModel) -> MpTxResp | None:
         if not tx.neon_tx.has_chain_id:

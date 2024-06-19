@@ -569,7 +569,7 @@ class MpTxSchedule:
             pending_list.extend(tx_list[:pending_stop_pos])
             queued_list.extend(tx_list[pending_stop_pos:])
 
-        return MpTxPoolContentResp(pending_list=tuple(pending_list), queued_list=tuple(queued_list))
+        return MpTxPoolContentResp(pending_list=pending_list, queued_list=queued_list)
 
     # protected:
 

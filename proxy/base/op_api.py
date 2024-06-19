@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing_extensions import Self, ClassVar
 
+from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthAddressField, EthAddress
+from common.ethereum.transaction import EthTxField
 from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.solana.transaction_model import SolTxModel
 from common.utils.cached import cached_method
@@ -77,6 +79,29 @@ class OpTokenSolAddressModel(BaseModel):
     owner: SolPubKeyField
     eth_address: EthAddressField
     token_sol_address: SolPubKeyField
+
+
+class OpSignEthMessageRequest(BaseModel):
+    ctx_id: str
+    eth_address: EthAddressField
+    data: EthBinStrField
+
+
+class OpSignEthMessageResp(BaseModel):
+    signed_message: str | None = None
+    error: str | None = None
+
+
+class OpSignEthTxRequest(BaseModel):
+    ctx_id: str
+    tx: EthTxField
+    eth_address: EthAddressField
+    chain_id: int
+
+
+class OpSignEthTxResp(BaseModel):
+    signed_tx: str | None = None
+    error: str | None = None
 
 
 class OpSignSolTxListRequest(BaseModel):

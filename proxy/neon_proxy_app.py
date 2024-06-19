@@ -18,6 +18,7 @@ from .base.op_client import OpResourceClient
 from .executor.server import ExecutorServer
 from .mempool.server import MempoolServer
 from .operator_resource.server import OpResourceServer
+from .private_rpc.server import PrivateRpcServer
 from .rpc.server import NeonProxy
 from .stat.client import StatClient
 from .stat.server import StatServer
@@ -29,11 +30,10 @@ class NeonProxyApp:
     def __init__(self):
         Logger.setup()
         cfg = Config()
+        self._msg_filter = LogMsgFilter(cfg)
         _LOG.info("running NeonProxy %s with the cfg: %s", NEON_PROXY_VER, cfg.to_string())
 
         self._recv_sig_num = signal.SIG_DFL
-
-        self._msg_filter = LogMsgFilter(cfg)
 
         # Init Solana client
         sol_client = SolClient(cfg)
@@ -85,6 +85,18 @@ class NeonProxyApp:
         # Init Prometheus stat
         self._stat_server = StatServer(cfg=cfg)
 
+        # Init private RPC API
+        self._enable_private_rpc_server = cfg.enable_private_api
+
+        if self._enable_private_rpc_server:
+            self._private_rpc_server = PrivateRpcServer(
+                cfg=cfg,
+                core_api_client=core_api_client,
+                mp_client=mp_client,
+                op_client=op_client,
+                stat_client=stat_client,
+            )
+
         # Init external RPC API
         self._proxy_server = NeonProxy(
             cfg=cfg,
@@ -105,9 +117,15 @@ class NeonProxyApp:
             self._stat_server.start()
             self._proxy_server.start()
 
+            if self._enable_private_rpc_server:
+                self._private_rpc_server.start()
+
             self._register_term_signal_handler()
             while self._recv_sig_num == signal.SIG_DFL:
                 time.sleep(1)
+
+            if self._enable_private_rpc_server:
+                self._private_rpc_server.stop()
 
             self._proxy_server.stop()
             self._stat_server.stop()

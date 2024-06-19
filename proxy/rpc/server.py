@@ -1,7 +1,3 @@
-from __future__ import annotations
-
-import logging
-
 from .gas_limit_calculator import NpGasLimitCalculator
 from .np_account_api import NpAccountApi
 from .np_block_transaction_api import NpBlockTxApi
@@ -13,8 +9,6 @@ from .np_transaction_logs_api import NpTxLogsApi
 from .np_version_api import NpVersionApi
 from .server_abc import NeonProxyAbc
 from .transaction_validator import NpTxValidator
-
-_LOG = logging.getLogger(__name__)
 
 
 class NeonProxy(NeonProxyAbc):
@@ -37,5 +31,3 @@ class NeonProxy(NeonProxyAbc):
 
         if self._cfg.enable_send_tx_api:
             self._add_api(NpExecTxApi(self))
-
-

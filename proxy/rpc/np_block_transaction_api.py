@@ -447,7 +447,7 @@ class NpBlockTxApi(NeonProxyApi):
     async def get_tx_by_hash(self, ctx: HttpRequestCtx, transaction_hash: EthTxHashField) -> _RpcTxResp | None:
         tx_hash = transaction_hash
         if not (meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
-            if not (meta := await self._mp_client.get_tx_by_hash(self.get_ctx_id(ctx), tx_hash)):
+            if not (meta := await self._mp_client.get_tx_by_hash(ctx.ctx_id, tx_hash)):
                 return None
         return _RpcTxResp.from_raw(meta)
 
@@ -458,10 +458,10 @@ class NpBlockTxApi(NeonProxyApi):
         sender: EthNotNoneAddressField,
         nonce: HexUIntField,
     ) -> _RpcTxResp | None:
-        neon_acct = NeonAccount.from_raw(sender, self.get_chain_id(ctx))
+        neon_acct = NeonAccount.from_raw(sender, ctx.chain_id)
         inc_no_chain_id = True if self.is_default_chain_id(ctx) else False
         if not (meta := await self._db.get_tx_by_sender_nonce(neon_acct, nonce, inc_no_chain_id)):
-            if not (meta := await self._mp_client.get_tx_by_sender_nonce(self.get_ctx_id(ctx), neon_acct, nonce)):
+            if not (meta := await self._mp_client.get_tx_by_sender_nonce(ctx.ctx_id, neon_acct, nonce)):
                 return None
         return _RpcTxResp.from_raw(meta)
 
