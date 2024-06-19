@@ -34,7 +34,9 @@ class IterativeTxStrategy(BaseTxStrategy):
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(NewAccountTxPrepStage(*args, **kwargs))
         self._completed_evm_step_cnt = 0
-        self._ix_mode: NeonIxMode | None = None
+        self._base_ix_mode: NeonIxMode | None = None
+        self._base_cu_price = 0
+        self._base_cu_limit = 0
 
     @property
     def _cu_price(self) -> int:
@@ -82,7 +84,6 @@ class IterativeTxStrategy(BaseTxStrategy):
         if not (iter_list_info := self._get_final_iter_list_info()):
             iter_list_info = await self._get_iter_list_info()
 
-        retry = 0
         while True:
             try:
                 if iter_list_info.tx_list:
@@ -93,30 +94,32 @@ class IterativeTxStrategy(BaseTxStrategy):
                 return await self._send_tx_list(tx_list)
 
             except SolUnknownReceiptError:
-                if self._ix_mode is None:
+                if self._base_ix_mode is None:
                     _LOG.warning("unexpected error on iterative transaction, try to use accounts in writable mode")
-                    self._ix_mode = NeonIxMode.Writable
+                    self._base_ix_mode = NeonIxMode.Writable
 
                     if not (iter_list_info := self._get_final_iter_list_info()):
                         iter_list_info = await self._get_iter_list_info()
 
                     continue
-                elif self._ix_mode == NeonIxMode.Writable:
+                elif self._base_ix_mode == NeonIxMode.Writable:
                     _LOG.warning("unexpected error on iterative transaction, try to use ALL accounts in writable mode")
-                    self._ix_mode = NeonIxMode.FullWritable
+                    self._base_ix_mode = NeonIxMode.FullWritable
                     iter_list_info = self._get_def_iter_list_info()
                     continue
                 else:
                     raise
 
             except SolCbExceededError:
-                if (retry == 0) and (not iter_list_info.is_default):
+                if not self._base_cu_limit:
                     _LOG.warning(
                         "error on a lack of the computational budget in iterative transactions, "
                         "try to use the default number of EVM steps"
                     )
 
-                    retry += 1
+                    self._base_cu_limit = self._cu_limit
+                    self._base_cu_price = self._cu_price
+
                     iter_list_info = self._get_def_iter_list_info()
                 else:
                     _LOG.warning(
@@ -218,8 +221,8 @@ class IterativeTxStrategy(BaseTxStrategy):
     def _get_def_iter_list_info(self) -> _IterListInfo:
         step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
         ix_mode = self._calc_ix_mode()
-        cu_limit = self._ctx.cb_prog.MaxCuLimit // 3
-        cu_price = self._cu_limit // cu_limit * self._cu_price
+        cu_limit = self._base_cu_limit or self._cu_limit // 3
+        cu_price = self._base_cu_price or self._cu_price * 3
         iter_cnt = self._calc_exec_iter_cnt() + self._calc_wrap_iter_cnt(ix_mode)
 
         _LOG.debug(
@@ -244,9 +247,11 @@ class IterativeTxStrategy(BaseTxStrategy):
         _LOG.debug("just 1 finalization iteration")
 
         iter_cnt = 1
+        cu_limit = self._base_cu_limit or self._cu_limit // 2
+        cu_price = self._base_cu_price or self._cu_price * 2
         step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
-        ix_mode = self._ix_mode or NeonIxMode.Writable
-        return self._IterListInfo(step_cnt_per_iter, iter_cnt, tuple(), ix_mode, is_default=True)
+        ix_mode = self._base_ix_mode or NeonIxMode.Writable
+        return self._IterListInfo(step_cnt_per_iter, iter_cnt, tuple(), ix_mode, cu_price, cu_limit, is_default=True)
 
     @dataclass(frozen=True)
     class _IterListInfo:
@@ -295,8 +300,8 @@ class IterativeTxStrategy(BaseTxStrategy):
     def _calc_ix_mode(self) -> NeonIxMode:
         if self._ctx.is_stuck_tx:
             return NeonIxMode.FullWritable
-        elif self._ix_mode:
-            return self._ix_mode
+        elif self._base_ix_mode:
+            return self._base_ix_mode
 
         if self._ctx.resize_iter_cnt > 0:
             _LOG.debug("NeonTx has resize iterations, force the writable mode")
