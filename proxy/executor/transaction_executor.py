@@ -133,8 +133,12 @@ class NeonTxExecutor(ExecutorComponent):
         # request the token address (based on chain-id) for receiving payments from user
         token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
+
+        if not holder.sender.is_empty:
+            ctx.set_tx_address(holder.sender)
+            await self._get_state_tx_cnt(ctx)
+
         ctx.set_holder_account(holder)
-        await self._get_state_tx_cnt(ctx)
         await self._init_ro_acct_list(ctx)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
@@ -224,7 +228,7 @@ class NeonTxExecutor(ExecutorComponent):
                 return await self._cancel_neon_tx(strategy)
 
     async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxRespCode | None:
-        for retry in itertools.count():
+        for retry in range(self._cfg.retry_on_fail):
             if retry > 0:
                 _LOG.debug("cancel NeonTx, attempt %s...", retry + 1)
 
