@@ -115,6 +115,8 @@ class SolAltProg:
 
 class SolAltAccountInfo:
     _max_u64: Final[int] = 2 ** 64 - 1
+    MetaSize: Final[int] = _alt.LOOKUP_TABLE_META_SIZE
+    AuthOffset: Final[int] = 22
 
     def __init__(self, address: SolPubKey, data: bytes | None) -> None:
         self._addr = address
@@ -123,18 +125,18 @@ class SolAltAccountInfo:
 
         if not data:
             return
-        elif len(data) < _alt.LOOKUP_TABLE_META_SIZE:
+        elif len(data) < self.MetaSize:
             _LOG.error("ALT %s doesn't have a meta, len %s", address, len(data))
             return
 
-        addr_list_len = len(data) - _alt.LOOKUP_TABLE_META_SIZE
+        addr_list_len = len(data) - self.MetaSize
         if addr_list_len % SolPubKey.KeySize:
             _LOG.error("ALT %s addresses list has bad length %s", address, addr_list_len)
             return
 
         # skip 4 bytes of type of lookup table
         self._meta = _alt.LookupTableMeta.from_bytes(data[4:])
-        self._addr_list_data = data[_alt.LOOKUP_TABLE_META_SIZE:]
+        self._addr_list_data = data[self.MetaSize:]
 
     @classmethod
     def from_bytes(cls, address: SolPubKey, data: bytes | None) -> Self:
