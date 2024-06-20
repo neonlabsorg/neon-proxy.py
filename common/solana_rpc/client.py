@@ -13,6 +13,7 @@ import solders.rpc.errors as _err
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
 import solders.transaction_status as _tx
+import solders.rpc.filter as _filter
 
 from .errors import SolRpcError
 from ..http.utils import HttpURL
@@ -51,6 +52,9 @@ _SoldersTxCfg = _cfg.RpcTransactionConfig
 _SoldersTxEnc = _tx.UiTransactionEncoding
 _SoldersTxDet = _tx.TransactionDetails
 
+_SoldersPrgAcctCfg = _cfg.RpcProgramAccountsConfig
+_SoldersFilterMemcmp = _filter.Memcmp
+
 _SoldersRpcReq = _req.Body
 _SoldersGetVer = _req.GetVersion
 _SoldersGetBalance = _req.GetBalance
@@ -67,6 +71,7 @@ _SoldersGetTx = _req.GetTransaction
 _SoldersGetRentBalance = _req.GetMinimumBalanceForRentExemption
 _SoldersGetHealth = _req.GetHealth
 _SoldersGetNodeList = _req.GetClusterNodes
+_SoldersGetPrgAcctList = _req.GetProgramAccounts
 
 _SoldersGetVerResp = _resp.GetVersionResp
 _SoldersGetBalanceResp = _resp.GetBalanceResp
@@ -83,6 +88,7 @@ _SoldersGetTxResp = _resp.GetTransactionResp
 _SoldersGetRentBalanceResp = _resp.GetMinimumBalanceForRentExemptionResp
 _SoldersGetHealthResp = _resp.GetHealthResp
 _SoldersGetNodeListResp = _resp.GetClusterNodesResp
+_SoldersGetPrgAcctListResp = _resp.GetProgramAccountsResp
 
 _SoldersSendTxCfg = _cfg.RpcSendTransactionConfig
 _SoldersSendTx = _req.SendRawTransaction
@@ -340,3 +346,28 @@ class SolClient(HttpClient):
         req = _SoldersGetNodeList(self._get_next_id())
         resp = await self._send_request(req, _SoldersGetNodeListResp)
         return resp.value
+
+    async def get_prg_account_list(
+        self,
+        prg_key: SolPubKey,
+        offset: int,
+        size: int,
+        filter_offset: int,
+        filter_data: bytes,
+        commit: SolCommit = SolCommit.Confirmed,
+    ) -> tuple[SolAccountModel, ...]:
+        data_slice = _SoldersDataSliceCfg(offset, size)
+        acct_cfg = _SoldersAcctInfoCfg(
+            _SoldersAcctEnc.Base64,
+            data_slice=data_slice,
+            commitment=commit.to_rpc_commit(),
+        )
+        flt = _SoldersFilterMemcmp(
+            offset=filter_offset,
+            bytes_=filter_data,
+        )
+        cfg = _SoldersPrgAcctCfg(acct_cfg, [flt])
+
+        req = _SoldersGetPrgAcctList(prg_key, cfg, self._get_next_id())
+        resp = await self._send_request(req, _SoldersGetPrgAcctListResp)
+        return tuple([SolAccountModel.from_raw(SolPubKey.from_raw(acct.pubkey), acct.account) for acct in resp.value])

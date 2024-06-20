@@ -240,7 +240,12 @@ class OpResourceMng(OpResourceComponent):
             await self._send_tx(op_signer.signer, tx)
 
     def get_signer_key_list(self) -> tuple[SolPubKey, ...]:
-        return self._get_signer_key_list()
+        key_set = set(
+            list(self._active_signer_dict.keys())
+            + list(self._deactivated_signer_dict.keys())
+            + list(self._disabled_signer_dict.keys())
+        )
+        return tuple(key_set)
 
     def _find_op_signer(self, owner: SolPubKey) -> OpSignerInfo | None:
         if not (op_signer := self._active_signer_dict.get(owner, None)):
@@ -632,12 +637,3 @@ class OpResourceMng(OpResourceComponent):
         except BaseException as exc:
             _LOG.warning("error on execute transaction", exc_info=exc, extra=self._msg_filter)
             return False
-
-    @reset_cached_method
-    def _get_signer_key_list(self) -> tuple[SolPubKey, ...]:
-        key_set = set(
-            list(self._active_signer_dict.keys())
-            + list(self._deactivated_signer_dict.keys())
-            + list(self._disabled_signer_dict.keys())
-        )
-        return tuple(key_set)
