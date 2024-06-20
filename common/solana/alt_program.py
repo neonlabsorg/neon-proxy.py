@@ -116,7 +116,7 @@ class SolAltProg:
 class SolAltAccountInfo:
     _max_u64: Final[int] = 2 ** 64 - 1
     MetaSize: Final[int] = _alt.LOOKUP_TABLE_META_SIZE
-    AuthOffset: Final[int] = 22
+    OwnerOffset: Final[int] = 22
 
     def __init__(self, address: SolPubKey, data: bytes | None) -> None:
         self._addr = address

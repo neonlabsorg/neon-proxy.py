@@ -3,7 +3,6 @@ from typing import ClassVar, Final
 from typing_extensions import Self
 
 from common.config.config import Config
-from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context
 from .cmd_handler import BaseNPCmdHandler
 from .common_alt import SolAltFunc
@@ -16,8 +15,6 @@ class OpInfoHandler(BaseNPCmdHandler, SolAltFunc):
     _list_sol: Final[str] = "list-solana-addresses"
     _list_neon: Final[str] = "list-neon-addresses"
     _list_alt: Final[str] = "list-alt-addresses"
-
-    _alt_meta_auth_offset: Final[int] = 22
 
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
@@ -66,12 +63,6 @@ class OpInfoHandler(BaseNPCmdHandler, SolAltFunc):
         req_id = self._gen_req_id()
         with logging_context(**req_id):
             sol_client = await self._get_sol_client()
-
-            if arg_space.owner == "ALL":
-                op_client = await self._get_op_client()
-                await self.print_all_alt(req_id, op_client, sol_client)
-            else:
-                owner = SolPubKey.from_raw(arg_space.owner)
-                await self.print_alt_by_owner(sol_client, owner, False)
-
+            op_client = await self._get_op_client()
+            await self.print_alt(req_id, arg_space.owner, op_client, sol_client)
             return 0
