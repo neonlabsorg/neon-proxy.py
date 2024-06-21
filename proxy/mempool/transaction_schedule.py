@@ -18,6 +18,7 @@ from common.utils.json_logger import logging_context, log_msg
 from .sender_nonce import SenderNonce
 from .sorted_queue import SortedQueue
 from ..base.mp_api import MpTxModel, MpTxRespCode, MpTxResp, MpTxPoolContentResp
+from .transaction_dict import MpTxDict
 
 _LOG = logging.getLogger(__name__)
 
@@ -25,9 +26,10 @@ _LOG = logging.getLogger(__name__)
 class _TxDict:
     _top_index = -1
 
-    def __init__(self, chain_id: int) -> None:
+    def __init__(self, chain_id: int, global_tx_dict: MpTxDict) -> None:
         self._chain_id = chain_id
-        self._tx_dict: dict[SenderNonce, MpTxModel] = {}
+        self._global_tx_dict = global_tx_dict
+        self._tx_dict: dict[SenderNonce, MpTxModel] = dict()
         self._tx_gas_price_queue = SortedQueue[MpTxModel, int, str](
             lt_key_func=lambda a: -a.gas_price,
             eq_key_func=lambda a: a.neon_tx_hash,
@@ -51,6 +53,7 @@ class _TxDict:
         # assert tx not in self._tx_gapped_gas_price_queue, f"Tx {tx.neon_tx_hash} is already in gapped gas price queue"
 
         self._tx_dict[sender_nonce] = tx
+        self._global_tx_dict.add_tx(tx)
 
         if is_gapped_tx:
             self._tx_gapped_gas_price_queue.add(tx)
@@ -71,12 +74,14 @@ class _TxDict:
             self._tx_gas_price_queue.pop(tx)
             self.dequeue_tx(tx.sender, tx.nonce + 1)
 
+        self._global_tx_dict.pop_tx(tx.neon_tx_hash)
         return self._tx_dict.pop(sender_nonce)
 
     def pop_tx_list(self, tx_list: Sequence[MpTxModel]) -> None:
         for tx in tx_list:
             old_tx = self._tx_dict.pop(SenderNonce.from_raw(tx), None)
             assert old_tx, f"Tx {tx} is absent in dictionary"
+            self._global_tx_dict.pop_tx(tx.neon_tx_hash)
 
             if (pos := self._tx_gapped_gas_price_queue.find(tx)) is not None:
                 self._tx_gapped_gas_price_queue.pop(pos)
@@ -89,6 +94,7 @@ class _TxDict:
         assert sender_nonce in self._tx_dict, f"Tx {sender_nonce} is absent in dictionary"
         # assert tx not in self._tx_gas_price_queue
         # assert tx not in self._tx_gapped_gas_price_queue
+        self._global_tx_dict.done_tx(tx.neon_tx_hash)
         return self._tx_dict.pop(sender_nonce)
 
     def _move_between_gas_price_queues(
@@ -355,13 +361,20 @@ class _SenderTxPool:
 class MpTxSchedule:
     _top_index: Final[int] = -1
 
-    def __init__(self, cfg: Config, core_api_client: CoreApiClient, token: str, chain_id: int) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        core_api_client: CoreApiClient,
+        token: str,
+        chain_id: int,
+        global_tx_dict: MpTxDict,
+    ) -> None:
         self._core_api_client = core_api_client
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
 
-        self._tx_dict = _TxDict(chain_id)
+        self._tx_dict = _TxDict(chain_id, global_tx_dict)
         self._token: Final[str] = token
         self._chain_id: Final[int] = chain_id
 
