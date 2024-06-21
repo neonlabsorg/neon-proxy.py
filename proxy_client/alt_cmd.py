@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import ClassVar, Final
 
@@ -5,10 +6,13 @@ from typing_extensions import Self
 
 from common.config.config import Config
 from common.solana.alt_program import SolAltProg, SolAltIxCode
+from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
+from common.solana_rpc.client import SolClient
 from common.utils.json_logger import logging_context
+from proxy.base.op_client import OpResourceClient
 from .cmd_handler import BaseNPCmdHandler
 from .common_alt import SolAltFunc
 
@@ -61,31 +65,70 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
     async def _destroy_cmd(self, arg_space) -> int:
         req_id = self._gen_req_id()
         with logging_context(**req_id):
-            address = SolPubKey.from_raw(arg_space.address)
             sol_client = await self._get_sol_client()
             op_client = await self._get_op_client()
 
-            alt = await sol_client.get_alt_account(address)
-            if (alt is None) or alt.is_empty:
-                _LOG.error("Address Lookup Table %s doesn't exist", address)
-                return 1
-
             owner_list = await op_client.get_signer_key_list(req_id)
-            if alt.owner not in owner_list:
-                _LOG.error("Address Lookup Table %s has unknown owner %s", address, alt.owner)
-                return 1
-
-            ix_list: list[SolTxIx] = list()
-            if not alt.deactivation_slot:
-                name = SolAltIxCode.Deactivate.name + "ALT"
-                ix_list.append(SolAltProg(alt.owner).make_deactivate_alt_ix(alt))
+            if arg_space.address.upper() == "ALL":
+                result = 0
+                for owner in owner_list:
+                    acct_list = await self._get_alt_list(sol_client, owner)
+                    for acct in acct_list:
+                        result += await self._destroy_alt(
+                            req_id,
+                            sol_client,
+                            op_client,
+                            owner_list,
+                            acct.address,
+                        )
+                return 1 if result else 0
             else:
-                name = SolAltIxCode.Close.name + "ALT"
-                ix_list.append(SolAltProg(alt.owner).make_close_alt_ix(alt))
+                return await self._destroy_alt(
+                    req_id,
+                    sol_client,
+                    op_client,
+                    owner_list,
+                    SolPubKey.from_raw(arg_space.address),
+                )
 
-            tx = SolLegacyTx(name=name, ix_list=ix_list)
+    @staticmethod
+    async def _destroy_alt(
+        req_id: dict,
+        sol_client: SolClient,
+        op_client: OpResourceClient,
+        owner_list: tuple[SolPubKey, ...],
+        address: SolPubKey,
+    ) -> int:
+        alt = await sol_client.get_alt_account(address)
+        if (alt is None) or alt.is_empty:
+            _LOG.error("Address Lookup Table %s doesn't exist", address)
+            return 1
 
-            tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
-            await sol_client.send_tx_list(tx_list, skip_preflight=False)
+        if alt.owner not in owner_list:
+            _LOG.error("Address Lookup Table %s has unknown owner %s", address, alt.owner)
+            return 1
 
-            return 0
+        slot = await sol_client.get_slot(SolCommit.Finalized)
+        deactivate_slot = alt.last_extended_slot + 512
+        if deactivate_slot > slot:
+            _LOG.error("Address Lookup Table %s is too young (%s > %s)", address, deactivate_slot, slot)
+            return 1
+
+        ix_list: list[SolTxIx] = list()
+        if alt.deactivation_slot > slot:
+            name = SolAltIxCode.Deactivate.name + "ALT"
+            ix_list.append(SolAltProg(alt.owner).make_deactivate_alt_ix(address))
+            _LOG.debug("deactivate Address Lookup Table %s", address)
+        else:
+            name = SolAltIxCode.Close.name + "ALT"
+            ix_list.append(SolAltProg(alt.owner).make_close_alt_ix(address))
+            _LOG.debug("close Address Lookup Table %s", address)
+
+        blockhash = await sol_client.get_recent_blockhash(SolCommit.Finalized)
+        tx = SolLegacyTx(name=name, ix_list=ix_list, blockhash=blockhash)
+
+        tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
+        res = await sol_client.send_tx_list(tx_list, skip_preflight=False)
+        await asyncio.sleep(1)
+
+        return 0
