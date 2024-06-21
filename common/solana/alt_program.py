@@ -95,18 +95,18 @@ class SolAltProg:
             )
         )
 
-    def make_deactivate_alt_ix(self, ident: SolAltID) -> SolTxIx:
+    def make_deactivate_alt_ix(self, ident: SolAltID | SolPubKey) -> SolTxIx:
         return _sys.deactivate_lookup_table(
             _sys.DeactivateLookupTableParams(
-                lookup_table_address=ident.address,
+                lookup_table_address=ident.address if isinstance(ident, SolAltID) else ident,
                 authority_address=self._payer,
             )
         )
 
-    def make_close_alt_ix(self, ident: SolAltID) -> SolTxIx:
+    def make_close_alt_ix(self, ident: SolAltID | SolPubKey) -> SolTxIx:
         return _sys.close_lookup_table(
             _sys.CloseLookupTableParams(
-                lookup_table_address=ident.address,
+                lookup_table_address=ident.address if isinstance(ident, SolAltID) else ident,
                 authority_address=self._payer,
                 recipient_address=self._payer,
             )
@@ -174,4 +174,8 @@ class SolAltAccountInfo:
 
     @property
     def deactivation_slot(self) -> int:
-        return self._meta.deactivation_slot if self._meta else 0
+        return self._meta.deactivation_slot if self._meta else 2 ** 64 - 1
+
+    @property
+    def is_deactivated(self) -> bool:
+        return self.deactivation_slot < 2 ** 64 - 1
