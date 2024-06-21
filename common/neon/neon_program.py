@@ -187,7 +187,7 @@ class NeonProg:
         self._get_rw_acct_meta_list.reset_cache(self)
 
         for idx, acct in enumerate(self._acct_meta_list):
-            if acct.pubkey in self._ro_addr_set:
+            if SolPubKey.from_raw(acct.pubkey) in self._ro_addr_set:
                 self._acct_meta_list[idx] = SolAccountMeta(
                     acct.pubkey,
                     acct.is_signer,
@@ -457,7 +457,7 @@ class NeonProg:
                 lambda x: SolAccountMeta(
                     x.pubkey,
                     x.is_signer,
-                    is_writable=(x.pubkey == self._sender_sol_addr != self._sender_sol_addr.default()),
+                    is_writable=(self._sender_sol_addr == x.pubkey != self._sender_sol_addr.default()),
                 ),
                 self._acct_meta_list,
             )
@@ -474,7 +474,7 @@ class NeonProg:
                 lambda x: SolAccountMeta(
                     x.pubkey,
                     x.is_signer,
-                    is_writable=(x.pubkey not in self._ro_addr_set),
+                    is_writable=(SolPubKey.from_raw(x.pubkey) not in self._ro_addr_set),
                 ),
                 self._acct_meta_list,
             )

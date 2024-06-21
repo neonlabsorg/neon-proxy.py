@@ -62,7 +62,7 @@ class SolAltListFilter:
         elif len(tx_acct_key_set) != len(required_key_set) + len(self._prog_id_set):
             raise SolAltError("Transaction uses signature from a program?")
 
-        tx_acct_key_set = tx_acct_key_set.union(self._ignore_key_set)
+        tx_acct_key_set = tx_acct_key_set.union(self._ignore_key_set.intersection(self.legacy_account_key_list))
         if len(tx_acct_key_set) > SolAltProg.MaxTxAccountCnt:
             raise SolAltError(
                 f"Too big number of transactions account keys: {len(tx_acct_key_set)} > {SolAltProg.MaxTxAccountCnt}"
