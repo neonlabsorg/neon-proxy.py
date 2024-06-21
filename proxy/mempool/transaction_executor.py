@@ -68,14 +68,12 @@ class MpTxExecutor(MempoolComponent):
             if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id)):
                 evm_cfg = await self._server.get_evm_cfg()
                 token = evm_cfg.chain_dict.get(tx.chain_id).name
-                tx_schedule = MpTxSchedule(self._cfg, self._core_api_client, token, tx.chain_id)
+                tx_schedule = MpTxSchedule(self._cfg, self._core_api_client, token, tx.chain_id, self._tx_dict)
                 self._tx_schedule_dict[tx.chain_id] = tx_schedule
                 await tx_schedule.start()
 
             if not (result := tx_schedule.add_tx(tx, state_tx_cnt)):
                 return MpTxResp(code=MpTxRespCode.UnknownChainID, state_tx_cnt=None)
-            elif result.code == MpTxRespCode.Success:
-                self._tx_dict.add_tx(tx)
 
             return result
 
@@ -184,7 +182,6 @@ class MpTxExecutor(MempoolComponent):
                 if not result:
                     self._stuck_tx_dict.skip_tx(stuck_tx)
                     return True
-                self._tx_dict.done_tx(tx.neon_tx_hash)
 
             resource = await self._op_client.get_resource(dict(tx=stuck_tx.tx_id, is_stuck=True), None)
             if resource.is_empty:
@@ -285,9 +282,6 @@ class MpTxExecutor(MempoolComponent):
                 _LOG.warning(msg)
             else:
                 _LOG.debug(msg)
-
-        if resp.code not in (ExecTxRespCode.BadResource, ExecTxRespCode.NonceTooHigh):
-            self._tx_dict.done_tx(tx.neon_tx_hash)
 
         is_good_resource = True
         if resp.code == ExecTxRespCode.BadResource:

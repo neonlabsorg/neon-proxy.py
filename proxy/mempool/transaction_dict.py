@@ -56,6 +56,9 @@ class MpTxDict:
             item = _Item(start_time_sec=int(time.monotonic()), tx=tx)
             self._tx_queue.append(item)
 
+    def pop_tx(self, neon_tx_hash: EthTxHash) -> None:
+        self._tx_hash_dict.pop(neon_tx_hash, None)
+
     def get_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonTxModel | None:
         if tx := self._tx_hash_dict.get(neon_tx_hash, None):
             return tx.neon_tx
