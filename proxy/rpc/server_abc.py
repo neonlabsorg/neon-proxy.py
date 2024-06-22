@@ -161,8 +161,8 @@ class NeonProxyAbc(JsonRpcServer):
             super().__init__()
             self._server = server
 
-        def _on_process_start(self) -> None:
-            self._server._on_process_start()
+        def _on_process_start(self, idx: int) -> None:
+            self._server._on_process_start(idx)
 
         def _on_process_stop(self) -> None:
             self._server._on_process_stop()
@@ -180,6 +180,7 @@ class NeonProxyAbc(JsonRpcServer):
     ) -> None:
         super().__init__(cfg)
 
+        self._idx = -1
         self._core_api_client = core_api_client
         self._sol_client = sol_client
         self._mp_client = mp_client
@@ -191,6 +192,9 @@ class NeonProxyAbc(JsonRpcServer):
 
     async def _on_server_start(self) -> None:
         try:
+            if not self._idx:
+                self._db.enable_debug_query()
+
             await asyncio.gather(
                 self._db.start(),
                 self._stat_client.start(),
@@ -355,7 +359,9 @@ class NeonProxyAbc(JsonRpcServer):
             parent_slot=0,
             parent_block_hash=parent_hash,
         )
-        # _LOG.debug("genesis hash %s, genesis time %s", block_hash, block_time)
+
+        if not self._idx:
+            _LOG.debug("genesis hash %s, genesis time %s", block_hash, block_time)
 
     def start(self) -> None:
         self._register_handler_list()
@@ -364,7 +370,8 @@ class NeonProxyAbc(JsonRpcServer):
     def stop(self) -> None:
         self._process_pool.stop()
 
-    def _on_process_start(self) -> None:
+    def _on_process_start(self, idx: int) -> None:
+        self._idx = idx
         super().start()
 
     def _on_process_stop(self) -> None:

@@ -64,7 +64,7 @@ class TestApiServer(AppDataServer):
             super().__init__()
             self._server = server
 
-        def _on_process_start(self) -> None:
+        def _on_process_start(self, idx: int) -> None:
             self._server._on_process_start()
 
         def _on_process_stop(self) -> None:
