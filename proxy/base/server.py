@@ -45,7 +45,7 @@ class BaseProxyServer(AppDataServer):
             self._server: BaseProxyServer | None = server
 
         def _on_process_start(self, idx: int) -> None:
-            self._server._on_process_start()
+            self._server._on_process_start(idx)
 
         async def _on_process_stop(self) -> None:
             self._server._on_process_stop()
@@ -58,6 +58,8 @@ class BaseProxyServer(AppDataServer):
         sol_client: SolClient,
     ):
         super().__init__(cfg)
+
+        self._idx = -1
 
         self._core_api_client = core_api_client
         self._sol_client = sol_client
@@ -85,7 +87,8 @@ class BaseProxyServer(AppDataServer):
             self._sol_client.stop(),
         )
 
-    def _on_process_start(self) -> None:
+    def _on_process_start(self, idx: int) -> None:
+        self._idx = idx
         super().start()
 
     def _on_process_stop(self) -> None:
