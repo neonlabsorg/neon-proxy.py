@@ -55,6 +55,9 @@ class IndexerDbClient:
             self._stuck_neon_alt_db,
         )
 
+    def enable_debug_query(self) -> None:
+        self._db_conn.enable_debug_query()
+
     async def start(self) -> None:
         await self._db_conn.start()
         await asyncio.gather(*[db.start() for db in self._db_list])
