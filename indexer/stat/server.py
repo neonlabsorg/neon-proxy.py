@@ -117,7 +117,7 @@ class StatServer(ProcessPool):
         self._metric_server = MetricServer(cfg, self._registry)
         self._prometheus_server = PrometheusServer(cfg, self._registry)
 
-    def _on_process_start(self) -> None:
+    def _on_process_start(self, idx: int) -> None:
         self._metric_server.start()
         self._prometheus_server.start()
 
