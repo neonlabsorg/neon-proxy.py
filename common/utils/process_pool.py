@@ -49,7 +49,7 @@ class ProcessPool(abc.ABC):
         return self
 
     def start(self) -> None:
-        self._process_pool = [_mp.Process(target=self._run) for _ in range(self._process_cnt)]
+        self._process_pool = [_mp.Process(target=self._run, args=(idx,)) for idx in range(self._process_cnt)]
         for process in self._process_pool:
             process.start()
 
@@ -58,7 +58,7 @@ class ProcessPool(abc.ABC):
         for process in self._process_pool:
             process.join()
 
-    def _run(self) -> None:
+    def _run(self, idx: int) -> None:
         # it's just a crutch for Robyn server, that calls event_loop.run_forever() inside
         loop = _Loop()
         policy = _EventLoopPolicy(loop)
@@ -70,7 +70,7 @@ class ProcessPool(abc.ABC):
         waiter = _th.Thread(target=self._wait_for_stop_event, args=[loop])
         waiter.start()
 
-        self._on_process_start()
+        self._on_process_start(idx)
 
         # enable normal mode
         loop.enable_run_forever()
@@ -85,7 +85,7 @@ class ProcessPool(abc.ABC):
         loop.call_soon_threadsafe(loop.stop)
 
     @abc.abstractmethod
-    def _on_process_start(self) -> None: ...
+    def _on_process_start(self, idx: int) -> None: ...
 
     @abc.abstractmethod
     def _on_process_stop(self) -> None: ...
