@@ -6,7 +6,7 @@ import logging
 from typing import Final
 
 from common.ethereum.hash import EthTxHash
-from common.solana.alt_program import SolAltID
+from common.solana.alt_program import SolAltID, SolAltProg, SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context, log_msg
@@ -21,19 +21,25 @@ class SolAltLoader(MempoolComponent):
         super().__init__(*args, **kwargs)
 
         self._stop_event = asyncio.Event()
-        self._scan_task: asyncio.Task | None = None
+        self._scan_stuck_alt_task: asyncio.Task | None = None
+        self._scan_lost_alt_task: asyncio.Task | None = None
 
         self._alt_set: set[SolPubKey] = set()
 
     async def start(self) -> None:
-        self._scan_task = asyncio.create_task(self._scan_loop())
+        self._scan_stuck_alt_task = asyncio.create_task(self._scan_stuck_alt_loop())
+        self._scan_lost_alt_task = asyncio.create_task(self._scan_lost_alt_loop())
 
     async def stop(self) -> None:
         self._stop_event.set()
-        if self._scan_task:
-            await self._scan_task
+        if self._scan_stuck_alt_task:
+            await self._scan_stuck_alt_task
+            self._scan_stuck_alt_task = None
+        if self._scan_lost_alt_task:
+            await self._scan_lost_alt_task
+            self._scan_lost_alt_task = None
 
-    async def _scan_loop(self) -> None:
+    async def _scan_stuck_alt_loop(self) -> None:
         sleep_sec: Final[int] = 10
         with logging_context(ctx="scan-stuck-alt"):
             while True:
@@ -67,7 +73,7 @@ class SolAltLoader(MempoolComponent):
 
             owner = SolPubKey.from_raw(data["operator"])
             if owner.is_empty:
-                # indexer didn't find a owner of the ALT
+                # indexer didn't find an owner of the ALT
                 continue
 
             neon_tx_hash = EthTxHash.from_raw(data["neon_tx_hash"])
@@ -96,3 +102,52 @@ class SolAltLoader(MempoolComponent):
         self._alt_set = new_alt_set
         if stuck_alt_list:
             await self._exec_client.destroy_alt_list(req_id, stuck_alt_list)
+
+    async def _scan_lost_alt_loop(self) -> None:
+        sleep_sec: Final[int] = self._cfg.mp_lost_alt_timeout_sec
+        idx: int = 0
+        with logging_context(ctx="scan-lost-alt"):
+            while True:
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
+                if self._stop_event.is_set():
+                    break
+
+                try:
+                    idx = await self._scan_lost_alt(idx)
+                except BaseException as exc:
+                    _LOG.error("unexpected error on scan lost ALTs", exc_info=exc, extra=self._msg_filter)
+
+    async def _scan_lost_alt(self, idx: int) -> int:
+        req_id = dict(ctx="scan-lost-alt", idx=idx)
+
+        signer_list = await self._op_client.get_signer_key_list(req_id)
+        if not signer_list:
+            return idx
+
+        owner = signer_list[idx % len(signer_list)]
+        idx += 1
+
+        acct_list = await self._sol_client.get_prg_account_list(
+            prg_key=SolAltProg.ID,
+            offset=0,
+            size=SolAltAccountInfo.MetaSize,
+            filter_offset=SolAltAccountInfo.OwnerOffset,
+            filter_data=owner.to_bytes(),
+            commit=SolCommit.Finalized,
+        )
+
+        valid_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        valid_slot -= 10_000
+
+        alt_list: list[NeonAltModel] = list()
+        for acct in acct_list:
+            if SolAltAccountInfo.from_bytes(acct.address, acct.data).last_extended_slot < valid_slot:
+                _LOG.debug("found lost ALT %s (owner %s)", acct.address, owner)
+                alt = SolAltID(address=acct.address, owner=owner, recent_slot=0, nonce=0)
+                alt_list.append(NeonAltModel(neon_tx_hash=EthTxHash.default(), sol_alt_id=alt))
+
+        if alt_list:
+            await self._exec_client.destroy_alt_list(req_id, alt_list)
+
+        return idx

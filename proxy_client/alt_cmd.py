@@ -5,7 +5,7 @@ from typing import ClassVar, Final
 from typing_extensions import Self
 
 from common.config.config import Config
-from common.solana.alt_program import SolAltProg, SolAltIxCode
+from common.solana.alt_program import SolAltProg, SolAltIxCode, SolAltID
 from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
@@ -108,27 +108,29 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
             _LOG.error("Address Lookup Table %s has unknown owner %s", address, alt.owner)
             return 1
 
-        slot = await sol_client.get_slot(SolCommit.Finalized)
-        deactivate_slot = alt.last_extended_slot + 512
-        if deactivate_slot > slot:
-            _LOG.error("Address Lookup Table %s is too young (%s > %s)", address, deactivate_slot, slot)
+        valid_slot = await sol_client.get_slot(SolCommit.Finalized)
+        valid_slot -= 10_000
+
+        if alt.last_extended_slot > valid_slot:
+            _LOG.error("Address Lookup Table %s is too young (%s > %s)", address, alt.last_extended_slot, valid_slot)
             return 1
 
         ix_list: list[SolTxIx] = list()
-        if alt.deactivation_slot > slot:
+        alt_id = SolAltID(address=alt.address, owner=alt.owner, recent_slot=0, nonce=0)
+        if not alt.is_deactivated:
             name = SolAltIxCode.Deactivate.name + "ALT"
-            ix_list.append(SolAltProg(alt.owner).make_deactivate_alt_ix(address))
+            ix_list.append(SolAltProg(alt.owner).make_deactivate_alt_ix(alt_id))
             _LOG.debug("deactivate Address Lookup Table %s", address)
         else:
             name = SolAltIxCode.Close.name + "ALT"
-            ix_list.append(SolAltProg(alt.owner).make_close_alt_ix(address))
+            ix_list.append(SolAltProg(alt.owner).make_close_alt_ix(alt_id))
             _LOG.debug("close Address Lookup Table %s", address)
 
         blockhash = await sol_client.get_recent_blockhash(SolCommit.Finalized)
         tx = SolLegacyTx(name=name, ix_list=ix_list, blockhash=blockhash)
 
         tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
-        res = await sol_client.send_tx_list(tx_list, skip_preflight=False)
+        await sol_client.send_tx_list(tx_list, skip_preflight=False)
         await asyncio.sleep(1)
 
         return 0

@@ -119,6 +119,7 @@ class Config:
     mp_exec_process_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_PROCESS_COUNT"
     mp_exec_worker_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_WORKER_COUNT"
     mp_skip_stuck_tx_name: Final[str] = "MEMPOOL_SKIP_STUCK_TRANSACTIONS"
+    mp_lost_alt_timeout_sec_name: Final[str] = "MEMPOOL_LOST_ALT_TIMEOUT_SEC"
     # Transaction execution settings
     retry_on_fail_name: Final[str] = "RETRY_ON_FAIL"
     commit_timeout_sec_name: Final[str] = "COMMIT_TIMEOUT_SEC"
@@ -512,6 +513,10 @@ class Config:
     def mp_skip_stuck_tx(self) -> bool:
         return self._env_bool(self.mp_skip_stuck_tx_name, False)
 
+    @cached_property
+    def mp_lost_alt_timeout_sec(self) -> int:
+        return self._env_num(self.mp_lost_alt_timeout_sec_name, 3 * self._1hour, 1 * self._1hour)
+
     ########################
     # Neon Core API settings
 
@@ -842,6 +847,7 @@ class Config:
             self.mp_exec_process_cnt_name: self.mp_exec_process_cnt,
             self.mp_exec_worker_cnt_name: self.mp_exec_worker_cnt,
             self.mp_skip_stuck_tx_name: self.mp_skip_stuck_tx,
+            self.mp_lost_alt_timeout_sec_name: self.mp_lost_alt_timeout_sec,
             # Neon Core API settings
             self.neon_core_api_server_cnt_name: self.neon_core_api_server_cnt,
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,
