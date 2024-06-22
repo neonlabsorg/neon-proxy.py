@@ -63,7 +63,7 @@ class NeonTxExecApi(ExecutorApi):
     def _destroy_alt_list(self, ctx: NeonExecTxCtx) -> None:
         if ctx.alt_id_list:
             alt_list = tuple(map(lambda x: NeonAltModel(neon_tx_hash=ctx.neon_tx_hash, sol_alt_id=x), ctx.alt_id_list))
-            self._sol_alt_destroyer.extend_alt_list(alt_list)
+            self._sol_alt_destroyer.destroy_alt_list(alt_list)
 
     @cached_property
     def _neon_tx_executor(self) -> NeonTxExecutor:
