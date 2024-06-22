@@ -4,7 +4,7 @@ from typing_extensions import Self, ClassVar
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthAddressField, EthAddress
-from common.ethereum.transaction import EthTxField
+from common.neon.transaction_model import NeonTxModel
 from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.solana.transaction_model import SolTxModel
 from common.utils.cached import cached_method
@@ -81,26 +81,25 @@ class OpTokenSolAddressModel(BaseModel):
     token_sol_address: SolPubKeyField
 
 
-class OpSignEthMessageRequest(BaseModel):
-    ctx_id: str
-    eth_address: EthAddressField
+class OpSignEthMsgRequest(BaseModel):
+    req_id: dict
+    sender: EthAddressField
     data: EthBinStrField
 
 
-class OpSignEthMessageResp(BaseModel):
-    signed_message: str | None = None
+class OpSignEthMsgResp(BaseModel):
+    signed_msg: EthBinStrField
     error: str | None = None
 
 
 class OpSignEthTxRequest(BaseModel):
-    ctx_id: str
-    tx: EthTxField
-    eth_address: EthAddressField
+    req_id: dict
+    neon_tx: NeonTxModel
     chain_id: int
 
 
 class OpSignEthTxResp(BaseModel):
-    signed_tx: str | None = None
+    signed_tx: EthBinStrField
     error: str | None = None
 
 

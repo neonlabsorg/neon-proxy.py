@@ -92,9 +92,11 @@ class NeonProxyApp:
             self._private_rpc_server = PrivateRpcServer(
                 cfg=cfg,
                 core_api_client=core_api_client,
+                sol_client=sol_client,
                 mp_client=mp_client,
-                op_client=op_client,
                 stat_client=stat_client,
+                op_client=op_client,
+                db=db,
             )
 
         # Init external RPC API
@@ -120,7 +122,7 @@ class NeonProxyApp:
             if self._enable_private_rpc_server:
                 self._private_rpc_server.start()
 
-            self._register_term_signal_handler()
+            self._register_term_sig_handler()
             while self._recv_sig_num == signal.SIG_DFL:
                 time.sleep(1)
 
@@ -139,11 +141,11 @@ class NeonProxyApp:
             _LOG.error("error on NeonProxy run", exc_info=exc, extra=self._msg_filter)
             return 1
 
-    def _register_term_signal_handler(self) -> None:
-        def _signal_handler(_sig: int, _frame) -> None:
+    def _register_term_sig_handler(self) -> None:
+        def _sig_handler(_sig: int, _frame) -> None:
             if self._recv_sig_num == signal.SIG_DFL:
                 self._recv_sig_num = _sig
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             _LOG.info("register signal handler %d", sig)
-            signal.signal(sig, _signal_handler)
+            signal.signal(sig, _sig_handler)

@@ -19,10 +19,7 @@ class _RpcLogListRequest(BaseJsonRpcModel):
     address: EthAddressField | list[EthAddressField] = Field(EthAddress.default())
     fromBlock: RpcBlockRequest | None = None
     toBlock: RpcBlockRequest | None = None
-    topicList: list[EthHash32Field | list[EthHash32Field]] = Field(
-        default_factory=list,
-        validation_alias="topics",
-    )
+    topicList: list[EthHash32Field | list[EthHash32Field]] = Field(default_factory=list, validation_alias="topics")
 
     @cached_property
     def address_list(self) -> tuple[EthAddress, ...]:

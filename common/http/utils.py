@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import inspect
 import re
 import time
@@ -68,23 +67,6 @@ class HttpRequestCtx:
         return self
 
     @cached_property
-    def ctx_id(self) -> str:
-        if ctx_id := getattr(self, "_ctx_id", None):
-            return ctx_id
-
-        size = len(self.request.body)
-        raw_value = f"{self.ip_addr}:{size}:{self.start_time_nsec}"
-        ctx_id = hashlib.md5(bytes(raw_value, "utf-8")).hexdigest()[:8]
-        self.set_property_value("_ctx_id", ctx_id)
-        return ctx_id
-
-    @cached_property
-    def chain_id(self) -> int:
-        chain_id = getattr(self, "_chain_id", None)
-        assert chain_id is not None
-        return chain_id
-
-    @cached_property
     def body(self) -> str:
         value = self.request.body
         if isinstance(value, bytes):
@@ -120,6 +102,9 @@ class HttpRequestCtx:
         object.__setattr__(self, name, value)
         self._prop_name_set.add(name)
         return self
+
+    def get_property_value(self, name: str, default):
+        return getattr(self, name, default)
 
 
 @dataclass(frozen=True)

@@ -1,22 +1,79 @@
-from __future__ import annotations
+import logging
 
-from common.ethereum.errors import EthError, EthNonceTooLowError, EthWrongChainIdError
+from common.ethereum.errors import EthError, EthNonceTooLowError, EthNonceTooHighError, EthWrongChainIdError
+from common.ethereum.hash import EthTxHashField, EthTxHash
 from common.http.utils import HttpRequestCtx
+from common.jsonrpc.errors import InvalidParamError
 from common.neon.account import NeonAccount
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import NeonAccountModel, NeonContractModel
-from .server_abc import NeonProxyComponent
-from ..base.mp_api import MpTokenGasPriceModel, MpGasPriceModel
+from common.utils.json_logger import logging_context
+from proxy.base.mp_api import MpTxRespCode, MpTokenGasPriceModel, MpGasPriceModel
+from proxy.base.rpc_server_abc import BaseRpcServerComponent
+
+_LOG = logging.getLogger(__name__)
 
 
-class NpTxValidator(NeonProxyComponent):
+class RpcNeonTxExecutor(BaseRpcServerComponent):
     _max_u64 = 2**64 - 1
     _max_u256 = 2**256 - 1
 
-    async def validate(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel) -> NeonAccountModel:
-        global_price, token_price = await self.get_token_gas_price(ctx)
+    async def send_neon_tx(self, ctx: HttpRequestCtx, eth_tx_rlp: bytes) -> EthTxHashField:
+        try:
+            neon_tx = NeonTxModel.from_raw(eth_tx_rlp, raise_exception=True)
+        except EthError:
+            raise
+        except (BaseException,):
+            raise InvalidParamError(message="wrong transaction format")
 
-        chain_id = self._get_chain_id(ctx, neon_tx)
+        tx_id = neon_tx.neon_tx_hash.ident
+        with logging_context(tx=tx_id):
+            _LOG.debug("sendEthTransaction %s: %s", neon_tx.neon_tx_hash, neon_tx)
+            return await self._send_neon_tx_impl(ctx, neon_tx, eth_tx_rlp)
+
+    async def _send_neon_tx_impl(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel, eth_tx_rlp: bytes) -> EthTxHashField:
+        try:
+            if await self._is_neon_tx_exist(neon_tx.neon_tx_hash):
+                return neon_tx.neon_tx_hash
+
+            ctx_id = self._get_ctx_id(ctx)
+            sender = await self._validate(ctx, neon_tx)
+            chain_id = sender.chain_id
+
+            resp = await self._mp_client.send_raw_transaction(ctx_id, eth_tx_rlp, chain_id, sender.state_tx_cnt)
+
+            if resp.code in (MpTxRespCode.Success, MpTxRespCode.AlreadyKnown):
+                return neon_tx.neon_tx_hash
+            elif resp.code == MpTxRespCode.NonceTooLow:
+                EthNonceTooLowError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender.address)
+            elif resp.code == MpTxRespCode.Underprice:
+                raise EthError(message="replacement transaction underpriced")
+            elif resp.code == MpTxRespCode.NonceTooHigh:
+                raise EthNonceTooHighError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender.address)
+            elif resp.code == MpTxRespCode.UnknownChainID:
+                raise EthWrongChainIdError()
+            else:
+                raise EthError(message="unknown error")
+
+        except BaseException as exc:
+            # raise already exists error
+            await self._is_neon_tx_exist(neon_tx.neon_tx_hash)
+
+            if not isinstance(exc, EthError):
+                _LOG.error("unexpected error on sendRawTransaction", exc_info=exc, extra=self._msg_filter)
+            raise
+
+    async def _is_neon_tx_exist(self, tx_hash: EthTxHash) -> bool:
+        if tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash):
+            if tx_meta.neon_tx_rcpt.slot <= await self._db.get_finalized_slot():
+                raise EthError(message="already known")
+            return True
+        return False
+
+    async def _validate(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel) -> NeonAccountModel:
+        global_price, token_price = await self._get_token_gas_price(ctx)
+
+        chain_id = self._validate_chain_id(ctx, neon_tx)
         tx_gas_limit = await self._get_tx_gas_limit(neon_tx)
 
         sender = NeonAccount.from_raw(neon_tx.from_address, chain_id)
@@ -33,10 +90,11 @@ class NpTxValidator(NeonProxyComponent):
 
         return neon_acct
 
-        chain_id = ctx.chain_id
+    def _validate_chain_id(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel) -> int:
+        chain_id = self._get_chain_id(ctx)
         tx_chain_id = neon_tx.chain_id
         if not tx_chain_id:
-            if not self.is_default_chain_id(ctx):
+            if not self._is_default_chain_id(ctx):
                 raise EthWrongChainIdError()
         elif tx_chain_id != chain_id:
             raise EthWrongChainIdError()
@@ -46,7 +104,7 @@ class NpTxValidator(NeonProxyComponent):
         if neon_tx.has_chain_id or neon_tx.call_data.is_empty:
             return neon_tx.gas_limit
 
-        evm_cfg = await self.get_evm_cfg()
+        evm_cfg = await self._get_evm_cfg()
         tx_gas_limit = neon_tx.gas_limit * evm_cfg.gas_limit_multiplier_wo_chain_id
         return min(self._max_u64, tx_gas_limit)
 
@@ -82,7 +140,7 @@ class NpTxValidator(NeonProxyComponent):
 
         # Fee-less transaction
         if not neon_tx.gas_price:
-            has_fee_less_permit = await self.has_fee_less_tx_permit(
+            has_fee_less_permit = await self._has_fee_less_tx_permit(
                 ctx, neon_tx.from_address, neon_tx.to_address, neon_tx.nonce, neon_tx.gas_limit
             )
             if has_fee_less_permit:

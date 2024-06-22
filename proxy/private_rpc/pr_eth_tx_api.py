@@ -1,52 +1,82 @@
+from __future__ import annotations
+
 from typing import ClassVar
 
-from common.ethereum.errors import EthError, EthNonceTooLowError, EthNonceTooHighError, EthWrongChainIdError
-from common.ethereum.hash import EthAddressField
-from common.ethereum.transaction import EthTx, EthTxField
+from common.ethereum.bin_str import EthBinStrField
+from common.ethereum.errors import EthError, EthWrongChainIdError
+from common.ethereum.hash import EthAddressField, EthTxHashField
 from common.http.utils import HttpRequestCtx
+from common.jsonrpc.api import BaseJsonRpcModel
+from common.jsonrpc.errors import InvalidParamError
 from common.neon.account import NeonAccount
-from common.utils.json_logger import logging_context
-from .pr_eth_sign_api import PrEthSignApi
-from .server_abc import PrivateRpcApi, PrivateRpcServerAbc
-from ..base.mp_api import MpTxRespCode
+from common.neon.transaction_model import NeonTxModel
+from common.utils.cached import cached_property
+from common.utils.format import hex_to_bytes
+from .server_abc import PrivateRpcApi
+from ..base.rpc_api import RpcEthTxRequest, RpcEthTxResp
+from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
+from ..base.rpc_transaction_executor import RpcNeonTxExecutor
+
+
+class _RpcSignEthTxResp(BaseJsonRpcModel):
+    tx: RpcEthTxResp
+    raw: EthBinStrField
 
 
 class PrEthTxApi(PrivateRpcApi):
-    name: ClassVar[str] = "PrivateRpc::EthTx"
+    name: ClassVar[str] = "PrivateRpc::Transaction"
 
-    def __init__(self, server: PrivateRpcServerAbc) -> None:
-        super().__init__(server)
-        self._sign_api = PrEthSignApi(server)
+    @cached_property
+    def _gas_calculator(self) -> RpcNeonGasLimitCalculator:
+        return RpcNeonGasLimitCalculator(self._server)
+
+    @cached_property
+    def _tx_executor(self) -> RpcNeonTxExecutor:
+        return RpcNeonTxExecutor(self._server)
 
     @PrivateRpcApi.method(name="eth_sendTransaction")
-    async def eth_send_tx(self, ctx: HttpRequestCtx, tx: EthTxField, eth_address: EthAddressField) -> str:
-        chain_id = ctx.chain_id
+    async def eth_send_tx(self, ctx: HttpRequestCtx, tx: RpcEthTxRequest) -> EthTxHashField:
+        signed_tx = await self._eth_sign_tx(ctx, tx)
+        return await self._tx_executor.send_neon_tx(ctx, signed_tx)
 
-        if (neon_account := NeonAccount.from_raw(eth_address, chain_id)) is None:
-            raise EthError(message="signer not found")
+    @PrivateRpcApi.method(name="eth_signTransaction")
+    async def eth_sign_tx(self, ctx: HttpRequestCtx, tx: RpcEthTxRequest) -> _RpcSignEthTxResp:
+        signed_tx = await self._eth_sign_tx(ctx, tx)
+        neon_tx = NeonTxModel.from_raw(signed_tx)
+        return _RpcSignEthTxResp(tx=RpcEthTxResp.from_raw(neon_tx), raw=signed_tx)
 
-        with logging_context(ctx=ctx.ctx_id, chain_id=chain_id):
-            signed_tx_hex = await self._sign_api.eth_sign_tx(ctx, tx, eth_address)
-            signed_eth_tx = EthTx.from_raw(signed_tx_hex)
-            state_tx_cnt = await self._core_api_client.get_state_tx_cnt(neon_account, None)
+    @PrivateRpcApi.method(name="eth_sign")
+    async def eth_sign(self, ctx: HttpRequestCtx, eth_address: EthAddressField, data: EthBinStrField) -> EthBinStrField:
+        data = hex_to_bytes(data)
+        msg = str.encode(f"\x19Ethereum Signed Message:\n{len(data)}") + data
 
-            send_result = await self._mp_client.send_raw_transaction(
-                ctx.ctx_id, signed_eth_tx.to_bytes(), signed_eth_tx.chain_id, state_tx_cnt
-            )
+        resp = await self._op_client.sign_eth_msg(dict(ctx_id=self._get_ctx_id(ctx)), eth_address, msg)
+        if resp.error:
+            raise EthError(message=resp.error)
 
-            if send_result.code in (MpTxRespCode.Success, MpTxRespCode.AlreadyKnown):
-                return signed_tx_hex
-            elif send_result.code == MpTxRespCode.NonceTooLow:
-                EthNonceTooLowError.raise_error(
-                    signed_eth_tx.nonce, send_result.state_tx_cnt, sender=eth_address.to_string()
-                )
-            elif send_result.code == MpTxRespCode.Underprice:
-                raise EthError(message="replacement transaction underpriced")
-            elif send_result.code == MpTxRespCode.NonceTooHigh:
-                raise EthNonceTooHighError.raise_error(
-                    signed_eth_tx.nonce, send_result.state_tx_cnt, sender=eth_address.to_string()
-                )
-            elif send_result.code == MpTxRespCode.UnknownChainID:
-                raise EthWrongChainIdError()
-            else:
-                raise EthError(message="unknown error")
+        return resp.signed_msg
+
+    async def _eth_sign_tx(self, ctx: HttpRequestCtx, tx: RpcEthTxRequest) -> bytes:
+        chain_id = self._get_chain_id(ctx)
+        if tx.chainId and tx.chainId != chain_id:
+            raise EthWrongChainIdError()
+        elif tx.fromAddress.is_empty:
+            raise InvalidParamError(message='no sender in transaction')
+
+        sender_acct = NeonAccount.from_raw(tx.fromAddress, chain_id)
+        neon_tx = tx.to_neon_tx()
+
+        if not neon_tx.gas_limit:
+            emul_call = tx.to_emulation_call(chain_id)
+            gas_limit = await self._gas_calculator.estimate(emul_call, dict())
+            object.__setattr__(neon_tx, "gas_limit", gas_limit)
+
+        if not neon_tx.nonce:
+            nonce = await self._core_api_client.get_state_tx_cnt(sender_acct)
+            object.__setattr__(neon_tx, "nonce", nonce)
+
+        ctx_id = self._get_ctx_id(ctx)
+        resp = await self._op_client.sign_eth_tx(dict(ctx=ctx_id), neon_tx, chain_id)
+        if resp.error:
+            raise EthError(message=resp.error)
+        return resp.signed_tx.to_bytes()

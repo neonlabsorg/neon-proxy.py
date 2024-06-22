@@ -109,7 +109,7 @@ class NpGasPriceApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="eth_gasPrice")
     async def get_eth_gas_price(self, ctx: HttpRequestCtx) -> HexUIntField:
-        _, token_gas_price = await self.get_token_gas_price(ctx)
+        _, token_gas_price = await self._get_token_gas_price(ctx)
         return token_gas_price.suggested_gas_price
 
     @NeonProxyApi.method(name="neon_gasPrice")
@@ -118,7 +118,7 @@ class NpGasPriceApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         call: _RpcGasCallRequest = _RpcGasCallRequest.default(),
     ) -> _RpcGasPriceModel:
-        gas_price, token_gas_price = await self.get_token_gas_price(ctx)
+        gas_price, token_gas_price = await self._get_token_gas_price(ctx)
         if call.fromAddress.is_empty:
             return _RpcDefaultGasPriceModel.from_raw(gas_price, token_gas_price)
 
@@ -131,7 +131,7 @@ class NpGasPriceApi(NeonProxyApi):
 
         tx_gas_limit = call.gas or 0
 
-        if await self.has_fee_less_tx_permit(ctx, call.fromAddress, call.toAddress, tx_nonce, tx_gas_limit):
+        if await self._has_fee_less_tx_permit(ctx, call.fromAddress, call.toAddress, tx_nonce, tx_gas_limit):
             return _RpcDefaultGasPriceModel.from_raw(gas_price, token_gas_price, def_gas_price=0)
 
         return _RpcDefaultGasPriceModel.from_raw(gas_price, token_gas_price)

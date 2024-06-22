@@ -5,7 +5,7 @@ from typing import Sequence
 from common.app_data.client import AppDataClient
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthAddressField
-from common.ethereum.transaction import EthTxField
+from common.neon.transaction_model import NeonTxModel
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction import SolTx
 from common.solana.transaction_model import SolTxModel
@@ -17,8 +17,8 @@ from .op_api import (
     OpResourceResp,
     OpTokenSolAddressModel,
     OpGetTokenSolAddressRequest,
-    OpSignEthMessageRequest,
-    OpSignEthMessageResp,
+    OpSignEthMsgRequest,
+    OpSignEthMsgResp,
     OpSignEthTxRequest,
     OpSignEthTxResp,
     OpSignSolTxListRequest,
@@ -55,16 +55,12 @@ class OpResourceClient(AppDataClient):
         resp = await self._get_token_sol_address(req)
         return resp.token_sol_address
 
-    async def sign_eth_message(
-        self, ctx_id: str, eth_address: EthAddressField, data: EthBinStrField
-    ) -> OpSignEthMessageResp:
-        req = OpSignEthMessageRequest(ctx_id=ctx_id, eth_address=eth_address, data=data)
-        return await self._sign_eth_message(req)
+    async def sign_eth_msg(self, req_id: dict, sender: EthAddressField, data: EthBinStrField) -> OpSignEthMsgResp:
+        req = OpSignEthMsgRequest(req_id=req_id, sender=sender, data=data)
+        return await self._sign_eth_msg(req)
 
-    async def sign_eth_tx(
-        self, ctx_id: str, tx: EthTxField, eth_address: EthAddressField, chain_id: int
-    ) -> OpSignEthTxResp:
-        req = OpSignEthTxRequest(ctx_id=ctx_id, tx=tx, eth_address=eth_address, chain_id=chain_id)
+    async def sign_eth_tx(self, req_id: dict, neon_tx: NeonTxModel, chain_id: int) -> OpSignEthTxResp:
+        req = OpSignEthTxRequest(req_id=req_id, neon_tx=neon_tx, chain_id=chain_id)
         return await self._sign_eth_tx(req)
 
     async def sign_sol_tx_list(self, req_id: dict, owner: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
@@ -98,7 +94,7 @@ class OpResourceClient(AppDataClient):
     async def _get_token_sol_address(self, request: OpGetTokenSolAddressRequest) -> OpTokenSolAddressModel: ...
 
     @AppDataClient.method(name="signEthMessage")
-    async def _sign_eth_message(self, request: OpSignEthMessageRequest) -> OpSignEthMessageResp: ...
+    async def _sign_eth_msg(self, request: OpSignEthMsgRequest) -> OpSignEthMsgResp: ...
 
     @AppDataClient.method(name="signEthTransaction")
     async def _sign_eth_tx(self, request: OpSignEthTxRequest) -> OpSignEthTxResp: ...

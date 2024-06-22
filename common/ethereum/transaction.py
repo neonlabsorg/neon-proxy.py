@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Final
+from typing import Final
 
 import eth_keys
 import rlp
@@ -9,8 +9,7 @@ from typing_extensions import Self
 
 from .errors import EthError
 from ..utils.cached import cached_property, cached_method
-from ..utils.format import bytes_to_hex, hex_to_bytes
-from ..utils.pydantic import PlainValidator, PlainSerializer
+from ..utils.format import hex_to_bytes
 
 
 class EthNoChainTx(rlp.Serializable):
@@ -66,14 +65,10 @@ class EthTx(rlp.Serializable):
 
     @classmethod
     def from_raw(cls, s: bytes | bytearray | str) -> Self:
-        if isinstance(s, cls):
-            return s
-        elif isinstance(s, str):
+        if isinstance(s, str):
             s = hex_to_bytes(s)
         elif isinstance(s, bytearray):
             s = bytes(s)
-        elif isinstance(s, dict):
-            s = cls.from_dict(s)
 
         try:
             return rlp.decode(s, cls)
@@ -92,37 +87,9 @@ class EthTx(rlp.Serializable):
         value_list += [0, 0, 0]
         return cls(*value_list)
 
-    @classmethod
-    def from_dict(cls, d: dict) -> Self:
-        return cls(
-            nonce=int(d.get("nonce", 0)),
-            gas_price=int(d.get("gasPrice", 0)),
-            gas_limit=int(d.get("gas", 0)),
-            to_address=bytes.fromhex(d.get("to", "")),
-            value=int(d.get("value", 0)),
-            call_data=bytes.fromhex(d.get("data", "")),
-            v=int(d.get("v", 0)),
-            r=int(d.get("r", 0)),
-            s=int(d.get("s", 0)),
-        )
-
-    def to_dict(self) -> dict:
-        return {
-            "nonce": int(self.nonce),
-            "gasPrice": int(self.gas_price),
-            "gas": int(self.gas_limit),
-            "to": self.to_address,
-            "value": int(self.value),
-            "data": bytes_to_hex(self.call_data),
-        }
-
     @cached_method
     def to_bytes(self) -> bytes:
         return rlp.encode(self)
-
-    @cached_method
-    def to_string(self) -> str:
-        return bytes_to_hex(self.to_bytes(), prefix="0x")
 
     @property
     def has_chain_id(self) -> bool:
@@ -216,10 +183,3 @@ class EthTx(rlp.Serializable):
 
         contract_addr = rlp.encode((self.from_address, self.nonce))
         return keccak(contract_addr)[-20:]
-
-
-EthTxField = Annotated[
-    EthTx,
-    PlainValidator(EthTx.from_raw),
-    PlainSerializer(lambda v: v.to_string(), return_type=str),
-]

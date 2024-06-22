@@ -96,10 +96,10 @@ class MpTxExecutor(MempoolComponent):
     def get_tx_by_sender_nonce(self, sender: NeonAccount, tx_nonce: int) -> NeonTxModel | None:
         return self._tx_dict.get_tx_by_sender_nonce(sender, tx_nonce)
 
-    def get_content(self) -> MpTxPoolContentResp:
+    def get_content(self, chain_id: int) -> MpTxPoolContentResp:
         pending_list = list()
         queued_list = list()
-        for tx_schedule in self._tx_schedule_dict.values():
+        if tx_schedule := self._tx_schedule_dict.get(chain_id):
             cont = tx_schedule.get_content()
             pending_list.extend(cont.pending_list)
             queued_list.extend(cont.queued_list)

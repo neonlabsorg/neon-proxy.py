@@ -10,8 +10,8 @@ from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
 from typing_extensions import Self
 
-from ..ethereum.transaction import EthTx
 from ..ethereum.hash import EthAddress
+from .transaction_model import NeonTxModel
 from ..utils.cached import cached_method, cached_property
 from ..utils.format import bytes_to_hex, hex_to_bytes, hex_to_int
 
@@ -94,11 +94,14 @@ class NeonAccount:
         return cls(address=address, chain_id=chain_id, private_key=private_key)
 
     @classmethod
-    def from_private_key(cls, pk_data: str | bytes, chain_id: int) -> Self:
-        pk_data = hex_to_bytes(pk_data)
-        if len(pk_data) < 32:
-            raise ValueError(f"Not enough data for private key: {len(pk_data)}")
-        return cls.from_raw(eth_keys.keys.PrivateKey(pk_data[:32]), chain_id)
+    def from_private_key(cls, pk_data: str | bytes | eth_keys.keys.PrivateKey, chain_id: int) -> Self:
+        if isinstance(pk_data, str):
+            pk_data = hex_to_bytes(pk_data)
+        if isinstance(pk_data, bytes):
+            if len(pk_data) < 32:
+                raise ValueError(f"Not enough data for private key: {len(pk_data)}")
+            pk_data = eth_keys.keys.PrivateKey(pk_data[:32])
+        return cls.from_raw(pk_data, chain_id)
 
     def to_dict(self: NeonAccount) -> _DictAccount:
         res = dict(
@@ -150,11 +153,11 @@ class NeonAccount:
     def sign_msg(self, data: bytes) -> eth_keys.keys.Signature:
         return self.private_key.sign_msg(data)
 
-    def sign_transaction(self, tx: EthTx, chain_id: int) -> str:
-        tx = tx.to_dict()
-        tx["chainId"] = chain_id
-        signed_tx = eth_account.Account.sign_transaction(tx, self.private_key)
-        return signed_tx.raw_transaction.to_0x_hex()
+    def sign_tx(self, tx: NeonTxModel) -> bytes:
+        tx_dict = tx.to_eth_dict()
+        tx_dict["chainId"] = self._chain_id
+        signed_tx = eth_account.Account.sign_transaction(tx_dict, self.private_key)
+        return bytes(signed_tx.raw_transaction)
 
     def __str__(self) -> str:
         return self.to_string()

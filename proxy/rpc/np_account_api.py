@@ -55,11 +55,12 @@ class NpAccountApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
     ) -> HexUIntField:
         block = await self.get_block_by_tag(block_tag)
-        acct = NeonAccount.from_raw(address, ctx.chain_id)
+        chain_id = self._get_chain_id(ctx)
+        acct = NeonAccount.from_raw(address, chain_id)
 
         mp_tx_nonce: int | None = None
         if block.commit == EthCommit.Pending:
-            mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(ctx.ctx_id, acct)
+            mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(self._get_ctx_id(ctx), acct)
             _LOG.debug("pending tx count for %s is %s", acct, mp_tx_nonce)
 
         tx_cnt = await self._core_api_client.get_state_tx_cnt(acct, block)
@@ -72,13 +73,13 @@ class NpAccountApi(NeonProxyApi):
         address: EthNotNoneAddressField,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = ctx.chain_id
+        chain_id = self._get_chain_id(ctx)
         block = await self.get_block_by_tag(block_tag)
         acct = await self._core_api_client.get_neon_account(NeonAccount.from_raw(address, chain_id), block)
 
         # custom case for Metamask: allow fee-less txs from accounts without balance
         if not acct.balance:
-            if await self.has_fee_less_tx_permit(ctx, address, EthAddress.default(), acct.state_tx_cnt, 0):
+            if await self._has_fee_less_tx_permit(ctx, address, EthAddress.default(), acct.state_tx_cnt, 0):
                 return 1
 
         return acct.balance
@@ -91,7 +92,8 @@ class NpAccountApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
     ) -> EthBinStrField:
         block = await self.get_block_by_tag(block_tag)
-        neon_acct = NeonAccount.from_raw(address, ctx.chain_id)
+        chain_id = self._get_chain_id(ctx)
+        neon_acct = NeonAccount.from_raw(address, chain_id)
         resp = await self._core_api_client.get_neon_contract(neon_acct, block)
         return resp.code
 
@@ -113,7 +115,8 @@ class NpAccountApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
     ) -> _NeonRpcAccountResp:
         block = await self.get_block_by_tag(block_tag)
-        acct = NeonAccount.from_raw(address, ctx.chain_id)
+        chain_id = self._get_chain_id(ctx)
+        acct = NeonAccount.from_raw(address, chain_id)
 
         resp = await self._core_api_client.get_neon_account(acct, block)
         return _NeonRpcAccountResp.from_raw(resp)

@@ -27,13 +27,13 @@ from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
-from common.neon.transaction_model import NeonTxModel
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, HexUInt256Field, HexUInt8Field, Base58Field
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
+from ..base.rpc_api import RpcEthTxResp
 
 _LOG = logging.getLogger(__name__)
 
@@ -55,60 +55,6 @@ class _RpcNeonTxReceiptDetail(StrEnum):
 
 
 _RpcNeonTxReceiptDetailField = Annotated[_RpcNeonTxReceiptDetail, PlainValidator(_RpcNeonTxReceiptDetail.from_raw)]
-
-
-class _RpcTxResp(BaseJsonRpcModel):
-    blockHash: EthBlockHashField | None
-    blockNumber: HexUIntField | None
-    transactionIndex: HexUIntField | None
-    txHash: EthTxHashField = Field(serialization_alias="hash")
-    txType: HexUIntField = Field(serialization_alias="type")
-    fromAddress: EthAddressField = Field(serialization_alias="from")
-    nonce: HexUIntField
-    gasPrice: HexUIntField
-    gas: HexUIntField
-    toAddress: EthAddressField = Field(serialization_alias="to")
-    value: HexUIntField
-    data: EthBinStrField = Field(serialization_alias="input")
-    chainId: HexUIntField | None
-    v: HexUIntField
-    r: HexUIntField
-    s: HexUIntField
-
-    @classmethod
-    def from_raw(cls, meta: NeonTxMetaModel | NeonTxModel) -> Self:
-        if isinstance(meta, NeonTxMetaModel):
-            tx = meta.neon_tx
-
-            rcpt = meta.neon_tx_rcpt
-            blockhash = rcpt.block_hash
-            slot = rcpt.slot
-            tx_idx = rcpt.neon_tx_idx
-        else:
-            tx = meta
-
-            blockhash = None
-            slot = None
-            tx_idx = None
-
-        return cls(
-            blockHash=blockhash,
-            blockNumber=slot,
-            transactionIndex=tx_idx,
-            txHash=tx.neon_tx_hash,
-            txType=tx.tx_type,
-            fromAddress=tx.from_address.to_string(),
-            nonce=tx.nonce,
-            gasPrice=tx.gas_price,
-            gas=tx.gas_limit,
-            toAddress=tx.to_address,
-            value=tx.value,
-            data=tx.call_data,
-            chainId=tx.chain_id,
-            v=tx.v,
-            r=tx.r,
-            s=tx.s,
-        )
 
 
 class _RpcEthTxReceiptResp(BaseJsonRpcModel):
@@ -386,7 +332,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
     number: HexUIntField
     parentHash: EthBlockHashField
     timestamp: HexUIntField
-    transactions: tuple[_RpcTxResp | EthTxHashField, ...]
+    transactions: tuple[RpcEthTxResp | EthTxHashField, ...]
 
     _fake_hash: Final[EthHash32Field] = "0x" + "00" * 31 + "01"
     _empty_root: Final[EthHash32Field] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
@@ -398,7 +344,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
 
         total_gas_used = 0
         log_bloom = 0
-        rpc_tx_list: list[_RpcTxResp | EthTxHashField] = list()
+        rpc_tx_list: list[RpcEthTxResp | EthTxHashField] = list()
 
         if not is_pending:
             block_hash = block.block_hash
@@ -407,7 +353,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
             for tx in tx_list:
                 total_gas_used = max(tx.neon_tx_rcpt.sum_gas_used, total_gas_used)
                 log_bloom |= tx.neon_tx_rcpt.log_bloom
-                rpc_tx_list.append(_RpcTxResp.from_raw(tx) if full else tx.neon_tx_hash)
+                rpc_tx_list.append(RpcEthTxResp.from_raw(tx) if full else tx.neon_tx_hash)
         else:
             block_hash = None
             miner = None
@@ -444,12 +390,12 @@ class NpBlockTxApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::BlockTransaction"
 
     @NeonProxyApi.method(name="eth_getTransactionByHash")
-    async def get_tx_by_hash(self, ctx: HttpRequestCtx, transaction_hash: EthTxHashField) -> _RpcTxResp | None:
+    async def get_tx_by_hash(self, ctx: HttpRequestCtx, transaction_hash: EthTxHashField) -> RpcEthTxResp | None:
         tx_hash = transaction_hash
         if not (meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
-            if not (meta := await self._mp_client.get_tx_by_hash(ctx.ctx_id, tx_hash)):
+            if not (meta := await self._mp_client.get_tx_by_hash(self._get_ctx_id(ctx), tx_hash)):
                 return None
-        return _RpcTxResp.from_raw(meta)
+        return RpcEthTxResp.from_raw(meta)
 
     @NeonProxyApi.method(name="neon_getTransactionBySenderNonce")
     async def get_tx_by_sender_nonce(
@@ -457,13 +403,13 @@ class NpBlockTxApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         sender: EthNotNoneAddressField,
         nonce: HexUIntField,
-    ) -> _RpcTxResp | None:
-        neon_acct = NeonAccount.from_raw(sender, ctx.chain_id)
-        inc_no_chain_id = True if self.is_default_chain_id(ctx) else False
+    ) -> RpcEthTxResp | None:
+        neon_acct = NeonAccount.from_raw(sender, self._get_chain_id(ctx))
+        inc_no_chain_id = True if self._is_default_chain_id(ctx) else False
         if not (meta := await self._db.get_tx_by_sender_nonce(neon_acct, nonce, inc_no_chain_id)):
-            if not (meta := await self._mp_client.get_tx_by_sender_nonce(ctx.ctx_id, neon_acct, nonce)):
+            if not (meta := await self._mp_client.get_tx_by_sender_nonce(self._get_ctx_id(ctx), neon_acct, nonce)):
                 return None
-        return _RpcTxResp.from_raw(meta)
+        return RpcEthTxResp.from_raw(meta)
 
     @NeonProxyApi.method(name="eth_getTransactionReceipt")
     async def get_tx_receipt(self, transaction_hash: EthTxHashField) -> _RpcEthTxReceiptResp | None:
@@ -473,22 +419,22 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockNumberAndIndex")
-    async def get_tx_by_block_number_idx(self, block_tag: RpcBlockRequest, index: HexUIntField) -> _RpcTxResp | None:
+    async def get_tx_by_block_number_idx(self, block_tag: RpcBlockRequest, index: HexUIntField) -> RpcEthTxResp | None:
         block = await self.get_block_by_tag(block_tag)
         if block.is_empty:
             return None
         elif not (neon_tx_meta := await self._db.get_tx_by_slot_tx_idx(block.slot, index)):
             return None
-        return _RpcTxResp.from_raw(neon_tx_meta)
+        return RpcEthTxResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockHashAndIndex")
-    async def get_tx_by_block_hash_idx(self, block_hash: EthBlockHashField, index: HexUIntField) -> _RpcTxResp | None:
+    async def get_tx_by_block_hash_idx(self, block_hash: EthBlockHashField, index: HexUIntField) -> RpcEthTxResp | None:
         block = await self._db.get_block_by_hash(block_hash)
         if block.is_empty:
             return None
         elif not (neon_tx_meta := await self._db.get_tx_by_slot_tx_idx(block.slot, index)):
             return None
-        return _RpcTxResp.from_raw(neon_tx_meta)
+        return RpcEthTxResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getBlockByNumber")
     async def get_block_by_number(self, block_tag: RpcBlockRequest, full: bool) -> _RpcBlockResp | None:

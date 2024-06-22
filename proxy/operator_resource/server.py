@@ -24,6 +24,9 @@ class OpResourceServer(OpResourceServerAbc):
         self._add_api(OpSolSignApi(self))
         self._add_api(OpBalanceApi(self))
 
+    async def get_signer_list(self) -> tuple[SolSigner, ...]:
+        return await self._op_secret_mng.get_signer_list()
+
     async def _on_server_start(self) -> None:
         await asyncio.gather(
             super()._on_server_start(),
@@ -37,6 +40,3 @@ class OpResourceServer(OpResourceServerAbc):
             self._op_secret_mng.stop(),
             self._op_resource_mng.stop(),
         )
-
-    async def get_signer_list(self) -> tuple[SolSigner, ...]:
-        return await self._op_secret_mng.get_signer_list()

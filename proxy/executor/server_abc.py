@@ -11,10 +11,10 @@ from common.utils.cached import ttl_cached_method, cached_property
 from ..base.ex_api import EXECUTOR_ENDPOINT
 from ..base.mp_client import MempoolClient
 from ..base.op_client import OpResourceClient
-from ..base.server import BaseProxyServer, BaseProxyComponent
+from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 
 
-class ExecutorComponent(BaseProxyComponent):
+class ExecutorComponent(BaseIntlProxyComponent):
     def __init__(self, server: ExecutorServerAbc) -> None:
         super().__init__(server)
         self._server = server
@@ -33,7 +33,7 @@ class ExecutorApi(ExecutorComponent, AppDataApi):
         ExecutorComponent.__init__(self, server)
 
 
-class ExecutorServerAbc(BaseProxyServer):
+class ExecutorServerAbc(BaseIntlProxyServer):
     def __init__(
         self,
         cfg: Config,
@@ -46,9 +46,9 @@ class ExecutorServerAbc(BaseProxyServer):
         self._mp_client = mp_client
         self._op_client = op_client
 
-    def _add_api(self, api: ExecutorApi) -> Self:
-        return self.add_api(api, endpoint=EXECUTOR_ENDPOINT)
-
     @ttl_cached_method(ttl_sec=1)
     async def get_evm_cfg(self) -> EvmConfigModel:
         return await self._mp_client.get_evm_cfg()
+
+    def _add_api(self, api: ExecutorApi) -> Self:
+        return self.add_api(api, endpoint=EXECUTOR_ENDPOINT)

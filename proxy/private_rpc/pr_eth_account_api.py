@@ -10,5 +10,5 @@ class PrEthAccountApi(PrivateRpcApi):
 
     @PrivateRpcApi.method(name="eth_accounts")
     async def eth_accounts(self, ctx: HttpRequestCtx) -> list[EthAddressField]:
-        eth_address_list = await self._op_client.get_eth_address_list({"req_id": ctx.ctx_id})
+        eth_address_list = await self._op_client.get_eth_address_list(dict(ctx=self._get_ctx_id(ctx)))
         return [a.eth_address for a in eth_address_list]
