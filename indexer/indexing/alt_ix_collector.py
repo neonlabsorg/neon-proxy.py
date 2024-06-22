@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from typing import Final
 
 from common.config.config import Config
 from common.neon.transaction_decoder import SolNeonAltTxIxModel
@@ -18,7 +19,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class SolAltTxIxCollector:
-    _block_step_cnt = (512 + 32 * 3) // 2  # 512 blocks for ALT closing, 32 blocks for finalization
+    _block_step_cnt: Final[int] = (512 + 32 * 3) // 2  # 512 blocks for ALT closing, 32 blocks for finalization
 
     def __init__(self, cfg: Config, sol_client: SolClient):
         self._cfg = cfg
@@ -28,7 +29,7 @@ class SolAltTxIxCollector:
 
     @cached_property
     def check_depth(self) -> int:
-        return self._cfg.alt_freeing_depth * 10
+        return self._cfg.alt_freeing_depth * 20
 
     async def collect_in_block(self, neon_block: NeonIndexedBlockInfo) -> None:
         if neon_block.slot < self._next_check_slot:

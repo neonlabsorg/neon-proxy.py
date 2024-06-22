@@ -68,7 +68,7 @@ class SolAltDestroyer(ExecutorComponent):
         if self._destroy_alt_task:
             await self._destroy_alt_task
 
-    def extend_alt_list(self, neon_alt_list: Sequence[NeonAltModel]) -> None:
+    def destroy_alt_list(self, neon_alt_list: Sequence[NeonAltModel]) -> None:
         next_check_sec = self._get_now() + self._finalize_sec
         for neon_alt in neon_alt_list:
             alt = _NeonAltInfo(neon_alt.sol_alt_id, neon_alt.neon_tx_hash, next_check_sec, 0)
@@ -141,7 +141,7 @@ class SolAltDestroyer(ExecutorComponent):
             _LOG.warning(msg)
             return 0
 
-        if acct.deactivation_slot > slot:
+        if not acct.is_deactivated:
             _LOG.debug("deactivate ALT")
             if await self._deactivate_alt(alt.sol_alt):
                 return self._get_now() + self._deactivate_sec
