@@ -5,7 +5,7 @@ from typing import ClassVar, Final, Annotated, Union
 import eth_utils
 from typing_extensions import Self
 
-from ..utils.cached import cached_method
+from ..utils.cached import cached_method, cached_property
 from ..utils.format import hex_to_bytes, bytes_to_hex
 from ..utils.pydantic import PlainValidator, PlainSerializer
 
@@ -52,7 +52,7 @@ class _BaseHash:
     @classmethod
     def from_not_none(cls, raw: _RawHash) -> Self:
         if raw is None:
-            raise ValueError(f"Wrong input: null")
+            raise ValueError("Wrong input: null")
         return cls.from_raw(raw)
 
     @property
@@ -126,6 +126,10 @@ EthNotNoneAddressField = Annotated[
 class EthHash32(_BaseHash):
     HashSize: ClassVar[int] = 32
     ZeroHash: ClassVar[str] = "0x" + "00" * HashSize
+
+    @cached_property
+    def ident(self) -> str:
+        return self.to_bytes()[:4].hex()
 
     def to_string(self, default: str | None = None) -> str | None:
         return self._to_string() if self._data else default

@@ -56,4 +56,4 @@ class MpTxApi(MempoolApi):
     @MempoolApi.method(name="getMempoolContent")
     async def _get_content(self, request: MpRequest) -> MpTxPoolContentResp:
         with logging_context(ctx=request.ctx_id):
-            return self._tx_executor.get_content()
+            return self._tx_executor.get_content(request.chain_id)

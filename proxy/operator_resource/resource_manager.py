@@ -19,7 +19,7 @@ from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
-from common.utils.cached import cached_property, reset_cached_method
+from common.utils.cached import cached_property
 from common.utils.json_logger import log_msg, logging_context
 from .key_info import OpSignerInfo, OpHolderInfo
 from .server_abc import OpResourceComponent
@@ -217,6 +217,12 @@ class OpResourceMng(OpResourceComponent):
         )
         return tuple(generator)
 
+    def get_signer_by_eth_address(self, eth_address: EthAddress) -> OpSignerInfo | None:
+        for op_signer in self._active_signer_dict.values():
+            if op_signer.eth_address == eth_address:
+                return op_signer
+        return None
+
     async def withdraw(self) -> None:
         for op_signer in self._active_signer_dict.values():
             ix_list: list[SolTxIx] = list()
@@ -303,7 +309,7 @@ class OpResourceMng(OpResourceComponent):
 
         return OpSignerInfo(
             signer=signer,
-            eth_address=NeonAccount.from_private_key(signer.secret, 0).eth_address,
+            neon_account=NeonAccount.from_private_key(signer.secret, 0),
             token_sol_address_dict=dict(),
             free_holder_list=deque(),
             used_holder_dict=dict(),

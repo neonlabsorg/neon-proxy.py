@@ -13,7 +13,7 @@ from .transaction_executor import NeonTxExecutor
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRequest, ExecTxResp, ExecStuckTxRequest, ExecTxRespCode, NeonAltModel
 from ..base.mp_api import MpStuckTxModel
-from ..base.server import BaseProxyApi
+from ..base.intl_server import BaseProxyApi
 
 _LOG = logging.getLogger(__name__)
 

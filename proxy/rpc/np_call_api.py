@@ -13,10 +13,12 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, EmulNeonCallModel
 from common.solana.pubkey import SolPubKeyField
+from common.utils.cached import cached_property
 from common.utils.pydantic import HexUIntField, RootModel
-from .api import RpcCallRequest, RpcBlockRequest, RpcNeonCallRequest
-from .gas_limit_calculator import NpGasLimitCalculator
+from .api import RpcBlockRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyApi
+from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
+from ..base.rpc_api import RpcEthTxRequest
 
 
 class _RpcEthAccountModel(BaseJsonRpcModel):
@@ -92,25 +94,25 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
 class NpCallApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::CallAndEmulate"
 
-    @property
-    def _gas_limit_calc(self) -> NpGasLimitCalculator:
-        return self._server._gas_limit_calc  # noqa
+    @cached_property
+    def _gas_limit_calc(self) -> RpcNeonGasLimitCalculator:
+        return RpcNeonGasLimitCalculator(self._server)
 
     @NeonProxyApi.method(name="eth_call")
     async def eth_call(
         self,
         ctx: HttpRequestCtx,
-        call: RpcCallRequest,
+        call: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
         object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
     ) -> EthBinStrField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = self._get_chain_id(ctx)
         if call.chainId and call.chainId != chain_id:
             raise EthWrongChainIdError()
 
         _ = object_state
         block = await self.get_block_by_tag(block_tag)
-        evm_cfg = await self.get_evm_cfg()
+        evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
             call.to_emulation_call(chain_id),
@@ -123,10 +125,10 @@ class NpCallApi(NeonProxyApi):
     async def estimate_gas(
         self,
         ctx: HttpRequestCtx,
-        call: RpcCallRequest,
+        call: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = self._get_chain_id(ctx)
         if call.chainId and call.chainId != chain_id:
             raise EthWrongChainIdError()
 
@@ -137,11 +139,11 @@ class NpCallApi(NeonProxyApi):
     async def neon_estimate_gas(
         self,
         ctx: HttpRequestCtx,
-        call: RpcCallRequest,
+        call: RpcEthTxRequest,
         neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self.get_chain_id(ctx)
+        chain_id = self._get_chain_id(ctx)
         if call.chainId and call.chainId != chain_id:
             raise EthWrongChainIdError()
 
@@ -157,8 +159,8 @@ class NpCallApi(NeonProxyApi):
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> _RpcEmulatorResp:
         """Executes emulator with given transaction"""
-        evm_cfg = await self.get_evm_cfg()
-        chain_id = self.get_chain_id(ctx)
+        evm_cfg = await self._get_evm_cfg()
+        chain_id = self._get_chain_id(ctx)
         block = await self.get_block_by_tag(block_tag)
 
         neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes())
