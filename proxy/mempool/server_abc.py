@@ -15,11 +15,11 @@ from indexer.db.indexer_db_client import IndexerDbClient
 from ..base.ex_client import ExecutorClient
 from ..base.mp_api import MpGasPriceModel, MP_ENDPOINT
 from ..base.op_client import OpResourceClient
-from ..base.server import BaseProxyServer, BaseProxyComponent
+from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 from ..stat.client import StatClient
 
 
-class MempoolComponent(BaseProxyComponent):
+class MempoolComponent(BaseIntlProxyComponent):
     def __init__(self, server: MempoolServerAbc) -> None:
         super().__init__(server)
         self._server = server
@@ -47,7 +47,7 @@ class MempoolApi(MempoolComponent, AppDataApi):
         MempoolComponent.__init__(self, server)
 
 
-class MempoolServerAbc(BaseProxyServer, abc.ABC):
+class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
     def __init__(
         self,
         cfg: Config,
@@ -63,24 +63,6 @@ class MempoolServerAbc(BaseProxyServer, abc.ABC):
         self._op_client = op_client
         self._stat_client = stat_client
         self._db = db
-
-    async def _on_server_start(self) -> None:
-        await asyncio.gather(
-            super()._on_server_start(),
-            self._db.start(),
-            self._op_client.start(),
-            self._exec_client.start(),
-            self._stat_client.start(),
-        )
-
-    async def _on_server_stop(self) -> None:
-        await asyncio.gather(
-            super()._on_server_stop(),
-            self._db.stop(),
-            self._exec_client.stop(),
-            self._op_client.stop(),
-            self._stat_client.stop(),
-        )
 
     @ttl_cached_method(ttl_sec=1)
     async def get_evm_cfg(self) -> EvmConfigModel:
@@ -104,3 +86,21 @@ class MempoolServerAbc(BaseProxyServer, abc.ABC):
 
     def _add_api(self, api: MempoolApi) -> Self:
         return self.add_api(api, endpoint=MP_ENDPOINT)
+
+    async def _on_server_start(self) -> None:
+        await asyncio.gather(
+            super()._on_server_start(),
+            self._db.start(),
+            self._op_client.start(),
+            self._exec_client.start(),
+            self._stat_client.start(),
+        )
+
+    async def _on_server_stop(self) -> None:
+        await asyncio.gather(
+            super()._on_server_stop(),
+            self._db.stop(),
+            self._exec_client.stop(),
+            self._op_client.stop(),
+            self._stat_client.stop(),
+        )

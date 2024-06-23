@@ -14,11 +14,11 @@ from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property
 from ..base.mp_client import MempoolClient
 from ..base.op_api import OP_RESOURCE_ENDPOINT
-from ..base.server import BaseProxyServer, BaseProxyComponent
+from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 from ..stat.client import StatClient
 
 
-class OpResourceComponent(BaseProxyComponent):
+class OpResourceComponent(BaseIntlProxyComponent):
     def __init__(self, server: OpResourceServerAbc) -> None:
         super().__init__(server)
         self._server = server
@@ -34,7 +34,7 @@ class OpResourceApi(OpResourceComponent, AppDataApi):
         OpResourceComponent.__init__(self, server)
 
 
-class OpResourceServerAbc(BaseProxyServer, abc.ABC):
+class OpResourceServerAbc(BaseIntlProxyServer, abc.ABC):
     def __init__(
         self,
         cfg: Config,
@@ -47,9 +47,6 @@ class OpResourceServerAbc(BaseProxyServer, abc.ABC):
         self._mp_client = mp_client
         self._stat_client = stat_client
 
-    def _add_api(self, api: OpResourceApi) -> Self:
-        return self.add_api(api, endpoint=OP_RESOURCE_ENDPOINT)
-
     @abc.abstractmethod
     async def get_signer_list(self) -> tuple[SolSigner, ...]: ...
 
@@ -57,6 +54,9 @@ class OpResourceServerAbc(BaseProxyServer, abc.ABC):
         evm_cfg = await self._mp_client.get_evm_cfg()
         NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
         return evm_cfg
+
+    def _add_api(self, api: OpResourceApi) -> Self:
+        return self.add_api(api, endpoint=OP_RESOURCE_ENDPOINT)
 
     async def _on_server_start(self) -> None:
         await super()._on_server_start()

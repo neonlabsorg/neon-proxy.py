@@ -103,6 +103,9 @@ class HttpRequestCtx:
         self._prop_name_set.add(name)
         return self
 
+    def get_property_value(self, name: str, default):
+        return getattr(self, name, default)
+
 
 @dataclass(frozen=True)
 class HttpMethod:
@@ -173,7 +176,7 @@ def http_validate_method_name(name: str) -> None:
 def _validate_request_id(value: HttpRequestId) -> HttpRequestId:
     if (value is None) or isinstance(value, int) or isinstance(value, str):
         return value
-    raise ValueError(f"'id' must be a string or integer")
+    raise ValueError("'id' must be a string or integer")
 
 
 HttpRequestIdField = Annotated[HttpRequestId, PlainValidator(_validate_request_id)]

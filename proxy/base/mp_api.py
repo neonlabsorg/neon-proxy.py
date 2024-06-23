@@ -45,7 +45,7 @@ class MpTxModel(BaseModel):
 
     @cached_property
     def tx_id(self) -> str:
-        return self.neon_tx_hash.to_bytes()[:4].hex()
+        return self.neon_tx_hash.ident
 
     @property
     def sender(self) -> EthAddress:
@@ -113,7 +113,7 @@ class MpStuckTxModel(BaseModel):
 
     @cached_property
     def tx_id(self) -> str:
-        return self.neon_tx_hash.to_bytes()[:4].hex()
+        return self.neon_tx_hash.ident
 
     @property
     def process_time_nsec(self) -> int:
@@ -166,6 +166,7 @@ class MpGasPriceModel(BaseModel):
 
 class MpRequest(BaseModel):
     ctx_id: str
+    chain_id: int
 
 
 class MpTxCntRequest(BaseModel):
@@ -221,5 +222,5 @@ class MpGetTxResp(BaseModel):
 
 
 class MpTxPoolContentResp(BaseModel):
-    pending_list: tuple[NeonTxModel, ...]
-    queued_list: tuple[NeonTxModel, ...]
+    pending_list: list[NeonTxModel]
+    queued_list: list[NeonTxModel]

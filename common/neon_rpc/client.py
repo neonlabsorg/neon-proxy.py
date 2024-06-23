@@ -144,7 +144,7 @@ class CoreApiClient(SimpleAppDataClient):
         acct_list = await self.get_neon_account_list([account], block)
         return acct_list[0]
 
-    async def get_state_tx_cnt(self, account: NeonAccount, block: NeonBlockHdrModel | None) -> int:
+    async def get_state_tx_cnt(self, account: NeonAccount, block: NeonBlockHdrModel | None = None) -> int:
         acct = await self.get_neon_account(account, block)
         return acct.state_tx_cnt
 

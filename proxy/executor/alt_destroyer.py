@@ -34,7 +34,7 @@ class _NeonAltInfo:
 
     @cached_property
     def ctx_id(self) -> dict:
-        tx = self.neon_tx_hash.to_bytes()[:4].hex()
+        tx = self.neon_tx_hash.ident
         return dict(alt=self.sol_alt.ctx_id, tx=tx)
 
     @cached_property

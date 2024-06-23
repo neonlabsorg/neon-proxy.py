@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
-
 from common.neon.account import NeonAccountField
 from common.neon_rpc.api import TokenModel
 from common.solana.pubkey import SolPubKeyField

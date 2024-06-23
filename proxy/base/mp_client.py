@@ -62,8 +62,8 @@ class MempoolClient(AppDataClient):
         resp = await self._get_tx_by_sender_nonce(req)
         return resp.tx
 
-    async def get_content(self, ctx_id: str) -> MpTxPoolContentResp:
-        return await self._get_content(MpRequest(ctx_id=ctx_id))
+    async def get_content(self, ctx_id: str, chain_id: int) -> MpTxPoolContentResp:
+        return await self._get_content(MpRequest(ctx_id=ctx_id, chain_id=chain_id))
 
     @AppDataClient.method(name="getGasPrice")
     async def _get_gas_price(self) -> MpGasPriceModel: ...

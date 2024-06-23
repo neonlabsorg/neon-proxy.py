@@ -6,7 +6,7 @@ from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx
 from common.neon.block import NeonBlockHdrModel
-from common.neon.neon_program import NeonProg
+from common.neon.neon_program import NeonProg, NeonIxMode
 from common.neon_rpc.api import EvmConfigModel, EmulNeonCallResp, EmulNeonCallModel
 from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
@@ -17,12 +17,12 @@ from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
-from .server_abc import NeonProxyComponent
+from .rpc_server_abc import BaseRpcServerComponent
 
 _LOG = logging.getLogger(__name__)
 
 
-class NpGasLimitCalculator(NeonProxyComponent):
+class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
     _oz_gas_limit = 30_000  # openzeppelin gas-limit check
     _min_gas_limit = 25_000  # minimal gas limit for NeonTx: start (10k), execute (10k), finalization (5k)
     _u64_max = int.from_bytes(bytes([0xFF] * 8), "big")
@@ -40,9 +40,9 @@ class NpGasLimitCalculator(NeonProxyComponent):
         self,
         call: EmulNeonCallModel,
         sol_account_dict: dict[SolPubKey, SolAccountModel],
-        block: NeonBlockHdrModel = None,
+        block: NeonBlockHdrModel | None = None,
     ) -> int:
-        evm_cfg = await self.get_evm_cfg()
+        evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
             call,
@@ -119,7 +119,7 @@ class NpGasLimitCalculator(NeonProxyComponent):
         neon_prog = self._neon_prog
         neon_prog.init_neon_tx(EthTxHash.from_raw(eth_tx.neon_tx_hash), eth_tx.to_bytes())
         neon_prog.init_account_meta_list(resp.sol_account_meta_list)
-        ix_list.append(neon_prog.make_tx_step_from_data_ix(False, self._cfg.max_emulate_evm_step_cnt, 101))
+        ix_list.append(neon_prog.make_tx_step_from_data_ix(NeonIxMode.Default, self._cfg.max_emulate_evm_step_cnt, 101))
 
         sol_tx = SolLegacyTx(name="Estimate", ix_list=tuple(ix_list))
         sol_tx.recent_block_hash = SolBlockHash.fake()

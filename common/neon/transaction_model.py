@@ -146,6 +146,16 @@ class NeonTxModel(BaseModel):
 
         return tx.to_bytes()
 
+    def to_eth_dict(self) -> dict:
+        return dict(
+            nonce=self.nonce,
+            gasPrice=self.gas_price,
+            gas=self.gas_limit,
+            to=self.to_address.to_checksum(),
+            value=self.value,
+            data=self.call_data.to_string(),
+        )
+
     @property
     def has_chain_id(self) -> bool:
         return self.chain_id is not None

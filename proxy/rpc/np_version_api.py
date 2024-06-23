@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import ClassVar
+
 from eth_hash.auto import keccak
 
 from common.config.constants import NEON_PROXY_PKG_VER
@@ -52,7 +53,7 @@ class NpVersionApi(NeonProxyApi):
 
     @NeonProxyApi.method(name=["neon_evmVersion", "web3_clientVersion", "neon_evm_version"])
     async def neon_evm_version(self) -> str:
-        evm_cfg = await self.get_evm_cfg()
+        evm_cfg = await self._get_evm_cfg()
         return evm_cfg.package_version
 
     @NeonProxyApi.method(name="neon_proxyVersion")
@@ -79,7 +80,7 @@ class NpVersionApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="eth_chainId")
     def get_eth_chain_id(self, ctx: HttpRequestCtx) -> HexUIntField:
-        return self.get_chain_id(ctx)
+        return self._get_chain_id(ctx)
 
     @NeonProxyApi.method(name="net_version")
     async def get_net_version(self) -> str:
@@ -88,7 +89,7 @@ class NpVersionApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="neon_getEvmParams")
     async def get_neon_evm_param(self) -> _RpcNeonEvmParamResp:
-        evm_cfg = await self.get_evm_cfg()
+        evm_cfg = await self._get_evm_cfg()
 
         def _get_int_param(_name: str) -> int | None:
             if value := evm_cfg.evm_param_dict.get(_name, None):
