@@ -2,22 +2,20 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from pydantic import Field, AliasChoices
+from pydantic import Field
 from typing_extensions import Self
 
-from common.ethereum.bin_str import EthBinStrField, EthBinStr
+from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommitField, EthCommit
 from common.ethereum.hash import (
     EthBlockHashField,
     EthBlockHash,
     EthAddressField,
     EthHash32Field,
-    EthAddress,
     EthTxHashField,
 )
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.evm_log_decoder import NeonTxEventModel
-from common.neon_rpc.api import EmulNeonCallModel
 from common.solana.account import SolAccountModel
 from common.solana.pubkey import SolPubKeyField
 from common.solana.signature import SolTxSigField
@@ -95,60 +93,6 @@ class RpcBlockRequest(RootModel):
             raise ValueError(f"{type(self).__name__} can't be null")
 
 
-class RpcAccessItemModel(BaseJsonRpcModel):
-    address: EthAddressField
-    storageKeys: list[EthHash32Field]
-
-
-class RpcCallRequest(BaseJsonRpcModel):
-    type: HexUIntField = Field(default=0)
-    fromAddress: EthAddressField = Field(
-        default=EthAddress.default(),
-        validation_alias=AliasChoices("from", "fromAddress"),
-    )
-    toAddress: EthAddressField = Field(
-        default=EthAddress.default(),
-        validation_alias=AliasChoices("to", "toAddress"),
-    )
-    data: EthBinStrField = Field(
-        default=EthBinStr.default(),
-        validation_alias=AliasChoices("data", "input"),
-    )
-    value: HexUIntField = Field(default=0)
-    nonce: HexUIntField = Field(default=0)
-
-    gas: HexUIntField = Field(default=2**64)
-    gasPrice: HexUIntField = Field(default=2**64)
-    maxFeePerGas: HexUIntField = Field(default=2**64)
-    maxPriorityFeePerGas: HexUIntField = Field(default=2**64)
-
-    accessList: list[RpcAccessItemModel] = Field(default_factory=list)
-    chainId: HexUIntField = Field(default=0)
-
-    _default: ClassVar[RpcCallRequest | None] = None
-
-    @classmethod
-    def default(cls) -> Self:
-        if not cls._default:
-            cls._default = cls(
-                fromAddress=EthAddress.default(),
-                toAddress=EthAddress.default(),
-                data=EthBinStr.default(),
-            )
-        return cls._default
-
-    def to_emulation_call(self, chain_id: int) -> EmulNeonCallModel:
-        return EmulNeonCallModel(
-            from_address=self.fromAddress,
-            to_address=self.toAddress,
-            value=self.value,
-            data=self.data.to_bytes(),
-            gas_limit=self.gas,
-            gas_price=self.gasPrice,
-            chain_id=chain_id
-        )
-
-
 class RpcNeonCallRequest(BaseJsonRpcModel):
     sol_account_dict: dict[SolPubKeyField, SolAccountModel] = Field(
         default_factory=dict,
@@ -173,7 +117,6 @@ class RpcEthTxEventModel(BaseJsonRpcModel):
     transactionHash: EthTxHashField
     transactionIndex: HexUIntField
     logIndex: HexUIntField | None
-    # transactionLogIndex: HexUIntField | None
 
     removed: bool = False
 
@@ -192,7 +135,6 @@ class RpcEthTxEventModel(BaseJsonRpcModel):
             transactionHash=event.neon_tx_hash,
             transactionIndex=event.neon_tx_idx,
             logIndex=event.block_log_idx,
-            # transactionLogIndex=event.neon_tx_log_idx,
         )
 
 

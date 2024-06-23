@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
+from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
 from .strategy_base import SolTxCfg
 from .strategy_iterative import IterativeTxStrategy

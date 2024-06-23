@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Sequence, ClassVar
 
-from common.neon.neon_program import NeonProg, NeonIxMode
+from common.neon.neon_program import NeonProg
 from common.solana.alt_info import SolAltInfo
 from common.solana.alt_program import SolAltProg
 from common.solana.errors import SolTxSizeError, SolAltContentError

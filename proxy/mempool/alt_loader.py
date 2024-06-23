@@ -87,7 +87,7 @@ class SolAltLoader(MempoolComponent):
                 # skip tables from other operators
                 continue
 
-            tx = neon_tx_hash.to_bytes()[:4].hex()
+            tx = neon_tx_hash.ident
             alt = SolAltID(address=addr, owner=owner, recent_slot=0, nonce=0)
             with logging_context(alt=alt.ctx_id, tx=tx):
                 msg = log_msg(

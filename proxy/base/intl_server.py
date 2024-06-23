@@ -11,8 +11,8 @@ from common.utils.cached import cached_property
 from common.utils.process_pool import ProcessPool
 
 
-class BaseProxyComponent:
-    def __init__(self, server: BaseProxyServer):
+class BaseIntlProxyComponent:
+    def __init__(self, server: BaseIntlProxyServer):
         self._server = server
 
     @cached_property
@@ -32,17 +32,17 @@ class BaseProxyComponent:
         return self._server._msg_filter  # noqa
 
 
-class BaseProxyApi(BaseProxyComponent, AppDataApi):
-    def __init__(self, server: BaseProxyServer) -> None:
+class BaseProxyApi(BaseIntlProxyComponent, AppDataApi):
+    def __init__(self, server: BaseIntlProxyServer) -> None:
         AppDataApi.__init__(self)
-        BaseProxyComponent.__init__(self, server)
+        BaseIntlProxyComponent.__init__(self, server)
 
 
-class BaseProxyServer(AppDataServer):
+class BaseIntlProxyServer(AppDataServer):
     class _ProcessPool(ProcessPool):
-        def __init__(self, server: BaseProxyServer) -> None:
+        def __init__(self, server: BaseIntlProxyServer) -> None:
             super().__init__()
-            self._server: BaseProxyServer | None = server
+            self._server: BaseIntlProxyServer | None = server
 
         def _on_process_start(self, idx: int) -> None:
             self._server._on_process_start(idx)

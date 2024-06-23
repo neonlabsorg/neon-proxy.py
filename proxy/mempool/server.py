@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from common.http.server import HttpSocket
 from .alt_loader import SolAltLoader
 from .gas_price_calculator import MpGasPriceCalculator
 from .mp_evm_config_api import MpEvmCfgApi

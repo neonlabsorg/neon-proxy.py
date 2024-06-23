@@ -94,6 +94,8 @@ class Config:
     # Statistic configuration
     gather_stat_name: Final[str] = "GATHER_STATISTICS"
     # Proxy configuration
+    rpc_private_ip_name: Final[str] = "RPC_PRIVATE_IP"
+    rpc_private_port_name: Final[str] = "RPC_PRIVATE_PORT"
     rpc_public_port_name: Final[str] = "RPC_PUBLIC_PORT"
     rpc_process_cnt_name: Final[str] = "RPC_PROCESS_COUNT"
     rpc_worker_cnt_name: Final[str] = "RPC_WORKER_COUNT"
@@ -431,6 +433,14 @@ class Config:
 
     #########################
     # Proxy configuration
+
+    @cached_property
+    def rpc_private_ip(self) -> str:
+        return os.environ.get(self.rpc_private_ip_name, self.base_service_ip)
+
+    @cached_property
+    def rpc_private_port(self) -> int:
+        return self._env_num(self.rpc_private_port_name, self.rpc_public_port + 1, 8000, 25000)
 
     @cached_property
     def rpc_public_port(self) -> int:
@@ -832,6 +842,8 @@ class Config:
             self.gather_stat_name: self.gather_stat,
             self.debug_cmd_line_name: self.debug_cmd_line,
             # Proxy configuration
+            self.rpc_private_ip_name: self.rpc_private_ip,
+            self.rpc_private_port_name: self.rpc_private_port,
             self.rpc_public_port_name: self.rpc_public_port,
             self.rpc_process_cnt_name: self.rpc_process_cnt,
             self.rpc_worker_cnt_name: self.rpc_worker_cnt,
