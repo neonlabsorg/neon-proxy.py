@@ -7,6 +7,7 @@ from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
+from common.utils.cached import cached_property
 from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -50,6 +51,10 @@ class SimpleTxStrategy(BaseTxStrategy):
     async def cancel(self) -> None:
         _LOG.debug("canceling of a simple NeonTx...")
         return None
+
+    @cached_property
+    def _cu_limit(self) -> int:
+        return self._ctx.cfg.cu_limit
 
     async def _emulate_and_send_tx_list(self) -> bool:
         tx_list = tuple([self._build_tx()])
