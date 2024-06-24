@@ -17,7 +17,7 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcRequest, JsonRpcResp
 from common.jsonrpc.server import JsonRpcApi, JsonRpcServer
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.api import EvmConfigModel
+from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.stat.api import RpcCallData
@@ -119,6 +119,9 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         self._db = db
         self._process_pool = self._ProcessPool(self)
 
+        self._default_chain_id: int = 0
+        self._token_dict: dict[str, TokenModel] = dict()
+
     def start(self) -> None:
         self._register_handler_list()
         self._process_pool.start()
@@ -216,7 +219,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
 
         return resp
 
-    @ttl_cached_method(ttl_sec=1)
+    @ttl_cached_method(ttl_sec=15)
     async def get_gas_price(self) -> MpGasPriceModel:
         # for details, see the mempool_server::get_gas_price() implementation
         gas_price = await self._mp_client.get_gas_price()
@@ -233,12 +236,12 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
 
     @abc.abstractmethod
     async def has_fee_less_tx_permit(
-            self,
-            ctx: HttpRequestCtx,
-            sender: EthAddress,
-            contract: EthAddress,
-            tx_nonce: int,
-            tx_gas_limit: int,
+        self,
+        ctx: HttpRequestCtx,
+        sender: EthAddress,
+        contract: EthAddress,
+        tx_nonce: int,
+        tx_gas_limit: int,
     ) -> bool:
         ...
 
@@ -258,18 +261,29 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         return await self._set_chain_id(ctx)
 
     async def _set_chain_id(self, ctx: HttpRequestCtx) -> int:
-        evm_cfg = await self.get_evm_cfg()
+        if not self._default_chain_id:
+            await self._refresh_token_dict()
+
         if not (token_name := ctx.request.path_params.get("token", "").strip().upper()):
-            chain_id = evm_cfg.default_chain_id
+            chain_id = self._default_chain_id
             ctx.set_property_value("is_default_chain_id", True)
-        elif token := evm_cfg.token_dict.get(token_name, None):
+        elif token := self._token_dict.get(token_name, None):
             chain_id = token.chain_id
             ctx.set_property_value("is_default_chain_id", token.is_default)
         else:
+            await self._refresh_token_dict()
             raise HttpRouteError()
 
         ctx.set_property_value("chain_id", chain_id)
         return chain_id
+
+    async def _refresh_token_dict(self) -> None:
+        evm_cfg = await self.get_evm_cfg()
+        if not evm_cfg.default_chain_id:
+            raise HttpRouteError()
+
+        self._default_chain_id = evm_cfg.default_chain_id
+        self._token_dict = evm_cfg.token_dict
 
     def _add_api(self, api: JsonRpcApi) -> Self:
         _LOG.info(log_msg(f"adding API {api.name}"))
