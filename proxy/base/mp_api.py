@@ -94,7 +94,7 @@ class MpStuckTxModel(BaseModel):
         return cls(
             neon_tx_hash=data["neon_tx_hash"],
             holder_address=data["holder_address"],
-            alt_address_list=list(),
+            alt_address_list=data.get("alt_address_list", list()),
             start_time_nsec=time.monotonic_ns(),
         )
 
