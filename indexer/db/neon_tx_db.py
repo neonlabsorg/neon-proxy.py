@@ -14,7 +14,7 @@ from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
-from common.utils.pydantic import RootModel, BaseModel, HexUIntField
+from common.utils.pydantic import RootModel, BaseModel, UIntFromHexField
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
 
@@ -169,20 +169,20 @@ class _OldNeonTxEventModel(BaseModel):
     data: str
 
     sol_tx_sig: str = Field(validation_alias="neonSolHash")
-    sol_ix_idx: int = Field(validation_alias="neonIxIdx")
-    sol_inner_ix_idx: int | None = Field(validation_alias="neonInnerIxIdx")
+    sol_ix_idx: UIntFromHexField = Field(validation_alias="neonIxIdx")
+    sol_inner_ix_idx: UIntFromHexField | None = Field(validation_alias="neonInnerIxIdx")
 
     total_gas_used: int = 0
     total_step_cnt: int = 0
     is_reverted: bool = Field(False, validation_alias="neonIsReverted")
-    event_level: int = Field(0, validation_alias="neonEventLevel")
-    event_order: int = Field(0, validation_alias="neonEventOrder")
+    event_level: UIntFromHexField = Field(0, validation_alias="neonEventLevel")
+    event_order: UIntFromHexField = Field(0, validation_alias="neonEventOrder")
 
     block_hash: str = Field(validation_alias="blockHash")
-    slot: HexUIntField = Field(validation_alias="blockNumber")
-    neon_tx_idx: HexUIntField = Field(validation_alias="transactionIndex")
-    block_log_idx: HexUIntField = Field("0x0", validation_alias="logIndex")
-    neon_tx_log_idx: HexUIntField = Field("0x0", validation_alias="transactionLogIndex")
+    slot: UIntFromHexField = Field(validation_alias="blockNumber")
+    neon_tx_idx: UIntFromHexField = Field(validation_alias="transactionIndex")
+    block_log_idx: UIntFromHexField = Field(0, validation_alias="logIndex")
+    neon_tx_log_idx: UIntFromHexField = Field(0, validation_alias="transactionLogIndex")
 
 
 # TODO: remove after converting all records
