@@ -41,32 +41,38 @@ class NeonTxExecutor(ExecutorComponent):
     _tx_strategy_list: ClassVar[_BaseTxStrategyList] = [
         # single iteration
         SimpleTxStrategy,
-        #     + alt
-        AltSimpleTxStrategy,
         #     + holder
         SimpleHolderTxStrategy,
-        #     + alt + holder
-        AltSimpleHolderTxStrategy,
+
         # multi-iteration
         IterativeTxStrategy,
         #     + holder
         HolderTxStrategy,
-        #     + alt
-        AltIterativeTxStrategy,
-        #     + alt + holder
-        AltHolderTxStrategy,
-        # without-chain-id
+        # wo-chain-id
+        #     + multi-iteration
         #     + holder
         NoChainIdTxStrategy,
-        #     + alt + holder
+
+        # ALT strategies:
+        #     simple + alt
+        AltSimpleTxStrategy,
+        #     simple + alt + holder
+        AltSimpleHolderTxStrategy,
+        #     multi-iterative + alt
+        AltIterativeTxStrategy,
+        #     multi-iterative + alt + holder
+        AltHolderTxStrategy,
+        #     multi-iterative + wo-chain-id + alt + holder
         AltNoChainIdTxStrategy,
+
         # single iteration with Solana Call
-        SimpleTxSolanaCallStrategy,
-        #     + alt
         AltSimpleTxSolanaCallStrategy,
         #     + holder
+        SimpleTxSolanaCallStrategy,
+        #     + alt
         SimpleHolderTxSolanaCallStrategy,
         #     + alt + holder
+
         AltSimpleHolderTxSolanaCallStrategy,
         # multi-iteration with Solana call
         #     + holder
