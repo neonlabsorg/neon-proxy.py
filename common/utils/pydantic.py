@@ -77,7 +77,7 @@ class RootModel(_PydanticRootModel):
 
 
 # Allows: 0x | 0X | 10 | 0xa | 0Xa | 0xA | 0XA | A
-def _hex_to_int(value: str | int) -> int | None:
+def _hex_to_uint(value: str | int) -> int | None:
     if isinstance(value, str):
         if (len(value) == 2) and has_hex_start(value):
             return 0
@@ -118,9 +118,10 @@ def _uint256_to_hex(value: int | None) -> str | None:
     return _uint_n_to_hex(value, 256)
 
 
-HexUIntField = Annotated[int, PlainValidator(_hex_to_int), PlainSerializer(_uint_to_hex)]
-HexUInt8Field = Annotated[int, PlainValidator(_hex_to_int), PlainSerializer(_uint8_to_hex)]
-HexUInt256Field = Annotated[int, PlainValidator(_hex_to_int), PlainSerializer(_uint256_to_hex)]
+HexUIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint_to_hex)]
+HexUInt8Field = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint8_to_hex)]
+HexUInt256Field = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint256_to_hex)]
+UIntFromHexField = Annotated[int, PlainValidator(_hex_to_uint)]
 
 
 # Allows: None | "1" | 1
