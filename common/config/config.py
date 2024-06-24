@@ -28,6 +28,7 @@ from .constants import (
 )
 from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
+from ..solana.cb_program import SolCbProg
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import str_fmt_object
 
@@ -131,6 +132,7 @@ class Config:
     pyth_url_name: Final[str] = "PYTH_URL"
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
     operator_fee_name: Final[str] = "OPERATOR_FEE"
+    cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_name: Final[str] = "CU_PRIORITY_FEE"
     simple_cu_price_name: Final[str] = "SIMPLE_CU_PRIORITY_FEE"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
@@ -645,6 +647,11 @@ class Config:
         return self._env_num(self.operator_fee_name, Decimal("0.1"), Decimal("0.0"), Decimal("100.0"))
 
     @cached_property
+    def cu_limit(self) -> int:
+        cb_prog = SolCbProg()
+        return self._env_num(self.cu_limit_name, cb_prog.MaxCuLimit, cb_prog.DefCuLimit // 5, cb_prog.MaxCuLimit)
+
+    @cached_property
     def cu_price(self) -> int:
         return self._env_num(self.cu_price_name, 0, 0, 1_000_000)
 
@@ -879,6 +886,7 @@ class Config:
             self.pyth_url_name: self.pyth_url_list,
             self.pyth_ws_url_name: self.pyth_ws_url_list,
             self.operator_fee_name: self.operator_fee,
+            self.cu_limit_name: self.cu_limit,
             self.cu_price_name: self.cu_price,
             self.simple_cu_price_name: self.simple_cu_price,
             self.min_gas_price_name: self.min_gas_price,
