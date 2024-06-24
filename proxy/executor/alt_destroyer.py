@@ -12,6 +12,7 @@ from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
 from common.solana.alt_program import SolAltID, SolAltProg, SolAltIxCode
 from common.solana.commit_level import SolCommit
+from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolNoMoreRetriesError
 from common.solana_rpc.transaction_list_sender import SolTxListSender
@@ -97,12 +98,13 @@ class SolAltDestroyer(ExecutorComponent):
         now = self._get_now()
         slot = await self._sol_client.get_slot(SolCommit.Finalized)
         new_destroy_queue: list[_NeonAltInfo] = list()
+        signer_list = await self._op_client.get_signer_key_list(dict(req_id="destroy-alt"))
 
         while self._alt_queue and self._alt_queue[0].next_check_sec < now:
             alt = self._alt_queue.popleft()
             with logging_context(**alt.ctx_id):
                 try:
-                    next_check_sec = await self._destroy_alt(alt, slot)
+                    next_check_sec = await self._destroy_alt(signer_list, alt, slot)
                 except BaseException as exc:
                     if not isinstance(exc, SolNoMoreRetriesError):
                         msg = log_msg(
@@ -128,17 +130,21 @@ class SolAltDestroyer(ExecutorComponent):
             new_destroy_queue.sort(key=lambda x: x.next_check_sec)
             self._alt_queue = deque(new_destroy_queue)
 
-    async def _destroy_alt(self, alt: _NeonAltInfo, slot: int) -> int:
+    async def _destroy_alt(self, signer_list: Sequence[SolPubKey], alt: _NeonAltInfo, slot: int) -> int:
         acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)
         if acct.is_empty:
             msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.debug(msg)
             return 0
 
-        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Finalized)
         if alt.attempt_cnt >= 1024:
             msg = log_msg("too many attempts to destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.warning(msg)
+            return 0
+
+        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Finalized)
+        if (acct.owner != alt.sol_alt.owner) or (acct.owner not in signer_list):
+            _LOG.debug("skip ALT {Address} from unknown owner {Owner}", **alt.info)
             return 0
 
         if not acct.is_deactivated:

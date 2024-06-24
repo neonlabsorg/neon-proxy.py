@@ -406,6 +406,11 @@ class NeonExecTxCtx:
     def alt_id_list(self) -> tuple[SolAltID, ...]:
         return tuple(self._alt_id_set)
 
+    @property
+    def stuck_alt_address_list(self) -> tuple[SolPubKey, ...]:
+        assert self.is_stuck_tx
+        return tuple(self._tx_request.stuck_tx.alt_address_list)
+
     def add_alt_id(self, alt_id: SolAltID) -> None:
         self._alt_id_set.add(alt_id)
 
