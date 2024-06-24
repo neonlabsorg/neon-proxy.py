@@ -9,6 +9,7 @@ import typing
 from dataclasses import dataclass, field
 from typing import Iterator, Generator, ClassVar
 
+from pydantic import Field
 from typing_extensions import Self
 
 from common.config.config import Config
@@ -170,33 +171,6 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
         data_size: int
         data: EthBinStrField
 
-    # TODO: remove after migrating
-    class _DeprecatedInitData(BaseModel):
-        start_block_slot: int
-        last_block_slot: int
-        is_stuck: bool
-        neon_tx_sig: str
-        account: str
-        data_size: int
-        data: str
-
-        @classmethod
-        def is_deprecated(cls, data: dict) -> bool:
-            return "neon_tx_sig" in data
-
-        def to_clean_copy(self) -> NeonIndexedHolderInfo.InitData:
-            return NeonIndexedHolderInfo.InitData(
-                start_slot=self.start_block_slot,
-                last_slot=self.last_block_slot,
-                is_stuck=self.is_stuck,
-                neon_tx_hash=self.neon_tx_sig,
-                address=self.account,
-                data_size=self.data_size,
-                data=self.data,
-            )
-
-    # TODO: done
-
     def __init__(self, key: Key, data: bytes, data_size: int, **kwargs) -> None:
         super().__init__(**kwargs)
         self._key = key
@@ -214,10 +188,7 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
 
     @classmethod
     def from_dict(cls, dict_data: dict) -> Self:
-        if cls._DeprecatedInitData.is_deprecated(dict_data):
-            init = cls._DeprecatedInitData.from_dict(dict_data).to_clean_copy()
-        else:
-            init = cls.InitData.from_dict(dict_data)
+        init = cls.InitData.from_dict(dict_data)
 
         holder = cls(
             key=cls.Key(init.address, init.neon_tx_hash),
@@ -391,148 +362,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx: NeonTxModel
         neon_tx_event_list: list[NeonTxEventModel]
         neon_tx_rcpt: NeonTxReceiptModel
-
-    # TODO: remove after migrating
-    class _DeprecatedNeonTx(BaseModel):
-        addr: str
-        sig: str
-        tx_type: int
-        nonce: int
-        gas_price: int
-        gas_limit: int
-        to_addr: str
-        contract: str | None
-        value: int
-        calldata: str
-        v: int
-        r: int
-        s: int
-        error: str | None
-
-        def to_clean_copy(self) -> NeonTxModel:
-            return NeonTxModel(
-                tx_type=self.tx_type,
-                neon_tx_hash=self.sig,
-                from_address=self.addr,
-                to_address=self.to_addr,
-                contract=self.contract,
-                nonce=self.nonce,
-                gas_price=self.gas_price,
-                gas_limit=self.gas_limit,
-                value=self.value,
-                call_data=self.calldata,
-                v=self.v,
-                r=self.r,
-                s=self.s,
-                error=None,
-            )
-
-    class _DeprecatedNeonTxRcpt(BaseModel):
-        block_slot: int | None
-        block_hash: str | None
-        tx_idx: int | None
-        sol_sig: str | None
-        sol_ix_idx: int | None
-        sol_ix_inner_idx: int | None
-        neon_sig: str
-        status: int
-        gas_used: int
-        sum_gas_used: int
-        event_list: list[str]
-
-        def to_clean_copy(self) -> NeonTxReceiptModel:
-            return NeonTxReceiptModel(
-                slot=self.block_slot,
-                block_hash=EthBlockHash.from_raw(self.block_hash),
-                sol_tx_sig=self.sol_sig if self.sol_sig else SolTxSig.default(),
-                sol_ix_idx=self.sol_ix_idx,
-                sol_inner_ix_idx=self.sol_ix_inner_idx,
-                neon_tx_idx=self.tx_idx,
-                status=self.status,
-                total_gas_used=self.gas_used,
-                sum_gas_used=self.sum_gas_used,
-                event_list=list(),
-                is_completed=False,
-                is_canceled=False,
-            )
-
-    class _DeprecatedEvent(BaseModel):
-        event_type: int
-        is_hidden: bool
-        address: str
-        topic_list: list[str]
-        data: str
-        sol_sig: str
-        idx: int
-        inner_idx: int | None
-        total_gas_used: int
-        is_reverted: bool
-        event_level: int
-        event_order: int
-        neon_sig: str
-        block_hash: str
-        block_slot: int
-        neon_tx_idx: int
-        block_log_idx: int | None
-        neon_tx_log_idx: int | None
-
-        def to_clean_copy(self) -> NeonTxEventModel:
-            return NeonTxEventModel(
-                event_type=self.event_type,
-                is_hidden=self.is_hidden,
-                neon_tx_hash=self.neon_sig,
-                address=self.address,
-                topic_list=self.topic_list,
-                data=self.data,
-                sol_tx_sig=self.sol_sig,
-                sol_ix_idx=self.idx,
-                sol_inner_ix_idx=self.inner_idx,
-                total_gas_used=self.total_gas_used,
-                total_step_cnt=0,
-                is_reverted=self.is_reverted,
-                event_level=self.event_level,
-                event_order=self.event_order,
-                block_hash=self.block_hash,
-                slot=self.block_slot,
-                neon_tx_idx=self.neon_tx_idx,
-                block_log_idx=self.block_log_idx,
-                neon_tx_log_idx=self.neon_tx_log_idx,
-            )
-
-    class _DeprecatedInitData(BaseModel):
-        start_block_slot: int
-        last_block_slot: int
-        is_stuck: bool
-        ix_code: int
-        neon_tx_sig: str
-        holder_account: str
-        operator: str
-        gas_used: int
-        total_gas_used: int
-        neon_tx: NeonIndexedTxInfo._DeprecatedNeonTx
-        neon_tx_res: NeonIndexedTxInfo._DeprecatedNeonTxRcpt
-        neon_tx_event_list: list[NeonIndexedTxInfo._DeprecatedEvent]
-
-        @classmethod
-        def is_deprecated(cls, data: dict) -> bool:
-            return "neon_tx_sig" in data
-
-        def to_clean_copy(self) -> NeonIndexedTxInfo.InitData:
-            return NeonIndexedTxInfo.InitData(
-                start_slot=self.start_block_slot,
-                last_slot=self.last_block_slot,
-                is_stuck=self.is_stuck,
-                neon_tx_hash=self.neon_tx_sig,
-                holder_address=self.holder_account,
-                operator=self.operator,
-                gas_used=self.gas_used,
-                total_gas_used=self.total_gas_used,
-                has_truncated_log=False,
-                neon_tx=self.neon_tx.to_clean_copy(),
-                neon_tx_rcpt=self.neon_tx_res.to_clean_copy(),
-                neon_tx_event_list=list(map(lambda x: x.to_clean_copy(), self.neon_tx_event_list)),
-            )
-    # TODO: done
+        alt_address_list: list[SolPubKeyField] = Field(default_factory=list)
 
     def __init__(
         self,
@@ -544,6 +374,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         gas_used: int,
         total_gas_used: int,
         has_truncated_log: bool,
+        alt_address_list: list[SolPubKey],
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -556,6 +387,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._gas_used = gas_used
         self._total_gas_used = total_gas_used
         self._has_truncated_log = has_truncated_log
+        self._alt_addr_list = alt_address_list
 
         # default:
         self._is_done = False
@@ -575,14 +407,12 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             gas_used=0,
             total_gas_used=0,
             has_truncated_log=False,
+            alt_address_list=list(),
         )
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
-        if cls._DeprecatedInitData.is_deprecated(data):
-            init = cls._DeprecatedInitData.from_dict(data).to_clean_copy()
-        else:
-            init = cls.InitData.from_dict(data)
+        init = cls.InitData.from_dict(data)
 
         self = cls(
             key=init.neon_tx_hash,
@@ -593,6 +423,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             gas_used=init.gas_used,
             total_gas_used=init.total_gas_used,
             has_truncated_log=init.has_truncated_log,
+            alt_address_list=init.alt_list,
             init=init,
         )
 
@@ -616,6 +447,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             neon_tx=self._neon_tx,
             neon_tx_rcpt=self._neon_tx_rcpt.to_clean_copy(),
             neon_tx_event_list=tx_event_list,
+            alt_address_list=self._alt_addr_list,
         ).to_dict()
 
     @property
@@ -659,6 +491,9 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     @property
     def is_completed(self) -> bool:
         return self._neon_tx_rcpt.is_completed
+
+    def add_alt_address(self, alt_address: SolPubKey) -> None:
+        self._alt_addr_list.append(alt_address)
 
     def mark_done(self, slot: int) -> None:
         self._is_done = True
@@ -922,30 +757,6 @@ class NeonIndexedAltInfo:
         last_ix_slot: int
         is_stuck: bool
 
-    # TODO: remove after migrating
-    class _DeprecatedInitData(BaseModel):
-        alt_key: str
-        neon_tx_sig: str
-        block_slot: int
-        next_check_slot: int
-        last_ix_slot: int
-        is_stuck: bool
-
-        @classmethod
-        def is_deprecated(cls, data: dict) -> bool:
-            return "neon_tx_sig" in data
-
-        def to_clean_copy(self) -> NeonIndexedAltInfo.InitData:
-            return NeonIndexedAltInfo.InitData(
-                key=self.alt_key,
-                neon_tx_hash=self.neon_tx_sig,
-                slot=self.block_slot,
-                next_check_slot=self.next_check_slot,
-                last_ix_slot=self.last_ix_slot,
-                is_stuck=self.is_stuck,
-            )
-    # TODO: done
-
     def __init__(
         self,
         key: Key,
@@ -979,10 +790,7 @@ class NeonIndexedAltInfo:
 
     @classmethod
     def from_dict(cls, dict_data: dict) -> Self:
-        if cls._DeprecatedInitData.is_deprecated(dict_data):
-            init = cls._DeprecatedInitData.from_dict(dict_data).to_clean_copy()
-        else:
-            init = cls.InitData.from_dict(dict_data)
+        init = cls.InitData.from_dict(dict_data)
         return cls(
             key=init.key,
             neon_tx_hash=init.neon_tx_hash,
@@ -1377,6 +1185,7 @@ class NeonIndexedBlockInfo:
             if alt_addr in self._sol_alt_info_dict:
                 continue
             alt_info = NeonIndexedAltInfo.from_raw(alt_addr, tx.neon_tx_hash, sol_neon_ix.slot)
+            tx.add_alt_address(alt_addr)
             self._sol_alt_info_dict[alt_addr] = alt_info
 
     def _del_neon_tx(self, tx: NeonIndexedTxInfo) -> None:

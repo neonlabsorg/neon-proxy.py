@@ -155,6 +155,10 @@ class SolAltAccountInfo:
         return SolPubKey.from_raw(getattr(self._meta, "authority", None)) if self._meta else SolPubKey.default()
 
     @cached_property
+    def ident(self) -> SolAltID:
+        return SolAltID(address=self.address, owner=self.owner, recent_slot=0, nonce=0)
+
+    @cached_property
     def account_key_list(self) -> tuple[SolPubKey, ...]:
         # tried solders, but _alt.AddressLookupTable doesn't work...
         offset = 0

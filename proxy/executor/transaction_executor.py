@@ -8,6 +8,7 @@ from typing import ClassVar
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon_rpc.api import EmulNeonCallModel, HolderAccountStatus
+from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
@@ -146,6 +147,12 @@ class NeonTxExecutor(ExecutorComponent):
 
         ctx.set_holder_account(holder)
         await self._init_ro_acct_list(ctx)
+
+        acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
+        for acct in acct_list:
+            alt_acct = SolAltAccountInfo.from_bytes(acct.address, acct.data)
+            if not alt_acct.is_empty:
+                ctx.add_alt_id(alt_acct.ident)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
         return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
