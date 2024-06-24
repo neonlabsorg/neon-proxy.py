@@ -159,7 +159,7 @@ def alt_strategy(cls):
         def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolV0Tx:
             return self._alt_stage.build_tx(self._build_legacy_tx(cfg))
 
-        def _build_cancel_tx(self) -> SolV0Tx:
-            return self._alt_stage.build_tx(cls._build_cancel_tx(self))
+        def _build_cancel_tx(self, cfg: SolTxCfg) -> SolV0Tx:
+            return self._alt_stage.build_tx(cls._build_cancel_tx(self, cfg))
 
     return AltStrategy
