@@ -58,29 +58,39 @@ class SimpleTxStrategy(BaseTxStrategy):
 
     async def _emulate_and_send_tx_list(self) -> bool:
         tx_list = tuple([self._build_tx()])
-        # don't try the simulation, if the number of steps is less than the default number of steps
-        if self._ctx.total_evm_step_cnt <= self._ctx.evm_step_cnt_per_iter:
-            return await self._send_tx_list(tx_list)
 
         emul_tx_list = await self._emulate_tx_list(tx_list)
         used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
 
+        evm_step_cnt: Final[int] = self._ctx.total_evm_step_cnt
+        cu_limit: Final[int] = self._cu_limit
         # let's decrease the available cu-limit on 5% percents
-        safe_cu_limit_add: Final[int] = int(self._cu_limit * 0.05)
-        total_used_cu_limit = max(used_cu_limit + safe_cu_limit_add, self._cu_limit)
+        safe_cu_limit_add: Final[int] = int(cu_limit * 0.05)
+        max_used_cu_limit = max(used_cu_limit + safe_cu_limit_add, cu_limit)
 
-        if total_used_cu_limit > self._cu_limit:
+        if max_used_cu_limit > cu_limit:
             _LOG.debug(
-                "got %s(+%s) CUs for %s EVM steps, and it's bigger than the upper limit %s",
+                "simple: %d EVM steps, %d(+%d) CUs is bigger than the upper limit %d",
                 used_cu_limit,
                 safe_cu_limit_add,
-                self._ctx.total_evm_step_cnt,
-                self._cu_limit,
+                evm_step_cnt,
+                cu_limit,
             )
             raise SolCbExceededError()
 
-        _LOG.debug("got %s CUs for %s EVM steps", used_cu_limit, self._ctx.total_evm_step_cnt)
-        tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
+        round_coeff: Final[int] = 10_000
+        used_cu_limit = used_cu_limit + safe_cu_limit_add
+        used_cu_limit = min((used_cu_limit // round_coeff + 1) * round_coeff, cu_limit)
+        _LOG.debug("simple: %d EVM steps, %d CU limit", evm_step_cnt, used_cu_limit)
+
+        if used_cu_limit == cu_limit:
+            tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
+            return await self._send_tx_list(tx_list)
+
+        cu_price = self._cu_price * (cu_limit // used_cu_limit)
+        _LOG.debug("simple: increase CU-price from %d to %d", self._cu_price, cu_price)
+        cfg = SolTxCfg(cu_limit=used_cu_limit, cu_price=cu_price)
+        tx_list = tuple([self._build_tx(cfg)])
         return await self._send_tx_list(tx_list)
 
     def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
