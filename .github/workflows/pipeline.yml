@@ -25,7 +25,7 @@ on:
     tags:
       - "*"
 env:
-  NEON_EVM_TAG: "v1.14.1"
+  NEON_EVM_TAG: "v1.14.2"
   FAUCET_TAG: "latest"
   AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
   AWS_DEFAULT_REGION: ${{secrets.AWS_DEFAULT_REGION}}
