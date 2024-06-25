@@ -64,33 +64,31 @@ class SimpleTxStrategy(BaseTxStrategy):
 
         evm_step_cnt: Final[int] = self._ctx.total_evm_step_cnt
         cu_limit: Final[int] = self._cu_limit
-        # let's decrease the available cu-limit on 5% percents
-        safe_cu_limit_add: Final[int] = int(cu_limit * 0.05)
-        max_used_cu_limit = max(used_cu_limit + safe_cu_limit_add, cu_limit)
+        # let's decrease the available cu-limit on 5% percents, because Solana decrease it
+        max_cu_limit: Final[int] = int(self._cu_limit * 0.95)
 
-        if max_used_cu_limit > cu_limit:
+        if used_cu_limit > max_cu_limit:
             _LOG.debug(
-                "simple: %d EVM steps, %d(+%d) CUs is bigger than the upper limit %d",
-                used_cu_limit,
-                safe_cu_limit_add,
+                "simple: %d EVM steps, %d CUs is bigger than the upper limit %d",
                 evm_step_cnt,
-                cu_limit,
+                used_cu_limit,
+                max_cu_limit,
             )
             raise SolCbExceededError()
 
         round_coeff: Final[int] = 10_000
-        used_cu_limit = used_cu_limit + safe_cu_limit_add
-        used_cu_limit = min((used_cu_limit // round_coeff + 1) * round_coeff, cu_limit)
+        inc_coeff: Final[int] = 100_000
+        used_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
         _LOG.debug("simple: %d EVM steps, %d CU limit", evm_step_cnt, used_cu_limit)
 
+        # if it's impossible to decrease the CU limit, use the already signed list of txs
         if used_cu_limit == cu_limit:
             tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
-            return await self._send_tx_list(tx_list)
+        else:
+            cu_price = self._cu_price * (cu_limit // used_cu_limit)
+            _LOG.debug("simple: increase CU-price from %d to %d", self._cu_price, cu_price)
+            tx_list = tuple([self._build_tx(SolTxCfg(cu_limit=used_cu_limit, cu_price=cu_price))])
 
-        cu_price = self._cu_price * (cu_limit // used_cu_limit)
-        _LOG.debug("simple: increase CU-price from %d to %d", self._cu_price, cu_price)
-        cfg = SolTxCfg(cu_limit=used_cu_limit, cu_price=cu_price)
-        tx_list = tuple([self._build_tx(cfg)])
         return await self._send_tx_list(tx_list)
 
     def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
