@@ -255,7 +255,9 @@ class IterativeTxStrategy(BaseTxStrategy):
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return None, new_evm_step_cnt
 
-        used_cu_limit = min(used_cu_limit + 150_000, cu_limit)
+        round_coeff: Final[int] = 10_000
+        inc_coeff: Final[int] = 100_000
+        used_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
         _LOG.debug("%s: %d EVM steps, %d CU limit, %d iterations", hdr, evm_step_cnt, used_cu_limit, iter_cnt)
 
         # if it isn't possible to decrease the CU limit, return the list of already signed txs
