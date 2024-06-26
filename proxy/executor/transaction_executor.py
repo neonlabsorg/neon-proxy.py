@@ -7,10 +7,12 @@ from typing import ClassVar
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
-from common.neon_rpc.api import EmulNeonCallModel, HolderAccountStatus
+from common.neon.account import NeonAccount
+from common.neon_rpc.api import CoreApiTxModel, HolderAccountStatus
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
+from common.solana.pubkey import SolPubKey
 from common.solana_rpc.errors import (
     SolCbExceededError,
     SolNeonRequireResizeIterError,
@@ -22,11 +24,11 @@ from common.solana_rpc.errors import (
 )
 from .errors import BadResourceError, StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
-from .strategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
 from .strategy_iterative_holder import HolderTxStrategy, AltHolderTxStrategy
 from .strategy_iterative_no_chain_id import NoChainIdTxStrategy, AltNoChainIdTxStrategy
+from .strategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
 from .strategy_simple import SimpleTxStrategy, AltSimpleTxStrategy
 from .strategy_simple_holder import SimpleHolderTxStrategy, AltSimpleHolderTxStrategy
 from .strategy_simple_solana_call import SimpleTxSolanaCallStrategy, AltSimpleTxSolanaCallStrategy
@@ -101,6 +103,7 @@ class NeonTxExecutor(ExecutorComponent):
             raise StuckTxError(holder)
 
         try:
+            await self._init_sender_sol_address(ctx, ctx.sender)
             # the earlier check of the nonce
             await self._validate_nonce(ctx)
             # get the list of accounts for validation
@@ -131,22 +134,19 @@ class NeonTxExecutor(ExecutorComponent):
             )
             return ExecTxResp(code=ExecTxRespCode.Failed)
 
-        ctx.set_chain_id(holder.chain_id)
-
         # update NeonProg settings from EVM config
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
         # request the token address (based on chain-id) for receiving payments from user
-        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
+        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, holder.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
 
-        if not holder.sender.is_empty:
-            ctx.set_tx_address(holder.sender)
-            await self._get_state_tx_cnt(ctx)
+        # get solana address of the user
+        await self._init_sender_sol_address(ctx, holder.sender)
 
         ctx.set_holder_account(holder)
-        await self._init_ro_acct_list(ctx)
+        await self._emulate_neon_tx(ctx)
 
         acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
         for acct in acct_list:
@@ -155,7 +155,7 @@ class NeonTxExecutor(ExecutorComponent):
                 ctx.add_alt_id(alt_acct.ident)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
-        return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
+        return ExecTxResp(code=exit_code, chain_id=holder.chain_id)
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
         for _Strategy in tx_strategy_list:
@@ -269,9 +269,14 @@ class NeonTxExecutor(ExecutorComponent):
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
+        if ctx.is_stuck_tx:
+            core_tx = ctx.holder_tx
+        else:
+            core_tx = CoreApiTxModel.from_neon_tx(ctx.neon_tx, ctx.chain_id)
+
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            EmulNeonCallModel.from_neon_tx(ctx.neon_tx, ctx.chain_id),
+            core_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
         )
@@ -279,9 +284,7 @@ class NeonTxExecutor(ExecutorComponent):
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)
         ctx.set_emulator_result(slot, emul_resp)
 
-        await self._init_ro_acct_list(ctx)
-
-    async def _init_ro_acct_list(self, ctx: NeonExecTxCtx) -> None:
+        # get executable accounts
         acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)
         ro_addr_list = [acct.address for acct in acct_list if acct.executable]
         ctx.set_ro_address_list(ro_addr_list)
@@ -296,5 +299,8 @@ class NeonTxExecutor(ExecutorComponent):
 
     async def _get_state_tx_cnt(self, ctx: NeonExecTxCtx) -> int:
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
-        ctx.set_sender_sol_address(acct.sol_address)
         return acct.state_tx_cnt
+
+    async def _init_sender_sol_address(self, ctx: NeonExecTxCtx, sender: NeonAccount) -> None:
+        acct = await self._core_api_client.get_neon_account(sender, None)
+        ctx.set_sender_sol_address(acct.sol_address)

@@ -418,6 +418,53 @@ class HolderAccountStatus(StrEnum):
 HolderAccountStatusField = Annotated[HolderAccountStatus, PlainValidator(HolderAccountStatus.from_raw)]
 
 
+class CoreApiHexStr(EthBinStr):
+    @cached_method
+    def _to_string(self) -> str:
+        return bytes_to_hex(self._data, prefix="")
+
+    def to_string(self, default: str | None = "") -> str | None:
+        return super().to_string(default=default)
+
+
+CoreApiHexStrField = Annotated[
+    CoreApiHexStr,
+    PlainValidator(CoreApiHexStr.from_raw),
+    PlainSerializer(lambda v: v.to_string() or None),
+]
+
+
+class CoreApiTxModel(BaseModel):
+    from_address: EthZeroAddressField = Field(
+        validation_alias=AliasChoices("from", "from_address"),
+        serialization_alias="from",
+    )
+    nonce: int | None
+    to_address: EthAddressField | None = Field(
+        default=None,
+        validation_alias=AliasChoices("to", "to_address"),
+        serialization_alias="to",
+    )
+    value: HexUIntField
+    data: CoreApiHexStrField
+    gas_limit: HexUIntField | None
+    gas_price: HexUIntField | None
+    chain_id: int | None = None
+
+    @classmethod
+    def from_neon_tx(cls, tx: NeonTxModel, chain_id: int) -> Self:
+        return cls(
+            from_address=tx.from_address,
+            nonce=None,
+            to_address=tx.to_address,
+            value=tx.value,
+            data=tx.call_data.to_bytes(),
+            gas_limit=tx.gas_limit,
+            gas_price=tx.gas_price,
+            chain_id=chain_id,
+        )
+
+
 class HolderAccountModel(BaseModel):
     address: SolPubKeyField
 
@@ -425,8 +472,8 @@ class HolderAccountModel(BaseModel):
     size: int = Field(default=0, validation_alias="len")
     owner: SolPubKeyField = Field(default=SolPubKey.default())
 
-    sender: EthAddressField = Field(default=EthAddress.default(), validation_alias="origin")
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
+    tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
 
     chain_id: int = Field(default=0)
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
@@ -446,6 +493,10 @@ class HolderAccountModel(BaseModel):
     def from_dict(cls, address: SolPubKey, data: dict) -> Self:  # noqa
         data["address"] = address
         return cls.model_validate(data)
+
+    @cached_property
+    def sender(self) -> NeonAccount:
+        return NeonAccount.from_raw(self.tx.from_address, self.chain_id)
 
     @property
     def is_empty(self) -> bool:
@@ -473,47 +524,9 @@ class CoreApiBuildModel(BaseModel):
     version_control: _VersionModel
 
 
-class EmulHexStr(EthBinStr):
-    @cached_method
-    def _to_string(self) -> str:
-        return bytes_to_hex(self._data, prefix="")
-
-    def to_string(self, default: str | None = "") -> str | None:
-        return super().to_string(default=default)
-
-
-EmulHexStrField = Annotated[
-    EmulHexStr,
-    PlainValidator(EmulHexStr.from_raw),
-    PlainSerializer(lambda v: v.to_string() or None),
-]
-
-
-class EmulNeonCallModel(BaseModel):
-    from_address: EthZeroAddressField = Field(serialization_alias="from")
-    to_address: EthAddressField = Field(serialization_alias="to")
-    value: HexUIntField
-    data: EmulHexStrField
-    gas_limit: HexUIntField | None
-    gas_price: HexUIntField | None
-    chain_id: int
-
-    @classmethod
-    def from_neon_tx(cls, tx: NeonTxModel, chain_id: int) -> Self:
-        return cls(
-            from_address=tx.from_address,
-            to_address=tx.to_address,
-            value=tx.value,
-            data=tx.call_data.to_bytes(),
-            gas_limit=tx.gas_limit,
-            gas_price=tx.gas_price,
-            chain_id=chain_id,
-        )
-
-
-class EmulAccountModel(BaseModel):
+class EmulSolAccountModel(BaseModel):
     lamports: int
-    data: EmulHexStrField
+    data: CoreApiHexStrField
     owner: SolPubKeyField
     executable: bool
     rent_epoch: int
@@ -532,12 +545,22 @@ class EmulAccountModel(BaseModel):
         )
 
 
+class EmulNeonAccountModel(BaseModel):
+    nonce: int | None = None
+    balance: int | None = None
+
+
+class EmulTraceCfgModel(BaseModel):
+    neon_account_dict: dict[EthAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
+
+
 class EmulNeonCallRequest(BaseModel):
-    call: EmulNeonCallModel = Field(serialization_alias="tx")
+    tx: CoreApiTxModel
     evm_step_limit: int = Field(serialization_alias="step_limit")
-    token_list: tuple[TokenModel, ...] = Field(serialization_alias="chains")
-    preload_sol_address_list: tuple[SolPubKeyField, ...] = Field(serialization_alias="accounts")
-    sol_account_dict: dict[SolPubKeyField, EmulAccountModel | None] | None = Field(
+    token_list: list[TokenModel] = Field(serialization_alias="chains")
+    trace_cfg: EmulTraceCfgModel | None = Field(serialization_alias="trace_config")
+    preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
+    sol_account_dict: dict[SolPubKeyField, EmulSolAccountModel | None] | None = Field(
         serialization_alias="solana_overrides"
     )
     slot: int | None
@@ -596,8 +619,8 @@ class EmulSolTxListRequest(BaseModel):
     cu_limit: int = Field(serialization_alias="compute_units")
     account_cnt_limit: int = Field(serialization_alias="account_limit")
     verify: bool
-    blockhash: EmulHexStrField
-    tx_list: tuple[EmulHexStrField, ...] = Field(serialization_alias="transactions")
+    blockhash: CoreApiHexStrField
+    tx_list: tuple[CoreApiHexStrField, ...] = Field(serialization_alias="transactions")
 
 
 class EmulSolTxMetaModel(BaseModel):
