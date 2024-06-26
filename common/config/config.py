@@ -527,7 +527,7 @@ class Config:
 
     @cached_property
     def mp_lost_alt_timeout_sec(self) -> int:
-        return self._env_num(self.mp_lost_alt_timeout_sec_name, 3 * self._1hour, 1 * self._1hour)
+        return self._env_num(self.mp_lost_alt_timeout_sec_name, 6 * self._1hour, 1 * self._1hour)
 
     ########################
     # Neon Core API settings
