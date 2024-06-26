@@ -11,6 +11,8 @@ from .errors import EthError
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import hex_to_bytes
 
+from rlp.sedes import Binary, CountableList, List as ListSedesClass
+
 
 class EthNoChainLegacyTxPayload(rlp.Serializable):
     nonce: int
@@ -178,7 +180,7 @@ class EthDynamicGasTxPayload(rlp.Serializable):
     to_address: bytes
     value: int
     call_data: bytes
-    access_list: list[tuple[int, list[bytes]]]
+    access_list: list[tuple[bytes, list[bytes]]]
     v: int
     r: int
     s: int
@@ -196,8 +198,13 @@ class EthDynamicGasTxPayload(rlp.Serializable):
         # the exact rlp sedes structure is in place, so the rlp.decode does not fail.
         (
             "access_list",
-            rlp.sedes.lists.CountableList(
-                rlp.codec.List([rlp.codec.big_endian_int, rlp.sedes.lists.CountableList(rlp.codec.big_endian_int)])
+            CountableList(
+                ListSedesClass(
+                    [
+                        Binary.fixed_length(20, allow_empty=False),
+                        CountableList(Binary.fixed_length(32, allow_empty=False)),
+                    ]
+                ),
             ),
         ),
         ("v", rlp.codec.big_endian_int),
