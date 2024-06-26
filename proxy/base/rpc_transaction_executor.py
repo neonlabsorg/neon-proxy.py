@@ -23,6 +23,9 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
             neon_tx = NeonTxModel.from_raw(eth_tx_rlp, raise_exception=True)
         except EthError:
             raise
+        except ValueError:
+            # Convert validation errors into proper EthError with a correct error code.
+            raise EthError(message="invalid transaction")
         except (BaseException,):
             raise InvalidParamError(message="wrong transaction format")
 
