@@ -66,6 +66,8 @@ class NeonTxModel(BaseModel):
                 raise ValueError("gas_price should not be present.")
             if self.max_priority_fee_per_gas > self.max_fee_per_gas:
                 raise ValueError("max priority fee per gas higher than max fee per gas.")
+            if self.tx_chain_id is None:
+                raise ValueError("chain_id should be specified for the Dynamic Gas transactions.")
 
     @classmethod
     def default(cls) -> Self:
