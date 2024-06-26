@@ -194,7 +194,7 @@ class NpGasPriceApi(NeonProxyApi):
 
         # Convert it into ethereum world by multiplying by suggested_gas_price
         # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
-        _, token_gas_price = await self.get_token_gas_price(ctx)
+        _, token_gas_price = await self._get_token_gas_price(ctx)
         return int(token_gas_price.suggested_gas_price * avg_block_cu_price / 1_000_000)
 
     @NeonProxyApi.method(name="eth_feeHistory")
@@ -228,7 +228,7 @@ class NpGasPriceApi(NeonProxyApi):
         block_cnt = max(1, min(block_cnt, 1024))
         # Fetching the data stage.
         fee_gas_data_list: list[BlockFeeGasData] = await self._db.get_historical_base_fees(
-            self.get_chain_id(ctx), block_cnt, latest_slot
+            self._get_chain_id(ctx), block_cnt, latest_slot
         )
         cu_price_data_list: list[list[int]] = await self._db.get_historical_priority_fees(block_cnt)
 
@@ -237,7 +237,7 @@ class NpGasPriceApi(NeonProxyApi):
         block_cnt = min(len(fee_gas_data_list), len(cu_price_data_list))
         if block_cnt == 0:
             # For some reason, the number of "blocks" we have is zero, so return the current base fee price.
-            _, token_gas_price = await self.get_token_gas_price(ctx)
+            _, token_gas_price = await self._get_token_gas_price(ctx)
             current_gas_price: int = token_gas_price.suggested_gas_price
             return _RpcFeeHistoryResp.from_raw([current_gas_price], [], 0, [])
 
@@ -251,7 +251,7 @@ class NpGasPriceApi(NeonProxyApi):
         ]
         # Since ethereum deterministically derives the next base_fee_per_gas for the upcoming block,
         # we have to do the same - return the current gas price (the same as in the eth_gasPrice).
-        _, token_gas_price = await self.get_token_gas_price(ctx)
+        _, token_gas_price = await self._get_token_gas_price(ctx)
         current_gas_price: int = token_gas_price.suggested_gas_price
         base_fee_list.append(current_gas_price)
 

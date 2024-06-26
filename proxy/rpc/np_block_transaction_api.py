@@ -486,7 +486,7 @@ class NpBlockTxApi(NeonProxyApi):
         current_base_fee_per_gas = None
         # Fetch current current gas price only if there's no dynamic gas transactions in the block (or block is empty).
         if all(not tx_meta.neon_tx.tx_type == 2 for tx_meta in tx_list):
-            _, token_gas_price = await self.get_token_gas_price(ctx)
+            _, token_gas_price = await self._get_token_gas_price(ctx)
             current_base_fee_per_gas = token_gas_price.suggested_gas_price
         # Pass the gas price information into the response, because after EIP1559 blocks should include baseFeePerGas.
         # If there are no dynamic gas transactions, this value is taken; otherwise, the maximum value among transactions is used.
