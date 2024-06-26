@@ -17,17 +17,19 @@ from .api import (
     NeonAccountListRequest,
     EmulNeonCallResp,
     EmulNeonCallRequest,
-    EmulNeonCallModel,
+    CoreApiTxModel,
     EmulNeonCallExitCode,
     NeonStorageAtRequest,
     NeonContractRequest,
     NeonContractModel,
-    EmulAccountModel,
+    EmulSolAccountModel,
     EmulSolTxListResp,
     EmulSolTxInfo,
     EmulSolTxListRequest,
     OperatorAccountModel,
     NeonAccountStatus,
+    EmulTraceCfgModel,
+    EmulNeonAccountModel,
 )
 from ..config.config import Config
 from ..ethereum.commit_level import EthCommit
@@ -204,23 +206,30 @@ class CoreApiClient(SimpleAppDataClient):
     async def emulate_neon_call(
         self,
         evm_cfg: EvmConfigModel,
-        call: EmulNeonCallModel,
+        tx: CoreApiTxModel,
         *,
         check_result: bool,
         preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:
-        emu_acct_dict = dict()
+        emul_sol_acct_dict = dict()
         if sol_account_dict:
-            emu_acct_dict = {addr: EmulAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
+            emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
+
+        if tx.nonce is not None:
+            emul_neon_acct_dict = {tx.from_address: EmulNeonAccountModel(nonce=tx.nonce)}
+            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict)
+        else:
+            emul_trace_cfg = None
 
         req = EmulNeonCallRequest(
-            call=call,
+            tx=tx,
             evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-            token_list=tuple(evm_cfg.token_list),
-            preload_sol_address_list=preload_sol_address_list,
-            sol_account_dict=emu_acct_dict,
+            token_list=evm_cfg.token_list,
+            trace_cfg=emul_trace_cfg,
+            preload_sol_address_list=list(preload_sol_address_list),
+            sol_account_dict=emul_sol_acct_dict,
             slot=self._get_slot(block),
         )
         resp: EmulNeonCallResp = await self._call_method(self._emulate_neon_call, req, EmulNeonCallResp)
