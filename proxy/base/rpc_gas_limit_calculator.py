@@ -7,7 +7,7 @@ from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonProg, NeonIxMode
-from common.neon_rpc.api import EvmConfigModel, EmulNeonCallResp, EmulNeonCallModel
+from common.neon_rpc.api import EvmConfigModel, EmulNeonCallResp, CoreApiTxModel
 from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
@@ -38,20 +38,20 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     async def estimate(
         self,
-        call: EmulNeonCallModel,
+        core_tx: CoreApiTxModel,
         sol_account_dict: dict[SolPubKey, SolAccountModel],
         block: NeonBlockHdrModel | None = None,
     ) -> int:
         evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            call,
+            core_tx,
             check_result=True,
             sol_account_dict=sol_account_dict,
             block=block,
         )
         execution_cost = resp.used_gas
-        tx_size_cost = self._tx_size_cost(evm_cfg, call, resp)
+        tx_size_cost = self._tx_size_cost(evm_cfg, core_tx, resp)
         alt_cost = self._alt_cost(resp)
 
         # Ethereum's wallets don't accept gas limit less than 21000
@@ -67,15 +67,15 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
         return total_cost
 
-    def _tx_size_cost(self, evm_cfg: EvmConfigModel, call: EmulNeonCallModel, resp: EmulNeonCallResp) -> int:
-        eth_tx = self._eth_tx_from_call(call)
+    def _tx_size_cost(self, evm_cfg: EvmConfigModel, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
+        eth_tx = self._eth_tx_from_core_tx(core_tx)
         sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
 
         try:
             sol_tx.sign(self._payer)
             sol_tx.serialize()  # <- there will be exception about size
 
-            if call.to_address.is_empty:  # deploy case
+            if core_tx.to_address.is_empty:  # deploy case
                 pass
             elif resp.used_gas < self._oz_gas_limit:
                 return 0
@@ -87,14 +87,14 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         return self._holder_tx_cost(evm_cfg, eth_tx.to_bytes())
 
     @classmethod
-    def _eth_tx_from_call(cls, call: EmulNeonCallModel) -> EthTx:
+    def _eth_tx_from_core_tx(cls, core_tx: CoreApiTxModel) -> EthTx:
         return EthTx(
             nonce=cls._u64_max,
             gas_price=cls._u64_max,
-            gas_limit=call.gas_limit,
-            to_address=call.to_address.to_bytes(),
-            value=call.value or 1,
-            call_data=call.data.to_bytes(),
+            gas_limit=core_tx.gas_limit,
+            to_address=core_tx.to_address.to_bytes(),
+            value=core_tx.value or 1,
+            call_data=core_tx.data.to_bytes(),
             v=245022934 * 1024 + 35,
             r=0x1820182018201820182018201820182018201820182018201820182018201820,
             s=0x1820182018201820182018201820182018201820182018201820182018201820,

@@ -11,7 +11,7 @@ from common.ethereum.hash import EthAddressField, EthHash32Field, EthAddress, Et
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.api import EmulNeonCallModel
+from common.neon_rpc.api import CoreApiTxModel
 from common.utils.pydantic import HexUIntField
 
 
@@ -35,7 +35,7 @@ class RpcEthTxRequest(BaseJsonRpcModel):
         validation_alias=AliasChoices("data", "input"),
     )
     value: HexUIntField = Field(default=0)
-    nonce: HexUIntField = Field(default=0)
+    nonce: HexUIntField | None = Field(default=None)
 
     gas: HexUIntField = Field(default=2**64)
     gasPrice: HexUIntField = Field(default=2**64)
@@ -57,10 +57,11 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             )
         return cls._default
 
-    def to_emulation_call(self, chain_id: int) -> EmulNeonCallModel:
-        return EmulNeonCallModel(
+    def to_core_tx(self, chain_id: int) -> CoreApiTxModel:
+        return CoreApiTxModel(
             from_address=self.fromAddress,
             to_address=self.toAddress,
+            nonce=self.nonce,
             value=self.value,
             data=self.data.to_bytes(),
             gas_limit=self.gas,

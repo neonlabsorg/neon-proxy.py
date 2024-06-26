@@ -11,7 +11,7 @@ from common.ethereum.hash import EthAddressField, EthHash32Field
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, EmulNeonCallModel
+from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
 from common.solana.pubkey import SolPubKeyField
 from common.utils.cached import cached_property
 from common.utils.pydantic import HexUIntField, RootModel
@@ -102,20 +102,17 @@ class NpCallApi(NeonProxyApi):
     async def eth_call(
         self,
         ctx: HttpRequestCtx,
-        call: RpcEthTxRequest,
+        tx: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
         object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
     ) -> EthBinStrField:
-        chain_id = self._get_chain_id(ctx)
-        if call.chainId and call.chainId != chain_id:
-            raise EthWrongChainIdError()
-
         _ = object_state
+        chain_id = self._get_tx_chain_id(ctx, tx)
         block = await self.get_block_by_tag(block_tag)
         evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            call.to_emulation_call(chain_id),
+            tx.to_core_tx(chain_id),
             check_result=True,
             block=block,
         )
@@ -128,27 +125,21 @@ class NpCallApi(NeonProxyApi):
         call: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self._get_chain_id(ctx)
-        if call.chainId and call.chainId != chain_id:
-            raise EthWrongChainIdError()
-
+        chain_id = self._get_tx_chain_id(ctx, call)
         block = await self.get_block_by_tag(block_tag)
-        return await self._gas_limit_calc.estimate(call.to_emulation_call(chain_id), dict(), block)
+        return await self._gas_limit_calc.estimate(call.to_core_tx(chain_id), dict(), block)
 
     @NeonProxyApi.method(name="neon_estimateGas")
     async def neon_estimate_gas(
         self,
         ctx: HttpRequestCtx,
-        call: RpcEthTxRequest,
+        tx: RpcEthTxRequest,
         neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        chain_id = self._get_chain_id(ctx)
-        if call.chainId and call.chainId != chain_id:
-            raise EthWrongChainIdError()
-
+        chain_id = self._get_tx_chain_id(ctx, tx)
         block = await self.get_block_by_tag(block_tag)
-        return await self._gas_limit_calc.estimate(call.to_emulation_call(chain_id), neon_call.sol_account_dict, block)
+        return await self._gas_limit_calc.estimate(tx.to_core_tx(chain_id), neon_call.sol_account_dict, block)
 
     @NeonProxyApi.method(name="neon_emulate")
     async def neon_emulate(
@@ -164,12 +155,23 @@ class NpCallApi(NeonProxyApi):
         block = await self.get_block_by_tag(block_tag)
 
         neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes())
+        if neon_tx.has_chain_id:
+            if neon_tx.chain_id != chain_id:
+                raise EthWrongChainIdError()
+        elif not self._is_default_chain_id(ctx):
+            raise EthWrongChainIdError()
 
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            EmulNeonCallModel.from_neon_tx(neon_tx, chain_id),
+            CoreApiTxModel.from_neon_tx(neon_tx, chain_id),
             check_result=False,
             sol_account_dict=neon_call.sol_account_dict,
             block=block,
         )
         return _RpcEmulatorResp.from_raw(resp)
+
+    def _get_tx_chain_id(self, ctx: HttpRequestCtx, tx: RpcEthTxRequest) -> int:
+        chain_id = self._get_chain_id(ctx)
+        if tx.chainId and tx.chainId != chain_id:
+            raise EthWrongChainIdError()
+        return chain_id

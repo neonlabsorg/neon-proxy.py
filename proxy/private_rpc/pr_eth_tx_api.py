@@ -67,8 +67,8 @@ class PrEthTxApi(PrivateRpcApi):
         neon_tx = tx.to_neon_tx()
 
         if not neon_tx.gas_limit:
-            emul_call = tx.to_emulation_call(chain_id)
-            gas_limit = await self._gas_calculator.estimate(emul_call, dict())
+            core_tx = tx.to_core_tx(chain_id)
+            gas_limit = await self._gas_calculator.estimate(core_tx, dict())
             object.__setattr__(neon_tx, "gas_limit", gas_limit)
 
         if not neon_tx.nonce:
