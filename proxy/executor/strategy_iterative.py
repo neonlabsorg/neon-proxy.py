@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import logging
 from dataclasses import dataclass
 from typing import Final, ClassVar, Sequence
@@ -44,6 +45,21 @@ class IterativeTxStrategy(BaseTxStrategy):
         return self._ctx.cfg.cu_price
 
     async def execute(self) -> ExecTxRespCode:
+        for retry in itertools.count():
+            completed_evm_step_cnt = self._completed_evm_step_cnt
+            try:
+                return await self._execute_impl()
+            except SolNoMoreRetriesError:
+                if completed_evm_step_cnt != self._completed_evm_step_cnt:
+                    _LOG.debug(
+                        "retry %d: completed evm steps has changed (%d != %d), trying to complete again...",
+                        retry,
+                        completed_evm_step_cnt,
+                        self._completed_evm_step_cnt,
+                    )
+                    continue
+
+    async def _execute_impl(self) -> ExecTxRespCode:
         assert self.is_valid
 
         if await self._is_finalized_holder():
