@@ -247,7 +247,7 @@ class BaseTxStepIxDecoder(BaseTxIxDecoder):
     def decode_failed_neon_tx_event_list(self) -> None:
         ix = self.state.sol_neon_ix
         block = self.state.neon_block
-        if not (tx := block.find_neon_tx(ix)):
+        if not (tx := block.find_neon_tx(ix, skip_add_gas=True)):
             return
 
         tx.extend_neon_tx_event_list(ix)
@@ -260,7 +260,7 @@ class BaseTxStepIxDecoder(BaseTxIxDecoder):
     def is_stuck(self) -> bool:
         ix = self.state.sol_neon_ix
         block = self.state.neon_block
-        if tx := block.find_neon_tx(ix):
+        if tx := block.find_neon_tx(ix, skip_add_gas=True):
             return tx.is_stuck
         return False
 
