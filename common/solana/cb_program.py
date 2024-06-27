@@ -3,6 +3,8 @@ from typing import Final
 
 import solders.compute_budget as _cb
 
+from ..config.constants import SOLANA_DEFAULT_CU_LIMIT, SOLANA_MAX_CU_LIMIT, SOLANA_MAX_HEAP_SIZE
+
 from .instruction import SolTxIx
 from .pubkey import SolPubKey
 
@@ -15,9 +17,9 @@ class SolCuIxCode(IntEnum):
 
 class SolCbProg:
     ID: Final[SolPubKey] = SolPubKey.from_raw(_cb.ID)
-    MaxCuLimit: Final[int] = 1_400_000
-    DefCuLimit: Final[int] = 200_000
-    MaxHeapSize: Final[int] = 256 * 1024
+    MaxCuLimit: Final[int] = SOLANA_MAX_CU_LIMIT
+    DefCuLimit: Final[int] = SOLANA_DEFAULT_CU_LIMIT
+    MaxHeapSize: Final[int] = SOLANA_MAX_HEAP_SIZE
 
     @classmethod
     def make_heap_size_ix(cls, size: int) -> SolTxIx:

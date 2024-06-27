@@ -14,6 +14,9 @@ from common.config.constants import (
     DEVNET_PROGRAM_ID,
     DEVNET_GENESIS_HASH,
     DEVNET_GENESIS_TIME,
+    ROLLUP_PROGRAM_ID,
+    ROLLUP_GENESIS_HASH,
+    ROLLUP_GENESIS_TIME,
     UNKNOWN_GENESIS_HASH,
 )
 from common.ethereum.commit_level import EthCommit
@@ -122,6 +125,9 @@ class NeonProxyAbc(BaseRpcServerAbc, abc.ABC):
         elif NeonProg.ID == DEVNET_PROGRAM_ID:
             block_hash = EthBlockHash.from_raw(base58.b58decode(DEVNET_GENESIS_HASH))
             block_time = DEVNET_GENESIS_TIME
+        elif NeonProg.ID == ROLLUP_PROGRAM_ID:
+            block_hash = EthBlockHash.from_raw(base58.b58decode(ROLLUP_GENESIS_HASH))
+            block_time = ROLLUP_GENESIS_TIME
         else:
             block = await self._sol_client.get_block(0, SolCommit.Confirmed)
             if block.is_empty:
