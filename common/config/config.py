@@ -578,8 +578,13 @@ class Config:
     #################################
     # Transaction execution settings
 
-    @cached_property
+    @property
     def retry_on_fail(self) -> int:
+        value = self._retry_on_fail
+        return value + random.randint(0, value)
+
+    @cached_property
+    def _retry_on_fail(self) -> int:
         return self._env_num(self.retry_on_fail_name, 64, 1, 1024)
 
     @cached_property
@@ -878,7 +883,7 @@ class Config:
             self.pg_timeout_sec_name: self.pg_timeout_sec,
             self.pg_conn_cnt_name: self.pg_conn_cnt,
             # Transaction execution settings
-            self.retry_on_fail_name: self.retry_on_fail,
+            self.retry_on_fail_name: self._retry_on_fail,
             self.commit_timeout_sec_name: self.commit_timeout_sec,
             self.commit_level_name: self.commit_type,
             self.max_tx_account_cnt_name: self.max_tx_account_cnt,
