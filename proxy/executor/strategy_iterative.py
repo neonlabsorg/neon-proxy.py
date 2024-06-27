@@ -301,7 +301,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         _LOG.debug("just 1 finalization iteration")
 
         iter_cnt = 1
-        ix_mode = self._base_ix_mode or NeonIxMode.Writable
+        ix_mode = self._base_ix_mode or (NeonIxMode.Readable if self._ctx.is_stuck_tx else NeonIxMode.Writable)
         iter_list_info = self._IterListInfo(
             self._ctx.evm_step_cnt_per_iter,
             iter_cnt,
@@ -341,7 +341,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 ix_mode=self.ix_mode,
                 cu_price=self.cu_price,
                 cu_limit=self.cu_limit,
-                name=self.name
+                name=self.name,
             )
 
     def _calc_total_evm_step_cnt(self) -> int:
@@ -368,9 +368,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return iter_cnt
 
     def _calc_ix_mode(self) -> NeonIxMode:
-        if self._ctx.is_stuck_tx:
-            return NeonIxMode.FullWritable
-        elif self._base_ix_mode:
+        if self._base_ix_mode:
             return self._base_ix_mode
 
         if self._ctx.resize_iter_cnt > 0:
