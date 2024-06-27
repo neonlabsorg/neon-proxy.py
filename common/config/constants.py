@@ -38,10 +38,10 @@ DEVNET_GENESIS_HASH: Final[str] = "4GoSwc9RDGduTDCLUgrHSEdMA5iMcigMfXkLEozNB8pX"
 DEVNET_GENESIS_TIME: Final[int] = 1647021674
 
 ROLLUP_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw("EgbRZxFRQTiZpQGinE5jT6KQq5jtVnjtLdSTkW5UTcAv")
-# TODO: specify block number when evm was deployed on the rollup.
-ROLLUP_GENESIS_HASH: Final[str] = "<block-hash-of-the-rollup-evm-deployed-on-the-rollup-network>"
-# TODO: specify genesis timestamp.
-ROLLUP_GENESIS_TIME: Final[int] = 133713371337
+# TODO: specify real block number when evm was deployed on the rollup.
+ROLLUP_GENESIS_HASH: Final[str] = os.environ.get("ROLLUP_GENESIS_HASH", "UNSPECIFIED_ROLLUP_GENESIS_HASH")
+# TODO: specify genesis timestamp once deployed.
+ROLLUP_GENESIS_TIME: Final[int] = int(os.environ.get("ROLLUP_GENESIS_TIME", "0"))
 
 UNKNOWN_GENESIS_HASH: Final[str] = "JEKNVnkbo3jma5nREBBJCDoXFVeKkD56V3xKrvRmWcmM"  # Fake 0xFFFF..0000
 
@@ -57,9 +57,7 @@ NEON_PROXY_PKG_VER = f"Neon-Proxy/{NEON_PROXY_VER}"
 # Sanity check - make sure that CB settings are defaults if PROGRAM_ID is not rollup (so it's not changed by mistake).
 def _validate() -> None:
     if NEON_EVM_PROGRAM_ID == ROLLUP_PROGRAM_ID:
-        # TODO: remove it once ROLLUP GENESIS_HASH and GENESIS_TIME are valid.
-        raise ValueError("Rollup settings are not yet ready")
-
+        return
     # If not rollup, solana mainnet defaults should be used.
     if (
         SOLANA_MAX_HEAP_SIZE != _DEF_SOLANA_MAX_HEAP_SIZE
