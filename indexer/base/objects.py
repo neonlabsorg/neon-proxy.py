@@ -1028,12 +1028,13 @@ class NeonIndexedBlockInfo:
     def destroy_neon_holder(self, address: SolPubKey) -> None:
         self._modified_neon_acct_set.add(address)
 
-    def find_neon_tx(self, sol_neon_ix: SolNeonTxIxMetaInfo) -> NeonIndexedTxInfo | None:
+    def find_neon_tx(self, sol_neon_ix: SolNeonTxIxMetaInfo, *, skip_add_gas: bool = False) -> NeonIndexedTxInfo | None:
         key = NeonIndexedTxInfo.Key.from_raw(sol_neon_ix.neon_tx_hash)
         if not (tx := self._neon_tx_dict.get(key, None)):
             return None
 
-        tx.add_sol_neon_ix(sol_neon_ix)
+        if not skip_add_gas:
+            tx.add_sol_neon_ix(sol_neon_ix)
         self._add_alt_info(tx, sol_neon_ix)
         return tx
 
