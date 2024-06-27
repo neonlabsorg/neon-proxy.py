@@ -423,7 +423,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             gas_used=init.gas_used,
             total_gas_used=init.total_gas_used,
             has_truncated_log=init.has_truncated_log,
-            alt_address_list=init.alt_list,
+            alt_address_list=init.alt_address_list,
             init=init,
         )
 
