@@ -65,6 +65,10 @@ class SolBlockHash(_SoldersSolHash):
     def to_bytes(self) -> bytes:
         return self.__bytes__()
 
+    @property
+    def is_empty(self) -> bool:
+        return self.to_bytes() == self.default().to_bytes()
+
     def __repr__(self) -> str:
         return self.to_string()
 
