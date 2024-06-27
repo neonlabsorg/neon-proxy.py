@@ -73,6 +73,7 @@ class NeonTxModel(BaseModel):
     def default(cls) -> Self:
         return cls(
             tx_type=NeonTxType.DynamicGas,
+            tx_chain_id=0,
             neon_tx_hash=EthTxHash.default(),
             from_address=EthAddress.default(),
             to_address=EthAddress.default(),
@@ -118,6 +119,7 @@ class NeonTxModel(BaseModel):
             return cls(
                 error=str(exc),
                 tx_type=NeonTxType.DynamicGas,
+                tx_chain_id=0,
                 neon_tx_hash=EthTxHash.default(),
                 from_address=EthAddress.default(),
                 to_address=EthAddress.default(),
@@ -193,6 +195,7 @@ class NeonTxModel(BaseModel):
         return cls(
             neon_tx_hash=neon_tx_hash,
             tx_type=NeonTxType.DynamicGas,
+            tx_chain_id=0,
             from_address=EthAddress.default(),
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
