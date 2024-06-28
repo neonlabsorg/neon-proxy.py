@@ -61,7 +61,7 @@ class PrEthTxApi(PrivateRpcApi):
         if tx.chainId and tx.chainId != chain_id:
             raise EthWrongChainIdError()
         elif tx.fromAddress.is_empty:
-            raise InvalidParamError(message='no sender in transaction')
+            raise InvalidParamError(error_list='no sender in transaction')
 
         sender_acct = NeonAccount.from_raw(tx.fromAddress, chain_id)
         neon_tx = tx.to_neon_tx()

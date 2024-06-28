@@ -92,18 +92,10 @@ class InvalidParamError(BaseJsonRpcError):
         src: BaseException | None = None,
         *,
         code: int = CODE,
-        message: str = None,
+        message: str = "Invalid params",
         error_list: str | Sequence[str] = tuple(),
     ) -> None:
         error_list = self._create_error_list(src, error_list)
-
-        if message is None:
-            message = "invalid parameters"
-            if isinstance(src, PydanticValidationError) and (src.error_count() == 1):
-                error_loc = list(src.errors())[0]["loc"]
-                input_name = ".".join(str(v) for v in error_loc)
-                message = "invalid parameter " + input_name
-
         super().__init__(code=code, message=message, error_list=error_list)
 
 
@@ -117,7 +109,7 @@ class InternalJsonRpcError(BaseJsonRpcError):
         src: BaseException | None = None,
         *,
         code: int = CODE,
-        message: str = "internal error",
+        message: str = "Internal error",
         error_list: str | Sequence[str] = tuple(),
     ) -> None:
         error_list = self._create_error_list(src, error_list)
