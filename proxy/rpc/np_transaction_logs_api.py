@@ -6,9 +6,9 @@ from typing import ClassVar
 from pydantic import Field
 
 from common.ethereum.commit_level import EthCommit
-from common.ethereum.errors import EthInvalidFilterError
 from common.ethereum.hash import EthBlockHashField, EthAddressField, EthHash32Field, EthAddress, EthBlockHash, EthHash32
 from common.jsonrpc.api import BaseJsonRpcModel
+from common.jsonrpc.errors import InvalidParamError
 from common.utils.cached import cached_property
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
@@ -67,7 +67,9 @@ class _RpcLogListRequest(BaseJsonRpcModel):
 
     def model_post_init(self, _ctx) -> None:
         if (self.fromBlock or self.toBlock) and (not self.blockHash.is_empty):
-            raise EthInvalidFilterError("invalid filter: if blockHash is supplied fromBlock and toBlock must not be")
+            raise InvalidParamError(
+                error_list="cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other"
+            )
 
 
 class NpTxLogsApi(NeonProxyApi):
@@ -97,8 +99,11 @@ class NpTxLogsApi(NeonProxyApi):
             return block.is_empty, block.slot, block.slot
 
         from_slot, to_slot = await asyncio.gather(self._get_slot(params.from_block), self._get_slot(params.to_block))
-        if (from_slot is not None) and (to_slot is not None) and (from_slot > to_slot):
-            raise EthInvalidFilterError(f"invalid filter: fromBlock can't be bigger than toBlock")
+        if (from_slot is not None) and (to_slot is not None):
+            if from_slot > to_slot:
+                raise InvalidParamError(error_list="fromBlock can't be bigger than toBlock")
+            elif to_slot - from_slot > 1000:
+                raise InvalidParamError(error_list="range is too large, max is 1000 blocks")
         return False, from_slot, to_slot
 
     async def _get_slot(self, block_tag: RpcBlockRequest | None) -> int | None:
