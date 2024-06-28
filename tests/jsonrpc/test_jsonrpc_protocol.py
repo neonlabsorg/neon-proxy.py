@@ -138,7 +138,7 @@ class TestJsonRpcProtocol(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.value, 15)
 
         with self.assertRaisesRegex(
-            InvalidParamError, "invalid parameters. Method json_tryDefault expect 2 parameters, got 3."
+            InvalidParamError, "Invalid params. Method json_tryDefault expect 2 parameters, got 3."
         ):
             _ = await self._api_client.try_default2(name="John", value=12, value1=10)
 
