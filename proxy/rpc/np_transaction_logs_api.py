@@ -104,8 +104,8 @@ class NpTxLogsApi(NeonProxyApi):
         if (from_slot is not None) and (to_slot is not None):
             if from_slot > to_slot:
                 raise InvalidParamError(error_list="fromBlock can't be bigger than toBlock")
-            elif to_slot - from_slot > 1000:
-                raise InvalidParamError(error_list="range is too large, max is 1000 blocks")
+            # elif to_slot - from_slot > 1000:
+            #     raise InvalidParamError(error_list="range is too large, max is 1000 blocks")
         return False, from_slot, to_slot
 
     async def _get_slot(self, block_tag: RpcBlockRequest | None) -> int | None:
