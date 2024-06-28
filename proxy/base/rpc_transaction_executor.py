@@ -96,7 +96,8 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
     def _validate_chain_id(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel) -> int:
         chain_id = self._get_chain_id(ctx)
         tx_chain_id = neon_tx.chain_id
-        if not tx_chain_id:
+        # Treat tx_chain_id=0 as a valid id (for Dynamic Gas transactions) and validate it in elif clause.
+        if tx_chain_id is None:
             if not self._is_default_chain_id(ctx):
                 raise EthWrongChainIdError()
         elif tx_chain_id != chain_id:
