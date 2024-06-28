@@ -15,11 +15,6 @@ class EthWrongChainIdError(EthError):
         super().__init__("wrong chain id")
 
 
-class EthInvalidFilterError(EthError):
-    def __init__(self, message: str) -> None:
-        super().__init__(message, code=-32600)
-
-
 class EthNonceTooLowError(EthError):
     CODE: ClassVar[int] = -32002
     _empty_sender: Final[str] = "?"
