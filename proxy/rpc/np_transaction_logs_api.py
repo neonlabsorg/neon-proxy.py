@@ -38,6 +38,8 @@ class _RpcLogListRequest(BaseJsonRpcModel):
         for topic in self.topicList:
             if isinstance(topic, list):
                 topic = tuple(filter(lambda t: not t.is_empty, topic))
+            elif topic.is_empty:
+                topic = tuple([])
             else:
                 topic = tuple([topic])
             topic_list.append(topic)
