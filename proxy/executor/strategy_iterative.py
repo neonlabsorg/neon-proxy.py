@@ -36,8 +36,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         self._prep_stage_list.append(NewAccountTxPrepStage(*args, **kwargs))
         self._completed_evm_step_cnt = 0
         self._def_ix_mode: NeonIxMode | None = None
-        self._cu_price_mult = 1
         self._def_cu_limit = 0
+        self._cu_price_mult = 1
 
     @property
     def _cu_price(self) -> int:
@@ -47,17 +47,21 @@ class IterativeTxStrategy(BaseTxStrategy):
         self._cu_price_mult = 1
         for retry in itertools.count():
             completed_evm_step_cnt = self._completed_evm_step_cnt
+
             try:
                 return await self._execute_impl()
-            except SolNoMoreRetriesError:
+
+            except (SolNoMoreRetriesError, SolCbExceededError, SolCbExceededCriticalError):
                 if completed_evm_step_cnt != self._completed_evm_step_cnt:
                     _LOG.debug(
-                        "retry %d: completed evm steps has changed (%d != %d), trying to commit again...",
+                        "retry %d: completed evm steps have changed (%d != %d), trying to commit again...",
                         retry,
                         completed_evm_step_cnt,
                         self._completed_evm_step_cnt,
                     )
                     continue
+                else:
+                    _LOG.debug("retry %d: completed evm steps haven't changed", retry)
 
                 self._cu_price_mult *= 2
                 if self._cu_price_mult <= self._ctx.cfg.max_cu_price_mult:
@@ -68,6 +72,9 @@ class IterativeTxStrategy(BaseTxStrategy):
                         self._cu_price,
                     )
                     continue
+                else:
+                    _LOG.debug("retry %d: reached the maximum CU price", retry)
+
                 raise
 
     async def _execute_impl(self) -> ExecTxRespCode:
@@ -102,14 +109,9 @@ class IterativeTxStrategy(BaseTxStrategy):
             return ExecTxRespCode.Failed
 
         # generate cancel tx with the default CU budget
+        self._reset_to_def()
         self._cu_price_mult = 1
-        iter_list_info = self._IterListInfo(
-            self._ctx.evm_step_cnt_per_iter,
-            1,
-            tuple(),
-            NeonIxMode.Default,
-            name=self._cancel_name,
-        )
+        iter_list_info = self._IterListInfo(1, 1, NeonIxMode.Default, name=self._cancel_name)
         tx_list = tuple([self._build_cancel_tx(iter_list_info.sol_tx_cfg)])
 
         # get optimal CU budget
@@ -127,13 +129,22 @@ class IterativeTxStrategy(BaseTxStrategy):
         _LOG.error("no!? cancel tx")
         return None
 
+    def _reset_to_def(self) -> None:
+        self._def_ix_mode = None
+        self._def_cu_limit = 0
+
     async def _emulate_and_send_tx_list(self) -> bool:
+        self._reset_to_def()
+
         while True:
             try:
-                iter_list_info = await self._get_iter_list_info()
+                if not (iter_list_info := await self._get_single_iter_list_info()):
+                    iter_list_info = await self._get_iter_list_info()
+
                 tx_list = iter_list_info.tx_list
                 if not tx_list:
-                    tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_list_info.iter_cnt))
+                    tx_cfg = iter_list_info.sol_tx_cfg
+                    tx_list = tuple(self._build_tx(tx_cfg) for _ in range(iter_list_info.iter_cnt))
 
                 return await self._send_tx_list(tx_list)
 
@@ -162,11 +173,6 @@ class IterativeTxStrategy(BaseTxStrategy):
                     raise SolCbExceededCriticalError()
 
     async def _get_iter_list_info(self) -> _IterListInfo:
-        if iter_list_info := await self._get_final_iter_list_info():
-            return iter_list_info
-        elif self._def_cu_limit:
-            return self._get_def_iter_list_info("force-def")
-
         _LOG.debug(
             "%d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
             self._ctx.total_evm_step_cnt,
@@ -174,7 +180,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             self._ctx.evm_step_cnt_per_iter,
         )
 
-        step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
+        evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
         total_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
         ix_mode: Final[NeonIxMode] = self._calc_ix_mode()
         wrap_iter_cnt: Final[int] = self._calc_wrap_iter_cnt(ix_mode)
@@ -200,10 +206,10 @@ class IterativeTxStrategy(BaseTxStrategy):
         #
         # Thus, it looks enough to predict EVM steps for 5 attempts...
 
-        evm_step_cnt = max(total_step_cnt, step_cnt_per_iter)
+        evm_step_cnt = max(total_step_cnt, evm_step_cnt_per_iter)
         for retry in range(5):
             # don't try the number of step less than default per iteration
-            if evm_step_cnt <= step_cnt_per_iter:
+            if evm_step_cnt <= evm_step_cnt_per_iter:
                 break
 
             exec_iter_cnt = (total_step_cnt // evm_step_cnt) + (1 if (total_step_cnt % evm_step_cnt) > 1 else 0)
@@ -218,9 +224,9 @@ class IterativeTxStrategy(BaseTxStrategy):
             #    1 iteration: 11'667
             #    2 iteration: 11'667
             #    3 iteration: 11'667
-            evm_step_cnt = max(total_step_cnt // exec_iter_cnt + 1, step_cnt_per_iter)
+            evm_step_cnt = max(total_step_cnt // exec_iter_cnt + 1, evm_step_cnt_per_iter)
 
-            iter_list_info = self._IterListInfo(evm_step_cnt, iter_cnt, tuple(), ix_mode, is_default=False)
+            iter_list_info = self._IterListInfo(evm_step_cnt, iter_cnt, ix_mode)
             tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_cnt))
             iter_list_info, new_evm_step_cnt = await self._calc_cu_budget(f"retry {retry}", iter_list_info, tx_list)
             if iter_list_info:
@@ -229,7 +235,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 break
             evm_step_cnt = new_evm_step_cnt
 
-        return self._get_def_iter_list_info("no-more-retries")
+        return self._get_def_iter_list_info()
 
     async def _calc_cu_budget(
         self,
@@ -241,13 +247,13 @@ class IterativeTxStrategy(BaseTxStrategy):
         cu_limit: Final[int] = self._cu_limit
         # decrease the available CU limit in Neon iteration, because Solana decreases it by default,
         max_cu_limit: Final[int] = int(self._cu_limit * 0.95)  # 95% of the maximum
-        step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
+        evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
 
         # emulate
         try:
             emul_tx_list = await self._emulate_tx_list(tx_list)
         except SolCbExceededError:
-            return None, step_cnt_per_iter
+            return None, evm_step_cnt_per_iter
 
         used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
         iter_cnt = max(next((idx for idx, x in enumerate(emul_tx_list) if x.meta.error), len(emul_tx_list)), 1)
@@ -265,13 +271,13 @@ class IterativeTxStrategy(BaseTxStrategy):
         # not enough CU limit
         if used_cu_limit > max_cu_limit:
             ratio = min(max_cu_limit / used_cu_limit, 0.9)  # decrease by 10% in any case
-            new_evm_step_cnt = max(int(evm_step_cnt * ratio), step_cnt_per_iter)
+            new_evm_step_cnt = max(int(evm_step_cnt * ratio), evm_step_cnt_per_iter)
 
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return None, new_evm_step_cnt
 
         round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 100_000
+        inc_coeff: Final[int] = 150_000
         used_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
         _LOG.debug("%s: %d EVM steps, %d CU limit, %d iterations", hdr, evm_step_cnt, used_cu_limit, iter_cnt)
 
@@ -286,48 +292,46 @@ class IterativeTxStrategy(BaseTxStrategy):
         optimal_info = dataclasses.replace(iter_list_info, iter_cnt=iter_cnt, cu_price=cu_price, cu_limit=used_cu_limit)
         return optimal_info, evm_step_cnt
 
-    def _get_def_iter_list_info(self, hdr: str) -> _IterListInfo:
-        evm_step_cnt = self._ctx.evm_step_cnt_per_iter
+    def _get_def_iter_list_info(self) -> _IterListInfo:
+        evm_step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
+        total_evm_step_cnt = self._calc_total_evm_step_cnt()
+        exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt_per_iter - 1) // evm_step_cnt_per_iter, 1)
         ix_mode = self._calc_ix_mode()
         cu_limit = self._def_cu_limit or (self._cu_limit // 2)
         cu_price = self._cu_price * 2
-        iter_cnt = self._calc_exec_iter_cnt() + self._calc_wrap_iter_cnt(ix_mode)
+        iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
 
         _LOG.debug(
-            "%s: use defaults %s EVM steps per iteration, %s iterations (%s total EVM steps, %s completed EVM steps)",
-            hdr,
-            evm_step_cnt,
+            "use defaults %s EVM steps per iteration, %s iterations (%s total EVM steps, %s completed EVM steps)",
+            evm_step_cnt_per_iter,
             iter_cnt,
             self._ctx.total_evm_step_cnt,
             self._completed_evm_step_cnt,
         )
 
-        return self._IterListInfo(evm_step_cnt, iter_cnt, tuple(), ix_mode, cu_price, cu_limit, is_default=True)
+        return self._IterListInfo(evm_step_cnt_per_iter, iter_cnt, ix_mode, cu_price, cu_limit, is_default=True)
 
-    async def _get_final_iter_list_info(self) -> _IterListInfo | None:
-        if not self._ctx.is_stuck_tx:
-            if self._calc_total_evm_step_cnt() > 1:
-                return None
+    async def _get_single_iter_list_info(self) -> _IterListInfo | None:
+        if self._ctx.is_stuck_tx:
+            pass
+        elif self._def_cu_limit:
+            pass
+        elif self._calc_total_evm_step_cnt() > 1:
+            return None
 
-        _LOG.debug("just 1 finalization iteration")
+        _LOG.debug("just 1 iteration")
 
         iter_cnt = 1
+        evm_step_cnt = self._ctx.evm_step_cnt_per_iter
         ix_mode = self._def_ix_mode or (NeonIxMode.Readable if self._ctx.is_stuck_tx else NeonIxMode.Writable)
-        iter_list_info = self._IterListInfo(
-            self._ctx.evm_step_cnt_per_iter,
-            iter_cnt,
-            tuple(),
-            ix_mode,
-            self._cu_price,
-            self._cu_limit,
-            is_default=False,
-        )
+        iter_list_info = self._IterListInfo(evm_step_cnt, iter_cnt, ix_mode)
 
-        # generate the tx list to calculate the CU limit
-        tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_cnt))
-        new_iter_list_info, _ = await self._calc_cu_budget("finalization", iter_list_info, tx_list)
-        if new_iter_list_info:
-            return new_iter_list_info
+        if not self._def_cu_limit:
+            # generate the tx list to calculate the CU limit
+            tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_cnt))
+            new_iter_list_info, _ = await self._calc_cu_budget("single", iter_list_info, tx_list)
+            if new_iter_list_info:
+                return new_iter_list_info
 
         # if it's impossible to optimize the CU budget, switch to default mode with the decreased CU limit in 2 times
         cu_limit = self._def_cu_limit or (self._cu_limit // 2)
@@ -338,10 +342,10 @@ class IterativeTxStrategy(BaseTxStrategy):
     class _IterListInfo:
         evm_step_cnt: int
         iter_cnt: int
-        tx_list: tuple[SolTx, ...]
         ix_mode: NeonIxMode
         cu_price: int = 0
         cu_limit: int = 0
+        tx_list: tuple[SolTx, ...] = tuple()
         is_default: bool = False
         name: str = ""
 
@@ -358,11 +362,6 @@ class IterativeTxStrategy(BaseTxStrategy):
     def _calc_total_evm_step_cnt(self) -> int:
         assert not self._ctx.is_stuck_tx
         return max(self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt, 0)
-
-    def _calc_exec_iter_cnt(self) -> int:
-        total_step_cnt = self._calc_total_evm_step_cnt()
-        step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
-        return max((total_step_cnt + step_cnt_per_iter - 1) // step_cnt_per_iter, 1)
 
     def _calc_wrap_iter_cnt(self, mode: NeonIxMode) -> int:
         # if there are NO completed evm steps,
