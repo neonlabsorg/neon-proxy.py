@@ -219,7 +219,7 @@ class SolClient(HttpClient):
         req = _SoldersGetBlock(slot, cfg, self._get_next_id())
         try:
             resp = await self._send_request(req, _SoldersGetBlockResp)
-            if SolBlockHash.from_raw(resp.value.previous_blockhash).is_empty:
+            if resp.value and SolBlockHash.from_raw(resp.value.previous_blockhash).is_empty:
                 _LOG.debug("error on get block %s: empty parentBlockhash", slot)
                 return SolRpcBlockInfo.new_empty(slot, commit=commit)
         except SolRpcError as exc:
