@@ -10,7 +10,7 @@ from proxy.rpc.api import RpcBlockRequest
 from pydantic import Field, AliasChoices
 from typing_extensions import Self
 
-from common.ethereum.errors import EthNonceTooLowError
+from common.ethereum.errors import EthError, EthNonceTooLowError
 from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
@@ -209,10 +209,14 @@ class NpGasPriceApi(NeonProxyApi):
             # In case the User was lazy to request any percentiles, let's return "median"
             # so the response makes sense.
             priority_fee_percentile_list = [50]
+
         # Validate percentiles first before querying anything.
         for p in priority_fee_percentile_list:
             if p < 0 or p > 100:
-                return None
+                raise EthError(message="Invalid priority fee percentiles: should be in [0, 100] range.")
+        for i in range(len(priority_fee_percentile_list) - 1):
+            if priority_fee_percentile_list[i] >= priority_fee_percentile_list[i + 1]:
+                raise EthError(message="Invalid priority fee percentiles: should be an increasing sequence.")
 
         # Fetch the latest block slot.
         block = await self.get_block_by_tag(block_tag)
@@ -265,7 +269,7 @@ class NpGasPriceApi(NeonProxyApi):
         oldest_block = fee_gas_data_list[-1].block_slot if fee_gas_data_list else 0
 
         # Reward:
-        # Because we store only 10th percentiles for priority fees, let's linearly extrapolate for other data points.
+        # Because we only store some percentiles, let's linearly extrapolate for other data points.
         def _calc_single_priority_fee_extrapolated(percentile: int, values: list[int]) -> float:
             assert len(values) == len(_REWARD_PERCENTILE_LIST)
             biggest_known_p_idx = bisect_left(_REWARD_PERCENTILE_LIST, percentile)
@@ -273,9 +277,11 @@ class NpGasPriceApi(NeonProxyApi):
                 return values[biggest_known_p_idx]
             start_val = values[biggest_known_p_idx - 1]
             end_val = values[biggest_known_p_idx]
-            # 10 is a gap between consequtive percentiles.
             return (
-                start_val + (end_val - start_val) * (percentile - _REWARD_PERCENTILE_LIST[biggest_known_p_idx - 1]) / 10
+                start_val
+                + (end_val - start_val)
+                * (percentile - _REWARD_PERCENTILE_LIST[biggest_known_p_idx - 1])
+                / NeonBlockHdrModel.PercentileStep
             )
 
         # Calculate priority fee in gas tokens according to input percentiles.
