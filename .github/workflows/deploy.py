@@ -67,6 +67,8 @@ terraform = Terraform(working_dir=pathlib.Path(
     __file__).parent / "full_test_suite")
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 
+SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
+
 
 def docker_compose(args: str):
     command = f'docker login -u {DOCKER_USERNAME} -p {DOCKER_PASSWORD}'
@@ -298,7 +300,7 @@ def get_all_containers_logs():
 
     ssh_client.connect(hostname=proxy_ip, username='root',
                        key_filename=ssh_key, timeout=120)
-    services = ["postgres", "dbcreation", "indexer", "proxy", "faucet", "nginx"]
+    services = ["postgres", "dbcreation", "indexer", "proxy", "faucet"]
     for service in services:
         upload_remote_logs(ssh_client, service, artifact_logs)
 
@@ -511,13 +513,17 @@ def calculate_stats(stats):
         formated_stats[method]["max_time"] = max(data["times"])
         formated_stats[method]["min_time"] = min(data["times"])
         formated_stats[method]["median_time"] = statistics.median(data["times"])
-    return formated_stats
+    return {k: v for k, v in sorted(formated_stats.items(), key=lambda item: item[1]["count"], reverse=True)}
 
 
 @cli.command("parse_logs", help="Get logs from nginx")
 @click.option("--solana_ip", default="localhost", help="Solana IP")
 def parse_logs(solana_ip):
-    content = requests.get(f"http://{solana_ip}:8080/logs/access.log").text
+    try:
+        content = requests.get(f"http://{solana_ip}:8080/logs/access.log").text
+    except requests.exceptions.InvalidURL as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     stats = parse_log_file(content)
     calculated_stats = calculate_stats(stats)
     df = pd.DataFrame.from_dict(calculated_stats, orient="index", columns=["count", "min_time", "max_time", "average_time", "median_time"])
@@ -531,13 +537,27 @@ class GithubClient:
                         "Accept": "application/vnd.github+json",
                         "X-GitHub-Api-Version": "2022-11-28"}
 
-    def add_comment_to_pr(self, msg, pull_number, repo="neon-proxy.py"):
-        data = {"body": f"\n\n{msg}\n\n"}
+    def remove_comment_with_title(self, pull_request, title):
+        response = requests.get(pull_request, headers=self.headers)
+        if response.status_code != 200:
+            raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
+        comments = response.json()
+        for comment in comments:
+            if f"<details>{title}" in comment["body"]:
+                response = requests.delete(comment["url"], headers=self.headers)
+                if response.status_code != 204:
+                    raise RuntimeError(f"Attempt to delete a comment on a PR failed: {response.text} {response.request.url}")
+
+    def add_comment_to_pr(self, msg, pull_request, title = SOLANA_REQUESTS_TITLE, remove_previous_comments=True):
+        if remove_previous_comments:
+            self.remove_comment_with_title(pull_request, title)
+        message = f"\n\n{msg}\n\n"
+        if title:
+            message = f"<details>{title}\n\n{message}</details>"
+        data = {"body": message}
         click.echo(f"Sent data: {data}")
         click.echo(f"Headers: {self.headers}")
-        url = f"https://api.github.com/repos/neonlabsorg/{repo}/issues/{pull_number}/comments"
-        response = requests.post(url, json=data, headers=self.headers)
-        click.echo(f"response: {response.request.url}, response: {response.headers}, response: {response.request.headers}")
+        response = requests.post(pull_request, json=data, headers=self.headers)
         click.echo(f"Status code: {response.status_code}")
         if response.status_code != 201:
             raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")
@@ -545,7 +565,7 @@ class GithubClient:
 
 @cli.command("post_comment", help="Post comment to the PR")
 @click.option("--message", help="Message to post")
-@click.option("--pull_request", help="PR number")
+@click.option("--pull_request", help="Pull Request URL")
 @click.option("--token", help="Github token")
 def post_comment(message, pull_request, token):
     gh_client = GithubClient(token)

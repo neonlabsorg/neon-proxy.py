@@ -67,6 +67,7 @@ services:
     container_name: nginx
     volumes:
         - /var/log/nginx:/var/log/nginx
+        - /tmp/nginx.conf:/etc/nginx/nginx.conf
     networks:
       - net
     entrypoint: >
@@ -74,10 +75,5 @@ services:
 EOF
 
 # wake up Solana
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull solana
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d solana
-
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull nginx
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d nginx
-docker cp nginx.conf $(docker ps -qf "name=nginx"):/etc/nginx/nginx.conf
-docker restart $(docker ps -qf "name=nginx")
+docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull nginx solana
+docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d nginx solana

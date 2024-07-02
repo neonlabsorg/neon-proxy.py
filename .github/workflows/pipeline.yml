@@ -368,10 +368,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
            fetch-depth: 0
-      - name: Install pandas, tabulate
-        run: |
-          pip install pandas
-          pip install tabulate
       - name: "Request report"
         id: request_report
         run: |
@@ -380,10 +376,17 @@ jobs:
           echo "$stats" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "stats=$stats"
+
+          if [[ "${{ github.event.inputs.initial_pr }}" != "" ]]; then
+            echo "pull_request=${{ github.event.inputs.initial_pr }}"  >> $GITHUB_OUTPUT
+          else
+            echo "pull_request=${{ github.event.pull_request.issue_url }}/comments"  >> $GITHUB_OUTPUT
+          fi;
+
       - name: "Post a comment with the report"
         run: |
           python3 ./.github/workflows/deploy.py post_comment --message="${{ steps.request_report.outputs.stats }}" \
-          --pull_request="${{ github.event.pull_request.number }}" \
+          --pull_request="${{ steps.request_report.outputs.pull_request }}" \
           --token=${{ secrets.GITHUB_TOKEN }}
 
   #  will be fixed by NDEV-2766
