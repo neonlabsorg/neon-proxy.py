@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import ClassVar, Final, Annotated, Literal, Any
+from typing import ClassVar, Final, Annotated, Literal, Any, Sequence
 
 from pydantic import Field, PlainValidator
 from strenum import StrEnum
@@ -491,17 +491,20 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_getSolanaTransactionByNeonTransaction")
     async def get_solana_tx_list(
         self,
-        transaction_hash: EthTxHashField,
+        tx_hash: EthTxHashField,
         full: bool = False,
     ) -> list[dict | SolTxSigField]:
-        tx_hash = transaction_hash
+        if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
+            return list()
+
         alt_sig_list = await self._db.get_alt_sig_list_by_neon_sig(tx_hash)
         sol_sig_list = await self._db.get_sol_tx_sig_list_by_neon_tx_hash(tx_hash)
 
         if not sol_sig_list:
             return list()
 
-        sig_list: tuple[SolTxSigSlotInfo, ...] = self._sort_alt_sol_tx_list(alt_sig_list, sol_sig_list)
+        rcpt_sol_tx_sig = neon_tx_meta.neon_tx_rcpt.sol_tx_sig
+        sig_list: tuple[SolTxSigSlotInfo, ...] = self._sort_alt_sol_tx_list(alt_sig_list, sol_sig_list, rcpt_sol_tx_sig)
         sig_list: list[SolTxSig] = list(map(lambda x: x.sol_tx_sig, sig_list))
         if not full:
             return sig_list
@@ -537,16 +540,25 @@ class NpBlockTxApi(NeonProxyApi):
             alt_meta_list = await self._db.get_alt_ix_list_by_neon_tx_hash(tx_hash)
             sol_meta_list = await self._db.get_sol_ix_list_by_neon_tx_hash(tx_hash)
             if sol_meta_list:
-                meta_list = self._sort_alt_sol_tx_list(alt_meta_list, sol_meta_list)
+                rcpt_sol_tx_sig = neon_tx_meta.neon_tx_rcpt.sol_tx_sig
+                meta_list = self._sort_alt_sol_tx_list(alt_meta_list, sol_meta_list, rcpt_sol_tx_sig)
 
         return _RpcNeonTxReceiptResp.from_raw(neon_tx_meta, detail=detail, sol_meta_list=meta_list)
 
     @staticmethod
-    def _sort_alt_sol_tx_list(alt_meta_list, sol_meta_list) -> tuple[Any, ...]:
-        # last 2 signatures (Neon-Receipt or (Solana-Fail + Neon-Cancel)) should be at the end of the list,
+    def _sort_alt_sol_tx_list(alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig) -> tuple[Any, ...]:
+        # signatures with Neon-Receipt (or Solana-Fail + Neon-Cancel) should be at the end of the list,
         #   because it simplifies the user experience
-        last_pos = -2 if len(sol_meta_list) > 1 else -1
-        sol_meta_iter, last_meta_list = iter(sol_meta_list[:last_pos]), sol_meta_list[last_pos:]
+        if (pos := next((idx for idx, v in enumerate(sol_meta_list) if v.sol_tx_sig == rcpt_sol_tx_sig), -1)) == -1:
+            last_pos = -2 if len(sol_meta_list) > 1 else -1
+            sol_meta_iter, last_meta_list = iter(sol_meta_list[:last_pos]), sol_meta_list[last_pos:]
+        else:
+            sol_meta_list = list(sol_meta_list)
+            last_meta_list = list()
+            last_meta_list.append(sol_meta_list.pop(pos))
+            if pos > 0:
+                last_meta_list.insert(0, sol_meta_list.pop(pos - 1))
+            sol_meta_iter = iter(sol_meta_list)
 
         alt_meta_iter = iter(alt_meta_list)
 
