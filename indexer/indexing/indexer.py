@@ -283,7 +283,7 @@ class Indexer:
             # reindexing can't precede of indexing
             finalized_slot = await self._db.get_finalized_slot()
             # reindexing should stop on the terminated slot
-            finalized_slot = min(self._term_slot, finalized_slot)
+            finalized_slot = min(self._term_slot + 100, finalized_slot)
             if result := self._last_processed_slot < finalized_slot:
                 self._commit_progress_stat()
             self._last_finalized_slot = finalized_slot
