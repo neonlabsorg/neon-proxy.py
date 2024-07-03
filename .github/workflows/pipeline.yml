@@ -393,7 +393,7 @@ jobs:
         run: |
           python3 ./.github/workflows/deploy.py post_comment --message="${{ steps.request_report.outputs.stats }}" \
           --pull_request="${{ steps.request_report.outputs.pull_request }}" \
-          --token=${{ secrets.GITHUB_TOKEN }}
+          --token=${{ secrets.GHTOKEN }}
 
   #  will be fixed by NDEV-2766
 #  economy-tests:
