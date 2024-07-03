@@ -178,7 +178,7 @@ class Config:
     # Testing settings
     fuzz_fail_pct_name: Final[str] = "FUZZ_FAIL_PCT"
 
-    _pg_null_value: Final[str] = ""  # to have a uniform (str) type returned by pg_* properties.
+    _pg_null_value: Final[str] = object()
     _1min: Final[int] = 60
     _1hour: Final[int] = 60 * 60
     _1day: Final[int] = 24 * _1hour
@@ -403,7 +403,7 @@ class Config:
             + [self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
             + [self.pg_host, self.pg_db, self.pg_user, self.pg_password]
         )
-        res_set = set([item for item in res_list if item])
+        res_set = set([item for item in res_list if item and not item is self._pg_null_value])
         res_list = sorted(res_set, key=lambda x: len(x), reverse=True)
         return tuple(res_list)
 
