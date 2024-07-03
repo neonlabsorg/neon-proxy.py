@@ -360,7 +360,11 @@ jobs:
       - prepare-infrastructure
       - basic-tests
       - build-image
-    if: always()
+      - dapps-tests
+      - openzeppelin-tests
+    if: |
+      always() && 
+      contains(fromJSON('["success", "cancelled", "failure"]'), needs.openzeppelin-tests.result)
     runs-on: test-runner
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
