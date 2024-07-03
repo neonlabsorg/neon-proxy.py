@@ -138,27 +138,7 @@ jobs:
       - name: Define test image tag
         id: neon_test_tag
         run: |
-          if ${{ steps.is_version_proxy_branch.outputs.value }}; then
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          elif [[ "${{ steps.tag_creation.outputs.base_branch }}" != "" ]]; then
-            tag=${{ steps.tag_creation.outputs.base_branch }}
-
-          elif [[ "${{ github.base_ref }}" =~ "refs/heads/"[vt][0-9]+\.[0-9]+\.x ]]; then # pr to version branch
-            tag=${GITHUB_BASE_REF/refs\/heads\//}
-
-          elif [[ "${{ github.head_ref }}" != "" ]]; then # pr to feature branch
-            tag=${{ github.head_ref }}
-
-          elif [[ "{{github.event.inputs.neon_evm_branch}}" != "" && "{{github.event.inputs.neon_evm_branch}}" != "refs/heads/develop" ]]; then # triggered by neon evm workflow
-            tag=${{ github.event.inputs.neon_evm_branch }}
-
-          elif [[ "${{ github.ref }}" =~ "refs/heads".+ ]] ; then # triggered by pr to develop
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          else
-            tag='latest'
-          fi
+          tag='v1.14.x'
           echo "value=${tag}"
           echo "value=${tag}" >> $GITHUB_OUTPUT
       - name: Check image

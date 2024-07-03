@@ -93,6 +93,7 @@ class Indexer:
         dctx.clear_neon_block_queue()
 
     def _complete_neon_block(self, dctx: SolNeonDecoderCtx) -> None:
+        _LOG.debug("COMPLETE block: %s", dctx.neon_block.slot)
         neon_block = dctx.neon_block
         neon_block.complete_block()
         self._neon_block_dict.add_neon_block(neon_block)

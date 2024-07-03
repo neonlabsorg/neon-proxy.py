@@ -1528,6 +1528,7 @@ class SolNeonDecoderCtx:
 
     def iter_sol_neon_tx_meta(self, sol_block: SolRpcBlockInfo) -> Generator[SolTxMetaInfo, None, None]:
         try:
+            _LOG.debug("FOUND %s with %s txs", sol_block.slot, len(sol_block.tx_list))
             self._stat.inc_sol_block_cnt()
             self._stat.add_sol_tx_meta_cnt(len(sol_block.tx_list))
             for sol_tx in sol_block.tx_list:
@@ -1582,7 +1583,7 @@ class SolNeonDecoderCtx:
         start_ro_pos = key_list_len - ro_key_cnt
 
         for acct in acct_key_list[start_ro_pos:]:
-            if acct == NeonProg.ID:
+            if NeonProg.ID == SolPubKey.from_raw(acct):
                 return True
 
         return False
