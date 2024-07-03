@@ -181,9 +181,12 @@ class SolBlockDb(HistoryDbTable):
         select_cu_price_percentile_list_sql = DbSql(
             """
             SELECT 
-              a.cu_price_percentiles
+              a.cu_price_percentiles,
+              a.block_slot
             FROM 
               {table_name} AS a
+            WHERE 
+              a.block_slot <= {latest_block}
             ORDER BY 
               a.block_slot DESC
             LIMIT {block_cnt}
@@ -191,6 +194,7 @@ class SolBlockDb(HistoryDbTable):
         ).format(
             table_name=self._table_name,
             block_cnt=DbSqlParam("block_cnt"),
+            latest_block=DbSqlParam("latest_block"),
         )
 
         (
@@ -335,14 +339,15 @@ class SolBlockDb(HistoryDbTable):
         await self._update_row(ctx, self._deactivate_query, by_slot_range)
         await self._update_row(ctx, self._activate_query, by_slot_range)
 
-    async def get_cu_price_percentile_list(self, ctx: DbTxCtx, block_cnt: int) -> list[list[int]]:
-        rec_list: list[_PriorityFeePercentiles] = await self._fetch_all(
+    async def get_cu_price_percentile_list(
+        self, ctx: DbTxCtx, block_cnt: int, latest_block: int
+    ) -> list[PriorityFeePercentiles]:
+        return await self._fetch_all(
             ctx,
             self._select_cu_price_percentile_list_query,
-            _BlockCount(block_cnt),
-            record_type=_PriorityFeePercentiles,
+            _BlockCountAndLatest(block_cnt, latest_block),
+            record_type=PriorityFeePercentiles,
         )
-        return [r.cu_price_percentiles for r in rec_list]
 
 
 @dataclass(frozen=True)
@@ -399,10 +404,12 @@ class _BySlotRange:
 
 
 @dataclass(frozen=True)
-class _BlockCount:
+class _BlockCountAndLatest:
     block_cnt: int
+    latest_block: int
 
 
 @dataclass(frozen=True)
-class _PriorityFeePercentiles:
+class PriorityFeePercentiles:
     cu_price_percentiles: list[int]
+    block_slot: int

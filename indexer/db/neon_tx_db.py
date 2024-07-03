@@ -113,14 +113,13 @@ class NeonTxDb(HistoryDbTable):
               WHERE
                 t.chain_id = {chain_id}
                 AND t.max_fee_per_gas != ''
+                AND t.block_slot <= {latest_slot}
               GROUP BY
                 block_slot
+              LIMIT {num_blocks}
             ) a
-            WHERE
-              a.block_slot <= {latest_slot}
             ORDER BY
               a.block_slot DESC
-            LIMIT {num_blocks}
             """
         ).format(
             table_name=self._table_name,

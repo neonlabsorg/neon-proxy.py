@@ -17,7 +17,7 @@ from .indexer_db import IndexerDbSlotRange
 from .neon_tx_db import BlockFeeGasData, NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
 from .solana_alt_tx_db import SolAltTxDb
-from .solana_block_db import SolBlockDb, SolSlotRange
+from .solana_block_db import PriorityFeePercentiles, SolBlockDb, SolSlotRange
 from .solana_neon_tx_db import SolNeonTxDb
 from .solana_tx_cost_db import SolTxCostDb
 from .stuck_alt_db import StuckNeonAltDb
@@ -97,8 +97,8 @@ class IndexerDbClient:
     async def get_historical_base_fees(self, chain_id: int, num_blocks: int, latest_slot: int) -> list[BlockFeeGasData]:
         return await self._neon_tx_db.get_base_fee_list(None, chain_id, num_blocks, latest_slot)
 
-    async def get_historical_priority_fees(self, num_blocks: int) -> list[list[int]]:
-        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks)
+    async def get_historical_priority_fees(self, num_blocks: int, latest_block: int) -> list[PriorityFeePercentiles]:
+        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks, latest_block)
 
     async def _get_slot_range(self) -> SolSlotRange:
         slot_list = await self._constant_db.get_int_list(
