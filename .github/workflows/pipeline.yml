@@ -365,7 +365,6 @@ jobs:
     if: |
       always() && 
       contains(fromJSON('["success", "cancelled", "failure", "skipped", "completed"]'), needs.openzeppelin-tests.result) &&
-      contains(fromJSON('["success", "cancelled", "failure", "skipped", "completed"]'), needs.basic-tests.result) &&
       contains(fromJSON('["success", "cancelled", "failure", "skipped", "completed"]'), needs.dapps-tests.result)
     runs-on: test-runner
     env:
