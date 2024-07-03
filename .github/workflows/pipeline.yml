@@ -364,9 +364,9 @@ jobs:
       - openzeppelin-tests
     if: |
       always() && 
-      contains(fromJSON('["success", "cancelled", "failure"]'), needs.openzeppelin-tests.result) &&
-      contains(fromJSON('["success", "cancelled", "failure"]'), needs.basic-tests.result) &&
-      contains(fromJSON('["success", "cancelled", "failure"]'), needs.dapps-tests.result)
+      contains(fromJSON('["success", "cancelled", "failure", "skipped", "completed"]'), needs.openzeppelin-tests.result) &&
+      contains(fromJSON('["success", "cancelled", "failure", "skipped", "completed"]'), needs.basic-tests.result) &&
+      contains(fromJSON('["success", "cancelled", "failure", "skipped", "completed"]'), needs.dapps-tests.result)
     runs-on: test-runner
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
