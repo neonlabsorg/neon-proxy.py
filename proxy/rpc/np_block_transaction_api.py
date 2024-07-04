@@ -528,10 +528,9 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_getTransactionReceipt")
     async def get_neon_tx_receipt(
         self,
-        transaction_hash: EthTxHashField,
+        tx_hash: EthTxHashField,
         detail: _RpcNeonTxReceiptDetailField = _RpcNeonTxReceiptDetail.SolTxList,
     ) -> _RpcNeonTxReceiptResp | _RpcEthTxReceiptResp | None:
-        tx_hash = transaction_hash
         if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             return None
 
