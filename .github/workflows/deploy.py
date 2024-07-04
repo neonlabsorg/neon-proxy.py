@@ -540,7 +540,7 @@ class GithubClient:
     def remove_comment_with_title(self, pull_request, title):
         try:
             response = requests.get(pull_request, headers=self.headers)
-        except requests.exceptions.InvalidSchema as e:
+        except requests.exceptions.MissingSchema as e:
             click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
         if response.status_code != 200:
             raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
@@ -562,7 +562,7 @@ class GithubClient:
         click.echo(f"Headers: {self.headers}")
         try:
             response = requests.post(pull_request, json=data, headers=self.headers)
-        except requests.exceptions.InvalidSchema as e:
+        except requests.exceptions.MissingSchema as e:
             click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
         else:
             if response.status_code != 201:
