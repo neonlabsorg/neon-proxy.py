@@ -33,6 +33,8 @@ _LOG = logging.getLogger(__name__)
 class NeonTxEventModelType(enum.IntEnum):
     Log = 1
 
+    StepReset = 50
+
     EnterCall = 101
     EnterCallCode = 102
     EnterStaticCall = 103
@@ -187,7 +189,7 @@ class _NeonTxLogDraft:
             if self.neon_tx_hash.is_empty:
                 _LOG.error("failed to find %s in the log", _NeonEvmHashLogDecoder.name)
             if self.tx_ix_gas.is_empty:
-                _LOG.error("failed to find %s in the log", _NeonEvmGasLogDecoder.name)
+                _LOG.debug("failed to find %s in the log", _NeonEvmGasLogDecoder.name)
 
         return NeonTxLogInfo(
             neon_tx_hash=self.neon_tx_hash,
@@ -331,6 +333,25 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
         step_cnt = int.from_bytes(bs, "little")
 
         log.tx_ix_step = NeonTxIxStepInfo(step_cnt=step_cnt, total_step_cnt=total_step_cnt)
+
+
+class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "RESET"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+        """
+        Unpacks Neon reset of all processed EVM steps:
+        RESET
+        """
+        if data_list:
+            _LOG.error("failed to decode %s: should be 0 element in %s", cls.name, data_list)
+            return
+
+        event = _NeonTxEventDraft.from_raw(
+            event_type=NeonTxEventModel.Type.StepReset, is_hidden=True, address=bytes(), topic_list=list(), data=bytes()
+        )
+        log.tx_event_list.append(event)
 
 
 class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
@@ -507,6 +528,7 @@ class NeonEvmLogDecoder:
     _log_decoder_dict: dict[str, type[_NeonEvmLogDecoder]] = {
         _NeonEvmHashLogDecoder.name: _NeonEvmHashLogDecoder,
         _NeonEvmMinerDecoder.name: _NeonEvmMinerDecoder,
+        _NeonEvmResetLogDecoder.name: _NeonEvmResetLogDecoder,
         _NeonEvmStepLogDecoder.name: _NeonEvmStepLogDecoder,
         _NeonEvmReturnLogDecoder.name: _NeonEvmReturnLogDecoder,
         _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,

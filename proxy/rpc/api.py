@@ -152,6 +152,7 @@ class RpcNeonTxEventModel(RpcEthTxEventModel):
     def from_raw(cls, event: NeonTxEventModel) -> Self:
         return cls(
             **cls._to_dict(event),
+            removed=event.is_reverted,
             solanaTransactionSignature=event.sol_tx_sig,
             solanaInstructionIndex=event.sol_ix_idx,
             solanaInnerInstructionIndex=event.sol_inner_ix_idx,
