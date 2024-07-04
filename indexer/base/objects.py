@@ -293,6 +293,10 @@ class _NeonTxEventDraft:
             NeonTxEventModel.Type.EnterCreate2,
         )
 
+    @property
+    def is_step_reset(self) -> bool:
+        return self.event_type == NeonTxEventModel.Type.StepReset
+
     def set_log_idx(self, block_log_idx: int, neon_tx_log_idx: int) -> None:
         self.block_log_idx = block_log_idx
         self.neon_tx_log_idx = neon_tx_log_idx
@@ -635,13 +639,16 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                 continue
 
             is_tx_restart = False
+            if event.is_step_reset:
+                is_tx_restart = True
 
             #  iteration 1 (step 10)
             #  iteration 2 (step 20)
             #  iteration 3 (step 10) <--- we are here: the place of tx-restart
             #  iteration 4 (step 20)
-            if event.total_step_cnt < total_step_cnt:
+            elif event.total_step_cnt < total_step_cnt:
                 is_tx_restart = True
+
             #  iteration 1 (step 10, gas 10'000)
             #  iteration 2 (step 10, gas 20'000) <--- we are here: the place of tx-restart
             #  iteration 3 (step 20, gas 30'000)
@@ -685,6 +692,9 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             elif event.is_reverted:
                 # events from broken iterations
                 is_reverted, is_hidden = True, True
+            elif event.is_step_reset:
+                # restart of the tx execution
+                is_dropped, is_reverted, is_hidden = True, True, True
             elif event.total_step_cnt > total_step_cnt:
                 # tx restart:
                 #   iteration 4 (step 20)
