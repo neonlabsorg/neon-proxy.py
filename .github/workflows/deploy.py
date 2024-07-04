@@ -538,7 +538,10 @@ class GithubClient:
                         "X-GitHub-Api-Version": "2022-11-28"}
 
     def remove_comment_with_title(self, pull_request, title):
-        response = requests.get(pull_request, headers=self.headers)
+        try:
+            response = requests.get(pull_request, headers=self.headers)
+        except requests.exceptions.InvalidSchema as e:
+            click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
         if response.status_code != 200:
             raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
         comments = response.json()
@@ -557,10 +560,15 @@ class GithubClient:
         data = {"body": message}
         click.echo(f"Sent data: {data}")
         click.echo(f"Headers: {self.headers}")
-        response = requests.post(pull_request, json=data, headers=self.headers)
-        click.echo(f"Status code: {response.status_code}")
-        if response.status_code != 201:
-            raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")
+        try:
+            response = requests.post(pull_request, json=data, headers=self.headers)
+        except requests.exceptions.InvalidSchema as e:
+            click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
+        else:
+            if response.status_code != 201:
+                raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")
+        finally:
+            click.echo(f"Status code: {response.status_code}. Response: {response.text}")
 
 
 @cli.command("post_comment", help="Post comment to the PR")
