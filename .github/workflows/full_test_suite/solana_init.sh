@@ -56,9 +56,24 @@ services:
       - "8900:8900"
       - "8001:8001"
       - "8001-8009:8001-8009/udp"
+  
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8080:8080"
+    expose:
+      - 8080
+    hostname: nginx
+    container_name: nginx
+    volumes:
+        - /var/log/nginx:/var/log/nginx
+        - /tmp/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - net
+    entrypoint: >
+      /bin/sh -c "echo 'Nginx Configuration:' && cat /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
 EOF
 
-
 # wake up Solana
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull solana
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d solana
+docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull nginx solana
+docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d nginx solana

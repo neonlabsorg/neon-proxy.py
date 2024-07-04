@@ -77,6 +77,18 @@ resource "hcloud_server" "solana" {
     data.hcloud_ssh_key.ci-ssh-key.id
   ]
 
+  provisioner "file" {
+    source     = "../../../docker-compose/nginx.conf"
+    destination = "/tmp/nginx.conf"
+
+    connection {
+        type        = "ssh"
+        user        = "root"
+        host        = hcloud_server.solana.ipv4_address
+        private_key = file("~/.ssh/ci-stands")
+      }
+  }
+
    provisioner "file" {
     source      = "../../../docker-compose/docker-compose-ci.yml"
     destination = "/tmp/docker-compose-ci.yml"

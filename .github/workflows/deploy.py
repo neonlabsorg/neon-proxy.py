@@ -1,8 +1,9 @@
 import multiprocessing
 import os
 import re
-import time
+import statistics
 import sys
+from collections import defaultdict
 
 import docker
 import subprocess
@@ -15,6 +16,10 @@ from urllib.parse import urlparse
 from python_terraform import Terraform
 from paramiko import SSHClient
 from scp import SCPClient
+try:
+    import pandas as pd
+except ImportError:
+    print("Please install pandas library: 'pip install pandas' and 'pip install tabulate' for requests statistics")
 
 try:
     import click
@@ -61,6 +66,8 @@ docker_client = docker.APIClient()
 terraform = Terraform(working_dir=pathlib.Path(
     __file__).parent / "full_test_suite")
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
+
+SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 
 
 def docker_compose(args: str):
@@ -465,6 +472,104 @@ def process_output(output):
             if errors:
                 message = "problem executing Docker: {}".format(". ".join(errors))
                 raise SystemError(message)
+
+
+# Regular expression to match the log format
+log_pattern = re.compile(r"{.*}")
+
+
+def extract_method(request_body):
+    try:
+        request_json = json.loads(request_body)
+        return request_json.get("method", "unknown")
+    except json.JSONDecodeError:
+        return "unknown"
+
+
+def parse_log_file(log_file_path) -> dict:
+    # Read and parse the log file
+    stats = defaultdict(lambda: {"times": list()})
+
+    lines = (line for line in log_file_path.split("\n") if log_pattern.match(line))
+    log_entries = (json.loads(line) for line in lines)
+    formated_requests = (
+        {
+            "request_time": float(log_entry.get("request_time", 0)),
+            "method": extract_method(log_entry.get("jsonrpc_method", "")),
+        }
+        for log_entry in log_entries if extract_method(log_entry.get("jsonrpc_method", "")) != "unknown"
+    )
+    for formated_request in formated_requests:
+        method = formated_request["method"]
+        stats[method]["times"].append(formated_request["request_time"])
+    return stats
+
+
+def calculate_stats(stats):
+    formated_stats = {key: {} for key in stats.keys()}
+    for method, data in stats.items():
+        formated_stats[method]["count"] = len(data["times"])
+        formated_stats[method]["average_time"] = statistics.mean(data["times"])
+        formated_stats[method]["max_time"] = max(data["times"])
+        formated_stats[method]["min_time"] = min(data["times"])
+        formated_stats[method]["median_time"] = statistics.median(data["times"])
+    return {k: v for k, v in sorted(formated_stats.items(), key=lambda item: item[1]["count"], reverse=True)}
+
+
+@cli.command("parse_logs", help="Get logs from nginx")
+@click.option("--solana_ip", default="localhost", help="Solana IP")
+def parse_logs(solana_ip):
+    try:
+        content = requests.get(f"http://{solana_ip}:8080/logs/access.log").text
+    except requests.exceptions.InvalidURL as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    stats = parse_log_file(content)
+    calculated_stats = calculate_stats(stats)
+    df = pd.DataFrame.from_dict(calculated_stats, orient="index", columns=["count", "min_time", "max_time", "average_time", "median_time"])
+    print(df.to_markdown())
+
+
+class GithubClient:
+
+    def __init__(self, token):
+        self.headers = {"Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28"}
+
+    def remove_comment_with_title(self, pull_request, title):
+        response = requests.get(pull_request, headers=self.headers)
+        if response.status_code != 200:
+            raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
+        comments = response.json()
+        for comment in comments:
+            if f"<details>{title}" in comment["body"]:
+                response = requests.delete(comment["url"], headers=self.headers)
+                if response.status_code != 204:
+                    raise RuntimeError(f"Attempt to delete a comment on a PR failed: {response.text} {response.request.url}")
+
+    def add_comment_to_pr(self, msg, pull_request, title = SOLANA_REQUESTS_TITLE, remove_previous_comments=True):
+        if remove_previous_comments:
+            self.remove_comment_with_title(pull_request, title)
+        message = f"\n\n{msg}\n\n"
+        if title:
+            message = f"<details>{title}\n\n{message}</details>"
+        data = {"body": message}
+        click.echo(f"Sent data: {data}")
+        click.echo(f"Headers: {self.headers}")
+        response = requests.post(pull_request, json=data, headers=self.headers)
+        click.echo(f"Status code: {response.status_code}")
+        if response.status_code != 201:
+            raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")
+
+
+@cli.command("post_comment", help="Post comment to the PR")
+@click.option("--message", help="Message to post")
+@click.option("--pull_request", help="Pull Request URL")
+@click.option("--token", help="Github token")
+def post_comment(message, pull_request, token):
+    gh_client = GithubClient(token)
+    gh_client.add_comment_to_pr(message, pull_request)
 
 
 if __name__ == "__main__":

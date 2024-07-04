@@ -355,6 +355,45 @@ jobs:
       solana_ip: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       external_call: true
 
+  requests-report:
+    needs:
+      - prepare-infrastructure
+      - basic-tests
+      - build-image
+      - dapps-tests
+      - openzeppelin-tests
+    if: |
+      always() && 
+      contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result) &&
+      contains(fromJSON('["success", "skipped"]'), needs.dapps-tests.result)
+    runs-on: test-runner
+    env:
+      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+           fetch-depth: 0
+      - name: "Request report"
+        id: request_report
+        run: |
+          stats=$(python3 ./.github/workflows/deploy.py parse_logs --solana_ip=${{ env.SOLANA_IP }})
+          echo "stats<<EOF" >> $GITHUB_OUTPUT
+          echo "$stats" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "stats=$stats"
+
+          if [[ "${{ github.event.inputs.initial_pr }}" != "" ]]; then
+            echo "pull_request=${{ github.event.inputs.initial_pr }}"  >> $GITHUB_OUTPUT
+          else
+            echo "pull_request=${{ github.event.pull_request.issue_url }}/comments"  >> $GITHUB_OUTPUT
+          fi;
+
+      - name: "Post a comment with the report"
+        run: |
+          python3 ./.github/workflows/deploy.py post_comment --message="${{ steps.request_report.outputs.stats }}" \
+          --pull_request="${{ steps.request_report.outputs.pull_request }}" \
+          --token=${{ secrets.GHTOKEN }}
+
   #  will be fixed by NDEV-2766
 #  economy-tests:
 #    if: needs.build-image.outputs.full_test_suite=='true'
@@ -391,6 +430,7 @@ jobs:
       - prepare-infrastructure
       - openzeppelin-tests
       - basic-tests
+      - requests-report
       - dapps-tests
       - build-image
     runs-on: test-runner
