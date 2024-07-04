@@ -1582,7 +1582,7 @@ class SolNeonDecoderCtx:
         start_ro_pos = key_list_len - ro_key_cnt
 
         for acct in acct_key_list[start_ro_pos:]:
-            if acct == NeonProg.ID:
+            if NeonProg.ID == SolPubKey.from_raw(acct):
                 return True
 
         return False
