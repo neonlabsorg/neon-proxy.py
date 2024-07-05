@@ -19,7 +19,6 @@ from common.config.constants import (
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthAddress, EthBlockHash
-from common.http.errors import HttpRouteError
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.server import JsonRpcApi
 from common.neon.block import NeonBlockHdrModel
@@ -27,11 +26,10 @@ from common.neon.neon_program import NeonProg
 from common.neon_rpc.client import CoreApiClient
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
-from common.utils.cached import ttl_cached_method
 from gas_tank.db.gas_less_accounts_db import GasLessAccountDb
 from indexer.db.indexer_db_client import IndexerDbClient
 from .api import RpcBlockRequest
-from ..base.mp_api import MpGasPriceModel, MpTokenGasPriceModel
+from ..base.mp_api import MpGasPriceModel
 from ..base.mp_client import MempoolClient
 from ..base.rpc_server_abc import BaseRpcServerAbc, BaseRpcServerComponent
 from ..stat.client import StatClient
