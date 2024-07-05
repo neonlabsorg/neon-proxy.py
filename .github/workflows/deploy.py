@@ -538,15 +538,19 @@ class GithubClient:
                         "X-GitHub-Api-Version": "2022-11-28"}
 
     def remove_comment_with_title(self, pull_request, title):
-        response = requests.get(pull_request, headers=self.headers)
-        if response.status_code != 200:
-            raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
-        comments = response.json()
-        for comment in comments:
-            if f"<details>{title}" in comment["body"]:
-                response = requests.delete(comment["url"], headers=self.headers)
-                if response.status_code != 204:
-                    raise RuntimeError(f"Attempt to delete a comment on a PR failed: {response.text} {response.request.url}")
+        try:
+            response = requests.get(pull_request, headers=self.headers)
+        except requests.exceptions.MissingSchema as e:
+            click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
+        else:
+            if response.status_code != 200:
+                raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
+            comments = response.json()
+            for comment in comments:
+                if f"<details>{title}" in comment["body"]:
+                    response = requests.delete(comment["url"], headers=self.headers)
+                    if response.status_code != 204:
+                        raise RuntimeError(f"Attempt to delete a comment on a {response.request.url} failed: {response.text}")
 
     def add_comment_to_pr(self, msg, pull_request, title = SOLANA_REQUESTS_TITLE, remove_previous_comments=True):
         if remove_previous_comments:
@@ -557,10 +561,14 @@ class GithubClient:
         data = {"body": message}
         click.echo(f"Sent data: {data}")
         click.echo(f"Headers: {self.headers}")
-        response = requests.post(pull_request, json=data, headers=self.headers)
-        click.echo(f"Status code: {response.status_code}")
-        if response.status_code != 201:
-            raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")
+        try:
+            response = requests.post(pull_request, json=data, headers=self.headers)
+        except requests.exceptions.MissingSchema as e:
+            click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
+        else:
+            click.echo(f"Status code: {response.status_code}. Response: {response.text}")
+            if response.status_code != 201:
+                raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")            
 
 
 @cli.command("post_comment", help="Post comment to the PR")
