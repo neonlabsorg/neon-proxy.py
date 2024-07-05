@@ -542,14 +542,15 @@ class GithubClient:
             response = requests.get(pull_request, headers=self.headers)
         except requests.exceptions.MissingSchema as e:
             click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
-        if response.status_code != 200:
-            raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
-        comments = response.json()
-        for comment in comments:
-            if f"<details>{title}" in comment["body"]:
-                response = requests.delete(comment["url"], headers=self.headers)
-                if response.status_code != 204:
-                    raise RuntimeError(f"Attempt to delete a comment on a PR failed: {response.text} {response.request.url}")
+        else:
+            if response.status_code != 200:
+                raise RuntimeError(f"Attempt to get comments on a PR failed: {response.text}")
+            comments = response.json()
+            for comment in comments:
+                if f"<details>{title}" in comment["body"]:
+                    response = requests.delete(comment["url"], headers=self.headers)
+                    if response.status_code != 204:
+                        raise RuntimeError(f"Attempt to delete a comment on a {response.request.url} failed: {response.text}")
 
     def add_comment_to_pr(self, msg, pull_request, title = SOLANA_REQUESTS_TITLE, remove_previous_comments=True):
         if remove_previous_comments:
