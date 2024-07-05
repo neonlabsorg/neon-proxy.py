@@ -223,10 +223,13 @@ class OpResourceMng(OpResourceComponent):
                 return op_signer
         return None
 
-    async def withdraw(self) -> None:
+    async def withdraw(self, chain_list: list[int]) -> None:
         for op_signer in self._active_signer_dict.values():
             ix_list: list[SolTxIx] = list()
             for chain_id, token_sol_addr in op_signer.token_sol_address_dict.items():
+                if chain_id not in chain_list:
+                    continue
+
                 neon_acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
                 neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
                 neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)

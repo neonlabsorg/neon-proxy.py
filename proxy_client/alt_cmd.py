@@ -10,9 +10,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.client import SolClient
 from common.utils.json_logger import logging_context
-from proxy.base.op_client import OpResourceClient
 from .cmd_handler import BaseNPCmdHandler
 from .common_alt import SolAltFunc
 
@@ -76,8 +74,6 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
                     for acct in acct_list:
                         result += await self._destroy_alt(
                             req_id,
-                            sol_client,
-                            op_client,
                             owner_list,
                             acct.address,
                         )
@@ -85,20 +81,19 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
             else:
                 return await self._destroy_alt(
                     req_id,
-                    sol_client,
-                    op_client,
                     owner_list,
                     SolPubKey.from_raw(arg_space.address),
                 )
 
-    @staticmethod
     async def _destroy_alt(
+        self,
         req_id: dict,
-        sol_client: SolClient,
-        op_client: OpResourceClient,
         owner_list: tuple[SolPubKey, ...],
         address: SolPubKey,
     ) -> int:
+        sol_client = await self._get_sol_client()
+        op_client = await self._get_op_client()
+
         alt = await sol_client.get_alt_account(address)
         if (alt is None) or alt.is_empty:
             _LOG.error("Address Lookup Table %s doesn't exist", address)

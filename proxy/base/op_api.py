@@ -136,6 +136,7 @@ class OpEthAddressListResp(BaseModel):
 
 class OpWithdrawTokenRequest(BaseModel):
     req_id: dict
+    chain_list: list[int]
 
 
 class OpWithdrawTokenResp(BaseModel):
