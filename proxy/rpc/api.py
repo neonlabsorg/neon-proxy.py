@@ -19,7 +19,7 @@ from common.neon.evm_log_decoder import NeonTxEventModel
 from common.solana.account import SolAccountModel
 from common.solana.pubkey import SolPubKeyField
 from common.solana.signature import SolTxSigField
-from common.utils.pydantic import HexUIntField, RootModel
+from common.utils.pydantic import HexUIntField, RootModel, HexUInt64Field
 
 
 class RpcBlockParamModel(BaseJsonRpcModel):
@@ -47,7 +47,7 @@ class RpcBlockParamModel(BaseJsonRpcModel):
 
 
 class RpcBlockRequest(RootModel):
-    root: HexUIntField | EthCommitField | RpcBlockParamModel
+    root: HexUInt64Field | EthCommitField | RpcBlockParamModel
 
     _latest: ClassVar[RpcBlockRequest | None] = None
 
