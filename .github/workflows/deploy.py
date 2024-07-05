@@ -566,10 +566,9 @@ class GithubClient:
         except requests.exceptions.MissingSchema as e:
             click.echo(f"Ignoring PR: {pull_request}. Error: {e}.")
         else:
-            if response.status_code != 201:
-                raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")
-        finally:
             click.echo(f"Status code: {response.status_code}. Response: {response.text}")
+            if response.status_code != 201:
+                raise RuntimeError(f"Attempt to leave a comment on a PR failed: {response.text}")            
 
 
 @cli.command("post_comment", help="Post comment to the PR")
