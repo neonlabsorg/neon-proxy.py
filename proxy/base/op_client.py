@@ -79,9 +79,8 @@ class OpResourceClient(AppDataClient):
         resp = await self._get_eth_list(req)
         return tuple(resp.eth_address_list)
 
-    async def withdraw(self) -> None:
-        # TODO: complete logic
-        req = OpWithdrawTokenRequest(req_id=dict(ctx="todo"))
+    async def withdraw(self, req_id: dict, chain_list: list[int]) -> None:
+        req = OpWithdrawTokenRequest(req_id=req_id, chain_list=chain_list)
         _resp = await self._withdraw(req)
 
     @AppDataClient.method(name="getOperatorResource")
