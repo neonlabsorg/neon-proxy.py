@@ -92,6 +92,17 @@ def _hex_to_uint(value: str | int) -> int | None:
     return result
 
 
+def _hex_to_n_uint(value: str | int, size: int) -> int | None:
+    result = _hex_to_uint(value)
+    if result and (result > (2 ** size - 1)):
+        raise ValueError(f"hex number > {size} bits")
+    return result
+
+
+def _hex_to_uint64(value: str | int) -> int | None:
+    return _hex_to_n_uint(value, 64)
+
+
 def _uint_to_hex(value: int | None) -> str | None:
     if value is None:
         return None
@@ -119,8 +130,9 @@ def _uint256_to_hex(value: int | None) -> str | None:
 
 
 HexUIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint_to_hex)]
-HexUInt8Field = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint8_to_hex)]
-HexUInt256Field = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint256_to_hex)]
+Hex8UIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint8_to_hex)]
+HexUInt64Field = Annotated[int, PlainValidator(_hex_to_uint64), PlainSerializer(_uint_to_hex)]
+Hex256UIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint256_to_hex)]
 UIntFromHexField = Annotated[int, PlainValidator(_hex_to_uint)]
 
 
