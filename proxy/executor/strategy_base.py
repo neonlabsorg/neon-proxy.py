@@ -162,6 +162,12 @@ class BaseTxStrategy(abc.ABC):
         self._validation_error_msg = "Has external Solana call"
         return False
 
+    def _validate_gas_price(self) -> bool:
+        if self._ctx.neon_tx.gas_price:
+            return True
+        self._validation_error_msg = "Fee less transaction"
+        return False
+
     def _validate_has_sol_call(self) -> bool:
         if self._ctx.has_external_sol_call:
             return True
