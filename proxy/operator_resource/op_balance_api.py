@@ -18,9 +18,8 @@ class OpBalanceApi(OpResourceApi):
 
     @OpResourceApi.method(name="withdrawEarnedTokens")
     async def withdraw(self, request: OpWithdrawTokenRequest) -> OpWithdrawTokenResp:
-        # TODO: complete logic
         with logging_context(**request.req_id):
-            await self._op_resource_mng.withdraw()
+            await self._op_resource_mng.withdraw(request.chain_list)
             return OpWithdrawTokenResp(total_amount_dict=dict())
 
     @cached_property
