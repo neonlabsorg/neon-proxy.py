@@ -22,6 +22,7 @@ class BaseCmdHandler:
         self._subcmd_dict: dict[str, Callable] = dict()
         self._cfg = cfg
         self._stop_task_list: list[Callable] = list()
+        self._client_dict: dict[str, object] = dict()
 
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
@@ -57,12 +58,16 @@ class BaseCmdHandler:
         return await self._new_client(CoreApiClient, self._cfg, await self._get_sol_client())
 
     async def _new_client(self, client_type: type, *args):
+        if client := self._client_dict.get(client_type.__name__, None):
+            return client
+
         client = client_type(*args)
 
         async def _stop():
             await client.stop()
 
         self._stop_task_list.append(_stop)
+        self._client_dict[client_type.__name__] = client
 
         await client.start()
         return client
