@@ -101,13 +101,11 @@ class NeonTxDb(HistoryDbTable):
             """
             SELECT DISTINCT ON (a.block_slot)
               a.block_slot,
-              a.average_base_fee,
-              a.total_gas_used
+              a.average_base_fee
             FROM (
               SELECT
                 block_slot,
-                AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee,
-                MAX(Cast(Cast(sum_gas_used as Float) as BIGINT)) as total_gas_used
+                AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee
               FROM
                 {table_name} as t
               WHERE
@@ -425,7 +423,6 @@ class _RecordWithBlock(_Record):
 class BlockFeeGasData:
     block_slot: int
     average_base_fee: float
-    total_gas_used: int
 
 
 @dataclass(frozen=True)

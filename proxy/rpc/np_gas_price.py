@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 import math
+import random
 from typing import ClassVar
 
 
@@ -11,6 +12,7 @@ from proxy.rpc.api import RpcBlockRequest
 from pydantic import Field, AliasChoices
 from typing_extensions import Self
 
+from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooLowError
 from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
@@ -20,7 +22,7 @@ from common.neon.block import NeonBlockHdrModel
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
 from .server_abc import NeonProxyApi
-from ..base.mp_api import MpTokenGasPriceModel, MpGasPriceModel
+from ..base.mp_api import MpGasPriceTimestamped, MpRecentGasPricesModel, MpTokenGasPriceModel, MpGasPriceModel
 
 
 # Hardcoded priority fee percentiles that are supported by eth_feeHistory.
@@ -28,7 +30,9 @@ _REWARD_PERCENTILE_LIST: list[int] = [
     i * NeonBlockHdrModel.PercentileStep for i in range(NeonBlockHdrModel.PercentileCount)
 ]
 # Max value for the block_slot (which is of a bigint type in the Postgres).
-_MAX_LATEST_BLOCK: int = 9223372036854775807
+_MAX_LATEST_BLOCK_SLOT: int = 9223372036854775807
+# Maximum number of blocks a User can query in eth_feeHistory.
+_FEE_HISTORY_MAX_NUM_BLOCKS: int = 1024
 
 
 class _RpcGasPriceModel(BaseJsonRpcModel):
@@ -123,11 +127,11 @@ class _RpcFeeHistoryResp(BaseJsonRpcModel):
     baseFeePerGas: list[HexUIntField]
     gasUsedRatio: list[float]
     oldestBlock: HexUIntField
-    reward: list[list[HexUIntField]]
+    reward: list[list[HexUIntField]] | None
 
     @classmethod
     def from_raw(
-        cls, base_fee: list[int], gas_used_ratio: list[float], oldest_block: int, reward: list[list[int]]
+        cls, base_fee: list[int], gas_used_ratio: list[float], oldest_block: int, reward: list[list[int]] | None
     ) -> Self:
         return cls(baseFeePerGas=base_fee, gasUsedRatio=gas_used_ratio, oldestBlock=oldest_block, reward=reward)
 
@@ -135,7 +139,7 @@ class _RpcFeeHistoryResp(BaseJsonRpcModel):
         for gasUsedInBlock in self.gasUsedRatio:
             if gasUsedInBlock > 1.0:
                 raise ValueError("gas used ratio can't be bigger than 1")
-        if len(self.baseFeePerGas) != len(self.reward) + 1:
+        if self.reward is not None and (len(self.baseFeePerGas) != len(self.reward) + 1):
             raise ValueError("baseFeePerGas should contain exactly one element more than reward.")
 
 
@@ -182,7 +186,7 @@ class NpGasPriceApi(NeonProxyApi):
         block_cnt = self._cfg.priority_fee_block_cnt_to_avg
         assert block_cnt > 0
         historical_cu_price_list: list[PriorityFeePercentiles] = await self._db.get_historical_priority_fees(
-            block_cnt, _MAX_LATEST_BLOCK
+            block_cnt, _MAX_LATEST_BLOCK_SLOT
         )
 
         # Take the weighted average across fetched blocks.
@@ -210,98 +214,156 @@ class NpGasPriceApi(NeonProxyApi):
         block_tag: RpcBlockRequest,
         priority_fee_percentile_list: list[int] | None,
     ) -> _RpcFeeHistoryResp | None:
-        if not priority_fee_percentile_list:
-            # In case the User was lazy to request any percentiles, let's return "median"
-            # so the response makes sense.
-            priority_fee_percentile_list = [50]
+        # Treat empty list and None the same.
+        is_reward_list: bool = bool(priority_fee_percentile_list)
 
         # Validate input parameters, throw EthError if those are incorrect.
-        self._validate_fee_history_inputs(block_cnt, priority_fee_percentile_list)
+        self._validate_fee_history_inputs(priority_fee_percentile_list)
 
-        # Fetch the current gas price - it's needed to convert price to gas tokens
+        # Fetch the current gas price - it's needed to convert priority_fee prices to gas tokens
         # and to return base_fee_per_gas for the upcoming block.
         _, token_gas_price = await self._get_token_gas_price(ctx)
         current_gas_price: int = token_gas_price.suggested_gas_price
 
+        if block_cnt == 0:
+            return _RpcFeeHistoryResp.from_raw([current_gas_price], [], 0, [])
+
         # Fetch the latest block slot.
-        block = await self.get_block_by_tag(block_tag)
+        latest_block_req = await self.get_block_by_tag(block_tag)
+        latest_block_slot: int = await self._db.get_latest_slot()
         # In case block is latest and it's empty, let's use this max value
         # instead of making an extra get_latest_block DB query.
-        latest_slot = _MAX_LATEST_BLOCK
-        if not block.is_empty:
-            latest_slot = block.slot
+        latest_slot_req: int = 0
+        if not latest_block_req.is_empty:
+            latest_slot_req = latest_block_req.slot
+        else:
+            latest_slot_req = latest_block_slot
 
         # Let's clamp num_blocks to not create excessive load - Infura and Alchemy currently do the same.
-        block_cnt = min(block_cnt, 1024)
+        block_cnt = min(block_cnt, _FEE_HISTORY_MAX_NUM_BLOCKS)
+
         # Fetching the data stage.
-        fee_gas_data_list: list[BlockFeeGasData] = await self._db.get_historical_base_fees(
-            self._get_chain_id(ctx), block_cnt, latest_slot
-        )
-        cu_price_data_list: list[PriorityFeePercentiles] = await self._db.get_historical_priority_fees(
-            block_cnt, latest_slot
+        cu_price_data_list: list[PriorityFeePercentiles] = []
+        if is_reward_list:
+            cu_price_data_list = await self._db.get_historical_priority_fees(block_cnt, latest_slot_req)
+        earliest_block_slot_resp: int = (
+            cu_price_data_list[-1].block_slot if cu_price_data_list else latest_slot_req - block_cnt + 1
         )
 
-        # Response objects.
+        # The source of base_fee_per_gas data is either from the mempool (for the most recent blocks),
+        # or from the DB (for historical blocks).
+        # The reason for that is twofold:
+        # 1. Sparse non-empty Neon blocks. In case the User requested recent data, an operator returns recent
+        #   prices for the gas token regardless of what was set in Neon transactions.
+        # 2. Different incentives for different operators. Some operators may set the operator profit margin lower,
+        #   so the only way for them to benefit from that is if we return recent suggested token gas price from
+        #   their mempool and not from the transactions.
+        # However, the recent pricing (from the mempool) is timestamp-based while DB data is block_slot-based,
+        # so we need to do some heuristic conversion.
+        # The assumption we take here for pricing from the mempool: it corresponds to the most recent block_slot,
+        # even though it's not strictly accurate all the time (requests to Pyth may return errors sometimes).
+        base_fee_data_list: list[BlockFeeGasData] = list()
+
+        # First, take the token gas price data from the mempool (without querying the DB).
+        mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
+        recent_basefee_price_list: list[MpGasPriceTimestamped] = mempool_basefee_gas_prices.token_gas_prices
+        if recent_basefee_price_list:
+            latest_ts: int = recent_basefee_price_list[-1].timestamp
+            # Construct entries into base_fee_data_list from in-memory mempool-based recent token gas prices.
+            for gas_price_timestamped in reversed(recent_basefee_price_list):
+                # Heuristically assign the block slot for the current entry from the current and latest timestamps.
+                ephemeral_block_slot: int = latest_block_slot - int(
+                    (latest_ts - gas_price_timestamped.timestamp) / 1000 / ONE_BLOCK_SEC
+                )
+                base_fee_data_list.append(
+                    BlockFeeGasData(
+                        block_slot=ephemeral_block_slot, average_base_fee=gas_price_timestamped.token_gas_price
+                    )
+                )
+                if ephemeral_block_slot < earliest_block_slot_resp:
+                    # We filled in enough data, no need to proceed.
+                    break
+
+        # Check if base_fee_data_list has enough data to cover the requested block range.
+        if not base_fee_data_list or base_fee_data_list[-1].block_slot >= earliest_block_slot_resp:
+            # Not enough, let's fetch base_fee_per_gas from Neon transactions DB table and fill up the rest.
+            query_slot: int = latest_slot_req if not base_fee_data_list else base_fee_data_list[-1].block_slot - 1
+            db_basefee_data_list: list[BlockFeeGasData] = await self._db.get_historical_base_fees(
+                self._get_chain_id(ctx),
+                block_cnt,
+                query_slot,
+            )
+            base_fee_data_list.extend(db_basefee_data_list)
+
+        # Response data objects.
         base_fee_list: list[int] = []
         gas_used_ratio_list: list[float] = []
         reward_list: list[list[int]] = []
 
+        # In case reward list is absent or cu_price_data_list has no data - fill base fee data and return.
+        if not cu_price_data_list:
+            fee_data_it: int = len(base_fee_data_list) - 1
+            # Set last base_fee we know to be the current gas price as initial value.
+            last_base_fee_per_gas: int = current_gas_price
+            for block_slot in range(earliest_block_slot_resp, latest_slot_req + 1):
+                while fee_data_it >= 0 and block_slot >= base_fee_data_list[fee_data_it].block_slot:
+                    last_base_fee_per_gas = math.ceil(base_fee_data_list[fee_data_it].average_base_fee)
+                    fee_data_it -= 1
+                base_fee_list.append(last_base_fee_per_gas)
+                gas_used_ratio_list.append(self._get_gas_used_ratio())
+            # Ethereum sets the base_fee_per_gas for the next block, so adding the current gas price.
+            base_fee_list.append(current_gas_price)
+            return _RpcFeeHistoryResp.from_raw(base_fee_list, gas_used_ratio_list, earliest_block_slot_resp, None)
+
         # Iterate through the fee_gas_data_list and cu_price_data_list using two pointers.
         # Both lists are sorted in the descending by block_slot order.
-        # Also, fee_gas_data_list may miss entries for some blocks. In such a case, let's fill the output
-        # with the previous base_fee_per_gas we encounter (or with 0 until we see the first one).
-        fee_data_it: int = len(fee_gas_data_list) - 1
+        # fee_gas_data_list does not have data for some slots - we fill the response
+        # with the previous base_fee_per_gas we encountered.
+        fee_data_it: int = len(base_fee_data_list) - 1
         cu_data_it: int = len(cu_price_data_list) - 1
-        last_base_fee_per_gas: int = 0
+        # Set last base_fee we know to be the current gas price as initial value.
+        last_base_fee_per_gas: int = current_gas_price
         while cu_data_it >= 0:
             # Skip data about base_fee that is older than the current block slot we consider.
+            # Memorize the last_base_fee_per_gas and move the iterator.
             while (
                 fee_data_it >= 0
-                and cu_price_data_list[cu_data_it].block_slot > fee_gas_data_list[fee_data_it].block_slot
+                and cu_price_data_list[cu_data_it].block_slot >= base_fee_data_list[fee_data_it].block_slot
             ):
+                last_base_fee_per_gas = math.ceil(base_fee_data_list[fee_data_it].average_base_fee)
                 fee_data_it -= 1
 
-            if (
-                fee_data_it >= 0
-                and cu_price_data_list[cu_data_it].block_slot == fee_gas_data_list[fee_data_it].block_slot
-            ):
-                cur_base_fee = math.ceil(fee_gas_data_list[fee_data_it].average_base_fee)
-                # The current gas_fee_data_list entry belongs to the current block.
-                # Fill in the output data, remember the last_base_fee_per_gas and move the iterator.
-                base_fee_list.append(cur_base_fee)
-                gas_used_ratio_list.append(min(1.0, fee_gas_data_list[fee_data_it].total_gas_used / 48_000_000_000_000))
-                last_base_fee_per_gas = cur_base_fee
-                fee_data_it -= 1
-            else:
-                base_fee_list.append(last_base_fee_per_gas)
-                gas_used_ratio_list.append(0.0)
-
+            base_fee_list.append(last_base_fee_per_gas)
             reward_list.append(
                 self._calc_priority_fee_list(
-                    priority_fee_percentile_list, cu_price_data_list[cu_data_it].cu_price_percentiles, current_gas_price
+                    priority_fee_percentile_list,
+                    cu_price_data_list[cu_data_it].cu_price_percentiles,
+                    current_gas_price,
                 )
             )
+            gas_used_ratio_list.append(self._get_gas_used_ratio())
             cu_data_it -= 1
 
-        # Since ethereum deterministically derives the next base_fee_per_gas for the upcoming block,
-        # we have to do the same - return the current gas price (the same as in the eth_gasPrice).
+        # Ethereum sets the base_fee_per_gas for the next block, so adding the current gas price.
         base_fee_list.append(current_gas_price)
-        oldest_block: int = cu_price_data_list[-1].block_slot if cu_price_data_list else 0
-        return _RpcFeeHistoryResp.from_raw(base_fee_list, gas_used_ratio_list, oldest_block, reward_list)
+        return _RpcFeeHistoryResp.from_raw(base_fee_list, gas_used_ratio_list, earliest_block_slot_resp, reward_list)
 
     def _validate_fee_history_inputs(
         self,
-        block_cnt: HexUIntField,
-        priority_fee_percentile_list: list[int],
+        priority_fee_percentile_list: list[int] | None,
     ):
-        if block_cnt == 0:
-            raise EthError("Block count should be positive.")
+        if not priority_fee_percentile_list:
+            return
         for p in priority_fee_percentile_list:
             if p < 0 or p > 100:
                 raise EthError(message="Invalid priority fee percentiles: should be in [0, 100] range.")
         for i in range(len(priority_fee_percentile_list) - 1):
             if priority_fee_percentile_list[i] >= priority_fee_percentile_list[i + 1]:
                 raise EthError(message="Invalid priority fee percentiles: should be an increasing sequence.")
+
+    def _get_gas_used_ratio(self) -> float:
+        # Filling in the random high number in [0.85, 1] range.
+        return 0.85 + random.random() * 0.15
 
     def _calc_single_priority_fee_extrapolated(
         self, percentile: int, priority_fee_percentiles_list: list[int]

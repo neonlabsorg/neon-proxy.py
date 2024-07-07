@@ -165,6 +165,15 @@ class MpGasPriceModel(BaseModel):
         return not self.token_dict
 
 
+class MpGasPriceTimestamped(BaseModel):
+    timestamp: int
+    token_gas_price: int
+
+
+class MpRecentGasPricesModel(BaseModel):
+    token_gas_prices: list[MpGasPriceTimestamped]
+
+
 class MpRequest(BaseModel):
     ctx_id: str
     chain_id: int
