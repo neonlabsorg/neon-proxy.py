@@ -242,14 +242,22 @@ class NpGasPriceApi(NeonProxyApi):
         # Let's clamp num_blocks to not create excessive load - Infura and Alchemy currently do the same.
         block_cnt = min(block_cnt, _FEE_HISTORY_MAX_NUM_BLOCKS)
 
-        # Fetching the data stage.
+        # Fetching the data about compute units on Solana.
         cu_price_data_list: list[PriorityFeePercentiles] = []
         if is_reward_list:
             cu_price_data_list = await self._db.get_historical_priority_fees(block_cnt, latest_slot_req)
+
+        # Determine the earliest_block in the response.
+        # If cu_price_data_list is requested and available, take as an earliest block slot.
+        # Otherwise, take `block_cnt` blocks backwards starting from what's requested.
+        # Also, let's clamp it against the earliest neon block so the response makes sense.
         earliest_block_slot_resp: int = (
             cu_price_data_list[-1].block_slot if cu_price_data_list else latest_slot_req - block_cnt + 1
         )
+        earliest_neon_block: NeonBlockHdrModel = await self._db.get_earliest_block()
+        earliest_block_slot_resp = max(earliest_block_slot_resp, earliest_neon_block.slot)
 
+        # Fetching the data about base fees on Neon.
         # The source of base_fee_per_gas data is either from the mempool (for the most recent blocks),
         # or from the DB (for historical blocks).
         # The reason for that is twofold:
@@ -263,7 +271,6 @@ class NpGasPriceApi(NeonProxyApi):
         # The assumption we take here for pricing from the mempool: it corresponds to the most recent block_slot,
         # even though it's not strictly accurate all the time (requests to Pyth may return errors sometimes).
         base_fee_data_list: list[BlockFeeGasData] = list()
-
         # First, take the token gas price data from the mempool (without querying the DB).
         mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
         recent_basefee_price_list: list[MpGasPriceTimestamped] = mempool_basefee_gas_prices.token_gas_prices
@@ -284,9 +291,9 @@ class NpGasPriceApi(NeonProxyApi):
                     # We filled in enough data, no need to proceed.
                     break
 
-        # Check if base_fee_data_list has enough data to cover the requested block range.
+        # Check if base_fee_data_list has enough data to cover the requested block range,
+        # if not enough, fetch base_fee_per_gas from Neon Transactions DB table and fill up the rest.
         if not base_fee_data_list or base_fee_data_list[-1].block_slot >= earliest_block_slot_resp:
-            # Not enough, let's fetch base_fee_per_gas from Neon transactions DB table and fill up the rest.
             query_slot: int = latest_slot_req if not base_fee_data_list else base_fee_data_list[-1].block_slot - 1
             db_basefee_data_list: list[BlockFeeGasData] = await self._db.get_historical_base_fees(
                 self._get_chain_id(ctx),
@@ -323,7 +330,7 @@ class NpGasPriceApi(NeonProxyApi):
         cu_data_it: int = len(cu_price_data_list) - 1
         # Set last base_fee we know to be the current gas price as initial value.
         last_base_fee_per_gas: int = current_gas_price
-        while cu_data_it >= 0:
+        while cu_data_it >= 0 and cu_price_data_list[cu_data_it].block_slot >= earliest_block_slot_resp:
             # Skip data about base_fee that is older than the current block slot we consider.
             # Memorize the last_base_fee_per_gas and move the iterator.
             while (
