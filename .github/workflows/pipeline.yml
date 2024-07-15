@@ -330,7 +330,7 @@ jobs:
       - name: Run basic tests
         run: |
           docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py run basic -n ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}
+            python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}
       - name: Remove docker container
         if: always()
         run: docker rm -f ${{ env.CONTAINER }}
