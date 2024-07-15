@@ -17,6 +17,16 @@ from .neon_ix_decoder import (
 )
 
 
+class OldTxExecFromDataIxDecoderV1013(TxExecFromDataIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.OldTxExecFromDataV1013
+    is_deprecated: ClassVar[bool] = True
+
+
+class OldTxExecFromDataSolanaCallIxDecoderV1013(TxExecFromDataIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.OldTxExecFromDataSolanaCallV1013
+    is_deprecated: ClassVar[bool] = True
+
+
 class OldTxExecFromDataIxDecoderV1004(TxExecFromDataIxDecoder):
     ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.OldTxExecFromDataV1004
     is_deprecated: ClassVar[bool] = True
@@ -85,6 +95,8 @@ class OldDepositIxDecoderV1004(DummyIxDecoder):
 
 def get_neon_ix_decoder_deprecated_list() -> list[type[DummyIxDecoder]]:
     ix_decoder_list: list[type[DummyIxDecoder]] = [
+        OldTxExecFromDataIxDecoderV1013,
+        OldTxExecFromDataSolanaCallIxDecoderV1013,
         OldTxExecFromDataIxDecoderV1004,
         OldTxExecFromAccountIxDecoderV1004,
         OldTxStepFromDataIxDecoderV1004,
