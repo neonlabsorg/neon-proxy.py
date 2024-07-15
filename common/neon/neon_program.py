@@ -45,13 +45,13 @@ class NeonEvmIxCode(IntEnum):
     CreateAccountBalance = 0x30                # 48
     Deposit = 0x31                             # 49
 
-    TxExecFromData = 0x32                      # 50
+    TxExecFromData = 0x3d                      # 61
     TxExecFromAccount = 0x33                   # 51
     TxStepFromData = 0x34                      # 52
     TxStepFromAccount = 0x35                   # 53
     TxStepFromAccountNoChainId = 0x36          # 54
 
-    TxExecFromDataSolanaCall = 0x38            # 56
+    TxExecFromDataSolanaCall = 0x3e            # 62
     TxExecFromAccountSolanaCall = 0x39         # 57
 
     CancelWithHash = 0x37                      # 55
@@ -59,6 +59,9 @@ class NeonEvmIxCode(IntEnum):
     CreateOperatorBalance = 0x3a               # 58
     DeleteOperatorBalance = 0x3b               # 59
     WithdrawOperatorBalance = 0x3c             # 60
+
+    OldTxExecFromDataV1013 = 0x32              # 50
+    OldTxExecFromDataSolanaCallV1013 = 0x38    # 56
 
     OldDepositV1004 = 0x27                     # 39
     OldCreateAccountV1004 = 0x28               # 40
@@ -407,14 +410,7 @@ class NeonProg:
             self._treasury_pool_index_buf,
             self._eth_rlp_tx,
         )
-        acct_meta_list = [
-            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
-        ] + self._acct_meta_list
-
-        return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
+        return self._make_holder_ix(ix_data=bytes().join(ix_data_list), acct_meta_list=self._acct_meta_list)
 
     def _make_tx_step_ix(
         self,
