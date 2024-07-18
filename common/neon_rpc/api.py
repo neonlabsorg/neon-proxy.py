@@ -451,6 +451,14 @@ class HolderAccountModel(BaseModel):
     def is_empty(self) -> bool:
         return self.status in (HolderAccountStatus.Empty, HolderAccountStatus.Error)
 
+    @property
+    def is_active(self) -> bool:
+        return self.status == HolderAccountStatus.Active
+
+    @property
+    def is_finalized(self) -> bool:
+        return self.status == HolderAccountStatus.Finalized
+
 
 class _CrateModel(BaseModel):
     name: str

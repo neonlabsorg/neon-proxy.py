@@ -23,8 +23,7 @@ from common.solana.sys_program import SolSysProg
 from common.solana.token_program import SplTokenProg
 from common.solana.transaction import SolTx
 from common.solana_rpc.client import SolClient
-from common.solana_rpc.transaction_list_sender import SolTxListSender, SolTxListSigner
-from common.solana_rpc.ws_client import SolWatchTxSession
+from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.utils.cached import cached_property, cached_method, reset_cached_method
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
@@ -118,11 +117,6 @@ class NeonExecTxCtx:
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
         return OpTxListSigner(self.req_id, self.payer, self._op_client)
-
-    @cached_property
-    def sol_tx_list_sender(self) -> SolTxListSender:
-        watch_session = SolWatchTxSession(self._cfg, self._sol_client)
-        return SolTxListSender(self._cfg, watch_session, self.sol_tx_list_signer)
 
     @property
     def len_account_meta_list(self) -> int:

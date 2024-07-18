@@ -16,7 +16,8 @@ from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
-from common.solana_rpc.transaction_list_sender import SolTxSendState
+from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
+from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
@@ -119,7 +120,7 @@ class BaseTxStrategy(abc.ABC):
 
     @property
     def has_good_sol_tx_receipt(self) -> bool:
-        return self._ctx.sol_tx_list_sender.has_good_sol_tx_receipt
+        return self._sol_tx_list_sender.has_good_sol_tx_receipt
 
     @abc.abstractmethod
     async def execute(self) -> ExecTxRespCode:
@@ -136,6 +137,11 @@ class BaseTxStrategy(abc.ABC):
     @cached_property
     def _cu_limit(self) -> int:
         return self._ctx.cb_prog.MaxCuLimit
+
+    @cached_property
+    def _sol_tx_list_sender(self) -> SolTxListSender:
+        watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
+        return SolTxListSender(self._ctx.cfg, watch_session, self._ctx.sol_tx_list_signer)
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
@@ -205,7 +211,7 @@ class BaseTxStrategy(abc.ABC):
         return tx_list_list
 
     async def _recheck_tx_list(self, tx_name_list: tuple[str, ...] | str) -> bool:
-        tx_list_sender = self._ctx.sol_tx_list_sender
+        tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
         if isinstance(tx_name_list, str):
@@ -220,7 +226,7 @@ class BaseTxStrategy(abc.ABC):
             self._store_sol_tx_list()
 
     async def _send_tx_list(self, tx_list: Sequence[SolTx]) -> bool:
-        tx_list_sender = self._ctx.sol_tx_list_sender
+        tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
         try:
@@ -229,7 +235,7 @@ class BaseTxStrategy(abc.ABC):
             self._store_sol_tx_list()
 
     def _store_sol_tx_list(self):
-        tx_list_sender = self._ctx.sol_tx_list_sender
+        tx_list_sender = self._sol_tx_list_sender
         self._ctx.add_sol_tx_list([tx_state.tx for tx_state in tx_list_sender.tx_state_list])
 
     def _build_cu_tx(self, ix: SolTxIx, cfg: SolTxCfg) -> SolLegacyTx:
@@ -247,7 +253,7 @@ class BaseTxStrategy(abc.ABC):
         return SolLegacyTx(name=cfg.name or self.name, ix_list=ix_list)
 
     async def _emulate_tx_list(self, tx_list: Sequence[SolTx], *, mult_factor: int = 0) -> tuple[EmulSolTxInfo, ...]:
-        blockhash = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Confirmed)
+        blockhash, _ = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Finalized)
         for tx in tx_list:
             tx.set_recent_blockhash(blockhash)
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
