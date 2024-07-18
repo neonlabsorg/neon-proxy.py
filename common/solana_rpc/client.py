@@ -66,6 +66,7 @@ _SoldersGetSlot = _req.GetSlot
 _SoldersGetBlock = _req.GetBlock
 _SoldersGetBlockCommit = _req.GetBlockCommitment
 _SoldersGetLatestBlockhash = _req.GetLatestBlockhash
+_SoldersGetBlockHeight = _req.GetBlockHeight
 _SoldersGetTxSigForAddr = _req.GetSignaturesForAddress
 _SoldersGetTx = _req.GetTransaction
 _SoldersGetRentBalance = _req.GetMinimumBalanceForRentExemption
@@ -83,6 +84,7 @@ _SoldersGetSlotResp = _resp.GetSlotResp
 _SoldersGetBlockResp = _resp.GetBlockResp
 _SoldersGetBlockCommitResp = _resp.GetBlockCommitmentResp
 _SoldersGetLatestBlockhashResp = _resp.GetLatestBlockhashResp
+_SoldersGetBlockHeightResp = _resp.GetBlockHeightResp
 _SoldersGetTxSigForAddrResp = _resp.GetSignaturesForAddressResp
 _SoldersGetTxResp = _resp.GetTransactionResp
 _SoldersGetRentBalanceResp = _resp.GetMinimumBalanceForRentExemptionResp
@@ -274,9 +276,14 @@ class SolClient(HttpClient):
         resp = await self._get_latest_blockhash(commit)
         return resp.context.slot
 
-    async def get_recent_blockhash(self, commit=SolCommit.Confirmed) -> SolBlockHash:
+    async def get_recent_blockhash(self, commit=SolCommit.Confirmed) -> tuple[SolBlockHash, int]:
         resp = await self._get_latest_blockhash(commit)
-        return SolBlockHash.from_raw(resp.value.blockhash)
+        return SolBlockHash.from_raw(resp.value.blockhash), resp.value.last_valid_block_height
+
+    async def get_block_height(self, commit=SolCommit.Confirmed) -> int:
+        cfg = _SoldersRpcCtxCfg(commitment=commit.to_rpc_commit())
+        resp = await self._send_request(_SoldersGetBlockHeight(cfg, self._get_next_id()), _SoldersGetBlockHeightResp)
+        return resp.value
 
     async def get_tx_sig_list(
         self,
@@ -310,10 +317,11 @@ class SolClient(HttpClient):
         tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit, json_format) for tx_sig in tx_sig_list])
         return tuple(tx_list)
 
-    async def send_tx(self, tx: SolTx, skip_preflight: bool) -> SolRpcSendTxResultInfo | None:
+    async def send_tx(self, tx: SolTx, skip_preflight: bool, max_retry_cnt: int) -> SolRpcSendTxResultInfo | None:
         cfg = _SoldersSendTxCfg(
             skip_preflight=skip_preflight,
             preflight_commitment=SolCommit.Processed.to_rpc_commit(),
+            max_retries=max_retry_cnt,
         )
         req = _SoldersSendTx(tx.serialize(), cfg, self._get_next_id())
         try:
@@ -334,10 +342,11 @@ class SolClient(HttpClient):
         self,
         tx_list: Sequence[SolTx],
         skip_preflight: bool,
+        max_retry_cnt: int,
     ) -> tuple[SolRpcSendTxResultInfo | None, ...]:
         if not tx_list:
             return tuple()
-        tx_sig_list = await asyncio.gather(*[self.send_tx(tx, skip_preflight) for tx in tx_list])
+        tx_sig_list = await asyncio.gather(*[self.send_tx(tx, skip_preflight, max_retry_cnt) for tx in tx_list])
         return tuple(tx_sig_list)
 
     async def get_rent_balance_for_size(self, size: int, commit=SolCommit.Confirmed) -> int:
