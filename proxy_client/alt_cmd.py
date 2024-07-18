@@ -121,11 +121,11 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
             ix_list.append(SolAltProg(alt.owner).make_close_alt_ix(alt_id))
             _LOG.debug("close Address Lookup Table %s", address)
 
-        blockhash = await sol_client.get_recent_blockhash(SolCommit.Finalized)
+        blockhash, _ = await sol_client.get_recent_blockhash(SolCommit.Finalized)
         tx = SolLegacyTx(name=name, ix_list=ix_list, blockhash=blockhash)
 
         tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
-        await sol_client.send_tx_list(tx_list, skip_preflight=False)
+        await sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=32)
         await asyncio.sleep(1)
 
         return 0
