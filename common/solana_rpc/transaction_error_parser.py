@@ -67,6 +67,15 @@ class SolTxErrorParser:
         return False
 
     @cached_method
+    def cu_consumed(self) -> int | None:
+        if isinstance(self._receipt, SolRpcSendTxErrorInfo):
+            return getattr(self._receipt, "units_consumed", None)
+        elif isinstance(self._receipt, SolRpcTxSlotInfo):
+            if meta := getattr(self._receipt.transaction.meta.compute_units_consumed, "meta", None):
+                return getattr(meta, "compute_units_consumed", None)
+        return None
+
+    @cached_method
     def check_if_out_of_memory(self) -> bool:
         log_list = self._get_log_list()
         return any(log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg) for log_rec in log_list)

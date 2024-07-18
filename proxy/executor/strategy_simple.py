@@ -45,7 +45,7 @@ class SimpleTxStrategy(BaseTxStrategy):
                     _LOG.warning("truncated!? NeonTx-Return in %s", tx_state.tx)
                     return ExecTxRespCode.Failed
 
-        _LOG.debug("no!? NeonTx-Return, try next strategy...")
+        _LOG.debug("failed!? NeonTx-Return, try next strategy...")
         raise WrongStrategyError()
 
     async def cancel(self) -> None:
@@ -57,15 +57,16 @@ class SimpleTxStrategy(BaseTxStrategy):
         return self._ctx.cfg.cu_limit
 
     async def _emulate_and_send_tx_list(self) -> bool:
-        tx_list = tuple([self._build_tx()])
+        tx_cfg = await self._init_sol_tx_cfg()
+        tx_list = tuple([self._build_tx(tx_cfg)])
 
         emul_tx_list = await self._emulate_tx_list(tx_list)
         used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
 
         evm_step_cnt: Final[int] = self._ctx.total_evm_step_cnt
-        cu_limit: Final[int] = self._cu_limit
+        cu_limit: Final[int] = tx_cfg.cu_limit
         # let's decrease the available cu-limit on 5% percents, because Solana decrease it
-        max_cu_limit: Final[int] = int(self._cu_limit * 0.95)
+        max_cu_limit: Final[int] = int(cu_limit * 0.95)
 
         if used_cu_limit > max_cu_limit:
             _LOG.debug(
@@ -78,21 +79,20 @@ class SimpleTxStrategy(BaseTxStrategy):
 
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 100_000
-        used_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
+        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
         _LOG.debug("simple: %d EVM steps, %d CU limit", evm_step_cnt, used_cu_limit)
 
         # if it's impossible to decrease the CU limit, use the already signed list of txs
-        if used_cu_limit == cu_limit:
+        if round_cu_limit == cu_limit:
             tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
         else:
-            cu_price = self._cu_price * (cu_limit // used_cu_limit)
-            _LOG.debug("simple: increase CU-price from %d to %d", self._cu_price, cu_price)
-            tx_list = tuple([self._build_tx(SolTxCfg(cu_limit=used_cu_limit, cu_price=cu_price))])
+            tx_cfg = await self._init_sol_tx_cfg(cu_limit=round_cu_limit)
+            tx_list = tuple([self._build_tx(tx_cfg)])
 
         return await self._send_tx_list(tx_list)
 
-    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), cfg)
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), tx_cfg)
 
     async def _validate(self) -> bool:
         return (

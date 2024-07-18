@@ -6,6 +6,7 @@ from typing import Sequence, Final
 
 from typing_extensions import Self
 
+from common.atlas.fee_client import AtlasFeeClient
 from common.config.config import Config
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash, EthAddress
@@ -63,12 +64,14 @@ class NeonExecTxCtx:
         sol_client: SolClient,
         core_api_client: CoreApiClient,
         op_client: OpResourceClient,
+        fee_client: AtlasFeeClient,
         tx_request: ExecTxRequest | ExecStuckTxRequest,
     ) -> None:
         self._cfg = cfg
         self._sol_client = sol_client
         self._core_api_client = core_api_client
         self._op_client = op_client
+        self._fee_client = fee_client
 
         self._tx_request = tx_request
         self._tx_sender = EthAddress.default()
@@ -114,6 +117,10 @@ class NeonExecTxCtx:
     def core_api_client(self) -> CoreApiClient:
         return self._core_api_client
 
+    @property
+    def fee_client(self) -> AtlasFeeClient:
+        return self._fee_client
+
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
         return OpTxListSigner(self.req_id, self.payer, self._op_client)
@@ -124,10 +131,14 @@ class NeonExecTxCtx:
 
     @property
     def account_key_list(self) -> tuple[SolPubKey, ...]:
-        return self._get_account_key_list()
+        return self._get_acct_key_list()
+
+    @property
+    def rw_account_key_list(self) -> tuple[SolPubKey, ...]:
+        return self.neon_prog.rw_account_key_list
 
     @reset_cached_method
-    def _get_account_key_list(self) -> tuple[SolPubKey, ...]:
+    def _get_acct_key_list(self) -> tuple[SolPubKey, ...]:
         return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
 
     @property
@@ -157,7 +168,7 @@ class NeonExecTxCtx:
         if acct_meta_list == self._acct_meta_list:
             _LOG.debug("emulator result contains the same %d accounts", len(resp.raw_meta_list))
         else:
-            self._get_account_key_list.reset_cache(self)
+            self._get_acct_key_list.reset_cache(self)
             self._acct_meta_list = acct_meta_list
             acct_meta_cnt = NeonProg.BaseAccountCnt + len(acct_meta_list)
             if acct_meta_cnt > self._cfg.max_tx_account_cnt:
@@ -347,11 +358,6 @@ class NeonExecTxCtx:
 
     @reset_cached_method
     def _calc_total_evm_step_cnt(self) -> int:
-        if self.is_stuck_tx:
-            assert not self._emulator_resp
-            _LOG.debug("stuck-tx -> no information about emulated evm steps")
-            return self._evm_step_cnt_per_iter
-
         assert self._emulator_resp
         return self._emulator_resp.evm_step_cnt
 
