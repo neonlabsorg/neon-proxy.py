@@ -79,6 +79,8 @@ class NeonEvmIxCode(IntEnum):
 
 
 class NeonIxMode(IntEnum):
+    Unknown = 0
+
     Readable = 1
     Writable = 2
     FullWritable = 3
@@ -177,6 +179,7 @@ class NeonProg:
         self._acct_meta_list = list(account_meta_list)
         self._get_ro_acct_meta_list.reset_cache(self)
         self._get_rw_acct_meta_list.reset_cache(self)
+        self._get_rw_acct_key_list.reset_cache(self)
         self._ro_addr_set.clear()
         return self
 
@@ -200,6 +203,10 @@ class NeonProg:
     def holder_msg(self) -> bytes:
         assert self._eth_rlp_tx is not None
         return self._eth_rlp_tx
+
+    @property
+    def rw_account_key_list(self) -> tuple[SolPubKey, ...]:
+        return self._get_rw_acct_key_list()
 
     def make_delete_holder_ix(self) -> SolTxIx:
         self.validate_protocol()
@@ -426,6 +433,7 @@ class NeonProg:
         if data is not None:
             ix_data += data
 
+        assert mode != NeonIxMode.Unknown
         if mode == NeonIxMode.Readable:
             return self._make_holder_ix(ix_data, self._ro_acct_meta_list)
         elif mode == NeonIxMode.Writable:
@@ -479,3 +487,13 @@ class NeonProg:
                 self._acct_meta_list,
             )
         )
+
+    @reset_cached_method
+    def _get_rw_acct_key_list(self) -> tuple[SolPubKey, ...]:
+        base_key_list = [
+            self._holder_addr,
+            self._payer,
+            self._treasury_pool_addr,
+            self._token_sol_addr,
+        ]
+        return tuple(base_key_list + [SolPubKey.from_raw(x.pubkey) for x in self._acct_meta_list if x.is_writable])

@@ -136,6 +136,8 @@ class Config:
     cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_name: Final[str] = "CU_PRIORITY_FEE"
     simple_cu_price_name: Final[str] = "SIMPLE_CU_PRIORITY_FEE"
+    atlas_fee_url_name: Final[str] = "ATLAS_PRIORITY_FEE_URL"
+    atlas_fee_level_name: Final[str] = "ATLAS_PRIORITY_FEE_LEVEL"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
@@ -390,6 +392,7 @@ class Config:
             list(self.sol_url_list)
             + list(self.pyth_url_list)
             + list(self.sol_ws_url_list)
+            + list(self.atlas_fee_url_list)
             + list(self.pyth_ws_url_list)
             + list(self.ch_dsn_list)
             + [self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
@@ -670,6 +673,17 @@ class Config:
         return self._env_num(self.simple_cu_price_name, 0, 0, 1_000_000)
 
     @cached_property
+    def atlas_fee_url_list(self) -> tuple[str, ...]:
+        atlas_url_list = self._split_str(os.environ.get(self.atlas_fee_url_name, ""))
+        if not atlas_url_list:
+            _LOG.debug("%s is not defined", self.atlas_fee_url_name)
+        return tuple(atlas_url_list)
+
+    @cached_property
+    def atlas_fee_level(self) -> str | None:
+        return os.environ.get(self.atlas_fee_level_name, None)
+
+    @cached_property
     def min_gas_price(self) -> int | None:
         """Minimal gas price to accept tx into the mempool"""
         gas_price = self._env_num(self.min_gas_price_name, -1, 0, 100_000_000)
@@ -900,6 +914,8 @@ class Config:
             self.cu_limit_name: self.cu_limit,
             self.cu_price_name: self.cu_price,
             self.simple_cu_price_name: self.simple_cu_price,
+            self.atlas_fee_url_name: self.atlas_fee_url_list,
+            self.atlas_fee_level_name: self.atlas_fee_level,
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,

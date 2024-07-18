@@ -399,6 +399,7 @@ class SolTxListSender:
 
         if num_slots_behind := tx_error_parser.get_num_slots_behind():
             self._num_slots_behind = max(self._num_slots_behind, num_slots_behind)
+            _LOG.debug("slots behind %s", self._num_slots_behind)
             return self._DecodeResult(status.NodeBehindError, None)
         elif tx_error_parser.check_if_blockhash_notfound():
             if tx.recent_blockhash not in self._bad_blockhash_set:
@@ -419,6 +420,8 @@ class SolTxListSender:
             _LOG.debug("invalid ix receipt %s: %s", tx, tx_receipt)
             return self._DecodeResult(status.InvalidIxDataError, None)
         elif tx_error_parser.check_if_cb_exceeded():
+            if cu_consumed := tx_error_parser.cu_consumed:
+                _LOG.debug("CUs consumed: %s", cu_consumed)
             return self._DecodeResult(status.CbExceededError, SolCbExceededError())
         elif tx_error_parser.check_if_require_resize_iter():
             return self._DecodeResult(status.RequireResizeIterError, SolNeonRequireResizeIterError())
