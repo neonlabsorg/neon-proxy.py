@@ -2,6 +2,7 @@ import logging
 import signal
 import time
 
+from common.atlas.fee_client import AtlasFeeClient
 from common.config.config import Config
 from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
@@ -52,6 +53,7 @@ class NeonProxyApp:
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)
         stat_client = StatClient(cfg)
+        fee_client = AtlasFeeClient(cfg)
 
         # Init Executor server
         self._exec_server = ExecutorServer(
@@ -60,6 +62,7 @@ class NeonProxyApp:
             sol_client=sol_client,
             mp_client=mp_client,
             op_client=op_client,
+            fee_client=fee_client,
         )
 
         # Init Resource server

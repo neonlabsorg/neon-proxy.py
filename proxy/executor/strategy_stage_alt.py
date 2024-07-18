@@ -134,8 +134,8 @@ def alt_strategy(cls):
             #  so the fake signer will be excluded from the ALT lists,
             #  and in the final version of tx it will be replaced with the real signer
             with self._ctx.test_mode():
-                self._alt_stage.set_legacy_tx(self._build_legacy_tx())
-            return await super().prep_before_emulate()
+                self._alt_stage.set_legacy_tx(self._build_legacy_tx(SolTxCfg.fake()))
+            return await cls.prep_before_emulate(self)
 
         async def _validate(self) -> bool:
             return self._validate_account_list_len() and await cls._validate(self)
@@ -151,15 +151,15 @@ def alt_strategy(cls):
 
         def _validate_tx_size(self) -> bool:
             with self._ctx.test_mode():
-                return self._alt_stage.validate_v0_tx_size(self._build_legacy_tx())
+                return self._alt_stage.validate_v0_tx_size(self._build_legacy_tx(SolTxCfg.fake()))
 
-        def _build_legacy_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
-            return cls._build_tx(self, cfg)
+        def _build_legacy_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+            return cls._build_tx(self, tx_cfg)
 
-        def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolV0Tx:
-            return self._alt_stage.build_tx(self._build_legacy_tx(cfg))
+        def _build_tx(self, tx_cfg: SolTxCfg) -> SolV0Tx:
+            return self._alt_stage.build_tx(self._build_legacy_tx(tx_cfg))
 
-        def _build_cancel_tx(self, cfg: SolTxCfg) -> SolV0Tx:
-            return self._alt_stage.build_tx(cls._build_cancel_tx(self, cfg))
+        def _build_cancel_tx(self, tx_cfg: SolTxCfg) -> SolV0Tx:
+            return self._alt_stage.build_tx(cls._build_cancel_tx(self, tx_cfg))
 
     return AltStrategy
