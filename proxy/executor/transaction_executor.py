@@ -8,7 +8,7 @@ from typing import ClassVar
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.account import NeonAccount
-from common.neon_rpc.api import CoreApiTxModel, HolderAccountStatus
+from common.neon_rpc.api import CoreApiTxModel
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError

@@ -20,8 +20,8 @@ class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
             and self._validate_neon_tx_size()
         )
 
-    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_solana_call_ix(), cfg)
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_solana_call_ix(), tx_cfg)
 
 
 @alt_strategy
