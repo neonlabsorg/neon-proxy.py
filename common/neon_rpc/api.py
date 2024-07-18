@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Annotated, Final, Sequence, ClassVar
 
-from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer
+from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, ConfigDict
 from strenum import StrEnum
 from typing_extensions import Self
 
@@ -19,13 +19,13 @@ from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex
-from ..utils.pydantic import HexUIntField, BytesField, DecIntField, ConfigDict, BaseModel as _BaseModel
+from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel
 
 _LOG = logging.getLogger(__name__)
 
 
 class BaseModel(_BaseModel):
-    _model_config = _BaseModel.model_config
+    _model_config = _BaseModel.model_config.copy()
     _model_config.pop("extra")
 
     model_config = ConfigDict(
