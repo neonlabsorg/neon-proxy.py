@@ -12,7 +12,6 @@ from common.neon_rpc.api import CoreApiTxModel, HolderAccountStatus
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
-from common.solana.pubkey import SolPubKey
 from common.solana_rpc.errors import (
     SolCbExceededError,
     SolNeonRequireResizeIterError,
@@ -23,6 +22,7 @@ from common.solana_rpc.errors import (
     SolOutOfMemoryError,
 )
 from .errors import BadResourceError, StuckTxError, WrongStrategyError
+from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
@@ -46,7 +46,6 @@ class NeonTxExecutor(ExecutorComponent):
         SimpleTxStrategy,
         #     + holder
         SimpleHolderTxStrategy,
-
         # multi-iteration
         IterativeTxStrategy,
         #     + holder
@@ -55,7 +54,6 @@ class NeonTxExecutor(ExecutorComponent):
         #     + multi-iteration
         #     + holder
         NoChainIdTxStrategy,
-
         # ALT strategies:
         #     simple + alt
         AltSimpleTxStrategy,
@@ -67,7 +65,6 @@ class NeonTxExecutor(ExecutorComponent):
         AltHolderTxStrategy,
         #     multi-iterative + wo-chain-id + alt + holder
         AltNoChainIdTxStrategy,
-
         # single iteration with Solana Call
         AltSimpleTxSolanaCallStrategy,
         #     + holder
@@ -75,7 +72,6 @@ class NeonTxExecutor(ExecutorComponent):
         #     + alt
         SimpleHolderTxSolanaCallStrategy,
         #     + alt + holder
-
         AltSimpleHolderTxSolanaCallStrategy,
         # multi-iteration with Solana call
         #     + holder
@@ -93,12 +89,12 @@ class NeonTxExecutor(ExecutorComponent):
     ]
 
     async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder = await self._core_api_client.get_holder_account(ctx.holder_address)
-        if holder.status == HolderAccountStatus.Active and holder.neon_tx_hash != ctx.neon_tx_hash:
+        holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
+        if (holder := await holder_validator.refresh()).is_active:
             _LOG.debug(
                 "holder %s contains stuck NeonTx %s",
                 ctx.holder_address,
-                ctx.neon_tx_hash,
+                holder_validator.holder_account.neon_tx_hash,
             )
             raise StuckTxError(holder)
 
@@ -125,13 +121,8 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
 
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder = await self._core_api_client.get_holder_account(ctx.holder_address)
-        if holder.status != HolderAccountStatus.Active or holder.neon_tx_hash != ctx.neon_tx_hash:
-            _LOG.debug(
-                "holder %s doesn't contain NeonTx %s",
-                ctx.holder_address,
-                ctx.neon_tx_hash,
-            )
+        holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
+        if not (holder := await holder_validator.refresh()).is_active:
             return ExecTxResp(code=ExecTxRespCode.Failed)
 
         # update NeonProg settings from EVM config

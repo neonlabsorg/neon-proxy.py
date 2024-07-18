@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Final, ClassVar, Sequence
 
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
-from common.neon_rpc.api import HolderAccountModel, HolderAccountStatus
+from common.neon_rpc.api import HolderAccountModel
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import (
@@ -16,14 +16,34 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolUnknownReceiptError,
 )
-from common.solana_rpc.transaction_list_sender import SolTxSendState
+from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
+from common.solana_rpc.ws_client import SolWatchTxSession
+from common.utils.cached import cached_property
 from .errors import StuckTxError
+from .holder_validator import HolderAccountValidator
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
 from ..base.ex_api import ExecTxRespCode
 
 _LOG = logging.getLogger(__name__)
+
+
+class _SolTxListSender(SolTxListSender):
+    def __init__(self, *args, holder_account_validator: HolderAccountValidator) -> None:
+        super().__init__(*args)
+        self._holder_acct_validator = holder_account_validator
+        self._stop_on_finalize = False
+
+    def stop_on_finalize(self, value: bool) -> None:
+        self._stop_on_finalize = value
+
+    async def _is_done(self) -> bool:
+        if not self._stop_on_finalize:
+            return False
+
+        holder = await self._holder_acct_validator.refresh()
+        return (not self._holder_acct_validator.is_valid) or holder.is_finalized
 
 
 class IterativeTxStrategy(BaseTxStrategy):
@@ -34,83 +54,101 @@ class IterativeTxStrategy(BaseTxStrategy):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(NewAccountTxPrepStage(*args, **kwargs))
-        self._completed_evm_step_cnt = 0
         self._def_ix_mode: NeonIxMode | None = None
         self._def_cu_limit = 0
-        self._cu_price_mult = 1
 
     @property
     def _cu_price(self) -> int:
-        return self._ctx.cfg.cu_price * self._cu_price_mult
+        return self._ctx.cfg.cu_price
+
+    @cached_property
+    def _sol_tx_list_sender(self) -> _SolTxListSender:
+        return _SolTxListSender(
+            self._ctx.cfg,
+            SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client),
+            self._ctx.sol_tx_list_signer,
+            holder_account_validator=self._holder_acct_validator,
+        )
+
+    @cached_property
+    def _holder_acct_validator(self) -> HolderAccountValidator:
+        return HolderAccountValidator(self._ctx.core_api_client, self._ctx.holder_address, self._ctx.neon_tx_hash)
+
+    @property
+    def _holder_acct(self) -> HolderAccountModel:
+        return self._holder_acct_validator.holder_account
+
+    async def _refresh_holder_status(self) -> None:
+        await self._holder_acct_validator.refresh()
+        if not self._holder_acct_validator.is_valid:
+            # strange case, because the holder was tested on the start...
+            #  it is possible if the operator-key and the holder-id are defined on two different proxies
+            raise StuckTxError(self._holder_acct)
 
     async def execute(self) -> ExecTxRespCode:
-        self._cu_price_mult = 1
-        for retry in itertools.count():
-            completed_evm_step_cnt = self._completed_evm_step_cnt
-
-            try:
-                return await self._execute_impl()
-
-            except (SolNoMoreRetriesError, SolCbExceededError, SolCbExceededCriticalError):
-                if completed_evm_step_cnt != self._completed_evm_step_cnt:
-                    _LOG.debug(
-                        "retry %d: completed evm steps have changed (%d != %d), trying to commit again...",
-                        retry,
-                        completed_evm_step_cnt,
-                        self._completed_evm_step_cnt,
-                    )
-                    continue
-                else:
-                    _LOG.debug("retry %d: completed evm steps haven't changed", retry)
-
-                self._cu_price_mult *= 2
-                if self._cu_price_mult <= self._ctx.cfg.max_cu_price_mult:
-                    _LOG.debug(
-                        "retry %d: increase base CU price in %d times to %d, trying to commit again...",
-                        retry,
-                        self._cu_price_mult,
-                        self._cu_price,
-                    )
-                    continue
-                else:
-                    _LOG.debug("retry %d: reached the maximum CU price", retry)
-
-                raise
-
-    async def _execute_impl(self) -> ExecTxRespCode:
         assert self.is_valid
 
-        if await self._is_finalized_holder():
-            return ExecTxRespCode.Failed
+        try:
+            self._sol_tx_list_sender.stop_on_finalize(True)
+            return await self._exec_impl()
 
-        if not await self._recheck_tx_list(self.name):
-            if not self._ctx.is_stuck_tx:
+        finally:
+            self._sol_tx_list_sender.stop_on_finalize(False)
+
+    async def _exec_impl(self) -> ExecTxRespCode:
+        evm_step_cnt = -1
+        fail_retry_cnt = 0
+
+        for retry in itertools.count():
+            await self._refresh_holder_status()
+            if self._holder_acct.is_finalized:
+                return ExecTxRespCode.Failed
+
+            if evm_step_cnt == self._holder_acct.evm_step_cnt:
+                fail_retry_cnt += 1
+                if fail_retry_cnt > self._ctx.cfg.retry_on_fail:
+                    raise SolNoMoreRetriesError()
+
+            elif evm_step_cnt != -1:
+                _LOG.debug(
+                    "retry %d: the number of completed EVM steps has changed (%d != %d)",
+                    retry,
+                    evm_step_cnt,
+                    self._holder_acct.evm_step_cnt,
+                )
+                fail_retry_cnt = 0
+
+            evm_step_cnt = self._holder_acct.evm_step_cnt
+
+            try:
+                await self._recheck_tx_list(self.name)
+                if (exit_code := await self._decode_neon_tx_return()) is not None:
+                    return exit_code
+
                 await self._emulate_and_send_tx_list()
+                if (exit_code := await self._decode_neon_tx_return()) is not None:
+                    return exit_code
 
-        # Not enough iterations, try `retry_on_fail` times to complete the Neon Tx
-        retry_on_fail = self._ctx.cfg.retry_on_fail
-        for retry in range(retry_on_fail):
-            if (exit_code := await self._decode_neon_tx_return()) is not None:
-                return exit_code
-
-            _LOG.debug("no receipt -> execute additional iterations...")
-            await self._emulate_and_send_tx_list()
-
-        raise SolNoMoreRetriesError()
+            except SolNoMoreRetriesError:
+                pass
 
     async def cancel(self) -> ExecTxRespCode | None:
-        holder = await self._get_holder_acct()
-        if (holder.status != HolderAccountStatus.Active) or (holder.neon_tx_hash != self._ctx.neon_tx_hash):
-            _LOG.debug("holder %s doesn't contain %s NeonTx", holder.address, self._ctx.neon_tx_hash)
+        await self._refresh_holder_status()
+        if not self._holder_acct.is_active:
             return ExecTxRespCode.Failed
-
-        if await self._recheck_tx_list(self._cancel_name):
+        elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed
             return ExecTxRespCode.Failed
 
+        try:
+            self._sol_tx_list_sender.stop_on_finalize(True)
+            return await self._cancel_impl()
+        finally:
+            self._sol_tx_list_sender.stop_on_finalize(False)
+
+    async def _cancel_impl(self) -> ExecTxRespCode | None:
         # generate cancel tx with the default CU budget
         self._reset_to_def()
-        self._cu_price_mult = 1
         iter_list_info = self._IterListInfo(1, 1, NeonIxMode.Default, name=self._cancel_name)
         tx_list = tuple([self._build_cancel_tx(iter_list_info.sol_tx_cfg)])
 
@@ -126,7 +164,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         if await self._send_tx_list([self._build_cancel_tx(new_iter_list_info.sol_tx_cfg)]):
             return ExecTxRespCode.Failed
 
-        _LOG.error("no!? cancel tx")
+        _LOG.error("failed!? cancel tx")
         return None
 
     def _reset_to_def(self) -> None:
@@ -139,7 +177,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         while True:
             try:
                 if not (iter_list_info := await self._get_single_iter_list_info()):
-                    iter_list_info = await self._get_iter_list_info()
+                    if not (iter_list_info := await self._get_iter_list_info()):
+                        return False
 
                 tx_list = iter_list_info.tx_list
                 if not tx_list:
@@ -172,18 +211,9 @@ class IterativeTxStrategy(BaseTxStrategy):
                     )
                     raise SolCbExceededCriticalError()
 
-    async def _get_iter_list_info(self) -> _IterListInfo:
-        _LOG.debug(
-            "%d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
-            self._ctx.total_evm_step_cnt,
-            self._completed_evm_step_cnt,
-            self._ctx.evm_step_cnt_per_iter,
-        )
-
+    async def _get_iter_list_info(self) -> _IterListInfo | None:
         evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
-        total_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
         ix_mode: Final[NeonIxMode] = self._calc_ix_mode()
-        wrap_iter_cnt: Final[int] = self._calc_wrap_iter_cnt(ix_mode)
 
         # 5? attempts looks enough for evm steps calculations:
         #   1 step:
@@ -206,15 +236,29 @@ class IterativeTxStrategy(BaseTxStrategy):
         #
         # Thus, it looks enough to predict EVM steps for 5 attempts...
 
-        evm_step_cnt = max(total_step_cnt, evm_step_cnt_per_iter)
+        evm_step_cnt = max(self._ctx.total_evm_step_cnt, evm_step_cnt_per_iter)
         for retry in range(5):
-            # don't try the number of step less than default per iteration
+            # don't try if the number of step less than default per iteration
             if evm_step_cnt <= evm_step_cnt_per_iter:
                 break
 
-            exec_iter_cnt = (total_step_cnt // evm_step_cnt) + (1 if (total_step_cnt % evm_step_cnt) > 1 else 0)
+            await self._refresh_holder_status()
+            if self._holder_acct.is_finalized:
+                return None
+
+            _LOG.debug(
+                "retry %d, %d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
+                retry,
+                self._ctx.total_evm_step_cnt,
+                self._holder_acct.evm_step_cnt,
+                self._ctx.evm_step_cnt_per_iter,
+            )
+
+            total_evm_step_cnt = self._calc_total_evm_step_cnt()
+            exec_iter_cnt = (total_evm_step_cnt // evm_step_cnt) + (1 if (total_evm_step_cnt % evm_step_cnt) > 1 else 0)
+
             # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
-            iter_cnt = exec_iter_cnt + wrap_iter_cnt
+            iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
 
             # the possible case:
             #    1 iteration: 17'000 steps
@@ -224,7 +268,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             #    1 iteration: 11'667
             #    2 iteration: 11'667
             #    3 iteration: 11'667
-            evm_step_cnt = max(total_step_cnt // exec_iter_cnt + 1, evm_step_cnt_per_iter)
+            evm_step_cnt = max(total_evm_step_cnt // exec_iter_cnt + 1, evm_step_cnt_per_iter)
 
             iter_list_info = self._IterListInfo(evm_step_cnt, iter_cnt, ix_mode)
             tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_cnt))
@@ -306,7 +350,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             evm_step_cnt_per_iter,
             iter_cnt,
             self._ctx.total_evm_step_cnt,
-            self._completed_evm_step_cnt,
+            self._holder_acct.evm_step_cnt,
         )
 
         return self._IterListInfo(evm_step_cnt_per_iter, iter_cnt, ix_mode, cu_price, cu_limit, is_default=True)
@@ -361,7 +405,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     def _calc_total_evm_step_cnt(self) -> int:
         assert not self._ctx.is_stuck_tx
-        return max(self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt, 0)
+        return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)
 
     def _calc_wrap_iter_cnt(self, mode: NeonIxMode) -> int:
         # if there are NO completed evm steps,
@@ -374,7 +418,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         if mode == NeonIxMode.Readable:
             base_iter_cnt -= 1
 
-        iter_cnt = max(base_iter_cnt if (not self._completed_evm_step_cnt) else 0, 0)
+        iter_cnt = max(base_iter_cnt if (not self._holder_acct.evm_step_cnt) else 0, 0)
         return iter_cnt
 
     def _calc_ix_mode(self) -> NeonIxMode:
@@ -406,7 +450,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return self._build_cu_tx(self._ctx.neon_prog.make_cancel_ix(), cfg)
 
     async def _decode_neon_tx_return(self) -> ExecTxRespCode | None:
-        tx_state_list = self._ctx.sol_tx_list_sender.tx_state_list
+        tx_state_list = self._sol_tx_list_sender.tx_state_list
         total_gas_used = 0
         has_already_finalized = False
         status = SolTxSendState.Status
@@ -430,30 +474,11 @@ class IterativeTxStrategy(BaseTxStrategy):
         if has_already_finalized:
             return ExecTxRespCode.Failed
 
-        if await self._is_finalized_holder():
+        await self._refresh_holder_status()
+        if self._holder_acct.is_finalized:
             return ExecTxRespCode.Failed
 
         return None
-
-    async def _is_finalized_holder(self) -> bool:
-        holder = await self._get_holder_acct()
-        if holder.status == HolderAccountStatus.Finalized:
-            if holder.neon_tx_hash == self._ctx.neon_tx_hash:
-                _LOG.warning("holder %s has finalized tag", holder.address)
-                return True
-        elif holder.status == HolderAccountStatus.Active:
-            if holder.neon_tx_hash != self._ctx.neon_tx_hash:
-                # strange case, because the holder was tested on the start...
-                raise StuckTxError(holder)
-
-            _LOG.debug("holder %s has %s completed EVM steps", holder.address, holder.evm_step_cnt)
-            self._completed_evm_step_cnt = holder.evm_step_cnt
-        else:
-            self._completed_evm_step_cnt = 0
-        return False
-
-    async def _get_holder_acct(self) -> HolderAccountModel:
-        return await self._ctx.core_api_client.get_holder_account(self._ctx.holder_address)
 
 
 @alt_strategy
