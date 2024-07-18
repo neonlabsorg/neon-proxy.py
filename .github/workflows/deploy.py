@@ -155,7 +155,7 @@ def publish_image(proxy_tag, head_ref, github_ref_name):
     branch_name_tag = None
     if head_ref:
         branch_name_tag = head_ref.split('/')[-1]
-    elif re.match(VERSION_BRANCH_TEMPLATE,  github_ref_name):
+    elif github_ref_name:
         branch_name_tag = github_ref_name
     if branch_name_tag:
         push_image_with_tag(proxy_tag, branch_name_tag)
