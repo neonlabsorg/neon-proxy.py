@@ -257,8 +257,11 @@ class IterativeTxStrategy(BaseTxStrategy):
             total_evm_step_cnt = self._calc_total_evm_step_cnt()
             exec_iter_cnt = (total_evm_step_cnt // evm_step_cnt) + (1 if (total_evm_step_cnt % evm_step_cnt) > 1 else 0)
 
-            # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
-            iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
+            if self._ctx.cfg.mp_send_batch_tx:
+                # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
+                iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
+            else:
+                iter_cnt = 1
 
             # the possible case:
             #    1 iteration: 17'000 steps
