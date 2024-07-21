@@ -158,7 +158,7 @@ class Config:
     stuck_object_validate_blockout_name: Final[str] = "STUCK_OBJECT_VALIDATE_BLOCKOUT"
     alt_freeing_depth_name: Final[str] = "ALT_FREEING_DEPTH"
     metrics_log_skip_cnt_name: Final[str] = "METRICS_LOG_SKIP_COUNT"
-    op_key_list_name: Final[str] = "OPERATOR_ACCOUNT_LIST"
+    empty_block_retry_cnt_name: Final[str] = "EMPTY_BLOCK_RETRY_COUNT"
     # Integration Indexer with Tracer API
     slot_processing_delay_name: Final[str] = "SLOT_PROCESSING_DELAY"
     clickhouse_dsn_list_name: Final[str] = "CLICKHOUSE_DSN_LIST"
@@ -773,8 +773,8 @@ class Config:
         return self._env_num(self.metrics_log_skip_cnt_name, 1000, 1, 100_000)
 
     @cached_property
-    def op_key_set(self) -> set[SolPubKey]:
-        return self._env_sol_acct_set(self.op_key_list_name)
+    def empty_block_retry_cnt(self) -> int:
+        return self._env_num(self.empty_block_retry_cnt_name, 100, 10)
 
     ######################################
     # Integration Indexer with Tracer API
@@ -922,6 +922,7 @@ class Config:
             self.stuck_object_validate_blockout_name: self.stuck_object_validate_blockout,
             self.alt_freeing_depth_name: self.alt_freeing_depth,
             self.metrics_log_skip_cnt_name: self.metrics_log_skip_cnt,
+            self.empty_block_retry_cnt_name: self.empty_block_retry_cnt,
             # Integration Indexer with Tracer API
             self.slot_processing_delay_name: self.slot_processing_delay,
             self.clickhouse_dsn_list_name: self.ch_dsn_list,
