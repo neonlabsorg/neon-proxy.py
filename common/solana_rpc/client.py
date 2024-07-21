@@ -208,7 +208,12 @@ class SolClient(HttpClient):
         _LOG.debug("first available slot: %s", resp.value)
         return resp.value
 
-    async def get_block(self, slot: int, commit=SolCommit.Confirmed) -> SolRpcBlockInfo:
+    async def get_block(
+        self,
+        slot: int,
+        skip_empty_slot_list: Sequence[int],
+        commit=SolCommit.Confirmed,
+    ) -> SolRpcBlockInfo:
         cfg = _SoldersBlockCfg(
             _SoldersTxEnc.Base64,
             transaction_details=_SoldersTxDet.Full,
@@ -224,19 +229,20 @@ class SolClient(HttpClient):
                     _LOG.debug("error on get block %s: empty parentBlockhash", slot)
                     return SolRpcBlockInfo.new_empty(slot, commit=commit)
                 elif not resp.value.transactions:
-                    _LOG.debug("error on get block %s: empty transactionList", slot)
-                    return SolRpcBlockInfo.new_empty(slot, commit=commit)
+                    if slot not in skip_empty_slot_list:
+                        _LOG.debug("error on get block %s: empty transactionList", slot)
+                        return SolRpcBlockInfo.new_empty(slot, commit=commit)
         except SolRpcError as exc:
             _LOG.debug("error on get block %s: %s", slot, exc.message, extra=self._msg_filter)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)
         return SolRpcBlockInfo.from_raw(resp.value, slot=slot, commit=commit)
 
     async def get_blockhash(self, slot: int) -> SolBlockHash:
-        block = await self.get_block(slot)
+        block = await self.get_block(slot, tuple())
         return block.block_hash
 
     async def get_block_status(self, slot: int) -> SolBlockStatus:
-        finalized_block = await self.get_block(slot, SolCommit.Finalized)
+        finalized_block = await self.get_block(slot, tuple(), SolCommit.Finalized)
         if not finalized_block.is_empty:
             return SolBlockStatus(slot, SolCommit.Finalized)
 
