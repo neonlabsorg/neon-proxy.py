@@ -121,7 +121,7 @@ class NeonProxyAbc(BaseRpcServerAbc, abc.ABC):
             block_hash = EthBlockHash.from_raw(base58.b58decode(DEVNET_GENESIS_HASH))
             block_time = DEVNET_GENESIS_TIME
         else:
-            block = await self._sol_client.get_block(0, SolCommit.Confirmed)
+            block = await self._sol_client.get_block(0, tuple(), SolCommit.Confirmed)
             if block.is_empty:
                 block_hash = EthBlockHash.from_raw(base58.b58decode(UNKNOWN_GENESIS_HASH))
                 block_time = MAINNET_GENESIS_TIME
