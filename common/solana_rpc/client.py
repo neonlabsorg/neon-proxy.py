@@ -134,14 +134,23 @@ class SolClient(HttpClient):
     async def _send_request(self, request: _SoldersRpcReq, parser: type[_SolRpcResp]) -> _SolRpcResp:
         req_json = request.to_json()
 
-        resp_json = await self._send_post_request(req_json)
-        resp = parser.from_json(resp_json)
-        if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
-            raise SolRpcError(resp)
-        elif isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
-            raise SolRpcError(resp)
+        for retry in itertools.count():
+            resp_json = await self._send_post_request(req_json)
+            try:
+                resp = parser.from_json(resp_json)
+            except (BaseException, ):
+                if retry > self._max_retry_cnt:
+                    raise
 
-        return resp
+                _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, req_json)
+                continue
+
+            if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
+                raise SolRpcError(resp)
+            elif isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
+                raise SolRpcError(resp)
+
+            return resp
 
     @ttl_cached_method(ttl_sec=60)
     async def get_version(self) -> str:
