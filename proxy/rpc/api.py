@@ -17,7 +17,7 @@ from common.ethereum.hash import (
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.evm_log_decoder import NeonTxEventModel
 from common.solana.account import SolAccountModel
-from common.solana.pubkey import SolPubKeyField
+from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField
 from common.utils.pydantic import HexUIntField, RootModel, HexUInt64Field
 
@@ -142,6 +142,7 @@ class RpcNeonTxEventModel(RpcEthTxEventModel):
     solanaTransactionSignature: SolTxSigField
     solanaInstructionIndex: int
     solanaInnerInstructionIndex: int | None
+    solanaAddress: SolPubKeyField | None
     neonEventType: str
     neonEventLevel: int
     neonEventOrder: int
@@ -150,12 +151,18 @@ class RpcNeonTxEventModel(RpcEthTxEventModel):
 
     @classmethod
     def from_raw(cls, event: NeonTxEventModel) -> Self:
+        if event.event_type == NeonTxEventModel.Type.InvalidRevision:
+            sol_addr = SolPubKey.from_raw(event.data.to_bytes())
+        else:
+            sol_addr = None
+
         return cls(
             **cls._to_dict(event),
             removed=event.is_reverted,
             solanaTransactionSignature=event.sol_tx_sig,
             solanaInstructionIndex=event.sol_ix_idx,
             solanaInnerInstructionIndex=event.sol_inner_ix_idx,
+            solanaAddress=sol_addr,
             neonEventType=event.event_type.name,
             neonEventLevel=event.event_level,
             neonEventOrder=event.event_order,
