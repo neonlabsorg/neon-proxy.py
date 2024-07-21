@@ -630,7 +630,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @staticmethod
     def _fill_tx_event_order_nums(neon_tx_event_list: list[_NeonTxEventDraft]) -> None:
-        current_level, current_order, total_step_cnt, total_gas_used = 0, 0, 0, 0
+        current_level, current_order, total_step_cnt = 0, 0, 0
         addr_stack: list[EthAddress] = list()
 
         for event in neon_tx_event_list:
@@ -649,18 +649,11 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             elif event.total_step_cnt < total_step_cnt:
                 is_tx_restart = True
 
-            #  iteration 1 (step 10, gas 10'000)
-            #  iteration 2 (step 10, gas 20'000) <--- we are here: the place of tx-restart
-            #  iteration 3 (step 20, gas 30'000)
-            elif (event.total_step_cnt == total_step_cnt) and (event.total_gas_used > total_gas_used):
-                is_tx_restart = True
-
             if is_tx_restart:
                 current_level, current_order = 0, 0
                 addr_stack.clear()
 
             total_step_cnt = event.total_step_cnt
-            total_gas_used = event.total_gas_used
 
             if event.is_start_event_type:
                 current_level += 1
@@ -683,7 +676,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     def _hide_reverted_tx_events(self, neon_tx_event_list: list[_NeonTxEventDraft]) -> None:
         is_failed = self._neon_tx_rcpt.status == 0
-        reverted_level, is_dropped, total_step_cnt, total_gas_used = -1, False, 2**64, 2**64
+        reverted_level, is_dropped, total_step_cnt = -1, False, 2**64
 
         for event in reversed(neon_tx_event_list):
             if is_dropped:
@@ -702,12 +695,6 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                 #   iteration 2 (step 20)  <--- we are here
                 #   iteration 1 (step 10)
                 is_dropped, is_reverted, is_hidden = True, True, True
-            elif (event.total_step_cnt == total_step_cnt) and (event.total_gas_used < total_gas_used):
-                # tx restart:
-                #   iteration 3 (step 20, gas 30'000)
-                #   iteration 2 (step 10, gas 20'000)  <- the first iteration, all next iters were canceled
-                #   iteration 1 (step 10, gas 10'000)  <--- we are here
-                is_dropped, is_reverted, is_hidden = True, True, True
             else:
                 if event.is_start_event_type:
                     if event.event_level == reverted_level:
@@ -717,7 +704,6 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                         reverted_level = event.event_level
 
                 total_step_cnt = event.total_step_cnt
-                total_gas_used = event.total_gas_used
                 is_reverted = (reverted_level != -1) or is_failed
                 is_hidden = event.is_hidden or is_reverted
 
