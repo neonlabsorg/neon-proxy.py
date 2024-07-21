@@ -5,8 +5,6 @@ import logging
 from dataclasses import dataclass
 from typing import Final
 
-from typing_extensions import Self
-
 from common.config.config import Config
 from common.db.constant_db import ConstantDb
 from common.db.db_connect import DbConnection, DbTxCtx
@@ -28,13 +26,19 @@ _LOG = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class IndexerDbSlotRange:
-    reindex_ident: str = ""
+    reindex_ident_base: str = ""
     start_slot: int = 0
     min_used_slot: int = 0
 
     max_slot: Final[int] = 2 ** 64 - 1
     stop_slot: int = max_slot
     term_slot: int = max_slot
+
+    @cached_property
+    def reindex_ident(self) -> str:
+        if not self.reindex_ident_base:
+            return ""
+        return f"{self.reindex_ident_base}:{self.start_slot}"
 
     @property
     def is_reindexing_mode(self) -> bool:
@@ -64,7 +68,7 @@ class IndexerDbSlotRange:
     def _reindex_ident_prefix(self) -> str:
         if not self.reindex_ident:
             return ""
-        return f"{self.reindex_ident}:{self.start_slot}:"
+        return f"{self.reindex_ident}:"
 
     @cached_method
     def to_string(self) -> str:
