@@ -40,14 +40,14 @@ class AtlasFeeClient(JsonRpcClient):
         try:
             req = FeeRequest(account_key_list=list(account_key_list), cfg=self._fee_cfg)
             resp = await self._estimate_fee(req)
-            _LOG.debug("use CU-price %s", int(resp.req))
+            _LOG.debug("use CU-price %d for %d accounts", int(resp.fee), len(account_key_list))
             return int(resp.fee)
 
         except BaseException as exc:
-            _LOG.warning("fail to get priority fee", exc, extra=self._msg_filter)
+            _LOG.warning("fail to get priority fee", exc_info=exc, extra=self._msg_filter)
 
         _LOG.debug("use default CU-price %s", int(self._cfg.cu_price))
         return self._cfg.cu_price
 
     @JsonRpcClient.method(name="getPriorityFeeEstimate")
-    async def _estimate_fee(self, request: FeeRequest) -> FeeResp: ...
+    async def _estimate_fee(self, fee_request: FeeRequest) -> FeeResp: ...
