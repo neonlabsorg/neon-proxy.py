@@ -254,7 +254,7 @@ class SolClient(HttpClient):
                     _LOG.debug("error on get block %s: empty parentBlockhash", slot)
                     return SolRpcBlockInfo.new_empty(slot, commit=commit)
                 elif not resp.value.transactions:
-                    if slot not in skip_empty_slot_list:
+                    if slot and (slot not in skip_empty_slot_list):
                         _LOG.debug("error on get block %s: empty transactionList", slot)
                         return SolRpcBlockInfo.new_empty(slot, commit=commit)
         except SolRpcError as exc:
