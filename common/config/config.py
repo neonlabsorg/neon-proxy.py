@@ -87,6 +87,7 @@ class Config:
     hide_sensitive_info_name: Final[str] = "HIDE_SENSITIVE_INFO"
     sol_url_name: Final[str] = "SOLANA_URL"
     sol_ws_url_name: Final[str] = "SOLANA_WS_URL"
+    sol_send_tx_url_name: Final[str] = "SOLANA_SEND_TRANSACTIONS_URL"
     sol_timeout_sec_name: Final[str] = "SOLANA_TIMEOUT"
     enable_private_api_name: Final[str] = "ENABLE_PRIVATE_API"
     enable_send_tx_api_name: Final[str] = "ENABLE_SEND_TX_API"
@@ -349,6 +350,10 @@ class Config:
             _LOG.warning("%s is not defined, force to use the localhost", self.sol_url_name)
             sol_url_list = ["http://localhost:8899"]
         return tuple(sol_url_list)
+
+    @cached_property
+    def sol_send_tx_url_list(self) -> tuple[str, ...]:
+        return tuple(self._split_str(os.environ.get(self.sol_send_tx_url_name, "")))
 
     @property
     def random_sol_url(self) -> str:
@@ -865,6 +870,7 @@ class Config:
             "DEFAULT_TOKEN_NAME": DEFAULT_TOKEN_NAME,
             "CHAIN_TOKEN_NAME": CHAIN_TOKEN_NAME,
             self.sol_url_name: self.sol_url_list,
+            self.sol_send_tx_url_name: self.sol_send_tx_url_list,
             self.sol_ws_url_name: self.sol_ws_url_list,
             self.sol_timeout_sec_name: self.sol_timeout_sec,
             self.enable_private_api_name: self.enable_private_api,

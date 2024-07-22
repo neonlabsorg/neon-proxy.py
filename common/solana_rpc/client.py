@@ -130,17 +130,27 @@ class SolClient(HttpClient):
         url_list = tuple([HttpURL(url) for url in self._cfg.sol_url_list])
         self.connect(base_url_list=url_list)
 
+        self._send_tx_url_list = tuple([HttpURL(url) for url in self._cfg.sol_send_tx_url_list])
+        for url in self._send_tx_url_list:
+            assert url.is_absolute(), "Solana URL for send transaction must be absolute"
+
     def _get_next_id(self) -> int:
         return next(self._id)
 
-    async def _send_request(self, request: _SoldersRpcReq, parser: type[_SolRpcResp]) -> _SolRpcResp:
+    async def _send_request(
+        self,
+        request: _SoldersRpcReq,
+        parser: type[_SolRpcResp],
+        *,
+        base_url_list: Sequence[HttpURL] = tuple(),
+    ) -> _SolRpcResp:
         req_json = request.to_json()
 
         for retry in itertools.count():
-            resp_json = await self._send_post_request(req_json)
+            resp_json = await self._send_post_request(req_json, base_url_list=base_url_list)
             try:
                 resp = parser.from_json(resp_json)
-            except (BaseException, ):
+            except (BaseException,):
                 if retry > self._max_retry_cnt:
                     raise
 
@@ -325,7 +335,7 @@ class SolClient(HttpClient):
         )
         req = _SoldersSendTx(tx.serialize(), cfg, self._get_next_id())
         try:
-            resp = await self._send_request(req, _SoldersSendTxResp)
+            resp = await self._send_request(req, _SoldersSendTxResp, base_url_list=self._send_tx_url_list)
             return SolTxSig.from_raw(resp.value)
         except SolRpcError as exc:
             if isinstance(exc.rpc_data, _SoldersNodeUnhealthyError):
