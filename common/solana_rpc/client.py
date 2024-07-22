@@ -17,7 +17,9 @@ import solders.rpc.filter as _filter
 
 from .errors import SolRpcError
 from ..http.utils import HttpURL
-from ..jsonrpc.client import HttpClient
+from ..http.client import HttpClient
+from ..jsonrpc.api import JsonRpcResp
+from ..jsonrpc.errors import InternalJsonRpcError
 from ..solana.account import SolAccountModel
 from ..solana.alt_program import SolAltAccountInfo
 from ..solana.block import SolRpcBlockInfo
@@ -148,14 +150,16 @@ class SolClient(HttpClient):
 
         for retry in itertools.count():
             resp_json = await self._send_post_request(req_json, base_url_list=base_url_list)
-            try:
-                resp = parser.from_json(resp_json)
-            except (BaseException,):
+
+            resp = JsonRpcResp.from_json(resp_json)
+            if resp.is_error and resp.error.code == -32000:
                 if retry > self._max_retry_cnt:
-                    raise
+                    raise InternalJsonRpcError()
 
                 _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, req_json)
                 continue
+
+            resp = parser.from_json(resp_json)
 
             if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
                 raise SolRpcError(resp)
