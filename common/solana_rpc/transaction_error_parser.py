@@ -16,7 +16,7 @@ from ..solana.transaction_meta import (
     SolRpcTxReceiptInfo,
     SolRpcInvalidParamErrorInfo,
 )
-from ..utils.cached import cached_method
+from ..utils.cached import cached_method, cached_property
 
 
 class SolTxErrorParser:
@@ -66,12 +66,12 @@ class SolTxErrorParser:
                 return True
         return False
 
-    @cached_method
+    @cached_property
     def cu_consumed(self) -> int | None:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return getattr(self._receipt, "units_consumed", None)
         elif isinstance(self._receipt, SolRpcTxSlotInfo):
-            if meta := getattr(self._receipt.transaction.meta.compute_units_consumed, "meta", None):
+            if meta := getattr(self._receipt.transaction, "meta", None):
                 return getattr(meta, "compute_units_consumed", None)
         return None
 
