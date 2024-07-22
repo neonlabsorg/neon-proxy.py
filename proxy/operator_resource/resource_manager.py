@@ -11,6 +11,7 @@ from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, HolderAccountStatus, NeonAccountStatus
+from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -64,6 +65,10 @@ class OpResourceMng(OpResourceComponent):
     @cached_property
     def _sol_watch_tx_session(self) -> SolWatchTxSession:
         return SolWatchTxSession(self._cfg, self._sol_client)
+
+    @cached_property
+    def _cu_price(self) -> int:
+        return self._cfg.simple_cu_price or 10_000
 
     async def start(self) -> None:
         self._refresh_signer_task = asyncio.create_task(self._refresh_signer_loop())
@@ -224,11 +229,16 @@ class OpResourceMng(OpResourceComponent):
         return None
 
     async def withdraw(self, chain_list: list[int]) -> None:
+        cb_prog = SolCbProg()
         for op_signer in self._active_signer_dict.values():
             ix_list: list[SolTxIx] = list()
             for chain_id, token_sol_addr in op_signer.token_sol_address_dict.items():
                 if chain_id not in chain_list:
                     continue
+
+                if not ix_list:
+                    ix_list.append(cb_prog.make_cu_price_ix(self._cu_price))
+                    ix_list.append(cb_prog.make_cu_limit_ix(15_000))
 
                 neon_acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
                 neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
@@ -244,6 +254,9 @@ class OpResourceMng(OpResourceComponent):
 
                 ix = neon_prog.make_withdraw_operator_balance_ix(neon_balance.sol_address)
                 ix_list.append(ix)
+
+            if not ix_list:
+                continue
 
             tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
             await self._send_tx(op_signer.signer, tx)
@@ -471,7 +484,11 @@ class OpResourceMng(OpResourceComponent):
         _LOG.debug(msg)
 
         sys_prog = SolSysProg()
+        cb_prog = SolCbProg()
         neon_prog = NeonProg(signer.pubkey).init_holder_address(op_holder.address)
+
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(7_500)
 
         create_acct_ix = sys_prog.make_create_account_with_seed_ix(
             address=op_holder.address,
@@ -482,7 +499,8 @@ class OpResourceMng(OpResourceComponent):
             size=self._holder_size,
         )
         create_holder_ix = neon_prog.make_create_holder_ix(op_holder.seed)
-        tx = SolLegacyTx(name="createHolderAccount", ix_list=tuple([create_acct_ix, create_holder_ix]))
+        ix_list = tuple([cu_price_ix, cu_limit_ix, create_acct_ix, create_holder_ix])
+        tx = SolLegacyTx(name="createHolderAccount", ix_list=ix_list)
         if result := await self._send_tx(signer, tx):
             self._deleted_holder_addr_set.discard(op_holder.address)
         return result
@@ -506,8 +524,12 @@ class OpResourceMng(OpResourceComponent):
         )
         _LOG.debug(msg)
 
-        ix = NeonProg(signer.pubkey).init_holder_address(op_holder.address).make_delete_holder_ix()
-        tx = SolLegacyTx(name="deleteHolderAccount", ix_list=tuple([ix]))
+        cb_prog = SolCbProg()
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(7_500)
+
+        delete_ix = NeonProg(signer.pubkey).init_holder_address(op_holder.address).make_delete_holder_ix()
+        tx = SolLegacyTx(name="deleteHolderAccount", ix_list=tuple([cu_price_ix, cu_limit_ix, delete_ix]))
         if result := await self._send_tx(signer, tx):
             self._deleted_holder_addr_set.add(op_holder.address)
         return result
@@ -515,9 +537,13 @@ class OpResourceMng(OpResourceComponent):
     async def _validate_neon_acct_list(self, op_signer: OpSignerInfo, evm_cfg: EvmConfigModel) -> bool:
         assert evm_cfg is not None
 
+        cb_prog = SolCbProg
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(150_000)
+
         neon_prog = NeonProg(op_signer.owner)
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
-        ix_list: list[SolTxIx] = list()
+        ix_list: list[SolTxIx] = [cu_price_ix, cu_limit_ix]
         for token in evm_cfg.token_dict.values():
             neon_acct = NeonAccount.from_raw(op_signer.eth_address, token.chain_id)
             neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
