@@ -73,7 +73,7 @@ class SolNotEmptyBlockFinder:
         if slot is None:
             return False
 
-        if is_empty := (await self._sol_client.get_block(slot, tuple(), SolCommit.Finalized)).is_empty:
+        if is_empty := (await self._sol_client.get_block(slot, SolCommit.Finalized)).is_empty:
             _LOG.debug("%s, SKIP the empty slot %s...", ctx.caption, slot)
         else:
             _LOG.debug("%s, FOUND the not-empty slot %s...", ctx.caption, slot)
