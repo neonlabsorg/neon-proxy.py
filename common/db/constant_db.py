@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import pickle
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -60,7 +59,6 @@ class ConstantDb(BaseDbTable):
             del_sql,
             full_list_sql,
         )
-        await self.convert_old_format(None)
 
     async def get_key_list(self, ctx: DbTxCtx) -> tuple[str, ...]:
         rec_list: list[_Record] = await self._fetch_all(ctx, self._key_list_query, None)
@@ -89,17 +87,3 @@ class ConstantDb(BaseDbTable):
 
     async def delete_list(self, ctx: DbTxCtx, key_list: Sequence[str]) -> None:
         await self._update_row(ctx, self._del_query, _ByKey(list(key_list)))
-
-    async def convert_old_format(self, ctx: DbTxCtx) -> None:
-        # TODO: remove after migrating
-        rec_list = await self._fetch_all(ctx, self._full_list_query, dict())
-        for rec in rec_list:
-            try:
-                value = pickle.loads(rec.value)
-                if isinstance(value, str):
-                    await self.set(ctx, rec.key, value)
-                else:
-                    await self.set(ctx, rec.key, str(value))
-
-            except pickle.UnpicklingError:
-                _LOG.debug("record %s is already converted", rec.key)
