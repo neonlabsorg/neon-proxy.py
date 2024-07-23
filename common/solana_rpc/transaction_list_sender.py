@@ -98,6 +98,7 @@ class SolTxListSender:
         self._num_slots_behind: int | None
         self._blockhash: SolBlockHash | None = None
         self._valid_block_height = 0
+        self._max_retry_cnt = int(cfg.commit_timeout_sec // ONE_BLOCK_SEC)
         self._bad_blockhash_set: set[SolBlockHash] = set()
         self._tx_list: list[SolTx] = list()
         self._tx_state_dict: dict[SolTxSig, SolTxSendState] = dict()
@@ -301,7 +302,11 @@ class SolTxListSender:
             return
 
         _LOG.debug("send transactions: %s", self._FmtTxNameStat(self))
-        tx_sig_list = await self._sol_client.send_tx_list(self._tx_list, skip_preflight=True, max_retry_cnt=0)
+        tx_sig_list = await self._sol_client.send_tx_list(
+            self._tx_list,
+            skip_preflight=False,
+            max_retry_cnt=self._max_retry_cnt,
+        )
 
         self._num_slots_behind = 0
         for tx, tx_sig_or_error in zip(self._tx_list, tx_sig_list):

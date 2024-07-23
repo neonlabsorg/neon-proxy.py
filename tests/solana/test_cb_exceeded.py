@@ -419,7 +419,12 @@ class TestCbExceeded(unittest.TestCase):
         self.assertTrue(error_parser.check_if_cb_exceeded)
 
     def test_tx_sender(self):
-        tx_sender = SolTxListSender(None, None, None)
+        class _Cfg:
+            @property
+            def commit_timeout_sec(self) -> int:
+                return 10
+
+        tx_sender = SolTxListSender(_Cfg(), None, None)
         status = tx_sender._decode_tx_status(self._get_tx(), self._test_meta_tx)
         self.assertEqual(status.tx_status, status.tx_status.CbExceededError)
 

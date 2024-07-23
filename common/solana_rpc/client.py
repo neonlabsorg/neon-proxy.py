@@ -331,7 +331,12 @@ class SolClient(HttpClient):
         tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit, json_format) for tx_sig in tx_sig_list])
         return tuple(tx_list)
 
-    async def send_tx(self, tx: SolTx, skip_preflight: bool, max_retry_cnt: int) -> SolRpcSendTxResultInfo | None:
+    async def send_tx(
+        self,
+        tx: SolTx,
+        skip_preflight: bool,
+        max_retry_cnt: int | None,
+    ) -> SolRpcSendTxResultInfo | None:
         cfg = _SoldersSendTxCfg(
             skip_preflight=skip_preflight,
             preflight_commitment=SolCommit.Processed.to_rpc_commit(),
@@ -356,7 +361,7 @@ class SolClient(HttpClient):
         self,
         tx_list: Sequence[SolTx],
         skip_preflight: bool,
-        max_retry_cnt: int,
+        max_retry_cnt: int | None,
     ) -> tuple[SolRpcSendTxResultInfo | None, ...]:
         if not tx_list:
             return tuple()
