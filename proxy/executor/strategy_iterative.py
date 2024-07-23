@@ -214,7 +214,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
         ix_mode: Final[NeonIxMode] = self._calc_ix_mode()
 
-        # 5? attempts looks enough for evm steps calculations:
+        # 7? attempts looks enough for evm steps calculations:
         #   1 step:
         #      - emulate the whole NeonTx in 1 iteration with the huge CU-limit
         #      - get the maximum-CU-usage for the whole NeonTx
@@ -223,7 +223,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         #           - no:  go to the step 2
         #
         #   2 step:
-        #      - divide the maximum-CU-usage on 85% of CU-limit of 1 SolTx
+        #      - divide the maximum-CU-usage on 95% of CU-limit of 1 SolTx
         #           => the number of iterations
         #      - divide the total-EVM-steps on the number of iterations
         #           => the number of EVM steps in 1 iteration
@@ -233,10 +233,10 @@ class IterativeTxStrategy(BaseTxStrategy):
         #           - yes: we found the number of EVM steps
         #           - no:  repeat the step 2
         #
-        # Thus, it looks enough to predict EVM steps for 5 attempts...
+        # Thus, it looks enough to predict EVM steps for 7 attempts...
 
         evm_step_cnt = max(self._ctx.total_evm_step_cnt, evm_step_cnt_per_iter)
-        for retry in range(5):
+        for retry in range(7):
             if await self._holder_acct_validator.is_finalized():
                 return None
 

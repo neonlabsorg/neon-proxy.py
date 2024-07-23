@@ -602,7 +602,7 @@ class Config:
 
     @cached_property
     def commit_timeout_sec(self) -> int:
-        return self._env_num(self.commit_timeout_sec_name, 2, 1.2, 60)
+        return self._env_num(self.commit_timeout_sec_name, MIN_FINALIZE_SEC, 1.2, 60)
 
     @cached_property
     def commit_type(self) -> SolCommit:
