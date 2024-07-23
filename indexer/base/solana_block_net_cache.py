@@ -24,7 +24,6 @@ class SolBlockNetCache:
         self._start_slot = -1
         self._stop_slot = -1
         self._block_list: list[SolRpcBlockInfo] = list()
-        self._empty_slot_retry_list: list[int] = list()
 
     def finalize_block(self, slot: int) -> None:
         if slot > self._stop_slot:
@@ -36,7 +35,6 @@ class SolBlockNetCache:
 
         idx = self._calc_idx(slot)
         self._block_list = self._block_list[idx:]
-        self._empty_slot_retry_list = self._empty_slot_retry_list[idx:]
         self._start_slot = slot
 
     async def iter_block(self, ctx: SolNeonDecoderCtx) -> Generator[SolRpcBlockInfo, None, None]:
@@ -100,24 +98,14 @@ class SolBlockNetCache:
         if not len(empty_slot_list):
             return slot_list
 
-        empty_retry_cnt = self._cfg.empty_block_retry_cnt
-        skip_empty_slot_list = [
-            idx + self._start_slot
-            for idx, retry_cnt in enumerate(self._empty_slot_retry_list)
-            if retry_cnt > empty_retry_cnt
-        ]
-
         block_list = await asyncio.gather(
-            *[self._sol_client.get_block(slot, skip_empty_slot_list, ctx.sol_commit) for slot in empty_slot_list]
+            *[self._sol_client.get_block(slot, ctx.sol_commit) for slot in empty_slot_list]
         )
         for block in block_list:
             idx = self._calc_idx(block.slot)
             if not block.is_empty:
                 self._block_list[idx] = block
-                self._empty_slot_retry_list[idx] = 0
                 #  _LOG.debug("load block: %s", block.slot)
-            else:
-                self._empty_slot_retry_list[idx] = self._empty_slot_retry_list[idx] + 1
         return slot_list
 
     def _extend_cache_with_empty_blocks(
@@ -138,7 +126,6 @@ class SolBlockNetCache:
 
         # extend the cache with empty blocks
         self._block_list.extend(SolRpcBlockInfo.new_empty(slot) for slot in range(base_slot, stop_slot))
-        self._empty_slot_retry_list.extend(0 for _ in range(base_slot, stop_slot))
         self._start_slot = self._block_list[0].slot
         self._stop_slot = self._block_list[-1].slot
 
@@ -146,7 +133,6 @@ class SolBlockNetCache:
         self._start_slot = -1
         self._stop_slot = -1
         self._block_list.clear()
-        self._empty_slot_retry_list.clear()
 
     def _calc_idx(self, slot: int) -> int:
         return slot - self._start_slot
