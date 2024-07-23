@@ -194,7 +194,7 @@ class NeonIndexerApp:
             if slot_range.stop_slot_name != key:
                 continue
 
-            if self._reindex_ident != slot_range.reindex_ident:
+            if self._reindex_ident != reindex_ident:
                 _LOG.info("skip the old REINDEX range %s", slot_range)
                 await _done_slot_range(self._db, slot_range)
                 continue
@@ -219,7 +219,7 @@ class NeonIndexerApp:
         start_slot = await self._db.constant_db.get_int(None, slot_range.start_slot_name, self._last_known_slot)
         min_used_slot = await self._db.constant_db.get_int(None, slot_range.min_used_slot_name, start_slot)
         stop_slot = await self._db.constant_db.get_int(None, slot_range.stop_slot_name, slot_range.max_slot)
-        return IndexerDbSlotRange(slot_range.reindex_ident, start_slot, min_used_slot, stop_slot=stop_slot)
+        return IndexerDbSlotRange(self._reindex_ident, start_slot, min_used_slot, stop_slot=stop_slot)
 
     async def _add_new_reindex_range_list(
         self, slot_range_list: Sequence[IndexerDbSlotRange]
