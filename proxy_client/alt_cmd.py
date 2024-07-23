@@ -136,7 +136,7 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
         tx = SolLegacyTx(name=name, ix_list=ix_list, blockhash=blockhash)
 
         tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
-        await sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=32)
+        await sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=None)
         await asyncio.sleep(1)
 
         return 0
