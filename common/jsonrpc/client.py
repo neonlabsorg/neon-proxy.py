@@ -95,7 +95,7 @@ def _kwargs_to_params(method: JsonRpcMethod, args: list[Any], **kwargs) -> list:
     param_name_list = method.param_name_list
 
     for param_name, param_value in zip(param_name_list, args):
-        assert param_name in kwargs, f"Duplicate value for {param_name}"
+        assert param_name not in kwargs, f"Duplicate value for {param_name}"
         kwargs[param_name] = param_value
     assert len(kwargs) <= len(param_name_list)
     params_model = method.RequestValidator(**kwargs)

@@ -38,7 +38,7 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
             ix_list = list()
             if cu_price:
                 ix_list.append(cb_prog.make_cu_price_ix(cu_price))
-            ix_list.append(cb_prog.make_cu_limit_ix(10_000))
+            ix_list.append(cb_prog.make_cu_limit_ix(7_500))
             ix_list.append(neon_prog.make_write_ix(holder_msg_offset, holder_msg_part))
 
             tx_list.append(SolLegacyTx(name=self.name, ix_list=ix_list))

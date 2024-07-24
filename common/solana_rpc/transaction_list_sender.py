@@ -95,9 +95,10 @@ class SolTxListSender:
         self._cfg = cfg
         self._sol_session = sol_session
         self._tx_signer = sol_tx_signer
-        self._skip_preflight = False
         self._num_slots_behind: int | None
         self._blockhash: SolBlockHash | None = None
+        self._valid_block_height = 0
+        self._max_retry_cnt = int(cfg.commit_timeout_sec // ONE_BLOCK_SEC)
         self._bad_blockhash_set: set[SolBlockHash] = set()
         self._tx_list: list[SolTx] = list()
         self._tx_state_dict: dict[SolTxSig, SolTxSendState] = dict()
@@ -154,6 +155,11 @@ class SolTxListSender:
                     _LOG.debug("clear error for %s with the status %s", tx_state.tx, tx_state.status.name)
                     tx_state.clear_error()
 
+    async def _is_done(self) -> bool:
+        """Function can be overloaded to define the custom logic to stop tx sending"""
+        _ = self
+        return False
+
     async def _send(self) -> bool:
         for retry_idx in range(self._cfg.retry_on_fail):
             if not self._tx_list:
@@ -168,6 +174,9 @@ class SolTxListSender:
                     continue
                 else:
                     return True
+
+            if await self._is_done():
+                return True
 
             await self._sign_tx_list()
             if self._cfg.fuzz_fail_pct:
@@ -238,13 +247,21 @@ class SolTxListSender:
             self._blockhash = None
 
         if self._blockhash:
+            block_height = await self._sol_client.get_block_height()
+            if block_height > self._valid_block_height:
+                self._bad_blockhash_set.add(self._blockhash)
+                self._blockhash = None
+
+        if self._blockhash:
             return self._blockhash
 
-        blockhash = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
+        blockhash, valid_block_height = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
         if blockhash in self._bad_blockhash_set:
             raise SolBlockhashNotFound()
 
         self._blockhash = blockhash
+        # decrease the available block height, to remove edge conditions
+        self._valid_block_height = valid_block_height - 10
         return self._blockhash
 
     async def _sign_tx_list(self) -> None:
@@ -256,7 +273,10 @@ class SolTxListSender:
         for tx in self._tx_list:
             if tx.is_signed:
                 self._tx_state_dict.pop(tx.sig, None)
-                if tx.recent_blockhash in self._bad_blockhash_set:
+                if tx.recent_blockhash != blockhash:
+                    _LOG.debug("flash old blockhash: %s for tx %s", tx.recent_blockhash, tx)
+                    tx.set_recent_blockhash(None)
+                elif tx.recent_blockhash in self._bad_blockhash_set:
                     _LOG.debug("flash bad blockhash: %s for tx %s", tx.recent_blockhash, tx)
                     tx.set_recent_blockhash(None)
 
@@ -282,7 +302,11 @@ class SolTxListSender:
             return
 
         _LOG.debug("send transactions: %s", self._FmtTxNameStat(self))
-        tx_sig_list = await self._sol_client.send_tx_list(self._tx_list, skip_preflight=self._skip_preflight)
+        tx_sig_list = await self._sol_client.send_tx_list(
+            self._tx_list,
+            skip_preflight=False,
+            max_retry_cnt=self._max_retry_cnt,
+        )
 
         self._num_slots_behind = 0
         for tx, tx_sig_or_error in zip(self._tx_list, tx_sig_list):
@@ -380,6 +404,7 @@ class SolTxListSender:
 
         if num_slots_behind := tx_error_parser.get_num_slots_behind():
             self._num_slots_behind = max(self._num_slots_behind, num_slots_behind)
+            _LOG.debug("slots behind %s", self._num_slots_behind)
             return self._DecodeResult(status.NodeBehindError, None)
         elif tx_error_parser.check_if_blockhash_notfound():
             if tx.recent_blockhash not in self._bad_blockhash_set:
@@ -400,6 +425,8 @@ class SolTxListSender:
             _LOG.debug("invalid ix receipt %s: %s", tx, tx_receipt)
             return self._DecodeResult(status.InvalidIxDataError, None)
         elif tx_error_parser.check_if_cb_exceeded():
+            if cu_consumed := tx_error_parser.cu_consumed:
+                _LOG.debug("CUs consumed: %s", cu_consumed)
             return self._DecodeResult(status.CbExceededError, SolCbExceededError())
         elif tx_error_parser.check_if_require_resize_iter():
             return self._DecodeResult(status.RequireResizeIterError, SolNeonRequireResizeIterError())

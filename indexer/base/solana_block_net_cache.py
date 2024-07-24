@@ -102,8 +102,8 @@ class SolBlockNetCache:
             *[self._sol_client.get_block(slot, ctx.sol_commit) for slot in empty_slot_list]
         )
         for block in block_list:
+            idx = self._calc_idx(block.slot)
             if not block.is_empty:
-                idx = self._calc_idx(block.slot)
                 self._block_list[idx] = block
                 #  _LOG.debug("load block: %s", block.slot)
         return slot_list

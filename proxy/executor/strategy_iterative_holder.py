@@ -24,11 +24,11 @@ class HolderTxStrategy(IterativeTxStrategy):
         )
         # fmt: on
 
-    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
-        step_cnt = cfg.evm_step_cnt or self._ctx.evm_step_cnt_per_iter
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        step_cnt = tx_cfg.evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
-        return self._build_cu_tx(prog.make_tx_step_from_account_ix(cfg.ix_mode, step_cnt, uniq_idx), cfg)
+        return self._build_cu_tx(prog.make_tx_step_from_account_ix(tx_cfg.ix_mode, step_cnt, uniq_idx), tx_cfg)
 
 
 @alt_strategy

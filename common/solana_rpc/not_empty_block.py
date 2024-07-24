@@ -17,7 +17,7 @@ class SolNotEmptyBlockFinder:
         self._def_start_slot = start_slot
         self._def_stop_slot = stop_slot
 
-    async def find_slot(self) -> int | None:
+    async def find_slot(self) -> int:
         start_slot, stop_slot = await asyncio.gather(self._get_start_slot(), self._get_stop_slot())
         ctx = _Ctx(start_slot, stop_slot)
 
@@ -33,21 +33,21 @@ class SolNotEmptyBlockFinder:
                     "%s, no block at the stop slot %s, move to the start slot %s", ctx.caption, stop_slot, start_slot
                 )
                 return start_slot
-            return stop_slot
+            return stop_slot or 0
 
         slot = await self._find_slot(_Ctx(start_slot, stop_slot))
         if await self._has_block(ctx, slot):
             _LOG.debug("%s, FOUND the slot %s with the block", ctx.caption, slot)
-            return slot
+            return slot or 0
 
         # resolve the bad situation, when the Solana node has list of blocks, by they are empty
         slot = await self._bisect_left(ctx)
         if await self._has_block(ctx, slot):
             _LOG.debug("%s, FOUND the slot %s with the block", ctx.caption, slot)
-            return slot
+            return slot or 0
 
         _LOG.warning("%s, NO not-empty slots in the range", ctx.caption)
-        return None
+        return 0
 
     async def get_stop_slot(self) -> int:
         return await self._get_stop_slot()

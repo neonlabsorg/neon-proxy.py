@@ -5,6 +5,8 @@ import logging
 from dataclasses import dataclass
 from typing import Sequence, Final, ClassVar
 
+from typing_extensions import Self
+
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
@@ -16,7 +18,8 @@ from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
-from common.solana_rpc.transaction_list_sender import SolTxSendState
+from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
+from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
@@ -49,15 +52,26 @@ class BaseTxPrepStage(abc.ABC):
 class SolTxCfg:
     name: str = ""
     evm_step_cnt: int = 0
-    ix_mode: NeonIxMode = NeonIxMode.Default
+    ix_mode: NeonIxMode = NeonIxMode.Unknown
 
-    cu_price: int = 0
     cu_limit: int = 0
+    cu_price: int = 0
     heap_size: int = 0
 
     @classmethod
-    def default(cls) -> SolTxCfg:
-        return SolTxCfg()
+    def default(cls) -> Self:
+        return cls()
+
+    @classmethod
+    def fake(cls) -> Self:
+        return cls(
+            name="Fake",
+            evm_step_cnt=100,
+            ix_mode=NeonIxMode.Default,
+            cu_limit=100_000,
+            cu_price=10_000,
+            heap_size=100_000
+        )
 
 
 class BaseTxStrategy(abc.ABC):
@@ -119,7 +133,7 @@ class BaseTxStrategy(abc.ABC):
 
     @property
     def has_good_sol_tx_receipt(self) -> bool:
-        return self._ctx.sol_tx_list_sender.has_good_sol_tx_receipt
+        return self._sol_tx_list_sender.has_good_sol_tx_receipt
 
     @abc.abstractmethod
     async def execute(self) -> ExecTxRespCode:
@@ -129,17 +143,14 @@ class BaseTxStrategy(abc.ABC):
     async def cancel(self) -> ExecTxRespCode | None:
         pass
 
-    @property
-    def _cu_price(self) -> int:
-        return self._ctx.cfg.simple_cu_price
-
     @cached_property
-    def _cu_limit(self) -> int:
-        return self._ctx.cb_prog.MaxCuLimit
+    def _sol_tx_list_sender(self) -> SolTxListSender:
+        watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
+        return SolTxListSender(self._ctx.cfg, watch_session, self._ctx.sol_tx_list_signer)
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
-            self._build_tx().validate(SolSigner.fake())  # <- there will be SolTxSizeError
+            self._build_tx(SolTxCfg.fake()).validate(SolSigner.fake())  # <- there will be SolTxSizeError
         return True
 
     def _validate_has_chain_id(self) -> bool:
@@ -205,7 +216,7 @@ class BaseTxStrategy(abc.ABC):
         return tx_list_list
 
     async def _recheck_tx_list(self, tx_name_list: tuple[str, ...] | str) -> bool:
-        tx_list_sender = self._ctx.sol_tx_list_sender
+        tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
         if isinstance(tx_name_list, str):
@@ -220,7 +231,7 @@ class BaseTxStrategy(abc.ABC):
             self._store_sol_tx_list()
 
     async def _send_tx_list(self, tx_list: Sequence[SolTx]) -> bool:
-        tx_list_sender = self._ctx.sol_tx_list_sender
+        tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
         try:
@@ -229,25 +240,53 @@ class BaseTxStrategy(abc.ABC):
             self._store_sol_tx_list()
 
     def _store_sol_tx_list(self):
-        tx_list_sender = self._ctx.sol_tx_list_sender
+        tx_list_sender = self._sol_tx_list_sender
         self._ctx.add_sol_tx_list([tx_state.tx for tx_state in tx_list_sender.tx_state_list])
 
-    def _build_cu_tx(self, ix: SolTxIx, cfg: SolTxCfg) -> SolLegacyTx:
+    @cached_property
+    def _cu_limit(self) -> int:
+        return self._ctx.cb_prog.MaxCuLimit
+
+    async def _init_sol_tx_cfg(
+        self,
+        *,
+        name: str = "",
+        evm_step_cnt: int = 0,
+        ix_mode: NeonIxMode = NeonIxMode.Unknown,
+        cu_limit: int = 0,
+        cu_price: int = 0,
+        heap_size: int = 0
+    ) -> SolTxCfg:
+        if not cu_price:
+            cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+
+        return SolTxCfg(
+            name=name or self.name,
+            evm_step_cnt=evm_step_cnt or self._ctx.evm_step_cnt_per_iter,
+            ix_mode=ix_mode or NeonIxMode.Default,
+            cu_limit=cu_limit or self._cu_limit,
+            cu_price=cu_price,
+            heap_size=heap_size or self._ctx.cb_prog.MaxHeapSize,
+        )
+
+    def _build_cu_tx(self, ix: SolTxIx, tx_cfg: SolTxCfg) -> SolLegacyTx:
         cb_prog = self._ctx.cb_prog
 
         ix_list: list[SolTxIx] = list()
 
-        if cu_price := cfg.cu_price or self._cu_price:
-            ix_list.append(cb_prog.make_cu_price_ix(cu_price))
-        ix_list.append(cb_prog.make_heap_size_ix(cfg.heap_size or cb_prog.MaxHeapSize))
-        ix_list.append(cb_prog.make_cu_limit_ix(cfg.cu_limit or self._cu_limit))
+        if tx_cfg.cu_price:
+            ix_list.append(cb_prog.make_cu_price_ix(tx_cfg.cu_price))
+        if tx_cfg.cu_limit:
+            ix_list.append(cb_prog.make_cu_limit_ix(tx_cfg.cu_limit))
+        if tx_cfg.heap_size:
+            ix_list.append(cb_prog.make_heap_size_ix(tx_cfg.heap_size))
 
         ix_list.append(ix)
 
-        return SolLegacyTx(name=cfg.name or self.name, ix_list=ix_list)
+        return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
 
     async def _emulate_tx_list(self, tx_list: Sequence[SolTx], *, mult_factor: int = 0) -> tuple[EmulSolTxInfo, ...]:
-        blockhash = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Confirmed)
+        blockhash, _ = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Finalized)
         for tx in tx_list:
             tx.set_recent_blockhash(blockhash)
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
@@ -271,7 +310,7 @@ class BaseTxStrategy(abc.ABC):
         return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @abc.abstractmethod
-    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
         pass
 
     @abc.abstractmethod

@@ -122,15 +122,24 @@ class HttpClient:
         _LOG.debug("connect to the URL: %s", str(base_url), extra=self._msg_filter)
         self._base_url_list.append(base_url)
 
-    async def _send_post_request(self, data: str, *, path: HttpURL | None = None) -> str:
-        assert len(self._base_url_list), "HttpClient must have at least one remote URL"
+    async def _send_post_request(
+        self,
+        data: str,
+        *,
+        base_url_list: Sequence[HttpURL] = tuple(),
+        path: HttpURL | None = None,
+    ) -> str:
+        if not base_url_list:
+            base_url_list = self._base_url_list
+
+        assert base_url_list, "HttpClient must have at least one remote URL"
 
         request = HttpClientRequest(
             data=data,
             header_dict=self._header_dict,
             path=path,
         )
-        return await _send_post_request(self, request)
+        return await _send_post_request(self, base_url_list, request)
 
     def _exception_handler(self, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
         """Exception handler for send request.
@@ -151,10 +160,11 @@ class HttpClient:
             raise
 
 
-async def _send_post_request(self: HttpClient, req: HttpClientRequest) -> str:
-    base_url_list = self._base_url_list.copy()
+async def _send_post_request(self: HttpClient, base_url_list: Sequence[HttpURL], req: HttpClientRequest) -> str:
+    base_url_list = list(base_url_list)
     random.shuffle(base_url_list)
     base_url_list = itertools.cycle(base_url_list)
+
     for retry in itertools.count():
         if self._is_stopped:
             break

@@ -16,7 +16,7 @@ from ..solana.transaction_meta import (
     SolRpcTxReceiptInfo,
     SolRpcInvalidParamErrorInfo,
 )
-from ..utils.cached import cached_method
+from ..utils.cached import cached_method, cached_property
 
 
 class SolTxErrorParser:
@@ -65,6 +65,15 @@ class SolTxErrorParser:
             elif log_rec.find(self._cb_exceeded_msg) != -1:
                 return True
         return False
+
+    @cached_property
+    def cu_consumed(self) -> int | None:
+        if isinstance(self._receipt, SolRpcSendTxErrorInfo):
+            return getattr(self._receipt, "units_consumed", None)
+        elif isinstance(self._receipt, SolRpcTxSlotInfo):
+            if meta := getattr(self._receipt.transaction, "meta", None):
+                return getattr(meta, "compute_units_consumed", None)
+        return None
 
     @cached_method
     def check_if_out_of_memory(self) -> bool:
