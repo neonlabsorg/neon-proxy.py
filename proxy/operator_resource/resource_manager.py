@@ -543,7 +543,7 @@ class OpResourceMng(OpResourceComponent):
 
         neon_prog = NeonProg(op_signer.owner)
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
-        ix_list: list[SolTxIx] = [cu_price_ix, cu_limit_ix]
+        ix_list: list[SolTxIx] = list()
         for token in evm_cfg.token_dict.values():
             neon_acct = NeonAccount.from_raw(op_signer.eth_address, token.chain_id)
             neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
@@ -568,6 +568,7 @@ class OpResourceMng(OpResourceComponent):
                 ix_list.append(ix)
 
         if ix_list:
+            ix_list = [cu_price_ix, cu_limit_ix] + ix_list
             tx = SolLegacyTx("createOperatorBalance", ix_list=ix_list)
             if not (await self._send_tx(op_signer.signer, tx)):
                 return False
