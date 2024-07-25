@@ -196,7 +196,7 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetAcctInfoResp)
         return SolAccountModel.from_raw(address, resp.value)
 
-    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo | None:
+    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo:
         acct = await self.get_account(address, commit=commit)
         return SolAltAccountInfo.from_bytes(address, acct.data)
 

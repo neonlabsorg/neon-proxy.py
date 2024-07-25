@@ -141,8 +141,7 @@ class NeonTxExecutor(ExecutorComponent):
 
         acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
         for acct in acct_list:
-            alt_acct = SolAltAccountInfo.from_bytes(acct.address, acct.data)
-            if not alt_acct.is_empty:
+            if (alt_acct := SolAltAccountInfo.from_bytes(acct.address, acct.data)).is_exist:
                 ctx.add_alt_id(alt_acct.ident)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
