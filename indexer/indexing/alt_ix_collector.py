@@ -36,27 +36,27 @@ class SolAltTxIxCollector:
             return
         elif not (alt_list := self._filter_alt_list(neon_block)):
             return
-        await asyncio.gather(*[self._check_alt(_Ctx(neon_block, alt_info)) for alt_info in alt_list])
+        await asyncio.gather(*[self._check_alt(_Ctx(neon_block, alt)) for alt in alt_list])
 
     def _filter_alt_list(self, neon_block: NeonIndexedBlockInfo) -> list[NeonIndexedAltInfo]:
         self._fail_check_slot = neon_block.slot - self.check_depth
         self._next_check_slot = next_check_slot = neon_block.slot + self._block_step_cnt
 
         alt_list: list[NeonIndexedAltInfo] = list()
-        for alt_info in neon_block.iter_alt_info():
-            if alt_info.next_check_slot > neon_block.slot:
+        for alt in neon_block.iter_alt():
+            if alt.next_check_slot > neon_block.slot:
                 continue
-            alt_list.append(alt_info)
-            alt_info.set_next_check_slot(next_check_slot)
+            alt_list.append(alt)
+            alt.set_next_check_slot(next_check_slot)
         return alt_list
 
     async def _check_alt(self, ctx: _Ctx) -> None:
         is_done = await self._has_done_in_alt_ix_list(ctx)
-        if (not is_done) and (ctx.alt_info.last_sol_ix_slot < self._fail_check_slot):
+        if (not is_done) and (ctx.alt.last_sol_ix_slot < self._fail_check_slot):
             is_done = await self._has_done_in_alt_acct(ctx)
 
         if is_done:
-            ctx.neon_block.done_alt_info(ctx.alt_info)
+            ctx.neon_block.done_alt(ctx.alt)
 
     async def _has_done_in_alt_ix_list(self, ctx: _Ctx) -> bool:
         if not (tx_sig_list := await self._get_tx_sig_list(ctx)):
@@ -75,30 +75,29 @@ class SolAltTxIxCollector:
         return is_done
 
     async def _get_tx_sig_list(self, ctx: _Ctx) -> tuple[SolTxSig, ...]:
-        last_slot = ctx.alt_info.last_sol_ix_slot
-        rpc_tx_sig_list = await self._sol_client.get_tx_sig_list(ctx.alt_info.address, 1000, SolCommit.Finalized)
+        last_slot = ctx.alt.last_sol_ix_slot
+        rpc_tx_sig_list = await self._sol_client.get_tx_sig_list(ctx.alt.address, 1000, SolCommit.Finalized)
         return tuple([SolTxSig.from_raw(rpc_sig.signature) for rpc_sig in rpc_tx_sig_list if rpc_sig.slot > last_slot])
 
     @staticmethod
     def _has_done_in_alt_ix(ctx: _Ctx, tx: SolTxMetaInfo, tx_ix: SolTxIxMetaInfo) -> bool:
         if tx_ix.prog_id != SolAltProg.ID:
             return False
-        elif not (alt_ix_info := SolNeonAltTxIxModel.from_raw(tx, tx_ix, ctx.alt_info.neon_tx_hash)):
+        elif not (alt_ix := SolNeonAltTxIxModel.from_raw(tx, tx_ix, ctx.alt.neon_tx_hash)):
             return False
 
-        ctx.neon_block.add_alt_ix(ctx.alt_info, alt_ix_info)
-        if alt_ix_info.alt_ix_code == SolAltIxCode.Freeze:
-            _LOG.warning("ALT %s is frozen", ctx.alt_info)
+        ctx.neon_block.add_alt_ix(ctx.alt, alt_ix)
+        if alt_ix.alt_ix_code == SolAltIxCode.Freeze:
+            _LOG.warning("ALT %s is frozen", ctx.alt)
             return True
-        return alt_ix_info.alt_ix_code == SolAltIxCode.Close
+        return alt_ix.alt_ix_code == SolAltIxCode.Close
 
     async def _has_done_in_alt_acct(self, ctx: _Ctx) -> bool:
-        alt_info = await self._sol_client.get_alt_account(ctx.alt_info.address, commit=SolCommit.Finalized)
-        if not alt_info:
+        if not (alt := await self._sol_client.get_alt_account(ctx.alt.address, commit=SolCommit.Finalized)).is_exist:
             return True
 
-        if not alt_info.owner:
-            _LOG.warning("ALT %s is frozen", ctx.alt_info)
+        if not alt.owner:
+            _LOG.warning("ALT %s is frozen", ctx.alt)
             return True
 
         # don't wait for ALTs from other operators
@@ -108,4 +107,4 @@ class SolAltTxIxCollector:
 @dataclass(frozen=True)
 class _Ctx:
     neon_block: NeonIndexedBlockInfo
-    alt_info: NeonIndexedAltInfo
+    alt: NeonIndexedAltInfo

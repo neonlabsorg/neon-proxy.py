@@ -133,8 +133,7 @@ class SolAltDestroyer(ExecutorComponent):
             self._alt_queue = deque(new_destroy_queue)
 
     async def _destroy_alt(self, signer_list: Sequence[SolPubKey], alt: _NeonAltInfo, slot: int) -> int:
-        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)
-        if acct.is_empty:
+        if not (await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)).is_exist:
             msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.debug(msg)
             return 0
