@@ -22,8 +22,8 @@ class AltTxPrepStage(BaseTxPrepStage):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._legacy_tx: SolLegacyTx | None = None
-        self._last_alt_info: SolAltInfo | None = None
-        self._alt_info_dict: dict[SolPubKey, SolAltInfo] = dict()
+        self._last_alt: SolAltInfo | None = None
+        self._alt_dict: dict[SolPubKey, SolAltInfo] = dict()
         self._alt_builder = SolAltTxBuilder(self._ctx.sol_client, self._ctx.payer, self._ctx.cfg.simple_cu_price)
 
     def get_tx_name_list(self) -> tuple[str, ...]:
@@ -33,44 +33,44 @@ class AltTxPrepStage(BaseTxPrepStage):
         self._legacy_tx = legacy_tx
 
     async def build_tx_list(self) -> list[list[SolTx]]:
-        self._last_alt_info = None
-        self._alt_info_dict.clear()
-        actual_alt_info = await self._alt_builder.build_alt_info(self._legacy_tx, self._ctx.ro_address_list)
+        self._last_alt = None
+        self._alt_dict.clear()
+        actual_alt = await self._alt_builder.build_alt(self._legacy_tx, self._ctx.ro_address_list)
 
-        alt_info_list = await self._filter_alt_info_list(actual_alt_info)
-        if self._alt_info_dict and self._tx_has_valid_size(self._legacy_tx):
+        alt_list = await self._filter_alt_list(actual_alt)
+        if self._alt_dict and self._tx_has_valid_size(self._legacy_tx):
             return list()
 
-        actual_alt_info = self._extend_alt_info(actual_alt_info, alt_info_list)
-        alt_tx_set = self._alt_builder.build_alt_tx_set(actual_alt_info)
+        actual_alt = self._extend_alt(actual_alt, alt_list)
+        alt_tx_set = self._alt_builder.build_alt_tx_set(actual_alt)
 
-        self._add_alt_info(actual_alt_info)
-        self._ctx.add_alt_id(actual_alt_info.ident)
+        self._add_alt(actual_alt)
+        self._ctx.add_alt_id(actual_alt.ident)
 
-        self._last_alt_info = actual_alt_info
+        self._last_alt = actual_alt
         return self._alt_builder.build_prep_alt_list(alt_tx_set)
 
     async def update_after_emulate(self) -> None:
-        last_alt_info = self._last_alt_info
-        await self._alt_builder.update_alt_info(self._alt_info_list)
+        last_alt = self._last_alt
+        await self._alt_builder.update_alt(self._alt_list)
         if not self._tx_has_valid_size(self._legacy_tx):
-            raise SolAltContentError(last_alt_info.address, "is not synced yet")
+            raise SolAltContentError(last_alt.address, "is not synced yet")
 
-    def build_tx(self, legacy_tx: SolLegacyTx, alt_info_list: list[SolAltInfo] = None) -> SolV0Tx:
-        if not alt_info_list:
-            alt_info_list = self._alt_info_list
-        return SolV0Tx(name=legacy_tx.name, ix_list=legacy_tx.ix_list, alt_info_list=alt_info_list)
+    def build_tx(self, legacy_tx: SolLegacyTx, alt_list: list[SolAltInfo] = None) -> SolV0Tx:
+        if not alt_list:
+            alt_list = self._alt_list
+        return SolV0Tx(name=legacy_tx.name, ix_list=legacy_tx.ix_list, alt_list=alt_list)
 
     def validate_v0_tx_size(self, legacy_tx: SolLegacyTx) -> bool:
-        test_alt_info = self._alt_builder.build_fake_alt_info(legacy_tx, self._ctx.ro_address_list)  # <- SolAltError
-        self.build_tx(legacy_tx, [test_alt_info]).validate(SolSigner.fake())  # <- SolTxSize?
+        test_alt = self._alt_builder.build_fake_alt(legacy_tx, self._ctx.ro_address_list)  # <- SolAltError
+        self.build_tx(legacy_tx, [test_alt]).validate(SolSigner.fake())  # <- SolTxSize?
         return True
 
     # protected:
 
     @property
-    def _alt_info_list(self) -> list[SolAltInfo]:
-        return list(self._alt_info_dict.values())
+    def _alt_list(self) -> list[SolAltInfo]:
+        return list(self._alt_dict.values())
 
     def _tx_has_valid_size(self, legacy_tx: SolLegacyTx) -> bool:
         try:
@@ -80,44 +80,47 @@ class AltTxPrepStage(BaseTxPrepStage):
         except SolTxSizeError:
             return False
 
-    async def _filter_alt_info_list(self, actual_alt_info: SolAltInfo) -> list[SolAltInfo]:
-        alt_info_list: list[SolAltInfo] = list()
-        for alt_address in self._ctx.alt_id_list:
-            alt_info = SolAltInfo(alt_address)
+    async def _filter_alt_list(self, actual_alt: SolAltInfo) -> list[SolAltInfo]:
+        alt_list: list[SolAltInfo] = list()
+        for alt_id in self._ctx.alt_id_list:
+            alt = SolAltInfo(alt_id)
             try:
                 # update one by one, if one of ALTs has problems it shouldn't affect others
-                await self._alt_builder.update_alt_info(alt_info)
-                alt_info_list.append(alt_info)
+                await self._alt_builder.update_alt(alt)
+                if not alt.is_exist:
+                    _LOG.debug("skip not-exist ALT %s", alt.address)
+                    continue
 
-                if actual_alt_info.remove_account_key_list(alt_info.account_key_list):
-                    self._add_alt_info(alt_info)
+                alt_list.append(alt)
+                if actual_alt.remove_account_key_list(alt.account_key_list):
+                    self._add_alt(alt)
 
             except BaseException as exc:
-                _LOG.debug("skip ALT %s", alt_address.address, exc_info=exc)
+                _LOG.debug("skip ALT %s", alt_id.address, exc_info=exc)
 
-        return alt_info_list
+        return alt_list
 
-    def _add_alt_info(self, alt_info: SolAltInfo) -> None:
-        if alt_info.address in self._alt_info_dict:
+    def _add_alt(self, alt: SolAltInfo) -> None:
+        if alt.address in self._alt_dict:
             return
 
-        self._alt_info_dict[alt_info.address] = alt_info
-        if alt_info.is_exist:
-            _LOG.debug("use existing ALT %s", alt_info.address)
+        self._alt_dict[alt.address] = alt
+        if alt.is_exist:
+            _LOG.debug("use existing ALT %s", alt.address)
         else:
-            _LOG.debug("create new ALT %s", alt_info.address)
+            _LOG.debug("create new ALT %s", alt.address)
 
-    def _extend_alt_info(self, actual_alt_info: SolAltInfo, alt_info_list: Sequence[SolAltInfo]) -> SolAltInfo:
-        for alt_info in alt_info_list:
-            if alt_info.owner != self._ctx.payer:
+    def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
+        for alt in alt_list:
+            if alt.owner != self._ctx.payer:
                 continue
-            elif len(actual_alt_info.account_key_list) + len(alt_info.account_key_list) >= SolAltProg.MaxAltAccountCnt:
+            elif len(actual_alt.account_key_list) + len(alt.account_key_list) >= SolAltProg.MaxAltAccountCnt:
                 continue
 
-            alt_info.add_account_key_list(actual_alt_info.account_key_list)
-            return alt_info
+            alt.add_account_key_list(actual_alt.account_key_list)
+            return alt
 
-        return actual_alt_info
+        return actual_alt
 
 
 def alt_strategy(cls):

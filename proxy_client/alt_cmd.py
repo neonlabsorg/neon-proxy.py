@@ -100,8 +100,7 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
         sol_client = await self._get_sol_client()
         op_client = await self._get_op_client()
 
-        alt = await sol_client.get_alt_account(address)
-        if (alt is None) or alt.is_empty:
+        if not (alt := await sol_client.get_alt_account(address)).is_exist:
             _LOG.error("Address Lookup Table %s doesn't exist", address)
             return 1
 

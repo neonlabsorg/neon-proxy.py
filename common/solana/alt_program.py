@@ -147,6 +147,10 @@ class SolAltAccountInfo:
         return not self._meta
 
     @property
+    def is_exist(self) -> bool:
+        return self._meta is not None
+
+    @property
     def address(self) -> SolPubKey:
         return self._addr
 
