@@ -60,7 +60,7 @@ class SolAltInfo:
             account_key_list=self._acct_key_list,
             new_account_key_list=list(self._new_acct_key_set),
             is_exist=self._is_exist,
-        ).dict()
+        ).to_dict()
 
     @property
     def ident(self) -> SolAltID:
@@ -103,19 +103,19 @@ class SolAltInfo:
             raise SolAltContentError(self.address, "trying to add account to not-existing lookup table")
 
         for acct_key in account_key_list:
-            if (idx := next((idx for idx, value in enumerate(self._acct_key_list) if value == acct_key), -1)) != -1:
+            if next((idx for idx, value in enumerate(self._acct_key_list) if value == acct_key), -1) != -1:
                 continue
             self._acct_key_list.append(acct_key)
             self._new_acct_key_set.add(acct_key)
 
-    def update_from_account(self, alt_account_info: SolAltAccountInfo) -> None:
-        if self._ident.address != alt_account_info.address:
+    def update_from_account(self, alt_account: SolAltAccountInfo) -> None:
+        if self._ident.address != alt_account.address:
             raise SolAltContentError(
                 self.address,
-                f"trying to update account list from another lookup table {alt_account_info.address}",
+                f"trying to update account list from another lookup table {alt_account.address}",
             )
 
-        self._acct_key_list = list(alt_account_info.account_key_list)
+        self._acct_key_list = list(alt_account.account_key_list)
         self._new_acct_key_set: set[SolPubKey] = set()
-        self._owner = alt_account_info.owner
-        self._is_exist = True
+        self._owner = alt_account.owner
+        self._is_exist = alt_account.is_exist

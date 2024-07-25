@@ -36,11 +36,11 @@ class SolV0Tx(SolTx):
         is_cloned: bool
         alt_info_list: list[dict]
 
-    def __init__(self, name: str, ix_list: Sequence[SolTxIx], alt_info_list: Sequence[SolAltInfo]) -> None:
+    def __init__(self, name: str, ix_list: Sequence[SolTxIx], alt_list: Sequence[SolAltInfo]) -> None:
         super().__init__(name=name, ix_list=ix_list)
         self._solders_v0_tx = _SoldersV0Tx.default()
-        self._alt_info_list = list(alt_info_list)
-        assert self._alt_info_list
+        self._alt_list = list(alt_list)
+        assert self._alt_list
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
@@ -60,7 +60,7 @@ class SolV0Tx(SolTx):
             v0_data=bytes(self._solders_v0_tx),
             is_signed=self._is_signed,
             is_cloned=self._is_cloned,
-            alt_info_list=[a.to_dict() for a in self._alt_info_list],
+            alt_info_list=[a.to_dict() for a in self._alt_list],
         ).to_dict()
 
     def _sig(self) -> SolTxSig:
@@ -87,10 +87,10 @@ class SolV0Tx(SolTx):
 
         # Build the lookup list in the V0 transaction
         alt_msg_list: list[_SoldersMsgALT] = list()
-        for alt_info in self._alt_info_list:
+        for alt in self._alt_list:
             rw_idx_list: list[int] = list()
             ro_idx_list: list[int] = list()
-            for idx, key in enumerate(alt_info.account_key_list):
+            for idx, key in enumerate(alt.account_key_list):
                 if key in rw_key_set:
                     rw_idx_list.append(idx)
                     rw_key_list.append(key)
@@ -105,7 +105,7 @@ class SolV0Tx(SolTx):
 
             alt_msg_list.append(
                 _SoldersMsgALT(
-                    account_key=alt_info.address,
+                    account_key=alt.address,
                     writable_indexes=bytes(rw_idx_list),
                     readonly_indexes=bytes(ro_idx_list),
                 )
@@ -186,4 +186,4 @@ class SolV0Tx(SolTx):
         self._solders_v0_tx = _SoldersV0Tx(msg, (signer.keypair,))
 
     def _clone(self) -> SolV0Tx:
-        return SolV0Tx(self._name, self._decode_ix_list(), self._alt_info_list)
+        return SolV0Tx(self._name, self._decode_ix_list(), self._alt_list)
