@@ -19,6 +19,7 @@ from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex
+from ..utils.json_logger import get_ctx
 from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel
 
 _LOG = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class NeonAccountListRequest(BaseModel):
 
     @classmethod
     def from_raw(cls, account_list: Sequence[NeonAccount], slot: int | None) -> Self:
-        return cls(account_list=tuple([_AccountModel.from_raw(a) for a in account_list]), slot=slot)
+        return cls(account_list=tuple([_AccountModel.from_raw(a) for a in account_list]), slot=slot, id=get_ctx())
 
 
 class NeonAccountStatus(StrEnum):
@@ -391,7 +392,7 @@ class HolderAccountRequest(BaseModel):
 
     @classmethod
     def from_raw(cls, pubkey: SolPubKey) -> Self:
-        return cls(pubkey=pubkey)
+        return cls(pubkey=pubkey, id=get_ctx())
 
 
 class HolderAccountStatus(StrEnum):
