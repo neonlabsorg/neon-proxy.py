@@ -23,7 +23,7 @@ from .constants import (
     ONE_BLOCK_SEC,
     MIN_FINALIZE_SEC,
     DEFAULT_TOKEN_NAME,
-    SOL_PACKET_SIZE,
+    SOL_PKT_SIZE,
     CHAIN_TOKEN_NAME,
 )
 from ..solana.commit_level import SolCommit
@@ -861,7 +861,7 @@ class Config:
             "NEON_EVM_PROGRAM": NEON_EVM_PROGRAM_ID,
             "SOLANA_BLOCK_SEC": ONE_BLOCK_SEC,
             "MINIMAL_FINALIZATION_SEC": MIN_FINALIZE_SEC,
-            "SOLANA_PACKET_SIZE": SOL_PACKET_SIZE,
+            "SOLANA_PACKET_SIZE": SOL_PKT_SIZE,
             "DEFAULT_TOKEN_NAME": DEFAULT_TOKEN_NAME,
             "CHAIN_TOKEN_NAME": CHAIN_TOKEN_NAME,
             self.sol_url_name: self.sol_url_list,

@@ -13,8 +13,8 @@ from .pubkey import SolPubKey
 from .signature import SolTxSig
 from .signer import SolSigner
 from ..utils.cached import reset_cached_method
+from ..config.constants import SOL_PKT_SIZE
 
-SOL_PACKET_SIZE: Final[int] = 1280 - 40 - 8
 _SoldersLegacyMsg = _msg.Message
 _SoldersLegacyTx = _tx.Transaction
 
@@ -22,6 +22,8 @@ SolTxMessageInfo = Union[_msg.Message, _msg.MessageV0]
 
 
 class SolTx(abc.ABC):
+    PktSize: Final[int] = SOL_PKT_SIZE
+
     def __init__(self, name: str, ix_list: Sequence[SolTxIx], *, blockhash: SolBlockHash | None = None) -> None:
         self._name = name
         self._is_signed = False
@@ -91,8 +93,8 @@ class SolTx(abc.ABC):
     def serialize(self) -> bytes:
         assert self._is_signed, "transaction has not been signed"
         result = self._serialize()
-        if len(result) > SOL_PACKET_SIZE:
-            raise SolTxSizeError(len(result), SOL_PACKET_SIZE)
+        if len(result) > self.PktSize:
+            raise SolTxSizeError(len(result), self.PktSize)
         return result
 
     def to_bytes(self) -> bytes:
