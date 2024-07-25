@@ -18,6 +18,7 @@ class SolCbProg:
     MaxCuLimit: Final[int] = 1_400_000
     DefCuLimit: Final[int] = 200_000
     MaxHeapSize: Final[int] = 256 * 1024
+    BaseCuPrice: Final[int] = 10_000
 
     @classmethod
     def make_heap_size_ix(cls, size: int) -> SolTxIx:

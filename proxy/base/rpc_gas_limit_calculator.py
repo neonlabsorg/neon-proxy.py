@@ -15,6 +15,7 @@ from common.solana.errors import SolTxSizeError
 from common.solana.hash import SolBlockHash
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
+from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
 from .rpc_server_abc import BaseRpcServerComponent
@@ -69,22 +70,22 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     def _tx_size_cost(self, evm_cfg: EvmConfigModel, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
         eth_tx = self._eth_tx_from_core_tx(core_tx)
-        sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
+        if (len(eth_tx_rlp := eth_tx.to_bytes()) > SolTx.PktSize) or core_tx.to_address.is_empty:
+            return self._holder_tx_cost(evm_cfg, eth_tx_rlp)
 
+        sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
         try:
             sol_tx.sign(self._payer)
             sol_tx.serialize()  # <- there will be exception about size
 
-            if core_tx.to_address.is_empty:  # deploy case
-                pass
-            elif resp.used_gas < self._oz_gas_limit:
+            if resp.used_gas < self._oz_gas_limit:
                 return 0
         except SolTxSizeError:
             pass
         except BaseException as exc:
             _LOG.debug("error on pack solana tx", exc_info=exc)
 
-        return self._holder_tx_cost(evm_cfg, eth_tx.to_bytes())
+        return self._holder_tx_cost(evm_cfg, eth_tx_rlp)
 
     @classmethod
     def _eth_tx_from_core_tx(cls, core_tx: CoreApiTxModel) -> EthTx:
@@ -110,11 +111,10 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
     def _sol_tx_from_eth_tx(self, eth_tx: EthTx, resp: EmulNeonCallResp) -> SolLegacyTx:
         cb_prog = self._cb_prog
         ix_list = [
+            cb_prog.make_cu_price_ix(cb_prog.BaseCuPrice),
             cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize),
             cb_prog.make_cu_limit_ix(cb_prog.MaxCuLimit),
         ]
-        if self._cfg.cu_price > 0:
-            ix_list.append(cb_prog.make_cu_price_ix(self._cfg.cu_price))
 
         neon_prog = self._neon_prog
         neon_prog.init_neon_tx(EthTxHash.from_raw(eth_tx.neon_tx_hash), eth_tx.to_bytes())
