@@ -5,6 +5,8 @@ from typing import Final, Union
 
 from typing_extensions import Self
 
+from ..solana.sys_program import SolSysProg
+
 from ..ethereum.commit_level import EthCommit, EthCommitField
 from ..ethereum.hash import EthBlockHash, EthBlockHashField
 from ..solana.block import SolRpcBlockInfo
@@ -80,18 +82,18 @@ class NeonBlockHdrModel(BaseModel):
 
     @classmethod
     def _calc_cu_price_stat(cls, sol_block: SolRpcBlockInfo) -> list[int]:
-        # In case for some reason, Solana block does not have any transactions.
-        if not sol_block.tx_list:
-            return [0] * NeonBlockHdrModel.PercentileCount
-
         # Build a full list of compute unit prices in the solana block.
         price_list: list[int] = list()
         for sol_tx in sol_block.tx_list:
             sol_tx_meta = SolTxMetaInfo.from_raw(sol_block.slot, sol_tx)
-            price_list.append(sol_tx_meta.sol_tx_cu.cu_price)
-        # Sort.
+            # Filter out transactions to Vote program from the block, as they spoil cu_price stats.
+            if SolSysProg.VoteProgram not in sol_tx_meta.account_key_list:
+                price_list.append(sol_tx_meta.sol_tx_cu.cu_price)
+
+        if not price_list:
+            return [0] * NeonBlockHdrModel.PercentileCount
         price_list.sort()
-        # Take every i * 10 percentile (i:=0..10) in a sorted list.
+        # Take every i * PercentileStep percentile in a sorted list.
         return [
             price_list[math.floor((len(price_list) - 1) * p * NeonBlockHdrModel.PercentileStep / 100)]
             for p in range(NeonBlockHdrModel.PercentileCount)

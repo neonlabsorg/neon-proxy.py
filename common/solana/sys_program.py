@@ -18,6 +18,7 @@ class SolSysProg:
     IxListVar: Final[SolPubKey] = SolPubKey.from_raw(_var.INSTRUCTIONS)
     SlotHashVar: Final[SolPubKey] = SolPubKey.from_raw(_var.SLOT_HASHES)
     INSTRUCTIONS_SYSVAR: Final[SolPubKey] = SolPubKey.from_raw(_var.INSTRUCTIONS)
+    VoteProgram: Final[SolPubKey] = SolPubKey.from_string("Vote111111111111111111111111111111111111111")
 
     @classmethod
     def make_create_account_with_seed_ix(
