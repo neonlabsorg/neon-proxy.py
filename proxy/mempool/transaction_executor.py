@@ -122,7 +122,6 @@ class MpTxExecutor(MempoolComponent):
         #  without this increasing
         #  the tx will be in the bottom of the execution queue,
         #  and as a result, it will be never executed
-        # TODO EIP1559: should we rely upon max_priority_fee_per_gas?
         tx.set_gas_price(token.suggested_gas_price * 2)
         return None
 
