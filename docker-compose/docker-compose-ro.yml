@@ -11,8 +11,6 @@ services:
       POSTGRES_PASSWORD: neon-db-password
       POSTGRES_HOST: postgres
       GATHER_STATISTICS: "YES"
-      START_SLOT: LATEST
-      REINDEX_START_SLOT: CONTINUE
       EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
     hostname: indexer
     networks:
@@ -33,22 +31,11 @@ services:
        POSTGRES_USER: neon-db-user
        POSTGRES_PASSWORD: neon-db-password
        POSTGRES_HOST: postgres
-       LOG_FULL_OBJECT_INFO: "NO"
-       MIN_OPERATOR_BALANCE_TO_WARN: 4565760000 # = 913152000 * 5 (5 storage accounts) = 4.56576 SOL
-       MIN_OPERATOR_BALANCE_TO_ERR: 913152000 # = solana rent 131072 (= Rent-exempt minimum: 0.913152 SOL) SOLs to create a storage
-       MINIMAL_GAS_PRICE: 1
+       EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
+       SOLANA_KEY_FOR_EVM_CONFIG: ${SOLANA_KEY_FOR_EVM_CONFIG}
+       GATHER_STATISTICS: "YES"
        ENABLE_PRIVATE_API: "NO"
        ENABLE_SEND_TX_API: "NO"
-       EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
-       GATHER_STATISTICS: "YES"
-       COMMIT_LEVEL: Confirmed
-       CU_PRIORITY_FEE: 2
-       SIMPLE_CU_PRIORITY_FEE: 1
-       DEBUG_CMD_LINE: "NO"
-       FUZZ_FAIL_PCT: 0
-       CONST_GAS_PRICE: 2
-       MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE: 1
-       SOLANA_KEY_FOR_EVM_CONFIG: ${SOLANA_KEY_FOR_EVM_CONFIG}
     hostname: proxy
     ports:
       - 127.0.0.1:9090:9090

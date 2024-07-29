@@ -24,5 +24,3 @@ venv*
 
 dist
 build
-
-indexer_db/
