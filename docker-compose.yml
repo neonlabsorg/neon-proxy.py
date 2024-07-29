@@ -11,23 +11,10 @@ services:
       POSTGRES_PASSWORD: neon-db-password
       POSTGRES_HOST: postgres
       GATHER_STATISTICS: "YES"
-      LOG_FULL_OBJECT_INFO: "YES"
-      CONFIG: custom
       START_SLOT: LATEST
       REINDEX_START_SLOT: CONTINUE
       EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
-      SLOT_PROCESSING_DELAY: 40
-      POSTGRES_TIMEOUT: 15
-      REINDEX_THREAD_COUNT: 5
     hostname: indexer
-    volumes:
-      - "./id.json:/root/.config/solana/id.json"
-    expose:
-      - "8887"
-      - "8888"
-    ports:
-      - "127.0.0.1:8887:8887"
-      - "127.0.0.1:8888:8888"
     networks:
       - net
     entrypoint: indexer/run-indexer.sh
@@ -61,18 +48,10 @@ services:
        FUZZ_FAIL_PCT: 0
        CONST_GAS_PRICE: 2
        MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE: 1
-       LOG_CLEF_FORMAT: "NO"
-       RUST_BACKTRACE: 0
        SOLANA_KEY_FOR_EVM_CONFIG: ${SOLANA_KEY_FOR_EVM_CONFIG}
     hostname: proxy
-    volumes:
-      - "./id.json:/root/.config/solana/id.json"
     ports:
       - 127.0.0.1:9090:9090
-      - 127.0.0.1:8889:8888
-    expose:
-      - "8888"
-      - "9090"
     networks:
       - net
     entrypoint: proxy/run-proxy.sh
