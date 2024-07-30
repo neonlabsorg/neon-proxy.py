@@ -51,6 +51,7 @@ services:
       POSTGRES_HOST: postgres
       ENABLE_PRIVATE_API: "NO"
       EVM_LOADER: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
+      SOLANA_KEY_FOR_EVM_CONFIG: BMp6gEnveANdvSvspESJUrNczuHz1GF5UQKjVLCkAZih
     hostname: proxy
     depends_on:
       dbcreation:
