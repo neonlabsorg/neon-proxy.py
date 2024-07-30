@@ -32,7 +32,6 @@ services:
        POSTGRES_PASSWORD: neon-db-password
        POSTGRES_HOST: postgres
        EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
-       SOLANA_KEY_FOR_EVM_CONFIG: ${SOLANA_KEY_FOR_EVM_CONFIG}
        GATHER_STATISTICS: "YES"
        ENABLE_PRIVATE_API: "NO"
        ENABLE_SEND_TX_API: "NO"

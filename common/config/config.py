@@ -202,10 +202,10 @@ class Config:
             _LOG.warning("%s contains bad Solana account %s", name, value)
             return SolPubKey.default()
 
-    def _env_sol_acct(self, name: str) -> SolPubKey:
+    def _env_sol_acct(self, name: str, default=SolPubKey.default()) -> SolPubKey:
         value = os.environ.get(name, None)
         if not value:
-            return SolPubKey.default()
+            return default
 
         return self._validate_sol_acct(name, value)
 
@@ -558,7 +558,10 @@ class Config:
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
-        return self._env_sol_acct(self.sol_key_for_evm_cfg_name)
+        return self._env_sol_acct(
+            self.sol_key_for_evm_cfg_name,
+            SolPubKey.from_raw("J4hWtdRER39G4iwTa1Xaw5HCAhbYrt2c5o57JyXWMjao")
+        )
 
     ###########################
     # Postgres DB settings
