@@ -6,10 +6,11 @@ from pydantic import Field
 from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField
-from common.ethereum.errors import EthWrongChainIdError
+from common.ethereum.errors import EthWrongChainIdError, EthError
 from common.ethereum.hash import EthAddressField, EthHash32Field
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
+from common.jsonrpc.errors import InvalidParamError
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, EmulNeonCallModel
 from common.solana.pubkey import SolPubKeyField
@@ -163,7 +164,18 @@ class NpCallApi(NeonProxyApi):
         chain_id = self._get_chain_id(ctx)
         block = await self.get_block_by_tag(block_tag)
 
-        neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes())
+        try:
+            neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes(), raise_exception=True)
+        except EthError:
+            raise
+        except (BaseException,):
+            raise InvalidParamError(message="wrong transaction format")
+
+        if neon_tx.has_chain_id:
+            if neon_tx.chain_id != chain_id:
+                raise EthWrongChainIdError()
+        elif not self._is_default_chain_id(ctx):
+            raise EthWrongChainIdError()
 
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
