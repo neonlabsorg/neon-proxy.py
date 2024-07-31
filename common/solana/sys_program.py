@@ -17,6 +17,7 @@ class SolSysProg:
     EpochScheduleVar: Final[SolPubKey] = SolPubKey.from_raw(_var.EPOCH_SCHEDULE)
     IxListVar: Final[SolPubKey] = SolPubKey.from_raw(_var.INSTRUCTIONS)
     SlotHashVar: Final[SolPubKey] = SolPubKey.from_raw(_var.SLOT_HASHES)
+    # TODO EIP1559: remove instructions sysvar account.
     INSTRUCTIONS_SYSVAR: Final[SolPubKey] = SolPubKey.from_raw(_var.INSTRUCTIONS)
     VoteProgram: Final[SolPubKey] = SolPubKey.from_string("Vote111111111111111111111111111111111111111")
 

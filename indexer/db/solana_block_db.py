@@ -10,6 +10,7 @@ from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQue
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.hash import EthBlockHash
 from common.neon.block import NeonBlockHdrModel
+from common.neon.cu_price_data_model import CuPricePercentilesModel
 from common.utils.format import hex_to_int
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
@@ -257,7 +258,7 @@ class SolBlockDb(HistoryDbTable):
         if not (block_time := await self._generate_block_time(ctx, slot)):
             return NeonBlockHdrModel(
                 slot=slot,
-                cu_price_percentile_list=[0] * NeonBlockHdrModel.PercentileCount,
+                cu_price_data=CuPricePercentilesModel.default(),
             )
 
         is_finalized = slot <= slot_range.finalized_slot
@@ -270,7 +271,7 @@ class SolBlockDb(HistoryDbTable):
             block_time=block_time,
             parent_slot=slot - 1,
             parent_block_hash=self._generate_fake_block_hash(slot - 1),
-            cu_price_percentile_list=[0] * NeonBlockHdrModel.PercentileCount,
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     async def _block_from_value(
@@ -290,7 +291,7 @@ class SolBlockDb(HistoryDbTable):
             block_time=block_time,
             parent_slot=slot - 1,
             parent_block_hash=self._check_block_hash(slot - 1, rec.parent_block_hash),
-            cu_price_percentile_list=rec.cu_price_percentiles,
+            cu_price_data=CuPricePercentilesModel.from_raw(rec.cu_price_percentiles),
         )
 
     async def get_block_by_slot(self, ctx: DbTxCtx, slot: int, slot_range: SolSlotRange) -> NeonBlockHdrModel:
@@ -369,7 +370,7 @@ class _Record:
             parent_block_slot=hdr.parent_slot,
             is_finalized=hdr.is_finalized,
             is_active=hdr.is_finalized,
-            cu_price_percentiles=hdr.cu_price_percentile_list,
+            cu_price_percentiles=hdr.cu_price_data.data,
         )
 
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from bisect import bisect_left
 import math
 import random
 from typing import ClassVar
@@ -19,18 +18,12 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.account import NeonAccount
 from common.neon.block import NeonBlockHdrModel
+from common.neon.cu_price_data_model import CuPricePercentilesModel
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
 from .server_abc import NeonProxyApi
 from ..base.mp_api import MpGasPriceTimestamped, MpRecentGasPricesModel, MpTokenGasPriceModel, MpGasPriceModel
 
-
-# Hardcoded priority fee percentiles that are supported by eth_feeHistory.
-_REWARD_PERCENTILE_LIST: list[int] = [
-    i * NeonBlockHdrModel.PercentileStep for i in range(NeonBlockHdrModel.PercentileCount)
-]
-# Max value for the block_slot (which is of a bigint type in the Postgres).
-_MAX_LATEST_BLOCK_SLOT: int = 9223372036854775807
 # Maximum number of blocks a User can query in eth_feeHistory.
 _FEE_HISTORY_MAX_NUM_BLOCKS: int = 1024
 
@@ -185,26 +178,16 @@ class NpGasPriceApi(NeonProxyApi):
         # Fetch the compute units price across last several blocks (as specified in the cfg).
         block_cnt = self._cfg.priority_fee_block_cnt_to_avg
         assert block_cnt > 0
-        historical_cu_price_list: list[PriorityFeePercentiles] = await self._db.get_historical_priority_fees(
-            block_cnt, _MAX_LATEST_BLOCK_SLOT
-        )
+        cu_price_list: list[PriorityFeePercentiles] = await self._db.get_recent_priority_fees(block_cnt)
 
-        # Take the weighted average across fetched blocks.
-        average_weighted_max_priority_fee = 0
-        for idx, block_cu_price_list in enumerate(historical_cu_price_list):
-            cu_price_list: list[int] = block_cu_price_list.cu_price_percentiles
-            avg_block_cu_price = 0
-            # Sanity check to avoid division by zero.
-            if cu_price_list:
-                avg_block_cu_price = sum(cu_price_list) / len(cu_price_list)
-            # The most recent block goes with the biggest weight.
-            average_weighted_max_priority_fee += avg_block_cu_price * (block_cnt - idx)
-        avg_block_cu_price /= block_cnt * (block_cnt + 1) / 2
+        median_cu_price: float = CuPricePercentilesModel.get_weighted_percentile(
+            50, len(cu_price_list), map(lambda v: v.cu_price_percentiles, cu_price_list)
+        )
 
         # Convert it into ethereum world by multiplying by suggested_gas_price
         # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        return int(token_gas_price.suggested_gas_price * avg_block_cu_price / 1_000_000)
+        return int(token_gas_price.suggested_gas_price * median_cu_price / 1_000_000)
 
     @NeonProxyApi.method(name="eth_feeHistory")
     async def get_fee_history(
@@ -231,8 +214,6 @@ class NpGasPriceApi(NeonProxyApi):
         # Fetch the latest block slot.
         latest_block_req = await self.get_block_by_tag(block_tag)
         latest_block_slot: int = await self._db.get_latest_slot()
-        # In case block is latest and it's empty, let's use this max value
-        # instead of making an extra get_latest_block DB query.
         latest_slot_req: int = 0
         if not latest_block_req.is_empty:
             latest_slot_req = latest_block_req.slot
@@ -243,7 +224,7 @@ class NpGasPriceApi(NeonProxyApi):
         block_cnt = min(block_cnt, _FEE_HISTORY_MAX_NUM_BLOCKS)
 
         # Fetching the data about compute units on Solana.
-        cu_price_data_list: list[PriorityFeePercentiles] = []
+        cu_price_data_list: list[PriorityFeePercentiles] = list()
         if is_reward_list:
             cu_price_data_list = await self._db.get_historical_priority_fees(block_cnt, latest_slot_req)
 
@@ -287,13 +268,13 @@ class NpGasPriceApi(NeonProxyApi):
                         block_slot=ephemeral_block_slot, average_base_fee=gas_price_timestamped.token_gas_price
                     )
                 )
-                if ephemeral_block_slot < earliest_block_slot_resp:
+                if ephemeral_block_slot <= earliest_block_slot_resp:
                     # We filled in enough data, no need to proceed.
                     break
 
         # Check if base_fee_data_list has enough data to cover the requested block range,
         # if not enough, fetch base_fee_per_gas from Neon Transactions DB table and fill up the rest.
-        if not base_fee_data_list or base_fee_data_list[-1].block_slot >= earliest_block_slot_resp:
+        if not base_fee_data_list or base_fee_data_list[-1].block_slot > earliest_block_slot_resp:
             query_slot: int = latest_slot_req if not base_fee_data_list else base_fee_data_list[-1].block_slot - 1
             db_basefee_data_list: list[BlockFeeGasData] = await self._db.get_historical_base_fees(
                 self._get_chain_id(ctx),
@@ -372,27 +353,6 @@ class NpGasPriceApi(NeonProxyApi):
         # Filling in the random high number in [0.85, 1] range.
         return 0.85 + random.random() * 0.15
 
-    def _calc_single_priority_fee_extrapolated(
-        self, percentile: int, priority_fee_percentiles_list: list[int]
-    ) -> float:
-        """
-        Calculate a `percentile` of priority fee given a list of known percentiles for priority fee prices.
-        Because we only store values at fixed percentiles, a linear extrapolation is used in case
-        the desired `percentile` is missing.
-        """
-        assert len(priority_fee_percentiles_list) == len(_REWARD_PERCENTILE_LIST)
-        biggest_known_p_idx = bisect_left(_REWARD_PERCENTILE_LIST, percentile)
-        if _REWARD_PERCENTILE_LIST[biggest_known_p_idx] == percentile:
-            return priority_fee_percentiles_list[biggest_known_p_idx]
-        start_val = priority_fee_percentiles_list[biggest_known_p_idx - 1]
-        end_val = priority_fee_percentiles_list[biggest_known_p_idx]
-        return (
-            start_val
-            + (end_val - start_val)
-            * (percentile - _REWARD_PERCENTILE_LIST[biggest_known_p_idx - 1])
-            / NeonBlockHdrModel.PercentileStep
-        )
-
     def _calc_priority_fee_list(
         self, percentiles: list[int], priority_fee_percentiles_list: list[int], cur_gas_price: int
     ) -> list[int]:
@@ -404,7 +364,7 @@ class NpGasPriceApi(NeonProxyApi):
         # conversion to lamports and into the gas token should apply.
         return [
             math.ceil(
-                self._calc_single_priority_fee_extrapolated(p, priority_fee_percentiles_list)
+                CuPricePercentilesModel.from_raw(priority_fee_percentiles_list).get_percentile(p)
                 * cur_gas_price
                 / 1_000_000
             )

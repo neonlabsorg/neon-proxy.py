@@ -7,6 +7,7 @@ from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
+from common.neon.cu_price_data_model import CuPricePercentilesModel
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
@@ -21,6 +22,7 @@ from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
+from indexer.db.solana_block_db import PriorityFeePercentiles
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
 
@@ -144,18 +146,6 @@ class BaseTxStrategy(abc.ABC):
         pass
 
     @cached_property
-    def _cu_price(self) -> int:
-        # Legacy transaction case (both stuck and not stuck), return value from the config.
-        if self._ctx.tx_type == 0:
-            return self._ctx.cfg.simple_cu_price
-
-        # For Dynamic Gas transaction:
-        base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
-        assert base_fee_per_gas > 0
-        max_priority_fee_per_gas = self._ctx.max_priority_fee_per_gas
-        return max(1, int(max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * self._cu_limit)))
-
-    @cached_property
     def _sol_tx_list_sender(self) -> SolTxListSender:
         watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
         return SolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
@@ -269,8 +259,35 @@ class BaseTxStrategy(abc.ABC):
         cu_price: int = 0,
         heap_size: int = 0,
     ) -> SolTxCfg:
+        # TODO EIP1559 churn: remove atlas.
+        # if not cu_price:
+        #    cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
         if not cu_price:
-            cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+            if self._ctx.tx_type == 0:
+                # For legacy transactions: we estimate the cu_price from the recent blocks.
+                # Solana currently does not really take into account writeable account list,
+                # so the decent estimation level should be achieved by taking a weighted average from
+                # the percentiles of compute unit prices across recent blocks.
+                est_num_blocks: int = self._ctx.cfg.cu_price_estimator_num_blocks
+                est_percentile: int = self._ctx.cfg.cu_price_estimator_percentile
+                cu_price_list: list[PriorityFeePercentiles] = await self._ctx.db.get_recent_priority_fees(
+                    est_num_blocks
+                )
+
+                cu_price = int(
+                    CuPricePercentilesModel.get_weighted_percentile(
+                        est_percentile, len(cu_price_list), map(lambda v: v.cu_price_percentiles, cu_price_list)
+                    )
+                )
+            else:
+                # For Dynamic Gas transactions: we take the cu_price according to what the User set in Neon tx.
+                base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
+                assert base_fee_per_gas > 0
+                max_priority_fee_per_gas = self._ctx.max_priority_fee_per_gas
+                # TODO EIP1559: fix formula.
+                cu_price = max(
+                    1, int(max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * self._cu_limit))
+                )
 
         return SolTxCfg(
             name=name or self.name,

@@ -25,6 +25,7 @@ from common.solana.transaction import SolTx
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.utils.cached import cached_property, cached_method, reset_cached_method
+from indexer.db.indexer_db_client import IndexerDbClient
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
 from ..base.op_client import OpResourceClient
@@ -68,6 +69,7 @@ class NeonExecTxCtx:
         op_client: OpResourceClient,
         fee_client: AtlasFeeClient,
         stat_client: StatClient,
+        db: IndexerDbClient,
         tx_request: ExecTxRequest | ExecStuckTxRequest,
     ) -> None:
         self._cfg = cfg
@@ -76,6 +78,7 @@ class NeonExecTxCtx:
         self._op_client = op_client
         self._fee_client = fee_client
         self._stat_client = stat_client
+        self._db = db
 
         self._tx_request = tx_request
         self._holder: HolderAccountModel | None = None
@@ -131,6 +134,10 @@ class NeonExecTxCtx:
     @property
     def stat_client(self) -> StatClient:
         return self._stat_client
+
+    @property
+    def db(self) -> IndexerDbClient:
+        return self._db
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:

@@ -25,6 +25,7 @@ from common.ethereum.hash import EthAddress, EthBlockHash
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.server import JsonRpcApi
 from common.neon.block import NeonBlockHdrModel
+from common.neon.cu_price_data_model import CuPricePercentilesModel
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.client import CoreApiClient
 from common.solana.commit_level import SolCommit
@@ -142,7 +143,7 @@ class NeonProxyAbc(BaseRpcServerAbc, abc.ABC):
             block_time=block_time,
             parent_slot=0,
             parent_block_hash=parent_hash,
-            cu_price_percentile_list=[0] * NeonBlockHdrModel.PercentileCount,
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
         if not self._idx:

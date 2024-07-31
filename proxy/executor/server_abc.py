@@ -11,6 +11,7 @@ from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.utils.cached import ttl_cached_method, cached_property
+from indexer.db.indexer_db_client import IndexerDbClient
 from ..base.ex_api import EXECUTOR_ENDPOINT
 from ..base.mp_client import MempoolClient
 from ..base.op_client import OpResourceClient
@@ -35,6 +36,10 @@ class ExecutorComponent(BaseIntlProxyComponent):
     def _stat_client(self) -> StatClient:
         return self._server._stat_client  # noqa
 
+    @cached_property
+    def _db(self) -> IndexerDbClient:
+        return self._server._db  # noqa
+
     async def get_evm_cfg(self) -> EvmConfigModel:
         return self._server.get_evm_cfg()
 
@@ -55,12 +60,14 @@ class ExecutorServerAbc(BaseIntlProxyServer):
         op_client: OpResourceClient,
         fee_client: AtlasFeeClient,
         stat_client: StatClient,
+        db: IndexerDbClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._mp_client = mp_client
         self._op_client = op_client
         self._fee_client = fee_client
         self._stat_client = stat_client
+        self._db = db
 
     @ttl_cached_method(ttl_sec=1)
     async def get_evm_cfg(self) -> EvmConfigModel:
@@ -75,6 +82,7 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._mp_client.start(),
             self._op_client.start(),
             self._fee_client.start(),
+            self._db.start(),
         )
 
     async def _on_server_stop(self) -> None:
@@ -83,4 +91,5 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._mp_client.stop(),
             self._op_client.stop(),
             self._fee_client.stop(),
+            self._db.stop(),
         )

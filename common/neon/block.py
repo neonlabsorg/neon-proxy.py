@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import math
 from typing import Final, Union
-
 from typing_extensions import Self
 
-from ..solana.sys_program import SolSysProg
+from .cu_price_data_model import CuPricePercentilesModel
 
 from ..ethereum.commit_level import EthCommit, EthCommitField
 from ..ethereum.hash import EthBlockHash, EthBlockHashField
 from ..solana.block import SolRpcBlockInfo
 from ..solana.commit_level import SolCommit
-from ..solana.transaction_decoder import SolTxMetaInfo
 from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
 
@@ -26,7 +23,7 @@ class NeonBlockHdrModel(BaseModel):
     block_time: int | None
     parent_slot: int | None
     parent_block_hash: EthBlockHashField
-    cu_price_percentile_list: list[int]
+    cu_price_data: CuPricePercentilesModel
 
     @classmethod
     def default(cls) -> Self:
@@ -37,8 +34,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
-            cu_price_percentile_list=[0]
-            * NeonBlockHdrModel.PercentileCount,  # Although this path is not used, let's make it future-proof.
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     @classmethod
@@ -50,8 +46,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
-            cu_price_percentile_list=[0]
-            * NeonBlockHdrModel.PercentileCount,  # Although this path is not used, let's make it future-proof.
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     @classmethod
@@ -77,27 +72,8 @@ class NeonBlockHdrModel(BaseModel):
             block_time=raw.block_time,
             parent_slot=raw.parent_slot,
             parent_block_hash=EthBlockHash.from_raw(raw.parent_block_hash.to_bytes()),
-            cu_price_percentile_list=cls._calc_cu_price_stat(raw),
+            cu_price_data=CuPricePercentilesModel.from_sol_block(raw),
         )
-
-    @classmethod
-    def _calc_cu_price_stat(cls, sol_block: SolRpcBlockInfo) -> list[int]:
-        # Build a full list of compute unit prices in the solana block.
-        price_list: list[int] = list()
-        for sol_tx in sol_block.tx_list:
-            sol_tx_meta = SolTxMetaInfo.from_raw(sol_block.slot, sol_tx)
-            # Filter out transactions to Vote program from the block, as they spoil cu_price stats.
-            if SolSysProg.VoteProgram not in sol_tx_meta.account_key_list:
-                price_list.append(sol_tx_meta.sol_tx_cu.cu_price)
-
-        if not price_list:
-            return [0] * NeonBlockHdrModel.PercentileCount
-        price_list.sort()
-        # Take every i * PercentileStep percentile in a sorted list.
-        return [
-            price_list[math.floor((len(price_list) - 1) * p * NeonBlockHdrModel.PercentileStep / 100)]
-            for p in range(NeonBlockHdrModel.PercentileCount)
-        ]
 
     def to_pending(self) -> Self:
         return NeonBlockHdrModel(
@@ -107,7 +83,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=self.block_hash,
-            cu_price_percentile_list=self.cu_price_percentile_list,
+            cu_price_data=self.cu_price_data,
         )
 
     def to_genesis_child(self, genesis_hash: EthBlockHash) -> Self:
@@ -118,7 +94,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=genesis_hash,
-            cu_price_percentile_list=self.cu_price_percentile_list,
+            cu_price_data=self.cu_price_data,
         )
 
     @property

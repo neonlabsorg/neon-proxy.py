@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import ClassVar, Final, Annotated, Literal, Any, Sequence
 
@@ -9,6 +10,7 @@ from pydantic import Field, PlainValidator
 from strenum import StrEnum
 from typing_extensions import Self
 
+from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.hash import (
@@ -31,6 +33,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, Hex256UIntField, Hex8UIntField, Base58Field, HexUInt64Field
+from ..base.mp_api import MpGasPriceTimestamped, MpRecentGasPricesModel
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxResp
@@ -346,7 +349,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
         block: NeonBlockHdrModel,
         tx_list: tuple[NeonTxMetaModel, ...],
         full: bool,
-        current_base_fee_per_gas: int | None,
+        base_fee_per_gas: int,
     ) -> Self:
         is_pending = block.commit == EthCommit.Pending
 
@@ -366,20 +369,6 @@ class _RpcBlockResp(BaseJsonRpcModel):
             block_hash = None
             miner = None
             nonce = None
-
-        # Take base_fee_per_gas from dynamic gas transactions, if there are any.
-        base_fee_per_gas = 0
-        for tx_meta in tx_list:
-            if tx_meta.neon_tx.is_dynamic_gas_tx:
-                base_fee_per_gas = max(
-                    base_fee_per_gas, tx_meta.neon_tx.max_fee_per_gas - tx_meta.neon_tx.max_priority_fee_per_gas
-                )
-        # If there are none, take the current gas price.
-        if base_fee_per_gas == 0:
-            base_fee_per_gas = current_base_fee_per_gas
-        # Failing assert would indicate the bug in the logic - because if the current gas price is false,
-        #   the exception in the logic fetching the gas price should have occurred.
-        assert bool(base_fee_per_gas), "base_fee_per_gas can't be zero or None."
 
         return cls(
             logsBloom=log_bloom,
@@ -440,7 +429,9 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockNumberAndIndex")
-    async def get_tx_by_block_number_idx(self, block_tag: RpcBlockRequest, index: HexUInt64Field) -> RpcEthTxResp | None:
+    async def get_tx_by_block_number_idx(
+        self, block_tag: RpcBlockRequest, index: HexUInt64Field
+    ) -> RpcEthTxResp | None:
         block = await self.get_block_by_tag(block_tag)
         if block.is_empty:
             return None
@@ -449,7 +440,9 @@ class NpBlockTxApi(NeonProxyApi):
         return RpcEthTxResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockHashAndIndex")
-    async def get_tx_by_block_hash_idx(self, block_hash: EthBlockHashField, index: HexUInt64Field) -> RpcEthTxResp | None:
+    async def get_tx_by_block_hash_idx(
+        self, block_hash: EthBlockHashField, index: HexUInt64Field
+    ) -> RpcEthTxResp | None:
         block = await self._db.get_block_by_hash(block_hash)
         if block.is_empty:
             return None
@@ -483,15 +476,51 @@ class NpBlockTxApi(NeonProxyApi):
             except BaseException as exc:
                 _LOG.debug("error on loading txs", exc_info=exc, extra=self._msg_filter)
 
-        current_base_fee_per_gas = None
-        # Fetch current current gas price only if there's no dynamic gas transactions in the block (or block is empty).
-        if all(not tx_meta.neon_tx.is_dynamic_gas_tx for tx_meta in tx_list):
-            _, token_gas_price = await self._get_token_gas_price(ctx)
-            current_base_fee_per_gas = token_gas_price.suggested_gas_price
-        # Pass the gas price information into the response, because after EIP1559 blocks must include baseFeePerGas.
-        # If there are no dynamic gas transactions, this value is taken;
-        # otherwise, the maximum value among transactions is used.
-        return _RpcBlockResp.from_raw(block, tx_list, full, current_base_fee_per_gas)
+        # BaseFeePerGas for the block response is taken either from the mempool recent gas prices (for the recent block)
+        # or from the transactions inside that block (for the historical block).
+        base_fee_per_gas: int | None = None
+
+        # Try recent mempool gas prices first.
+        mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
+        basefee_list: list[MpGasPriceTimestamped] = mempool_basefee_gas_prices.token_gas_prices
+
+        if basefee_list:
+            latest_ts: int = basefee_list[-1].timestamp
+            earliest_ts: int = basefee_list[0].timestamp
+            latest_slot: int = await self._db.get_latest_slot()
+            earliest_slot: int = latest_slot - int((latest_ts - earliest_ts) / 1000 / ONE_BLOCK_SEC)
+
+            if block.slot > latest_slot:
+                # If block is pending, set baseFeePerGas to the current suggested token gas price.
+                _, token_gas_price = await self._get_token_gas_price(ctx)
+                base_fee_per_gas = token_gas_price.suggested_gas_price
+            elif earliest_slot <= block.slot <= latest_slot:
+                slot_to_ts_scaler: float = 1.0
+                if latest_slot != earliest_slot:
+                    slot_to_ts_scaler = (block.slot - earliest_slot) / (latest_slot - earliest_slot)
+                # "Approximate" block timestamp to help find corresponding token gas price.
+                ephemeral_block_ts: int = int(earliest_ts + (latest_ts - earliest_ts) * slot_to_ts_scaler)
+
+                idx: int = bisect_left(basefee_list, ephemeral_block_ts, key=lambda v: v.timestamp)
+                if basefee_list[idx].timestamp != ephemeral_block_ts:
+                    idx -= 1
+                base_fee_per_gas = basefee_list[idx].token_gas_price
+
+        if base_fee_per_gas is None:
+            # Recent gas prices from the mempool is lacking the data, we have to take it from the transaction list.
+            if all(not tx_meta.neon_tx.is_dynamic_gas_tx for tx_meta in tx_list):
+                # Take current token suggested gas price in case there are no Dynamic Gas transactions in the block.
+                _, token_gas_price = await self._get_token_gas_price(ctx)
+                base_fee_per_gas = token_gas_price.suggested_gas_price
+            else:
+                # Otherwise, set base_fee_per_gas as maximum from the transactions in the block.
+                base_fee_per_gas = 0
+                for tx_meta in tx_list:
+                    if tx_meta.neon_tx.is_dynamic_gas_tx:
+                        base_fee_per_gas = max(
+                            base_fee_per_gas, tx_meta.neon_tx.max_fee_per_gas - tx_meta.neon_tx.max_priority_fee_per_gas
+                        )
+        return _RpcBlockResp.from_raw(block, tx_list, full, base_fee_per_gas)
 
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByNumber")
     async def get_tx_cnt_by_block_number(self, block_tag: RpcBlockRequest) -> HexUIntField:
@@ -579,7 +608,9 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcNeonTxReceiptResp.from_raw(neon_tx_meta, detail=detail, sol_meta_list=meta_list)
 
     @staticmethod
-    def _sort_alt_sol_tx_list(alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig) -> tuple[Any, ...]:
+    def _sort_alt_sol_tx_list(
+        alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig
+    ) -> tuple[Any, ...]:
         # signatures with Neon-Receipt (or Solana-Fail + Neon-Cancel) should be at the end of the list,
         #   because it simplifies the user experience
         if (pos := next((idx for idx, v in enumerate(sol_meta_list) if v.sol_tx_sig == rcpt_sol_tx_sig), -1)) == -1:

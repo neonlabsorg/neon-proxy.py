@@ -360,7 +360,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         operator: SolPubKeyField
         gas_used: int
         total_gas_used: int
-        total_priority_fee: int
+        total_priority_fee: int = 0
         has_truncated_log: bool
         neon_tx: NeonTxModel
         neon_tx_event_list: list[NeonTxEventModel]
