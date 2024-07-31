@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from bisect import bisect_left
 from dataclasses import dataclass
 from typing import ClassVar, Final, Annotated, Literal, Any, Sequence
 
@@ -10,7 +9,6 @@ from pydantic import Field, PlainValidator
 from strenum import StrEnum
 from typing_extensions import Self
 
-from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.hash import (
@@ -33,7 +31,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, Hex256UIntField, Hex8UIntField, Base58Field, HexUInt64Field
-from ..base.mp_api import MpGasPriceTimestamped, MpRecentGasPricesModel
+from ..base.mp_api import MpRecentGasPricesModel
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxResp
@@ -482,29 +480,15 @@ class NpBlockTxApi(NeonProxyApi):
 
         # Try recent mempool gas prices first.
         mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
-        basefee_list: list[MpGasPriceTimestamped] = mempool_basefee_gas_prices.token_gas_prices
-
-        if basefee_list:
-            latest_ts: int = basefee_list[-1].timestamp
-            earliest_ts: int = basefee_list[0].timestamp
+        if mempool_basefee_gas_prices.token_gas_prices:
             latest_slot: int = await self._db.get_latest_slot()
-            earliest_slot: int = latest_slot - int((latest_ts - earliest_ts) / 1000 / ONE_BLOCK_SEC)
-
             if block.slot > latest_slot:
                 # If block is pending, set baseFeePerGas to the current suggested token gas price.
                 _, token_gas_price = await self._get_token_gas_price(ctx)
                 base_fee_per_gas = token_gas_price.suggested_gas_price
-            elif earliest_slot <= block.slot <= latest_slot:
-                slot_to_ts_scaler: float = 1.0
-                if latest_slot != earliest_slot:
-                    slot_to_ts_scaler = (block.slot - earliest_slot) / (latest_slot - earliest_slot)
-                # "Approximate" block timestamp to help find corresponding token gas price.
-                ephemeral_block_ts: int = int(earliest_ts + (latest_ts - earliest_ts) * slot_to_ts_scaler)
-
-                idx: int = bisect_left(basefee_list, ephemeral_block_ts, key=lambda v: v.timestamp)
-                if basefee_list[idx].timestamp != ephemeral_block_ts:
-                    idx -= 1
-                base_fee_per_gas = basefee_list[idx].token_gas_price
+            else:
+                # Try finding the corresponding gas price from recent mempool prices.
+                base_fee_per_gas = mempool_basefee_gas_prices.find_gas_price(block.slot, latest_slot)
 
         if base_fee_per_gas is None:
             # Recent gas prices from the mempool is lacking the data, we have to take it from the transaction list.

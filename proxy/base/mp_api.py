@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 import time
 from enum import IntEnum
 from typing import Annotated
@@ -7,6 +8,7 @@ from typing import Annotated
 from pydantic import Field, PlainValidator, PlainSerializer
 from typing_extensions import Self
 
+from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthTxHashField, EthTxHash, EthAddress
 from common.neon.account import NeonAccountField
@@ -172,6 +174,41 @@ class MpGasPriceTimestamped(BaseModel):
 
 class MpRecentGasPricesModel(BaseModel):
     token_gas_prices: list[MpGasPriceTimestamped]
+
+    @cached_property
+    def earliest_ts(self) -> int:
+        assert self.token_gas_prices
+        return self.token_gas_prices[0].timestamp
+
+    @cached_property
+    def latest_ts(self) -> int:
+        assert self.token_gas_prices
+        return self.token_gas_prices[-1].timestamp
+
+    def _earliest_slot(self, latest_slot: int) -> int | None:
+        return latest_slot - int((self.latest_ts - self.earliest_ts) / 1000 / ONE_BLOCK_SEC)
+
+    def find_gas_price(self, block_slot: int, latest_slot: int) -> int | None:
+        if not self.token_gas_prices:
+            return None
+        earliest_slot = self._earliest_slot(latest_slot)
+
+        if not (earliest_slot <= block_slot <= latest_slot):
+            return None
+
+        slot_to_ts_scaler: float = 1.0
+        if latest_slot != earliest_slot:
+            slot_to_ts_scaler = (block_slot - earliest_slot) / (latest_slot - earliest_slot)
+        # "Approximate" block timestamp to help find corresponding token gas price.
+        ephemeral_block_ts: int = int(self.earliest_ts + (self.latest_ts - self.earliest_ts) * slot_to_ts_scaler)
+
+        idx: int = bisect_left(self.token_gas_prices, ephemeral_block_ts, key=lambda v: v.timestamp)
+        if self.token_gas_prices[idx].timestamp != ephemeral_block_ts:
+            idx -= 1
+        return self.token_gas_prices[idx].token_gas_price
+
+    def get_ephemeral_block_slot(self, ts: int, latest_slot: int) -> int:
+        return latest_slot - int((self.latest_ts - ts) / 1000 / ONE_BLOCK_SEC)
 
 
 class MpRequest(BaseModel):

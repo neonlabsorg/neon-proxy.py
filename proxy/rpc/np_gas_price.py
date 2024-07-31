@@ -11,7 +11,6 @@ from proxy.rpc.api import RpcBlockRequest
 from pydantic import Field, AliasChoices
 from typing_extensions import Self
 
-from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooLowError
 from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
@@ -256,17 +255,14 @@ class NpGasPriceApi(NeonProxyApi):
         mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
         recent_basefee_price_list: list[MpGasPriceTimestamped] = mempool_basefee_gas_prices.token_gas_prices
         if recent_basefee_price_list:
-            latest_ts: int = recent_basefee_price_list[-1].timestamp
             # Construct entries into base_fee_data_list from in-memory mempool-based recent token gas prices.
-            for gas_price_timestamped in reversed(recent_basefee_price_list):
-                # Heuristically assign the block slot for the current entry from the current and latest timestamps.
-                ephemeral_block_slot: int = latest_block_slot - int(
-                    (latest_ts - gas_price_timestamped.timestamp) / 1000 / ONE_BLOCK_SEC
+            for gas_price in reversed(recent_basefee_price_list):
+                # Heuristically assign the block slot.
+                ephemeral_block_slot = mempool_basefee_gas_prices.get_ephemeral_block_slot(
+                    gas_price.timestamp, latest_block_slot
                 )
                 base_fee_data_list.append(
-                    BlockFeeGasData(
-                        block_slot=ephemeral_block_slot, average_base_fee=gas_price_timestamped.token_gas_price
-                    )
+                    BlockFeeGasData(block_slot=ephemeral_block_slot, average_base_fee=gas_price.token_gas_price)
                 )
                 if ephemeral_block_slot <= earliest_block_slot_resp:
                     # We filled in enough data, no need to proceed.
