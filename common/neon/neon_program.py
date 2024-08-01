@@ -111,10 +111,9 @@ class NeonProg:
     # 3. treasury-pool-address
     # 4. payer-token-address
     # 5. SolSysProg.ID
-    # 6: SolSysProg.INSTRUCTIONS_SYSVAR
-    # +7: NeonProg.ID
-    # +8: CbProg.ID
-    BaseAccountCnt: Final[int] = 8
+    # +6: NeonProg.ID
+    # +7: CbProg.ID
+    BaseAccountCnt: Final[int] = 7
 
     def __init__(self, payer: SolPubKey) -> None:
         assert self._treasury_pool_cnt is not None, "NeonIxBuilder should be initialized: NeonIxBuilder.init_prog"
@@ -455,7 +454,6 @@ class NeonProg:
             SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
-            SolAccountMeta(pubkey=SolSysProg.INSTRUCTIONS_SYSVAR, is_signer=False, is_writable=False),
         ] + acct_meta_list
 
         return SolTxIx(program_id=self.ID, data=ix_data, accounts=tuple(acct_meta_list))
