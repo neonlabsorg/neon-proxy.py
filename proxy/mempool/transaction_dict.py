@@ -75,7 +75,7 @@ class MpTxDict:
         base_sleep_sec: Final[int] = self._clear_time_sec // 10
         with logging_context(ctx="mp-clear-tx-cache"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     sleep_sec = (next_item_sec - int(time.monotonic())) if next_item_sec else base_sleep_sec
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():

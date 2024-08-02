@@ -137,7 +137,7 @@ class MpTxExecutor(MempoolComponent):
         while True:
             try:
                 self._exec_event.clear()
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._exec_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break

@@ -279,7 +279,7 @@ class OpResourceMng(OpResourceComponent):
 
     async def _refresh_signer_loop(self) -> None:
         while True:
-            with contextlib.suppress(asyncio.TimeoutError):
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                 sleep_sec = 5 * 60 if self._active_signer_dict else 5
                 await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
             if self._stop_event.is_set():
@@ -334,7 +334,7 @@ class OpResourceMng(OpResourceComponent):
 
     async def _activate_signer_loop(self) -> None:
         while True:
-            with contextlib.suppress(asyncio.TimeoutError):
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._stop_event.wait(), self._activate_sleep_sec)
             if self._stop_event.is_set():
                 break
