@@ -83,7 +83,7 @@ class SolAltDestroyer(ExecutorComponent):
     async def _destroy_alt_loop(self) -> None:
         with logging_context(ctx="destroy-alt"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), self._finalize_sec)
                 if self._stop_event.is_set():
                     break
