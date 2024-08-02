@@ -256,6 +256,9 @@ class BaseTxStepIxDecoder(BaseTxIxDecoder):
             _LOG.warning("set lost result")
             self._decoding_done(tx, "complete by lost result")
 
+    def _on_tx_return_event(self, tx: NeonIndexedTxInfo) -> None:
+        self._decode_neon_tx_from_holder_account(tx)
+
     @property
     def is_stuck(self) -> bool:
         ix = self.state.sol_neon_ix
@@ -287,9 +290,6 @@ class TxStepFromAccountIxDecoder(BaseTxStepIxDecoder):
 
     def execute(self) -> bool:
         return self._execute("NeonTx step from NeonHolder.Data")
-
-    def _on_tx_return_event(self, tx: NeonIndexedTxInfo) -> None:
-        self._decode_neon_tx_from_holder_account(tx)
 
 
 class TxStepFromAccountNoChainIdIxDecoder(BaseTxStepIxDecoder):
