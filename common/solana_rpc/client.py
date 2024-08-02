@@ -10,15 +10,14 @@ from typing import TypeVar, Sequence, Union, Final
 import solders.account_decoder as _acct
 import solders.rpc.config as _cfg
 import solders.rpc.errors as _err
+import solders.rpc.filter as _filter
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
 import solders.transaction_status as _tx
-import solders.rpc.filter as _filter
 
 from .errors import SolRpcError
-from ..http.utils import HttpURL
 from ..http.client import HttpClient
-from ..jsonrpc.api import JsonRpcResp
+from ..http.utils import HttpURL
 from ..jsonrpc.errors import InternalJsonRpcError
 from ..solana.account import SolAccountModel
 from ..solana.alt_program import SolAltAccountInfo
@@ -150,20 +149,21 @@ class SolClient(HttpClient):
 
         for retry in itertools.count():
             resp_json = await self._send_post_request(req_json, base_url_list=base_url_list)
+            try:
+                resp = parser.from_json(resp_json)
+                if isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
+                    raise SolRpcError(resp)
 
-            resp = JsonRpcResp.from_json(resp_json)
-            if resp.is_error and resp.error.code == -32000:
+            except BaseException as exc:
                 if retry > self._max_retry_cnt:
-                    raise InternalJsonRpcError()
+                    if isinstance(exc, SolRpcError):
+                        raise exc
+                    raise InternalJsonRpcError(exc)
 
                 _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, req_json)
                 continue
 
-            resp = parser.from_json(resp_json)
-
             if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
-                raise SolRpcError(resp)
-            elif isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
                 raise SolRpcError(resp)
 
             return resp
