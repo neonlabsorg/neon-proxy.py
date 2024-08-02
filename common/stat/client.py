@@ -37,7 +37,7 @@ class BaseStatClient:
         sleep_sec: Final[float] = 0.3
         with logging_context(ctx="stat-client"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break
