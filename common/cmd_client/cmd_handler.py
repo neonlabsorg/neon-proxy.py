@@ -62,7 +62,8 @@ class BaseCmdHandler:
             return client
 
         client = client_type(*args)
-        client.set_timeout_sec(300)
+        if hasattr(client, "set_timeout_sec"):
+            client.set_timeout_sec(300)
 
         async def _stop():
             await client.stop()
