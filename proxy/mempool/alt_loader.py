@@ -43,7 +43,7 @@ class SolAltLoader(MempoolComponent):
         sleep_sec: Final[int] = 10
         with logging_context(ctx="scan-stuck-alt"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break
@@ -108,7 +108,7 @@ class SolAltLoader(MempoolComponent):
         idx: int = 0
         with logging_context(ctx="scan-lost-alt"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break

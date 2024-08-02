@@ -129,7 +129,7 @@ class DbConnection:
                     loop.add_reader(conn_fileno, self._is_close_conn_event.set)
 
                     while not self._is_close_conn_event.is_set():
-                        with contextlib.suppress(asyncio.TimeoutError):
+                        with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                             await asyncio.wait_for(self._is_close_conn_event.wait(), sleep_sec)
 
                         # No FD activity detected in sleep_sec seconds -> force to check the DB connection

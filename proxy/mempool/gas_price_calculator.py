@@ -95,7 +95,7 @@ class MpGasPriceCalculator(MempoolComponent):
     async def _update_gas_price_loop(self) -> None:
         while True:
             sleep_sec = self._update_sec if not self._gas_price.is_empty else 1
-            with contextlib.suppress(asyncio.TimeoutError):
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
             if self._stop_event.is_set():
                 break
