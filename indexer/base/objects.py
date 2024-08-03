@@ -1315,6 +1315,7 @@ class SolNeonDecoderStat:
     sol_neon_ix_cnt: int = 0
     sol_block_cnt: int = 0
     neon_corrupted_block_cnt: int = 0
+    _prev_neon_corrupted_block_cnt: int = 0
 
     _in_process: bool = False
     _start_time: int = 0
@@ -1327,6 +1328,7 @@ class SolNeonDecoderStat:
         self.sol_tx_meta_cnt = 0
         self.sol_block_cnt = 0
         self.neon_corrupted_block_cnt = 0
+        self._prev_neon_corrupted_block_cnt = 0
 
     def start_timer(self) -> None:
         self.commit_timer()
@@ -1335,11 +1337,17 @@ class SolNeonDecoderStat:
 
     def commit_timer(self) -> None:
         if self._in_process:
-            self._total_time = self.processing_time_ms
+            self._total_time = self.processing_time_msec
             self._in_process = False
 
     @property
-    def processing_time_ms(self) -> int:
+    def neon_corrupted_block_cnt_diff(self) -> int:
+        value = self.neon_corrupted_block_cnt - self._prev_neon_corrupted_block_cnt
+        self._prev_neon_corrupted_block_cnt = self.neon_corrupted_block_cnt
+        return value
+
+    @property
+    def processing_time_msec(self) -> int:
         time_diff = self._total_time
         if self._in_process:
             time_diff += (time.monotonic_ns() - self._start_time) // (10**6)
@@ -1436,11 +1444,14 @@ class SolNeonDecoderCtx:
                 return self._start_slot - 1
             return self._neon_block_queue[-1].slot
 
-        assert self._neon_block.slot > _last_neon_slot()
-        self._neon_block_queue.append(self._neon_block)
+        neon_block = self._neon_block
+        assert neon_block.slot > _last_neon_slot()
+        self._neon_block_queue.append(neon_block)
 
-        if (not self._neon_block.is_done) and self._neon_block.is_corrupted:
-            self._stat.inc_neon_corrupted_block_cnt()
+        is_pre_stuck_block = neon_block.stuck_slot > neon_block.slot
+        if not is_pre_stuck_block:
+            if (not neon_block.is_done) and neon_block.is_corrupted:
+                self._stat.inc_neon_corrupted_block_cnt()
 
     @property
     def is_neon_block_queue_empty(self) -> bool:
