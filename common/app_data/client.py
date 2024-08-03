@@ -52,7 +52,7 @@ class AppDataClient(SimpleAppDataClient):
             req_id = str(next(self._req_id))
             req_data = AppRequest(id=req_id, data=data).to_json()
 
-            resp_data = await self._send_post_request(req_data, path=method_path)
+            resp_data = await self._send_raw_data_request(req_data, path=method_path)
             resp = AppResp.from_json(resp_data)
             if resp.id != req_id:
                 raise BadRespError(error_list=f"Bad ID in the response {resp.id} != {req_id}")

@@ -44,21 +44,21 @@ class SimpleAppDataClient(HttpClient):
             return data.to_json()
 
         async def _null_wrapper(self: SimpleAppDataClient) -> _RespType:
-            resp_json = await self._send_post_request("", path=method_path)
+            resp_json = await self._send_raw_data_request("", path=method_path)
             return _parse_resp(resp_json)
 
         async def _null_wrapper_no_return(self: SimpleAppDataClient) -> None:
-            if resp := await self._send_post_request("", path=method_path):
+            if resp := await self._send_raw_data_request("", path=method_path):
                 raise BadRespError(error_list=f"The server returned a data: {resp}")
 
         async def _wrapper(self: SimpleAppDataClient, data: _RequestType) -> _RespType:
             req_json = _req_to_json(data)
-            resp_json = await self._send_post_request(req_json, path=method_path)
+            resp_json = await self._send_raw_data_request(req_json, path=method_path)
             return _parse_resp(resp_json)
 
         async def _wrapper_no_return(self: SimpleAppDataClient, data: _RequestType) -> None:
             req_json = _req_to_json(data)
-            if resp := await self._send_post_request(req_json, path=method_path):
+            if resp := await self._send_raw_data_request(req_json, path=method_path):
                 raise BadRespError(error_list=f"The server returned a data: {resp}")
 
         def _parse_resp(resp_json: str) -> _RespType:

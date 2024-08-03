@@ -143,7 +143,7 @@ class RpcStatApi(AppDataApi):
 
     def __init__(self, registry: StatRegistry):
         super().__init__()
-        self._request = StatSummary("request", "Request on public RPC", registry=registry)
+        self._request = StatSummary("request", "RPC requests", registry=registry)
 
     @AppDataApi.method(name="commitRpcCall")
     def on_rpc_call(self, data: RpcCallData) -> None:
