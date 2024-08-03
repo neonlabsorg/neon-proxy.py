@@ -52,16 +52,18 @@ class BaseCmdHandler:
         return req_id
 
     @cached_method
-    async def _get_rpc_stat_client(self) -> _FakeRpcStatClient:
-        return await self._new_client(_FakeRpcStatClient, self._cfg)
+    def _get_rpc_stat_client(self) -> _FakeRpcStatClient:
+        return _FakeRpcStatClient()
 
     @cached_method
     async def _get_sol_client(self) -> SolClient:
-        return await self._new_client(SolClient, self._cfg, await self._get_rpc_stat_client())
+        return await self._new_client(SolClient, self._cfg, self._get_rpc_stat_client())
 
     @cached_method
     async def _get_core_api_client(self) -> CoreApiClient:
-        return await self._new_client(CoreApiClient, self._cfg, await self._get_sol_client())
+        stat_client = self._get_rpc_stat_client()
+        sol_client = await self._get_sol_client()
+        return await self._new_client(CoreApiClient, self._cfg, sol_client, stat_client)
 
     async def _new_client(self, client_type: type, *args):
         if client := self._client_dict.get(client_type.__name__, None):
@@ -82,14 +84,5 @@ class BaseCmdHandler:
 
 
 class _FakeRpcStatClient(RpcStatClient):
-    def __init__(self, *args, **kwargs) -> None:
-        pass
-
     def commit_rpc_call(self, data: RpcCallData) -> None:
-        pass
-
-    async def start(self) -> None:
-        pass
-
-    async def stop(self) -> None:
         pass

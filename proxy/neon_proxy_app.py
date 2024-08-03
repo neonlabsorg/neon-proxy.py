@@ -50,7 +50,7 @@ class NeonProxyApp:
         self._core_api_server = CoreApiServer(cfg)
 
         # Init clients
-        core_api_client = CoreApiClient(cfg, sol_client)
+        core_api_client = CoreApiClient(cfg, sol_client, self._stat_client)
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)

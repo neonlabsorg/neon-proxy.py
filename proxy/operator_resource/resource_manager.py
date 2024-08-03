@@ -219,7 +219,7 @@ class OpResourceMng(OpResourceComponent):
 
                 if not ix_list:
                     ix_list.append(cb_prog.make_cu_price_ix(self._cu_price))
-                    ix_list.append(cb_prog.make_cu_limit_ix(15_000))
+                    ix_list.append(cb_prog.make_cu_limit_ix(50_000))
 
                 neon_acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
                 neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
