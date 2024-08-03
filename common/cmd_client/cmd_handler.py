@@ -10,6 +10,8 @@ from typing_extensions import Self
 from ..config.config import Config
 from ..neon_rpc.client import CoreApiClient
 from ..solana_rpc.client import SolClient
+from ..stat.api import RpcCallData
+from ..stat.rpc_client import RpcStatClient
 from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
@@ -50,8 +52,12 @@ class BaseCmdHandler:
         return req_id
 
     @cached_method
+    async def _get_rpc_stat_client(self) -> _FakeRpcStatClient:
+        return await self._new_client(_FakeRpcStatClient, self._cfg)
+
+    @cached_method
     async def _get_sol_client(self) -> SolClient:
-        return await self._new_client(SolClient, self._cfg)
+        return await self._new_client(SolClient, self._cfg, await self._get_rpc_stat_client())
 
     @cached_method
     async def _get_core_api_client(self) -> CoreApiClient:
@@ -73,3 +79,17 @@ class BaseCmdHandler:
 
         await client.start()
         return client
+
+
+class _FakeRpcStatClient(RpcStatClient):
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def commit_rpc_call(self, data: RpcCallData) -> None:
+        pass
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
