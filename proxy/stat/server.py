@@ -12,7 +12,7 @@ from common.utils.process_pool import ProcessPool
 from .api import (
     OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
-    OpExecutionTokenBalanceData,
+    OpExecTokenBalanceData,
     STATISTIC_ENDPOINT,
     TxPoolData,
     TxFailData,
@@ -31,11 +31,6 @@ class OpResourceStatApi(AppDataApi):
         self._earned_token_balance: dict[str, dict[EthAddress, int]] = {}
         self._earned_token_balance_stat = StatGauge(
             "operator_earned_token_balance", "Operator earned token balance", registry=registry
-        )
-
-        # legacy
-        self._neon_balance_stat = StatGauge(
-            "operator_neon_balance", "Operator NEON balance", registry=registry
         )
 
         # Holder account status
@@ -68,10 +63,6 @@ class OpResourceStatApi(AppDataApi):
             "operator_execution_token_balance", "Operator token balance for execution",
             registry=registry
         )
-        # legacy
-        self._sol_balance_stat = StatGauge(
-            "operator_sol_balance", "Operator SOL balance", registry=registry
-        )
 
     @AppDataApi.method(name="commitOpEarnedTokensBalance")
     def on_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None:
@@ -86,12 +77,6 @@ class OpResourceStatApi(AppDataApi):
         label = dict(token_name=data.token_name)
         total_balance = sum(self._earned_token_balance[data.token_name].values())
         self._earned_token_balance_stat.set(label, total_balance)
-
-        if data.token_name == "NEON":
-            label = dict(eth_address=data.eth_address.to_string())
-            self._neon_balance_stat.set(label, data.balance)
-            label = {}
-            self._neon_balance_stat.set(label, total_balance)
 
     @AppDataApi.method(name="commitOpResourceHolderStatus")
     def on_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
@@ -125,17 +110,15 @@ class OpResourceStatApi(AppDataApi):
         )
 
     @AppDataApi.method(name="commitOpExecutionTokenBalance")
-    def on_op_exec_token_balance(self, data: OpExecutionTokenBalanceData) -> None:
+    def on_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
         self._execution_token_balance[data.owner] = data.balance
 
         label = dict(owner=data.owner.to_string())
         self._execution_token_balance_stat.set(label, data.balance)
-        self._sol_balance_stat.set(label, data.balance)
 
         label = {}
         total_balance = sum(self._execution_token_balance.values())
         self._execution_token_balance_stat.set(label, total_balance)
-        self._sol_balance_stat.set(label, total_balance)
 
 
 class RpcStatApi(AppDataApi):
