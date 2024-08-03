@@ -33,7 +33,8 @@ class NeonIndexerApp:
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        self._sol_client = SolClient(cfg)
+        self._stat_client = StatClient(self._cfg)
+        self._sol_client = SolClient(cfg, self._stat_client)
         self._core_api_server = CoreApiServer(cfg)
         self._stat_server = StatServer(cfg)
 
@@ -87,27 +88,26 @@ class NeonIndexerApp:
     async def _run_indexing(self) -> None:
         core_api_client = CoreApiClient(cfg=self._cfg, sol_client=self._sol_client)
         tracer_api_client = TracerApiClient(cfg=self._cfg)
-        stat_client = StatClient(self._cfg)
 
         indexer = Indexer(
             self._cfg,
             self._sol_client,
             core_api_client,
             tracer_api_client,
-            stat_client,
+            self._stat_client,
             self._db,
         )
 
         await self._sol_client.start()
         await core_api_client.start()
-        await stat_client.start()
+        await self._stat_client.start()
         await tracer_api_client.start()
 
         await indexer.run()
 
         await core_api_client.stop()
         await tracer_api_client.stop()
-        await stat_client.stop()
+        await self._stat_client.stop()
         await self._sol_client.stop()
 
     async def _init_slot_range(self) -> None:
@@ -456,7 +456,7 @@ class NeonIndexerApp:
             if not slot_range_list:
                 break
 
-            reindexer = _ReIndexer(idx, self._cfg, slot_range_list)
+            reindexer = _ReIndexer(idx, self._cfg, self._stat_client, slot_range_list)
             self._reindex_process_list.append(reindexer)
             reindexer.start()
 
@@ -466,10 +466,12 @@ class _ReIndexer:
         self,
         idx: int,
         cfg: Config,
+        stat_client: StatClient,
         slot_range_list: Sequence[IndexerDbSlotRange],
     ):
         self._idx = idx
         self._cfg = cfg
+        self._stat_client = stat_client
         self._slot_range_list = slot_range_list
         self._process: mp.Process | None = None
 
@@ -492,7 +494,7 @@ class _ReIndexer:
         msg_filter = LogMsgFilter(self._cfg)
 
         try:
-            sol_client = SolClient(self._cfg)
+            sol_client = SolClient(self._cfg, self._stat_client)
             core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client)
             stat_client = StatClient(self._cfg)
 

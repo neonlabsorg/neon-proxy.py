@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import ClassVar
+from typing import ClassVar, Callable
 
 from typing_extensions import Self
 
@@ -105,9 +105,23 @@ class ReIndexHandler(BaseCmdHandler):
             )
 
             db = await self._new_client(IndexerDb, self._cfg, DbConnection(self._cfg), slot_range)
-            stat_client = await self._new_client(StatClient, self._cfg)
+            stat_client = _FakeStatClient(self._cfg)
 
             indexer = Indexer(self._cfg, sol_client, core_api_client, None, stat_client, db)
             await indexer.run()
             await asyncio.sleep(1)
             return 0
+
+
+class _FakeStatClient(StatClient):
+    def __init__(self, cfg: Config) -> None:  # noqa
+        self._cfg = cfg
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
+    def _put_to_queue(self, call: Callable, data) -> None:
+        pass
