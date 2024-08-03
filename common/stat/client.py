@@ -5,9 +5,9 @@ import contextlib
 import logging
 from typing import Final, Callable
 
-from common.config.config import Config
-from common.utils.json_logger import logging_context
-from common.utils.pydantic import BaseModel
+from ..config.config import Config
+from ..utils.json_logger import logging_context
+from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
 

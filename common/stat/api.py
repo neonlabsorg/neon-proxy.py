@@ -6,3 +6,7 @@ class RpcCallData(BaseModel):
     method: str
     is_error: bool
     time_nsec: int
+
+
+class MetricStatData(BaseModel):
+    data: str
