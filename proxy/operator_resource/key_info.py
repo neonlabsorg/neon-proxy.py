@@ -8,6 +8,7 @@ from typing_extensions import Self
 from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg
+from common.neon_rpc.api import OpEarnAccountModel, NeonAccountModel
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 
@@ -59,3 +60,9 @@ class OpSignerInfo:
     def pop_free_holder_list(self) -> deque[OpHolderInfo]:
         holder_list, self.free_holder_list = self.free_holder_list, deque()
         return holder_list
+
+
+@dataclass
+class OpNeonBalanceInfo:
+    neon_account: NeonAccountModel
+    earn_account: OpEarnAccountModel

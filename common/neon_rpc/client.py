@@ -26,7 +26,7 @@ from .api import (
     EmulSolTxListResp,
     EmulSolTxInfo,
     EmulSolTxListRequest,
-    OperatorAccountModel,
+    OpEarnAccountModel,
     NeonAccountStatus,
 )
 from ..config.config import Config
@@ -158,13 +158,13 @@ class CoreApiClient(SimpleAppDataClient):
         resp: CoreApiResp = await self._call_method(self._get_storage_at, req)
         return EthHash32.from_raw(bytes(resp.value))
 
-    async def get_operator_account(
+    async def get_earn_account(
         self,
         evm_cfg: EvmConfigModel,
         operator_key: SolPubKey,
         account: NeonAccount,
         _block: NeonBlockHdrModel | None,
-    ) -> OperatorAccountModel:
+    ) -> OpEarnAccountModel:
         seed_list = (
             evm_cfg.account_seed_version.to_bytes(1, byteorder="little"),
             operator_key.to_bytes(),
@@ -193,7 +193,7 @@ class CoreApiClient(SimpleAppDataClient):
             status = NeonAccountStatus.Empty
             balance = 0
 
-        return OperatorAccountModel(
+        return OpEarnAccountModel(
             status=status,
             operator_key=operator_key,
             neon_account=account,

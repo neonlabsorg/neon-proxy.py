@@ -280,9 +280,9 @@ class OpBalanceHandler(BaseNPCmdHandler):
                 neon_acct = NeonAccount.from_raw(op_addr.eth_address, chain_id)
 
                 neon_balance = await core_api_client.get_neon_account(neon_acct, None)
-                op_balance = await core_api_client.get_operator_account(self._evm_cfg, op_addr.owner, neon_acct, None)
+                earn_balance = await core_api_client.get_earn_account(self._evm_cfg, op_addr.owner, neon_acct, None)
 
-                balance = neon_balance.balance + op_balance.balance
+                balance = neon_balance.balance + earn_balance.balance
                 token_balance_dict[chain_id] = balance
 
             balance = _OpBalance(op_addr.owner, op_addr.eth_address, token_balance_dict)

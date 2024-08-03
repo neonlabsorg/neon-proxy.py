@@ -19,7 +19,7 @@ class OpResourceHolderStatusData(BaseModel):
     blocked_holder_cnt: int
 
 
-class OpExecutionTokenBalanceData(BaseModel):
+class OpExecTokenBalanceData(BaseModel):
     owner: SolPubKeyField
     balance: int
 
