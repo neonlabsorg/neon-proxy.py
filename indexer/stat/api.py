@@ -10,6 +10,7 @@ class NeonBlockStat(BaseModel):
     parsed_block: int
     finalized_block: int
     confirmed_block: int
+    corrupted_block_cnt: int
     tracer_block: int | None
 
 
@@ -19,6 +20,7 @@ class NeonReindexBlockStat(BaseModel):
     parsed_block: int
     stop_block: int
     term_block: int
+    corrupted_block_cnt: int
 
 
 class NeonDoneReindexStat(BaseModel):

@@ -97,8 +97,8 @@ class Indexer:
         neon_block.complete_block()
         self._neon_block_dict.add_neon_block(neon_block)
         self._last_processed_slot = neon_block.slot
-        self._print_progress_stat()
         self._commit_progress_stat()
+        self._print_progress_stat()
 
     async def _add_neon_block_to_queue(self, dctx: SolNeonDecoderCtx) -> None:
         is_finalized = dctx.is_finalized
@@ -124,6 +124,7 @@ class Indexer:
                 parsed_block=self._last_processed_slot,
                 stop_block=self._db.stop_slot,
                 term_block=self._term_slot,
+                corrupted_block_cnt=self._decoder_stat.neon_corrupted_block_cnt_diff,
             )
             self._stat_client.commit_reindex_block_stat(block_stat)
         else:
@@ -133,6 +134,7 @@ class Indexer:
                 finalized_block=self._last_finalized_slot,
                 confirmed_block=self._last_confirmed_slot,
                 tracer_block=self._last_tracer_slot,
+                corrupted_block_cnt=self._decoder_stat.neon_corrupted_block_cnt_diff,
             )
             self._stat_client.commit_block_stat(block_stat)
 
@@ -144,7 +146,7 @@ class Indexer:
             "start block slot": self._db.start_slot,
             "current block slot": self._last_processed_slot,
             "min used block slot": self._neon_block_dict.min_slot,
-            "processing ms": self._decoder_stat.processing_time_ms,
+            "processing ms": self._decoder_stat.processing_time_msec,
             "processed solana blocks": self._decoder_stat.sol_block_cnt,
             "corrupted neon blocks": self._decoder_stat.neon_corrupted_block_cnt,
             "processed solana transactions": self._decoder_stat.sol_tx_meta_cnt,
