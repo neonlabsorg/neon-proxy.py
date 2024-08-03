@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from common.app_data.client import AppDataClient
 from common.config.config import Config
+from common.stat.api import RpcCallData
 from common.stat.client import BaseStatClient
+from common.stat.rpc_client import RpcStatClient
 from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, NeonTxStat, STATISTIC_ENDPOINT
 
 
-class StatClient(AppDataClient, BaseStatClient):
+class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     def __init__(self, cfg: Config) -> None:
         AppDataClient.__init__(self, cfg)
         BaseStatClient.__init__(self, cfg)
@@ -31,6 +33,12 @@ class StatClient(AppDataClient, BaseStatClient):
 
     def commit_tx_stat(self, data: NeonTxStat) -> None:
         self._put_to_queue(self._commit_tx_stat, data)
+
+    def commit_rpc_call(self, data: RpcCallData) -> None:
+        self._put_to_queue(self._commit_rpc_call, data)
+
+    @AppDataClient.method(name="commitRpcCall")
+    async def _commit_rpc_call(self, data: RpcCallData) -> None: ...
 
     @AppDataClient.method(name="commitBlock")
     async def _commit_block_stat(self, data: NeonBlockStat) -> None: ...

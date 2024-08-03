@@ -36,8 +36,10 @@ class NeonProxyApp:
 
         self._recv_sig_num = signal.SIG_DFL
 
+        self._stat_client = StatClient(cfg)
+
         # Init Solana client
-        sol_client = SolClient(cfg)
+        sol_client = SolClient(cfg, self._stat_client)
 
         # Init Indexer Db client
         db_conn = DbConnection(cfg)
@@ -52,7 +54,6 @@ class NeonProxyApp:
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)
-        stat_client = StatClient(cfg)
         fee_client = AtlasFeeClient(cfg)
 
         # Init Executor server
@@ -71,7 +72,7 @@ class NeonProxyApp:
             core_api_client=core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
-            stat_client=stat_client,
+            stat_client=self._stat_client,
         )
 
         # Init Mempool
@@ -81,7 +82,7 @@ class NeonProxyApp:
             sol_client=sol_client,
             exec_client=exec_client,
             op_client=op_client,
-            stat_client=stat_client,
+            stat_client=self._stat_client,
             db=db,
         )
 
@@ -97,7 +98,7 @@ class NeonProxyApp:
                 core_api_client=core_api_client,
                 sol_client=sol_client,
                 mp_client=mp_client,
-                stat_client=stat_client,
+                stat_client=self._stat_client,
                 op_client=op_client,
                 db=db,
             )
@@ -108,7 +109,7 @@ class NeonProxyApp:
             core_api_client=core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
-            stat_client=stat_client,
+            stat_client=self._stat_client,
             db=db,
             gas_tank=gas_tank,
         )

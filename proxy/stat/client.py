@@ -3,7 +3,8 @@ from __future__ import annotations
 from common.app_data.client import AppDataClient
 from common.config.config import Config
 from common.stat.api import RpcCallData
-from common.stat.client import BaseStatClient, RpcStatClient
+from common.stat.client import BaseStatClient
+from common.stat.rpc_client import RpcStatClient
 from .api import (
     OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
@@ -47,6 +48,9 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
 
     def commit_tx_pool(self, data: TxPoolData) -> None:
         self._put_to_queue(self._commit_tx_pool, data)
+
+    def commit_rpc_call(self, data: RpcCallData) -> None:
+        self._put_to_queue(self._commit_rpc_call, data)
 
     @AppDataClient.method(name="commitOpEarnedTokensBalance")
     async def _commit_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None: ...

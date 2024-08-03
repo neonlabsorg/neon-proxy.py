@@ -2,10 +2,28 @@ from typing import ClassVar
 
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
-from common.stat.metric import StatRegistry, StatGauge, StatCounter
+from common.stat.api import RpcCallData
+from common.stat.metric import StatRegistry, StatGauge, StatCounter, StatSummary
 from common.stat.prometheus import PrometheusServer
 from common.utils.process_pool import ProcessPool
 from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, NeonTxStat, STATISTIC_ENDPOINT
+
+
+class RpcStatApi(AppDataApi):
+    name: ClassVar[str] = "IndexerStatistic::RPC"
+
+    def __init__(self, registry: StatRegistry):
+        super().__init__()
+        self._request = StatSummary("request", "RPC requests", registry=registry)
+
+    @AppDataApi.method(name="commitRpcCall")
+    def on_rpc_call(self, data: RpcCallData) -> None:
+        label = dict(
+            service=data.service,
+            method=data.method,
+            is_error=data.is_error,
+        )
+        self._request.add(label, data.time_nsec / (10**9))
 
 
 class BlockStatApi(AppDataApi):
@@ -103,6 +121,7 @@ class MetricServer(AppDataServer):
     def __init__(self, cfg: Config, registry: StatRegistry) -> None:
         super().__init__(cfg)
         self.listen(host=self._cfg.stat_ip, port=self._cfg.stat_port)
+        self._add_api(RpcStatApi(registry))
         self._add_api(BlockStatApi(registry))
         self._add_api(TxStatApi(registry))
 
