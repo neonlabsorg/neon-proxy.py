@@ -11,7 +11,7 @@ from ..config.config import Config
 from ..neon_rpc.client import CoreApiClient
 from ..solana_rpc.client import SolClient
 from ..stat.api import RpcCallData
-from ..stat.rpc_client import RpcStatClient
+from ..stat.client_rpc import RpcStatClient
 from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
