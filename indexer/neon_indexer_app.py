@@ -86,7 +86,7 @@ class NeonIndexerApp:
             return 1
 
     async def _run_indexing(self) -> None:
-        core_api_client = CoreApiClient(cfg=self._cfg, sol_client=self._sol_client)
+        core_api_client = CoreApiClient(cfg=self._cfg, sol_client=self._sol_client, stat_client=self._stat_client)
         tracer_api_client = TracerApiClient(cfg=self._cfg)
 
         indexer = Indexer(
@@ -456,7 +456,7 @@ class NeonIndexerApp:
             if not slot_range_list:
                 break
 
-            reindexer = _ReIndexer(idx, self._cfg, self._stat_client, slot_range_list)
+            reindexer = _ReIndexer(idx, self._cfg, slot_range_list)
             self._reindex_process_list.append(reindexer)
             reindexer.start()
 
@@ -466,12 +466,10 @@ class _ReIndexer:
         self,
         idx: int,
         cfg: Config,
-        stat_client: StatClient,
         slot_range_list: Sequence[IndexerDbSlotRange],
     ):
         self._idx = idx
         self._cfg = cfg
-        self._stat_client = stat_client
         self._slot_range_list = slot_range_list
         self._process: mp.Process | None = None
 
@@ -494,9 +492,9 @@ class _ReIndexer:
         msg_filter = LogMsgFilter(self._cfg)
 
         try:
-            sol_client = SolClient(self._cfg, self._stat_client)
-            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client)
             stat_client = StatClient(self._cfg)
+            sol_client = SolClient(self._cfg, stat_client)
+            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client, stat_client=stat_client)
 
             db_conn = DbConnection(self._cfg)
             db = IndexerDb(self._cfg, db_conn)
