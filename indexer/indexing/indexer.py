@@ -98,7 +98,6 @@ class Indexer:
         self._neon_block_dict.add_neon_block(neon_block)
         self._last_processed_slot = neon_block.slot
         self._print_progress_stat()
-        self._commit_block_stat(neon_block)
         self._commit_progress_stat()
 
     async def _add_neon_block_to_queue(self, dctx: SolNeonDecoderCtx) -> None:
@@ -112,14 +111,6 @@ class Indexer:
         dctx.add_neon_block_to_queue()
         if is_finalized and dctx.is_neon_block_queue_full:
             await self._save_checkpoint(dctx)
-
-    def _commit_block_stat(self, neon_block: NeonIndexedBlockInfo):
-        """Send statistics about blocks which changed state from confirmed to finalized"""
-        if not self._cfg.gather_stat:
-            return
-
-        for tx_stat in neon_block.iter_stat_neon_tx():
-            self._stat_client.commit_tx_stat(tx_stat)
 
     def _commit_progress_stat(self) -> None:
         """Send statistics for the current block's range"""
