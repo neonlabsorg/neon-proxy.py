@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import dataclasses
 import itertools
 import logging
 import time
@@ -17,11 +16,10 @@ from common.ethereum.bin_str import EthBinStrField, EthBinStr
 from common.ethereum.hash import EthTxHash, EthAddress, EthTxHashField, EthBlockHash, EthHash32
 from common.neon.block import NeonBlockHdrModel
 from common.neon.evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
-from common.neon.neon_program import NeonEvmIxCode, NeonProg
+from common.neon.neon_program import NeonProg
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo, SolNeonAltTxIxModel
 from common.neon.transaction_model import NeonTxModel
-from common.solana.alt_program import SolAltIxCode
 from common.solana.block import SolRpcBlockInfo
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey, SolPubKeyField
@@ -31,7 +29,6 @@ from common.solana.transaction_meta import SolRpcTxInfo
 from common.utils.cached import cached_method, reset_cached_method, cached_property
 from common.utils.format import str_fmt_object
 from common.utils.pydantic import BaseModel
-from ..stat.api import NeonTxStat
 
 _LOG = logging.getLogger(__name__)
 
@@ -1136,9 +1133,6 @@ class NeonIndexedBlockInfo:
     def iter_alt(self) -> Iterator[NeonIndexedAltInfo]:
         return iter(self._sol_alt_dict.values())
 
-    def iter_stat_neon_tx(self) -> Iterator[NeonTxStat]:
-        return iter(self._get_neon_tx_stat_list())
-
     def complete_block(self) -> None:
         assert not self._is_completed
         self._is_completed = True
@@ -1188,57 +1182,6 @@ class NeonIndexedBlockInfo:
     def _del_neon_tx(self, tx: NeonIndexedTxInfo) -> None:
         if not self._neon_tx_dict.pop(tx.key, None):
             _LOG.error("attempt to remove the not-exist %s", tx)
-
-    @cached_method
-    def _get_neon_tx_stat_list(self) -> tuple[NeonTxStat, ...]:
-        stat_list: list[NeonTxStat] = list()
-        if self._sol_neon_ix_list:
-            stat_list.extend(stat.to_clean_copy() for stat in self._calc_evm_tx_stat().values())
-        if self._sol_alt_ix_list:
-            stat_list.extend(stat.to_clean_copy() for stat in self._calc_alt_tx_stat().values())
-        return tuple(stat_list)
-
-    def _calc_evm_tx_stat(self) -> dict[int, _NeonTxStatDraft]:
-        tx_stat_dict: dict[int, _NeonTxStatDraft] = dict()
-        prev_sol_tx_sig = SolTxSig.default()
-        for sol_neon_ix in self._sol_neon_ix_list:
-            stat = tx_stat_dict.get(sol_neon_ix.neon_ix_code, None)
-            if not stat:
-                stat = _NeonTxStatDraft(tx_type=NeonEvmIxCode.from_raw(sol_neon_ix.neon_ix_code).name)
-                tx_stat_dict[sol_neon_ix.neon_ix_code] = stat
-
-            sol_tx_sig = sol_neon_ix.sol_tx_sig
-            if sol_tx_sig != prev_sol_tx_sig:
-                prev_sol_tx_sig = sol_tx_sig
-                stat.sol_expense += sol_neon_ix.sol_tx_cost.sol_expense
-                stat.sol_tx_cnt += 1
-
-            if sol_neon_ix.is_success:
-                if not sol_neon_ix.neon_tx_return.is_empty:
-                    stat.completed_neon_tx_cnt += 1
-                elif sol_neon_ix.neon_ix_code in (NeonEvmIxCode.CancelWithHash, NeonEvmIxCode.OldCancelWithHashV1004):
-                    stat.canceled_neon_tx_cnt += 1
-
-        return tx_stat_dict
-
-    def _calc_alt_tx_stat(self) -> dict[int, _NeonTxStatDraft]:
-        tx_stat_dict: dict[int, _NeonTxStatDraft] = dict()
-        prev_sol_tx_sig = SolTxSig.default()
-
-        for sol_alt_ix in self._sol_alt_ix_list:
-            sol_tx_sig = sol_alt_ix.sol_sig
-            if sol_tx_sig == prev_sol_tx_sig:
-                continue
-            prev_sol_tx_sig = sol_tx_sig
-
-            stat = tx_stat_dict.get(sol_alt_ix.alt_ix_code, None)
-            if not stat:
-                stat = _NeonTxStatDraft(tx_type=SolAltIxCode.from_raw(sol_alt_ix.alt_ix_code).name)
-                tx_stat_dict[sol_alt_ix.alt_ix_code] = stat
-
-            stat.sol_tx_cnt += 1
-            stat.sol_expense += sol_alt_ix.sol_tx_cost.sol_expense
-        return tx_stat_dict
 
     def _finalize_log_list(self) -> None:
         log_idx = 0
@@ -1322,18 +1265,6 @@ class NeonIndexedBlockInfo:
                 alt.mark_stuck()
             if self._min_slot > alt.slot:
                 self._min_slot = alt.slot
-
-
-@dataclass
-class _NeonTxStatDraft:
-    tx_type: str
-    completed_neon_tx_cnt: int = 0
-    canceled_neon_tx_cnt: int = 0
-    sol_tx_cnt: int = 0
-    sol_expense: int = 0
-
-    def to_clean_copy(self) -> NeonTxStat:
-        return NeonTxStat.from_dict(dataclasses.asdict(self))
 
 
 class NeonIndexedBlockDict:

@@ -5,7 +5,7 @@ from common.config.config import Config
 from common.stat.api import RpcCallData
 from common.stat.client import BaseStatClient
 from common.stat.rpc_client import RpcStatClient
-from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, NeonTxStat, STATISTIC_ENDPOINT
+from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, STATISTIC_ENDPOINT
 
 
 class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
@@ -31,9 +31,6 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     def commit_done_reindex_stat(self, data: NeonDoneReindexStat) -> None:
         self._put_to_queue(self._commit_done_reindex_stat, data)
 
-    def commit_tx_stat(self, data: NeonTxStat) -> None:
-        self._put_to_queue(self._commit_tx_stat, data)
-
     def commit_rpc_call(self, data: RpcCallData) -> None:
         self._put_to_queue(self._commit_rpc_call, data)
 
@@ -48,6 +45,3 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
 
     @AppDataClient.method(name="commitReindexDone")
     async def _commit_done_reindex_stat(self, data: NeonDoneReindexStat) -> None: ...
-
-    @AppDataClient.method(name="commitTransaction")
-    async def _commit_tx_stat(self, data: NeonTxStat) -> None: ...

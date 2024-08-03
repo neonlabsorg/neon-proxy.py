@@ -3,10 +3,10 @@ from typing import ClassVar
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
 from common.stat.api import RpcCallData
-from common.stat.metric import StatRegistry, StatGauge, StatCounter, StatSummary
+from common.stat.metric import StatRegistry, StatGauge, StatSummary
 from common.stat.prometheus import PrometheusServer
 from common.utils.process_pool import ProcessPool
-from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, NeonTxStat, STATISTIC_ENDPOINT
+from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, STATISTIC_ENDPOINT
 
 
 class RpcStatApi(AppDataApi):
@@ -69,61 +69,12 @@ class BlockStatApi(AppDataApi):
         self._block_term.reset(label)
 
 
-class TxStatApi(AppDataApi):
-    name: ClassVar[str] = "IndexerStatistic::Transaction"
-
-    def __init__(self, registry: StatRegistry):
-        super().__init__()
-        self._tx_count = StatCounter(
-            "tx_count",
-            "Number of completed Neon transactions",
-            registry=registry,
-        )
-        self._tx_count_by_type = StatCounter(
-            "tx_count_by_type",
-            "Number of completed Neon transactions by type",
-            registry=registry,
-        )
-
-        self._tx_canceled = StatCounter(
-            "tx_canceled",
-            "Number of canceled Neon transactions",
-            registry=registry,
-        )
-
-        self._tx_sol_expense = StatGauge(
-            "tx_sol_spent",
-            "LAMPORTs spent on transaction execution",
-            registry=registry,
-        )
-
-        self._sol_tx_count = StatCounter(
-            "tx_sol_count_by_type",
-            "Number of solana transactions within by type",
-            registry=registry,
-        )
-
-    @AppDataApi.method(name="commitTransaction")
-    def on_commit_tx(self, data: NeonTxStat) -> None:
-        label = {"type": data.tx_type}
-        if data.completed_neon_tx_cnt:
-            self._tx_count.add({}, data.completed_neon_tx_cnt)
-            self._tx_count_by_type.add(label, data.completed_neon_tx_cnt)
-
-        if data.canceled_neon_tx_cnt:
-            self._tx_canceled.add({}, data.canceled_neon_tx_cnt)
-
-        self._tx_sol_expense.add({}, data.sol_expense)
-        self._sol_tx_count.add(label, data.sol_tx_cnt)
-
-
 class MetricServer(AppDataServer):
     def __init__(self, cfg: Config, registry: StatRegistry) -> None:
         super().__init__(cfg)
         self.listen(host=self._cfg.stat_ip, port=self._cfg.stat_port)
         self._add_api(RpcStatApi(registry))
         self._add_api(BlockStatApi(registry))
-        self._add_api(TxStatApi(registry))
 
     def _add_api(self, api: AppDataApi) -> None:
         self.add_api(api, endpoint=STATISTIC_ENDPOINT)
