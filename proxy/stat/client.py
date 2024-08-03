@@ -8,7 +8,7 @@ from common.stat.rpc_client import RpcStatClient
 from .api import (
     OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
-    OpExecutionTokenBalanceData,
+    OpExecTokenBalanceData,
     STATISTIC_ENDPOINT,
     TxDoneData,
     TxFailData,
@@ -37,7 +37,7 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     def commit_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
         self._put_to_queue(self._commit_op_resource_holder_status, data)
 
-    def commit_op_execution_token_balance(self, data: OpExecutionTokenBalanceData) -> None:
+    def commit_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
         self._put_to_queue(self._commit_op_exec_token_balance, data)
 
     def commit_tx_done(self, data: TxDoneData) -> None:
@@ -59,7 +59,7 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     async def _commit_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None: ...
 
     @AppDataClient.method(name="commitOpExecutionTokenBalance")
-    async def _commit_op_exec_token_balance(self, data: OpExecutionTokenBalanceData) -> None: ...
+    async def _commit_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None: ...
 
     @AppDataClient.method(name="commitRpcCall")
     async def _commit_rpc_call(self, data: RpcCallData) -> None: ...
