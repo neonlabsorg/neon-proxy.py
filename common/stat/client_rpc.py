@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from typing_extensions import Self
 
-from common.http.client import HttpClientRequest
-from common.stat.api import RpcCallData
+from ..http.client import HttpClientRequest
+from .api import RpcCallData
 
 
 class RpcStatClient(abc.ABC):

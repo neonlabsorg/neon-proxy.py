@@ -2,8 +2,8 @@ from typing import ClassVar
 
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
-from common.stat.api import RpcCallData
-from common.stat.metric import StatRegistry, StatGauge, StatSummary
+from common.stat.api import RpcCallData, MetricStatData
+from common.stat.metric import StatRegistry, StatGauge, StatSummary, render
 from common.stat.prometheus import PrometheusServer
 from common.utils.process_pool import ProcessPool
 from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, STATISTIC_ENDPOINT
@@ -79,12 +79,25 @@ class BlockStatApi(AppDataApi):
         self._block_term.reset(label)
 
 
+class MetricApi(AppDataApi):
+    name: ClassVar[str] = "IndexerStatistic::MetricStat"
+
+    def __init__(self, registry: StatRegistry):
+        super().__init__()
+        self._registry = registry
+
+    @AppDataApi.method(name="getMetricStatistic")
+    def on_metric_stat(self) -> MetricStatData:
+        return render(self._registry)
+
+
 class MetricServer(AppDataServer):
     def __init__(self, cfg: Config, registry: StatRegistry) -> None:
         super().__init__(cfg)
         self.listen(host=self._cfg.stat_ip, port=self._cfg.stat_port)
         self._add_api(RpcStatApi(registry))
         self._add_api(BlockStatApi(registry))
+        self._add_api(MetricApi(registry))
 
     def _add_api(self, api: AppDataApi) -> None:
         self.add_api(api, endpoint=STATISTIC_ENDPOINT)
@@ -93,14 +106,23 @@ class MetricServer(AppDataServer):
 class StatServer(ProcessPool):
     def __init__(self, cfg: Config) -> None:
         super().__init__()
+        self.set_process_cnt(2)
+        self._idx = 0
+
         self._registry = StatRegistry()
         self._metric_server = MetricServer(cfg, self._registry)
-        self._prometheus_server = PrometheusServer(cfg, self._registry)
+        self._prometheus_server = PrometheusServer(cfg, STATISTIC_ENDPOINT)
 
     def _on_process_start(self, idx: int) -> None:
-        self._metric_server.start()
-        self._prometheus_server.start()
+        super()._on_process_start(idx)
+        self._idx = idx
+        if idx == 0:
+            self._metric_server.start()
+        else:
+            self._prometheus_server.start()
 
     def _on_process_stop(self) -> None:
-        self._prometheus_server.stop()
-        self._metric_server.stop()
+        if self._idx == 0:
+            self._metric_server.stop()
+        else:
+            self._prometheus_server.stop()

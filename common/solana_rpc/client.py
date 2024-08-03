@@ -40,7 +40,7 @@ from ..solana.transaction_meta import (
     SolRpcInvalidParamErrorInfo,
 )
 from ..stat.api import RpcCallData
-from ..stat.rpc_client import RpcStatClient, RpcClientRequest
+from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import ttl_cached_method
 
 _SolRpcResp = TypeVar("_SolRpcResp", bound=_resp.RPCResult)
