@@ -183,7 +183,7 @@ class NeonStorageAtRequest(BaseModel):
     slot: int | None
 
 
-class OperatorAccountModel(BaseModel):
+class OpEarnAccountModel(BaseModel):
     status: NeonAccountStatusField
     operator_key: SolPubKeyField
     neon_account: NeonAccountField
