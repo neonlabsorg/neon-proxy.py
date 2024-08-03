@@ -38,6 +38,12 @@ class BlockStatApi(AppDataApi):
         self._block_stop = StatGauge("block_stop", "Stop block number", registry=registry)
         self._block_term = StatGauge("block_term", "Termination block number", registry=registry)
         self._block_tracer = StatGauge("block_tracer", "Last tracer block number", registry=registry)
+        self._corrupted_block_cnt = StatGauge("corrupted_block_cnt", "Number of corrupted blocks", registry=registry)
+
+        # set defaults
+        label = {}
+        self._block_tracer.set(label, 0)
+        self._corrupted_block_cnt.set(label, 0)
 
     @AppDataApi.method(name="commitBlock")
     def on_block(self, data: NeonBlockStat) -> None:
@@ -47,6 +53,8 @@ class BlockStatApi(AppDataApi):
         self._block_parsed.set(label, data.parsed_block)
         self._block_confirmed.set(label, data.confirmed_block)
         self._block_finalized.set(label, data.finalized_block)
+        if data.corrupted_block_cnt > 0:
+            self._corrupted_block_cnt.add({}, data.corrupted_block_cnt)
         if data.tracer_block:
             self._block_tracer.set(label, data.tracer_block)
 
@@ -58,6 +66,8 @@ class BlockStatApi(AppDataApi):
         self._block_parsed.set(label, data.parsed_block)
         self._block_stop.set(label, data.stop_block)
         self._block_term.set(label, data.term_block)
+        if data.corrupted_block_cnt > 0:
+            self._corrupted_block_cnt.add(label, data.corrupted_block_cnt)
 
     @AppDataApi.method(name="commitReindexDone")
     def on_done_reindex(self, data: NeonDoneReindexStat) -> None:
