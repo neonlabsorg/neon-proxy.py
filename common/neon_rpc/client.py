@@ -36,11 +36,11 @@ from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
 from ..http.client import HttpClient
+from ..http.errors import PydanticValidationError
 from ..http.utils import HttpURL
 from ..neon.account import NeonAccount
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
-from ..simple_app_data.errors import BadRespError
 from ..solana.account import SolAccountModel
 from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
@@ -287,7 +287,7 @@ class CoreApiClient(HttpClient):
                 try:
                     resp = CoreApiResp.from_json(resp_json)
 
-                except BadRespError as exc:
+                except PydanticValidationError as exc:
                     _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
                     continue
 
