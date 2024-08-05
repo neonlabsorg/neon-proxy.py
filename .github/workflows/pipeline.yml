@@ -15,6 +15,24 @@ on:
       initial_pr:
         required: false
         description: "Initial PR"
+      neon_evm_github_event_name:
+        required: false
+        description: "Neon EVM github event name"
+      neon_evm_github_ref:
+        required: false
+        description: "Neon EVM github ref"
+      neon_evm_github_ref_name:
+        required: false
+        description: "Neon EVM github ref name"
+      neon_evm_github_head_ref:
+        required: false
+        description: "Neon EVM github head ref"
+      neon_evm_github_base_ref:
+        required: false
+        description: "Neon EVM github base ref"
+      neon_evm_last_commit_message:
+        required: false
+        description: "Neon EVM last commit message"
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
   push:
@@ -354,6 +372,15 @@ jobs:
       proxy_ip: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
       solana_ip: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       external_call: true
+      repo: ${{ github.event.inputs.neon_evm_branch && 'evm' || 'proxy' }}
+      event_name: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_github_event_name || github.event_name }}
+      ref: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_github_ref || github.ref }}
+      ref_name: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_github_ref_name || github.ref_name }}
+      head_ref: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_github_head_ref || github.head_ref }}
+      base_ref: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_github_base_ref || github.base_ref }}
+      last_commit_message: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_last_commit_message || github.event.head_commit.message }}
+      docker_image_tag: ${{ github.event.inputs.neon_evm_branch && github.event.inputs.neon_evm_commit || github.sha }}
+      history_depth_limit: '10'
 
   requests-report:
     needs:
