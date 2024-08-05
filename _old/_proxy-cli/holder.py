@@ -114,5 +114,5 @@ class HolderHandler:
 
     def _execute_stage(self, stage: NeonTxStage, res_info: OpResInfo) -> None:
         stage.build()
-        tx_sender = SolTxListSender(self._cfg, self._sol_client, res_info.signer)
+        tx_sender = SolTxListSender1(self._cfg, self._sol_client, res_info.signer)
         tx_sender.send([stage.tx])

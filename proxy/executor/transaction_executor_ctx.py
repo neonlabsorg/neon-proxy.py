@@ -29,6 +29,7 @@ from common.utils.cached import cached_property, cached_method, reset_cached_met
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
 from ..base.op_client import OpResourceClient
+from ..stat.client import StatClient
 
 _LOG = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class NeonExecTxCtx:
         core_api_client: CoreApiClient,
         op_client: OpResourceClient,
         fee_client: AtlasFeeClient,
+        stat_client: StatClient,
         tx_request: ExecTxRequest | ExecStuckTxRequest,
     ) -> None:
         self._cfg = cfg
@@ -72,6 +74,7 @@ class NeonExecTxCtx:
         self._core_api_client = core_api_client
         self._op_client = op_client
         self._fee_client = fee_client
+        self._stat_client = stat_client
 
         self._tx_request = tx_request
         self._tx_sender = EthAddress.default()
@@ -120,6 +123,10 @@ class NeonExecTxCtx:
     @property
     def fee_client(self) -> AtlasFeeClient:
         return self._fee_client
+
+    @property
+    def stat_client(self) -> StatClient:
+        return self._stat_client
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:

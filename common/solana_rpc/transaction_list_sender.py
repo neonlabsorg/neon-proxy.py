@@ -6,6 +6,7 @@ import dataclasses
 import enum
 import logging
 import random
+import time
 from typing import Sequence
 
 from .client import SolClient
@@ -18,6 +19,7 @@ from .errors import (
     SolOutOfMemoryError,
 )
 from .transaction_error_parser import SolTxErrorParser
+from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from .ws_client import SolWatchTxSession
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
@@ -91,8 +93,15 @@ class SolTxListSender:
         SolTxSendState.Status.InvalidIxDataError,
     )
 
-    def __init__(self, cfg: Config, sol_session: SolWatchTxSession, sol_tx_signer: SolTxListSigner) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        stat_client: SolTxStatClient,
+        sol_session: SolWatchTxSession,
+        sol_tx_signer: SolTxListSigner,
+    ) -> None:
         self._cfg = cfg
+        self._stat_client = stat_client
         self._sol_session = sol_session
         self._tx_signer = sol_tx_signer
         self._num_slots_behind: int | None
@@ -103,6 +112,7 @@ class SolTxListSender:
         self._tx_list: list[SolTx] = list()
         self._tx_state_dict: dict[SolTxSig, SolTxSendState] = dict()
         self._tx_state_list_dict: dict[SolTxSendState.Status, list[SolTxSendState]] = dict()
+        self._tx_time_dict: dict[SolTxSig, int] = dict()
 
     @property
     def _sol_client(self) -> SolClient:
@@ -114,6 +124,13 @@ class SolTxListSender:
             return False
 
         self._tx_list = list(tx_list)
+
+        # save tx start time
+        now = time.monotonic_ns()
+        for tx in self._tx_list:
+            if tx.is_signed:
+                self._tx_time_dict[tx.sig] = now
+
         return await self._send()
 
     async def recheck(self, tx_list: Sequence[SolTx]) -> bool:
@@ -267,11 +284,13 @@ class SolTxListSender:
     async def _sign_tx_list(self) -> None:
         fuzz_fail_pct = self._cfg.fuzz_fail_pct
         blockhash = await self._get_blockhash()
+        now = time.monotonic_ns()
         signed_tx_list: list[SolTx] = list()
         not_signed_tx_list: list[SolTx] = list()
 
         for tx in self._tx_list:
             if tx.is_signed:
+                self._commit_tx_stat_time(tx, now, is_fail=True)
                 self._tx_state_dict.pop(tx.sig, None)
                 if tx.recent_blockhash != blockhash:
                     _LOG.debug("flash old blockhash: %s for tx %s", tx.recent_blockhash, tx)
@@ -294,8 +313,16 @@ class SolTxListSender:
             not_signed_tx_list.append(tx)
 
         self._tx_list = signed_tx_list
-        if not_signed_tx_list:
-            self._tx_list.extend(await self._tx_signer.sign_tx_list(not_signed_tx_list))
+        if not not_signed_tx_list:
+            return
+
+        new_signed_tx_list = await self._tx_signer.sign_tx_list(not_signed_tx_list)
+        self._tx_list.extend(new_signed_tx_list)
+
+        # save tx time
+        now = time.monotonic_ns()
+        for tx in new_signed_tx_list:
+            self._tx_time_dict[tx.sig] = now
 
     async def _send_tx_list(self) -> None:
         if not self._tx_list:
@@ -308,10 +335,11 @@ class SolTxListSender:
             max_retry_cnt=self._max_retry_cnt,
         )
 
+        now = time.monotonic_ns()
         self._num_slots_behind = 0
         for tx, tx_sig_or_error in zip(self._tx_list, tx_sig_list):
             tx_receipt = tx_sig_or_error if not isinstance(tx_sig_or_error, SolTxSig) else None
-            self._add_tx_receipt(tx, tx_receipt, SolTxSendState.Status.WaitForReceipt)
+            self._add_tx_receipt(tx, now, tx_receipt, SolTxSendState.Status.WaitForReceipt)
 
         if self._num_slots_behind:
             _LOG.warning("Solana node is behind %s slots from the cluster, sleep for 1 slot...", self._num_slots_behind)
@@ -325,7 +353,7 @@ class SolTxListSender:
             skip_flag_list = [random.randint(1, 100) <= fuzz_fail_pct for _ in self._tx_list]
             for tx, skip_flag in zip(self._tx_list, skip_flag_list):
                 if skip_flag:
-                    self._add_tx_receipt(tx, None, SolTxSendState.Status.WaitForReceipt)
+                    self._add_tx_receipt(tx, 0, None, SolTxSendState.Status.WaitForReceipt)
             self._tx_list = [tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if not skip_flag]
         # <- Fuzz testing
 
@@ -390,17 +418,21 @@ class SolTxListSender:
 
     async def _get_tx_receipt_list(self, tx_sig_list: Sequence[SolTxSig], tx_list: Sequence[SolTx]) -> None:
         tx_receipt_list = await self._sol_client.get_tx_list(tx_sig_list, SolCommit.Confirmed)
+        now = time.monotonic_ns()
         for tx, tx_receipt in zip(tx_list, tx_receipt_list):
-            self._add_tx_receipt(tx, tx_receipt, SolTxSendState.Status.NoReceiptError)
+            self._add_tx_receipt(tx, now, tx_receipt, SolTxSendState.Status.NoReceiptError)
 
     @dataclasses.dataclass(frozen=True)
     class _DecodeResult:
         tx_status: SolTxSendState.Status
         error: BaseException | None
 
-    def _decode_tx_status(self, tx: SolTx, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
+    def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         status = SolTxSendState.Status
         tx_error_parser = SolTxErrorParser(tx, tx_receipt)
+
+        if not tx_error_parser.check_if_preprocessed_error():
+            self._commit_tx_stat_time(tx, now, is_fail=False)
 
         if num_slots_behind := tx_error_parser.get_num_slots_behind():
             self._num_slots_behind = max(self._num_slots_behind, num_slots_behind)
@@ -455,13 +487,14 @@ class SolTxListSender:
     def _add_tx_receipt(
         self,
         tx: SolTx,
+        now: int,
         tx_receipt: SolRpcTxReceiptInfo | None,
         no_receipt_status: SolTxSendState.Status,
     ):
         if not tx_receipt:
             res = self._DecodeResult(no_receipt_status, None)
         else:
-            res = self._decode_tx_status(tx, tx_receipt)
+            res = self._decode_tx_status(tx, now, tx_receipt)
 
         tx_state = SolTxSendState(
             status=res.tx_status,
@@ -476,3 +509,15 @@ class SolTxListSender:
 
         self._tx_state_dict[tx_state.tx.sig] = tx_state
         self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
+
+    def _commit_tx_stat_time(self, tx: SolTx, now: int, is_fail: bool) -> None:
+        if not tx.is_signed:
+            return
+        elif not (start_time_nsec := self._tx_time_dict.pop(tx.sig, None)):
+            return
+
+        process_time_nsec = now - start_time_nsec
+        if is_fail:
+            self._stat_client.commit_sol_tx_fail(SolTxFailData(time_nsec=process_time_nsec))
+        else:
+            self._stat_client.commit_sol_tx_done(SolTxDoneData(time_nsec=process_time_nsec))
