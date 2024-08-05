@@ -3,27 +3,23 @@ from typing import ClassVar
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
 from common.stat.api import RpcCallData, MetricStatData
-from common.stat.metric import StatRegistry, StatGauge, StatSummary, render
+from common.stat.metric import StatRegistry, StatGauge, stat_render
+from common.stat.metric_rpc import RpcStatCollector
 from common.stat.prometheus import PrometheusServer
 from common.utils.process_pool import ProcessPool
 from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, STATISTIC_ENDPOINT
 
 
-class RpcStatApi(AppDataApi):
+class RpcStatApi(AppDataApi, RpcStatCollector):
     name: ClassVar[str] = "IndexerStatistic::RPC"
 
     def __init__(self, registry: StatRegistry):
-        super().__init__()
-        self._request = StatSummary("request", "RPC requests", registry=registry)
+        AppDataApi.__init__(self)
+        RpcStatCollector.__init__(self, registry)
 
     @AppDataApi.method(name="commitRpcCall")
     def on_rpc_call(self, data: RpcCallData) -> None:
-        label = dict(service=data.service, method=data.method)
-        if data.is_error:
-            label["is_error"] = data.is_error
-        if data.is_modification:
-            label["is_modification"] = data.is_modification
-        self._request.add(label, data.time_nsec / (10**9))
+        RpcStatCollector.commit_rpc_call(self, data)
 
 
 class BlockStatApi(AppDataApi):
@@ -88,7 +84,7 @@ class MetricApi(AppDataApi):
 
     @AppDataApi.method(name="getMetricStatistic")
     def on_metric_stat(self) -> MetricStatData:
-        return render(self._registry)
+        return stat_render(self._registry)
 
 
 class MetricServer(AppDataServer):
