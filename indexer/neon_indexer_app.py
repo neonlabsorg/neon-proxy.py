@@ -38,7 +38,7 @@ class NeonIndexerApp:
         self._core_api_server = CoreApiServer(cfg)
         self._stat_server = StatServer(cfg)
 
-        db_conn = DbConnection(self._cfg)
+        db_conn = DbConnection(self._cfg, self._stat_client)
         db_conn.enable_debug_query()
         self._db = IndexerDb(self._cfg, db_conn)
 
@@ -496,7 +496,7 @@ class _ReIndexer:
             sol_client = SolClient(self._cfg, stat_client)
             core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client, stat_client=stat_client)
 
-            db_conn = DbConnection(self._cfg)
+            db_conn = DbConnection(self._cfg, stat_client)
             db = IndexerDb(self._cfg, db_conn)
 
             await sol_client.start()

@@ -28,6 +28,7 @@ class BaseDbTable:
         key_list: tuple[str, ...],
     ):
         self._db = db
+        self._raw_table_name = table_name
         self._table_name = DbSqlIdent(table_name)
         self._block_table_name = DbSqlIdent("solana_blocks")
         self._cost_table_name = DbSqlIdent("solana_transaction_costs")
@@ -72,10 +73,10 @@ class BaseDbTable:
         pass
 
     async def _insert_row(self, ctx: DbTxCtx, record: DbRecordType | dict) -> None:
-        await self._db.update_row(ctx, self._insert_row_query, self._as_param_cont(record))
+        await self._db.update_row(ctx, self._raw_table_name, self._insert_row_query, self._as_param_cont(record))
 
     async def _update_row(self, ctx: DbTxCtx, update_row_request: DbQuery, record: DbRecordType | dict | None) -> None:
-        await self._db.update_row(ctx, update_row_request, self._as_param_cont(record))
+        await self._db.update_row(ctx, self._raw_table_name, update_row_request, self._as_param_cont(record))
 
     def _record_to_row_list(self, record_list: Sequence[DbRecordType | dict]) -> list[DbParamCont]:
         key_set: set[str] = set()
@@ -95,7 +96,7 @@ class BaseDbTable:
             return
 
         row_list = self._record_to_row_list(record_list)
-        await self._db.update_row_list(ctx, self._insert_row_query, row_list)
+        await self._db.update_row_list(ctx, self._raw_table_name, self._insert_row_query, row_list)
 
     async def _fetch_one(
         self,
@@ -105,7 +106,13 @@ class BaseDbTable:
         *,
         record_type: DbRecordType | None = None,
     ):
-        return await self._db.fetch_one(ctx, record_type or self._RecordType, query, self._as_param_cont(param_cont))
+        return await self._db.fetch_one(
+            ctx,
+            self._raw_table_name,
+            record_type or self._RecordType,
+            query,
+            self._as_param_cont(param_cont),
+        )
 
     async def _fetch_all(
         self,
@@ -116,7 +123,12 @@ class BaseDbTable:
         record_type: DbRecordType | None = None,
     ) -> list:
         result_list = await self._db.fetch_many(
-            ctx, record_type or self._RecordType, 10000, query, self._as_param_cont(param_cont)
+            ctx,
+            self._raw_table_name,
+            record_type or self._RecordType,
+            10000,
+            query,
+            self._as_param_cont(param_cont),
         )
         return result_list if result_list else list()
 
