@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 from typing import Sequence, Final, TypeVar
@@ -282,6 +283,7 @@ class CoreApiClient(HttpClient):
                 if retry > 0:
                     _LOG.debug("attempt %d to repeat %s...", retry + 1, name)
 
+                request.start_timer()
                 resp_json = await self._send_client_request(request, path=HttpURL(name))
                 _LOG.debug("req: %s, resp: %s", request.data, resp_json)
                 try:
@@ -289,10 +291,13 @@ class CoreApiClient(HttpClient):
 
                 except PydanticValidationError as exc:
                     _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
+                    request.commit_stat(is_error=True)
+                    await asyncio.sleep(0.2)
                     continue
 
                 if (resp.error_code or 0) == 113:  # Solana client error
                     request.commit_stat(is_error=True)
+                    await asyncio.sleep(0.2)
                     continue
 
                 if resp_type is None:

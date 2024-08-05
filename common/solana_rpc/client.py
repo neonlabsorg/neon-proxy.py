@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-import time
 import typing as tp
 from dataclasses import dataclass
 from typing import TypeVar, Sequence, Union, Final
@@ -15,7 +14,6 @@ import solders.rpc.filter as _filter
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
 import solders.transaction_status as _tx
-from typing_extensions import Self
 
 from .errors import SolRpcError
 from ..config.config import Config
@@ -39,7 +37,6 @@ from ..solana.transaction_meta import (
     SolRpcNodeUnhealthyErrorInfo,
     SolRpcInvalidParamErrorInfo,
 )
-from ..stat.api import RpcCallData
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import ttl_cached_method
 
@@ -162,6 +159,7 @@ class SolClient(HttpClient):
 
         with request:
             for retry in itertools.count():
+                request.start_timer()
                 resp_json = await self._send_client_request(request, base_url_list=base_url_list)
                 try:
 
@@ -175,8 +173,9 @@ class SolClient(HttpClient):
                             raise exc
                         raise InternalJsonRpcError(exc)
 
-                    request.commit_stat(is_error=True)
                     _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, request.data)
+                    request.commit_stat(is_error=True)
+                    await asyncio.sleep(0.2)
                     continue
 
                 if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
