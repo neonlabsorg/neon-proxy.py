@@ -4,8 +4,10 @@ from common.app_data.server import AppDataServer, AppDataApi
 from common.ethereum.hash import EthAddress
 from common.config.config import Config
 from common.solana.pubkey import SolPubKey
+from common.solana_rpc.transaction_list_sender_stat import SolTxFailData, SolTxDoneData
 from common.stat.api import RpcCallData, MetricStatData
-from common.stat.metric import StatRegistry, StatSummary, StatGauge, render
+from common.stat.metric import StatRegistry, StatSummary, StatGauge, stat_render
+from common.stat.metric_rpc import RpcStatCollector
 from common.stat.prometheus import PrometheusServer
 from common.utils.process_pool import ProcessPool
 
@@ -14,9 +16,9 @@ from .api import (
     OpResourceHolderStatusData,
     OpExecTokenBalanceData,
     STATISTIC_ENDPOINT,
-    TxPoolData,
-    TxFailData,
-    TxDoneData,
+    NeonTxPoolData,
+    NeonTxFailData,
+    NeonTxDoneData,
 )
 
 
@@ -121,60 +123,51 @@ class OpResourceStatApi(AppDataApi):
         self._execution_token_balance_stat.set(label, total_balance)
 
 
-class RpcStatApi(AppDataApi):
+class RpcStatApi(AppDataApi, RpcStatCollector):
     name: ClassVar[str] = "ProxyStatistic::RPC"
 
     def __init__(self, registry: StatRegistry):
-        super().__init__()
-        self._request = StatSummary("request", "RPC requests", registry=registry)
+        AppDataApi.__init__(self)
+        RpcStatCollector.__init__(self, registry)
 
     @AppDataApi.method(name="commitRpcCall")
     def on_rpc_call(self, data: RpcCallData) -> None:
-        label = dict(service=data.service, method=data.method)
-
-        if data.is_error:
-            label["is_error"] = data.is_error
-        if data.is_modification:
-            label["is_modification"] = data.is_modification
-
-        self._request.add(label, data.time_nsec / (10**9))
+        RpcStatApi.commit_rpc_call(self, data)
 
 
-class TxPoolStatApi(AppDataApi):
+class NeonTxPoolStatApi(AppDataApi):
     name: ClassVar[str] = "ProxyStatistic::Mempool"
 
     def __init__(self, registry: StatRegistry):
         super().__init__()
-        self._tx_done = StatSummary("tx_done", "Processed transactions ", registry=registry)
-        self._tx_fail = StatSummary("tx_fail", "Failed transactions ", registry=registry)
-        self._tx_pool = StatGauge("tx_pool_count", "Total transactions in mempool", registry=registry)
-        self._tx_process = StatGauge("tx_process_count", "Total transactions in processing", registry=registry)
-        self._tx_stuck_pool = StatGauge("tx_stuck_count", "Total stuck transactions in mempool", registry=registry)
+        self._label = dict()
+        self._tx_done = StatSummary("tx_done", "Processed Neon transactions ", registry=registry)
+        self._tx_fail = StatSummary("tx_fail", "Failed Neon transactions ", registry=registry)
+        self._tx_pool = StatGauge("tx_pool_count", "Total Neon transactions in mempool", registry=registry)
+        self._tx_process = StatGauge("tx_process_count", "Total Neon transactions in processing", registry=registry)
+        self._tx_stuck_pool = StatGauge("tx_stuck_count", "Total stuck Neon transactions in mempool", registry=registry)
         self._tx_stuck_process = StatGauge(
             "tx_stuck_process_count",
             "Total stuck transactions in processing",
             registry=registry,
         )
 
-    @AppDataApi.method(name="commitTransactionDone")
-    def on_tx_done(self, data: TxDoneData) -> None:
-        label = {}
-        self._tx_done.add(label, data.time_nsec / (10**9))
+    @AppDataApi.method(name="commitNeonTransactionDone")
+    def on_tx_done(self, data: NeonTxDoneData) -> None:
+        self._tx_done.add(self._label, data.time_nsec / (10**9))
 
-    @AppDataApi.method(name="commitTransactionFail")
-    def on_tx_fail(self, data: TxFailData) -> None:
-        label = {}
-        self._tx_fail.add(label, data.time_nsec / (10**9))
+    @AppDataApi.method(name="commitNeonTransactionFail")
+    def on_tx_fail(self, data: NeonTxFailData) -> None:
+        self._tx_fail.add(self._label, data.time_nsec / (10**9))
 
-    @AppDataApi.method(name="commitPool")
-    def on_tx_pool(self, data: TxPoolData) -> None:
+    @AppDataApi.method(name="commitNeonTransactionPool")
+    def on_tx_pool(self, data: NeonTxPoolData) -> None:
         for pool in data.scheduling_queue:
             self._tx_pool.set({"token": pool.token}, pool.queue_len)
 
-        label = {}
-        self._tx_process.set(label, data.processing_queue_len)
-        self._tx_stuck_pool.set(label, data.stuck_queue_len)
-        self._tx_stuck_process.set(label, data.processing_stuck_queue_len)
+        self._tx_process.set(self._label, data.processing_queue_len)
+        self._tx_stuck_pool.set(self._label, data.stuck_queue_len)
+        self._tx_stuck_process.set(self._label, data.processing_stuck_queue_len)
 
 
 class MetricApi(AppDataApi):
@@ -186,7 +179,26 @@ class MetricApi(AppDataApi):
 
     @AppDataApi.method(name="getMetricStatistic")
     def on_metric_stat(self) -> MetricStatData:
-        return render(self._registry)
+        return stat_render(self._registry)
+
+
+class SolTxStatApi(AppDataApi):
+    name: ClassVar[str] = "ProxyStatistic::SolanaTransaction"
+
+    def __init__(self, registry: StatRegistry):
+        super().__init__()
+        self._label = dict()
+        self._registry = registry
+        self._tx_done = StatSummary("sol_tx_done", "Processed Solana transactions", registry=registry)
+        self._tx_fail = StatSummary("sol_tx_fail", "Failed Solana transactions", registry=registry)
+
+    @AppDataApi.method(name="commitSolanaTransactionDone")
+    def on_tx_done(self, data: SolTxDoneData) -> None:
+        self._tx_done.add(self._label, data.time_nsec / (10 ** 9))
+
+    @AppDataApi.method(name="commitSolanaTransactionFail")
+    def on_tx_fail(self, data: SolTxFailData) -> None:
+        self._tx_fail.add(self._label, data.time_nsec / (10 ** 9))
 
 
 class MetricServer(AppDataServer):
@@ -198,8 +210,9 @@ class MetricServer(AppDataServer):
     def _register_handler_list(self) -> None:
         self._add_api(OpResourceStatApi(self._registry))
         self._add_api(RpcStatApi(self._registry))
-        self._add_api(TxPoolStatApi(self._registry))
+        self._add_api(NeonTxPoolStatApi(self._registry))
         self._add_api(MetricApi(self._registry))
+        self._add_api(SolTxStatApi(self._registry))
         super()._register_handler_list()
 
     def _add_api(self, api: AppDataApi) -> None:

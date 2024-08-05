@@ -64,6 +64,7 @@ class NeonProxyApp:
             mp_client=mp_client,
             op_client=op_client,
             fee_client=fee_client,
+            stat_client=self._stat_client,
         )
 
         # Init Resource server

@@ -29,6 +29,6 @@ class StatSummary(_base.Summary, _RemoveValueMixin):
     pass
 
 
-def render(registry: StatRegistry) -> MetricStatData:
+def stat_render(registry: StatRegistry) -> MetricStatData:
     data, _ = _renderer.render(registry, ["text/plain"])
     return MetricStatData(data=data.decode("utf-8"))

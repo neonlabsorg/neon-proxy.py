@@ -74,6 +74,7 @@ class IterativeTxStrategy(BaseTxStrategy):
     def _sol_tx_list_sender(self) -> _SolTxListSender:
         return _SolTxListSender(
             self._ctx.cfg,
+            self._ctx.stat_client,
             SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client),
             self._ctx.sol_tx_list_signer,
             holder_account_validator=self._holder_acct_validator,

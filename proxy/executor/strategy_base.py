@@ -146,7 +146,7 @@ class BaseTxStrategy(abc.ABC):
     @cached_property
     def _sol_tx_list_sender(self) -> SolTxListSender:
         watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
-        return SolTxListSender(self._ctx.cfg, watch_session, self._ctx.sol_tx_list_signer)
+        return SolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
