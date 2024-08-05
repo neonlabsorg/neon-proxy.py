@@ -18,11 +18,11 @@ class RpcStatApi(AppDataApi):
 
     @AppDataApi.method(name="commitRpcCall")
     def on_rpc_call(self, data: RpcCallData) -> None:
-        label = dict(
-            service=data.service,
-            method=data.method,
-            is_error=data.is_error,
-        )
+        label = dict(service=data.service, method=data.method)
+        if data.is_error:
+            label["is_error"] = data.is_error
+        if data.is_modification:
+            label["is_modification"] = data.is_modification
         self._request.add(label, data.time_nsec / (10**9))
 
 

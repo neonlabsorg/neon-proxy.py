@@ -42,7 +42,7 @@ class NeonProxyApp:
         sol_client = SolClient(cfg, self._stat_client)
 
         # Init Indexer Db client
-        db_conn = DbConnection(cfg)
+        db_conn = DbConnection(cfg, self._stat_client)
         db = IndexerDbClient(cfg, db_conn)
         gas_tank = GasLessAccountDb(db_conn)
 
