@@ -176,7 +176,7 @@ class SolAltDestroyer(ExecutorComponent):
         cu_limit_ix = cb_prog.make_cu_limit_ix(3_000)
 
         tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
-        return await SolTxListSender(self._cfg, watch_session, tx_list_signer).send(tuple([tx]))
+        return await SolTxListSender(self._cfg, self._stat_client, watch_session, tx_list_signer).send(tuple([tx]))
 
     @staticmethod
     def _get_now() -> int:

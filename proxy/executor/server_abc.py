@@ -15,6 +15,7 @@ from ..base.ex_api import EXECUTOR_ENDPOINT
 from ..base.mp_client import MempoolClient
 from ..base.op_client import OpResourceClient
 from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
+from ..stat.client import StatClient
 
 
 class ExecutorComponent(BaseIntlProxyComponent):
@@ -29,6 +30,10 @@ class ExecutorComponent(BaseIntlProxyComponent):
     @cached_property
     def _fee_client(self) -> AtlasFeeClient:
         return self._server._fee_client  # noqa
+
+    @cached_property
+    def _stat_client(self) -> StatClient:
+        return self._server._stat_client  # noqa
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         return self._server.get_evm_cfg()
@@ -49,11 +54,13 @@ class ExecutorServerAbc(BaseIntlProxyServer):
         mp_client: MempoolClient,
         op_client: OpResourceClient,
         fee_client: AtlasFeeClient,
+        stat_client: StatClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._mp_client = mp_client
         self._op_client = op_client
         self._fee_client = fee_client
+        self._stat_client = stat_client
 
     @ttl_cached_method(ttl_sec=1)
     async def get_evm_cfg(self) -> EvmConfigModel:
