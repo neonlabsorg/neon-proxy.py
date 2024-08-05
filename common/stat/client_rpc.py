@@ -15,40 +15,43 @@ class RpcStatClient(abc.ABC):
 
 
 @dataclass
-class RpcClientRequest(HttpClientRequest):
+class RpcStatInfo:
     _stat_client: RpcStatClient
     _stat_name: str
     _method: str
     _start_time_nsec: int
-    
+    _is_modification: bool
+
     @classmethod
     def from_raw(  # noqa
         cls,
         *,
-        data: str,
         stat_client: RpcStatClient,
         stat_name: str,
         method: str,
-     ) -> Self:
+        is_modification: bool = False,
+    ) -> Self:
         return cls(
-            data=data,
-            path=None,
-            header_dict=dict(),
             _stat_client=stat_client,
             _stat_name=stat_name,
             _method=method,
             _start_time_nsec=time.monotonic_ns(),
+            _is_modification=is_modification,
         )
 
-    def commit_stat(self, *, is_error: bool) -> None:
-        process_time_nsec = self.process_time_nsec
+    def start_timer(self) -> None:
         self._start_time_nsec = time.monotonic_ns()
+
+    def commit_stat(self, *, is_error: bool = False) -> None:
+        process_time_nsec = self.process_time_nsec
+        self.start_timer()
 
         stat = RpcCallData(
             service=self._stat_name,
             method=self._method,
             time_nsec=process_time_nsec,
             is_error=is_error,
+            is_modification=self._is_modification,
         )
         self._stat_client.commit_rpc_call(stat)
 
@@ -68,3 +71,27 @@ class RpcClientRequest(HttpClientRequest):
         if exc_val:
             raise
         return self
+
+
+@dataclass
+class RpcClientRequest(HttpClientRequest, RpcStatInfo):
+    @classmethod
+    def from_raw(  # noqa
+        cls,
+        *,
+        data: str,
+        stat_client: RpcStatClient,
+        stat_name: str,
+        method: str,
+        is_modification: bool = False,
+     ) -> Self:
+        return cls(
+            data=data,
+            path=None,
+            header_dict=dict(),
+            _stat_client=stat_client,
+            _stat_name=stat_name,
+            _method=method,
+            _start_time_nsec=time.monotonic_ns(),
+            _is_modification=is_modification,
+        )

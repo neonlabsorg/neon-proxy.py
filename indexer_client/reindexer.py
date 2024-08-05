@@ -104,8 +104,8 @@ class ReIndexHandler(BaseCmdHandler):
                 term_slot=arg_space.to_slot,
             )
 
-            db = await self._new_client(IndexerDb, self._cfg, DbConnection(self._cfg), slot_range)
             stat_client = _FakeStatClient(self._cfg)
+            db = await self._new_client(IndexerDb, self._cfg, DbConnection(self._cfg, stat_client), slot_range)
 
             indexer = Indexer(self._cfg, sol_client, core_api_client, None, stat_client, db)
             await indexer.run()
