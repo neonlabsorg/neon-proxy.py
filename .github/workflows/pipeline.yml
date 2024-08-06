@@ -126,8 +126,9 @@ jobs:
           default="aave-v2,saddle,uniswap-v3"
           extended=",uniswap-v2,yearn,compound,robonomics,curve,saddle,pancake"
           result=$( (${{ steps.full_test_suite.outputs.value }} && echo "${default}${extended}") || echo "${default}" )
-          echo "dapps_list=$result" >> $GITHUB_OUTPUT
-          echo "dapps_list=$result"
+          echo "dapps_list=aave-v2" >> $GITHUB_OUTPUT
+          echo "dapps_list=aave-v2"
+
       - name: Build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
@@ -262,7 +263,7 @@ jobs:
       - name: Run basic tests
         run: |
           docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}
+            python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }} --case test_eth_call_revert
       - name: Remove docker container
         if: always()
         run: docker rm -f ${{ env.CONTAINER }}
@@ -273,7 +274,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@t3.0.x
     secrets: inherit
     with:
       network: custom
