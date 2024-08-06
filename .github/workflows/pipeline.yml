@@ -180,8 +180,8 @@ jobs:
           else
             tag='latest'
           fi
-          echo "value=${tag}"
-          echo "value=${tag}" >> $GITHUB_OUTPUT
+          echo "value=t3.0.x"
+          echo "value=t3.0.x" >> $GITHUB_OUTPUT
       - name: Build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
@@ -341,7 +341,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@t3.0.x
     secrets: inherit
     with:
       network: custom
