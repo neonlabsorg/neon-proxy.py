@@ -198,8 +198,8 @@ jobs:
           else
             tag='latest'
           fi
-          echo "value=${tag}"
-          echo "value=${tag}" >> $GITHUB_OUTPUT
+          echo "value=v1.0.NDEV-2338-improve-release-reports"
+          echo "value=v1.0.NDEV-2338-improve-release-reports" >> $GITHUB_OUTPUT
       - name: Build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
@@ -359,7 +359,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@v1.0.NDEV-2338-improve-release-reports
     secrets: inherit
     with:
       network: custom
