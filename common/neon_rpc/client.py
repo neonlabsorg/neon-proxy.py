@@ -110,8 +110,24 @@ class CoreApiClient(HttpClient):
 
     @cached_method
     async def get_core_api_version(self) -> str:
-        resp: CoreApiBuildModel = await self._send_request("build-info", resp_type=CoreApiBuildModel)
-        return "Neon-Core-API/v" + resp.crate_info.version + "-" + resp.version_control.commit_id
+        method = "build-info"
+
+        request = RpcClientRequest.from_raw(
+            data="",
+            stat_client=self._stat_client,
+            stat_name=self._stat_name,
+            method=method,
+        )
+
+        resp_json = await self._send_client_request(request, path=HttpURL(method))
+        try:
+            resp = CoreApiBuildModel.from_json(resp_json)
+            return "Neon-Core-API/v" + resp.crate_info.version + "-" + resp.version_control.commit_id
+
+        except PydanticValidationError as exc:
+            _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
+
+        return "Neon-Core-API/UNKNOWN"
 
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
         req = HolderAccountRequest.from_raw(address)
@@ -254,7 +270,7 @@ class CoreApiClient(HttpClient):
 
     async def _send_request(
         self,
-        name: str,
+        method: str,
         request: BaseModel | None = None,
         resp_type: type[_RespType] | None = None,
     ) -> _RespType:
@@ -262,7 +278,7 @@ class CoreApiClient(HttpClient):
             data=request.to_json() if request else "",
             stat_client=self._stat_client,
             stat_name=self._stat_name,
-            method=name,
+            method=method,
         )
 
         with request:
@@ -270,11 +286,10 @@ class CoreApiClient(HttpClient):
                 if retry >= self._max_retry_cnt:
                     raise EthError("No connection to NeonCoreApi. Maximum retry count reached.")
                 if retry > 0:
-                    _LOG.debug("attempt %d to repeat %s...", retry + 1, name)
+                    _LOG.debug("attempt %d to repeat %s...", retry + 1, method)
 
                 request.start_timer()
-                resp_json = await self._send_client_request(request, path=HttpURL(name))
-                _LOG.debug("req: %s, resp: %s", request.data, resp_json)
+                resp_json = await self._send_client_request(request, path=HttpURL(method))
                 try:
                     resp = CoreApiResp.from_json(resp_json)
 
