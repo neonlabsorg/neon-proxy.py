@@ -15,7 +15,7 @@ class RpcStatCollector:
                 label[name] = value
 
         _add_label("service", data.service)
-        _add_label(data.method_name, data.method)
+        _add_label("method", data.method)
         _add_label("is_error", data.is_error)
         _add_label("is_modification", data.is_modification)
 
