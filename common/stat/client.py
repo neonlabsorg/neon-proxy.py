@@ -46,6 +46,10 @@ class BaseStatClient:
                     _LOG.warning("error on send data", exc_info=exc)
 
     async def _send_data(self) -> None:
+        req_list = list()
         while not self._send_queue.empty():
             call, data = self._send_queue.get_nowait()
-            await call(data)
+            req_list.append(call(data))
+
+        if req_list:
+            await asyncio.gather(*req_list)
