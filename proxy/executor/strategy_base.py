@@ -262,6 +262,7 @@ class BaseTxStrategy(abc.ABC):
         # TODO EIP1559 churn: remove atlas.
         # if not cu_price:
         #    cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+        cu_limit = cu_limit or self._cu_limit
         if not cu_price:
             if self._ctx.tx_type == 0:
                 # For legacy transactions: we estimate the cu_price from the recent blocks.
@@ -285,15 +286,13 @@ class BaseTxStrategy(abc.ABC):
                 assert base_fee_per_gas > 0
                 max_priority_fee_per_gas = self._ctx.max_priority_fee_per_gas
                 # TODO EIP1559: fix formula.
-                cu_price = max(
-                    1, int(max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * self._cu_limit))
-                )
+                cu_price = max(1, int(max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit)))
 
         return SolTxCfg(
             name=name or self.name,
             evm_step_cnt=evm_step_cnt or self._ctx.evm_step_cnt_per_iter,
             ix_mode=ix_mode or NeonIxMode.Default,
-            cu_limit=cu_limit or self._cu_limit,
+            cu_limit=cu_limit,
             cu_price=cu_price,
             heap_size=heap_size or self._ctx.cb_prog.MaxHeapSize,
         )
