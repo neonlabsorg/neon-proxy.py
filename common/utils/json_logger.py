@@ -168,6 +168,10 @@ class JSONFormatter(logging.Formatter):
 _LOG_CTX = contextvars.ContextVar("log_context", default=dict())
 
 
+def get_ctx() -> str:
+    _LOG_CTX.get().get("ctx", "")
+
+
 class ContextFilter(Filter):
     def filter(self, record: LogRecord) -> bool:
         record.context = _LOG_CTX.get()

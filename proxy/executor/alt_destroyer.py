@@ -83,7 +83,7 @@ class SolAltDestroyer(ExecutorComponent):
     async def _destroy_alt_loop(self) -> None:
         with logging_context(ctx="destroy-alt"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), self._finalize_sec)
                 if self._stop_event.is_set():
                     break
@@ -133,8 +133,7 @@ class SolAltDestroyer(ExecutorComponent):
             self._alt_queue = deque(new_destroy_queue)
 
     async def _destroy_alt(self, signer_list: Sequence[SolPubKey], alt: _NeonAltInfo, slot: int) -> int:
-        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)
-        if acct.is_empty:
+        if not (await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)).is_exist:
             msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.debug(msg)
             return 0
@@ -177,7 +176,7 @@ class SolAltDestroyer(ExecutorComponent):
         cu_limit_ix = cb_prog.make_cu_limit_ix(3_000)
 
         tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
-        return await SolTxListSender(self._cfg, watch_session, tx_list_signer).send(tuple([tx]))
+        return await SolTxListSender(self._cfg, self._stat_client, watch_session, tx_list_signer).send(tuple([tx]))
 
     @staticmethod
     def _get_now() -> int:

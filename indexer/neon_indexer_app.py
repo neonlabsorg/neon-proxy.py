@@ -33,11 +33,12 @@ class NeonIndexerApp:
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        self._sol_client = SolClient(cfg)
+        self._stat_client = StatClient(self._cfg)
+        self._sol_client = SolClient(cfg, self._stat_client)
         self._core_api_server = CoreApiServer(cfg)
         self._stat_server = StatServer(cfg)
 
-        db_conn = DbConnection(self._cfg)
+        db_conn = DbConnection(self._cfg, self._stat_client)
         db_conn.enable_debug_query()
         self._db = IndexerDb(self._cfg, db_conn)
 
@@ -85,29 +86,28 @@ class NeonIndexerApp:
             return 1
 
     async def _run_indexing(self) -> None:
-        core_api_client = CoreApiClient(cfg=self._cfg, sol_client=self._sol_client)
+        core_api_client = CoreApiClient(cfg=self._cfg, sol_client=self._sol_client, stat_client=self._stat_client)
         tracer_api_client = TracerApiClient(cfg=self._cfg)
-        stat_client = StatClient(self._cfg)
 
         indexer = Indexer(
             self._cfg,
             self._sol_client,
             core_api_client,
             tracer_api_client,
-            stat_client,
+            self._stat_client,
             self._db,
         )
 
         await self._sol_client.start()
         await core_api_client.start()
-        await stat_client.start()
+        await self._stat_client.start()
         await tracer_api_client.start()
 
         await indexer.run()
 
         await core_api_client.stop()
         await tracer_api_client.stop()
-        await stat_client.stop()
+        await self._stat_client.stop()
         await self._sol_client.stop()
 
     async def _init_slot_range(self) -> None:
@@ -492,11 +492,11 @@ class _ReIndexer:
         msg_filter = LogMsgFilter(self._cfg)
 
         try:
-            sol_client = SolClient(self._cfg)
-            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client)
             stat_client = StatClient(self._cfg)
+            sol_client = SolClient(self._cfg, stat_client)
+            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client, stat_client=stat_client)
 
-            db_conn = DbConnection(self._cfg)
+            db_conn = DbConnection(self._cfg, stat_client)
             db = IndexerDb(self._cfg, db_conn)
 
             await sol_client.start()

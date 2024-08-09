@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import abc
 import asyncio
 import contextlib
 import logging
 from typing import Final, Callable
 
-from common.config.config import Config
-from common.stat.api import RpcCallData
-from common.utils.json_logger import logging_context
-from common.utils.pydantic import BaseModel
+from ..config.config import Config
+from ..utils.json_logger import logging_context
+from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ class BaseStatClient:
         sleep_sec: Final[float] = 0.3
         with logging_context(ctx="stat-client"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break
@@ -51,12 +49,3 @@ class BaseStatClient:
         while not self._send_queue.empty():
             call, data = self._send_queue.get_nowait()
             await call(data)
-
-
-class RpcStatClient(abc.ABC):
-    def commit_rpc_call(self, data: RpcCallData) -> None:
-        self._put_to_queue(self._commit_rpc_call, data)  # noqa
-
-    @abc.abstractmethod
-    async def _commit_rpc_call(self, data: RpcCallData) -> None:
-        pass

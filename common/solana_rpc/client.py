@@ -10,15 +10,15 @@ from typing import TypeVar, Sequence, Union, Final
 import solders.account_decoder as _acct
 import solders.rpc.config as _cfg
 import solders.rpc.errors as _err
+import solders.rpc.filter as _filter
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
 import solders.transaction_status as _tx
-import solders.rpc.filter as _filter
 
 from .errors import SolRpcError
+from ..config.config import Config
+from ..http.client import HttpClient, HttpClientRequest
 from ..http.utils import HttpURL
-from ..http.client import HttpClient
-from ..jsonrpc.api import JsonRpcResp
 from ..jsonrpc.errors import InternalJsonRpcError
 from ..solana.account import SolAccountModel
 from ..solana.alt_program import SolAltAccountInfo
@@ -37,6 +37,7 @@ from ..solana.transaction_meta import (
     SolRpcNodeUnhealthyErrorInfo,
     SolRpcInvalidParamErrorInfo,
 )
+from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import ttl_cached_method
 
 _SolRpcResp = TypeVar("_SolRpcResp", bound=_resp.RPCResult)
@@ -123,10 +124,13 @@ class SolBlockStatus:
 
 
 class SolClient(HttpClient):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.set_timeout_sec(self._cfg.sol_timeout_sec)
+    _stat_name: Final[str] = "Solana"
 
+    def __init__(self, cfg: Config, stat_client: RpcStatClient) -> None:
+        super().__init__(cfg)
+        self.set_timeout_sec(cfg.sol_timeout_sec)
+
+        self._stat_client = stat_client
         self._id = itertools.count()
 
         url_list = tuple([HttpURL(url) for url in self._cfg.sol_url_list])
@@ -146,27 +150,45 @@ class SolClient(HttpClient):
         *,
         base_url_list: Sequence[HttpURL] = tuple(),
     ) -> _SolRpcResp:
-        req_json = request.to_json()
+        request = RpcClientRequest.from_raw(
+            data=request.to_json(),
+            stat_client=self._stat_client,
+            stat_name=self._stat_name,
+            method=request.__class__.__name__[:1].lower() + request.__class__.__name__[1:]
+        )
 
-        for retry in itertools.count():
-            resp_json = await self._send_post_request(req_json, base_url_list=base_url_list)
+        with request:
+            for retry in itertools.count():
+                request.start_timer()
+                resp_json = await self._send_client_request(request, base_url_list=base_url_list)
+                try:
 
-            resp = JsonRpcResp.from_json(resp_json)
-            if resp.is_error and resp.error.code == -32000:
-                if retry > self._max_retry_cnt:
-                    raise InternalJsonRpcError()
+                    resp = parser.from_json(resp_json)
+                    if isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
+                        raise SolRpcError(resp)
 
-                _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, req_json)
-                continue
+                except BaseException as exc:
+                    if retry > self._max_retry_cnt:
+                        if isinstance(exc, SolRpcError):
+                            raise exc
+                        raise InternalJsonRpcError(exc)
 
-            resp = parser.from_json(resp_json)
+                    _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, request.data)
+                    request.commit_stat(is_error=True)
+                    await asyncio.sleep(0.2)
+                    continue
 
-            if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
-                raise SolRpcError(resp)
-            elif isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
-                raise SolRpcError(resp)
+                if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
+                    raise SolRpcError(resp)
 
-            return resp
+                return resp
+
+    def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+        super()._exception_handler(url, request, retry, exc)
+
+        # if the previous call has reraised an exception, this code isn't called
+        assert isinstance(request, RpcClientRequest)
+        request.commit_stat(is_error=True)
 
     @ttl_cached_method(ttl_sec=60)
     async def get_version(self) -> str:
@@ -196,7 +218,7 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetAcctInfoResp)
         return SolAccountModel.from_raw(address, resp.value)
 
-    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo | None:
+    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo:
         acct = await self.get_account(address, commit=commit)
         return SolAltAccountInfo.from_bytes(address, acct.data)
 

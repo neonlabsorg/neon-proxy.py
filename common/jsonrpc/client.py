@@ -77,7 +77,7 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
         )
         req_json = req_model.to_json()
 
-        resp_json = await self._send_post_request(req_json)
+        resp_json = await self._send_raw_data_request(req_json)
         try:
             resp_model = JsonRpcResp.from_json(resp_json)
         except PydanticValidationError as exc:
@@ -135,7 +135,7 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
             req_list.append(req_model)
         req_json = req_list.to_json()
 
-        resp_json = await self._send_post_request(req_json)
+        resp_json = await self._send_raw_data_request(req_json)
         try:
             resp_list = JsonRpcListResp.from_json(resp_json)
         except PydanticValidationError as exc:

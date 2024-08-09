@@ -1,0 +1,106 @@
+services:
+  indexer:
+    container_name: indexer
+    image: neonlabsorg/neon-proxy.py:${VERSION}
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      SOLANA_URL: ${SOLANA_URL}
+      POSTGRES_DB: neon-db
+      POSTGRES_USER: neon-db-user
+      POSTGRES_PASSWORD: neon-db-password
+      POSTGRES_HOST: postgres
+      GATHER_STATISTICS: "YES"
+      EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
+    hostname: indexer
+    networks:
+      - net
+    entrypoint: indexer/run-indexer.sh
+    depends_on:
+      dbcreation:
+        condition: service_completed_successfully
+
+  proxy:
+    container_name: proxy
+    image: neonlabsorg/neon-proxy.py:${VERSION}
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+       SOLANA_URL: ${SOLANA_URL}
+       POSTGRES_DB: neon-db
+       POSTGRES_USER: neon-db-user
+       POSTGRES_PASSWORD: neon-db-password
+       POSTGRES_HOST: postgres
+       EVM_LOADER: ${EVM_LOADER:-NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG}
+       GATHER_STATISTICS: "YES"
+       ENABLE_PRIVATE_API: "NO"
+       ENABLE_SEND_TX_API: "NO"
+    hostname: proxy
+    ports:
+      - 127.0.0.1:9090:9090
+    networks:
+      - net
+    entrypoint: proxy/run-proxy.sh
+    healthcheck:
+      test: [ CMD-SHELL, "/opt/neon-proxy/proxy/health_check_proxy.sh" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    depends_on:
+      dbcreation:
+        condition: service_completed_successfully
+
+  dbcreation:
+    container_name: dbcreation
+    image: neonlabsorg/neon-proxy.py:${VERSION}
+    platform: linux/amd64
+    environment:
+      SOLANA_URL: ${SOLANA_URL}
+      POSTGRES_DB: neon-db
+      POSTGRES_USER: neon-db-user
+      POSTGRES_PASSWORD: neon-db-password
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_SSL: disable
+    volumes:
+      - ./db/scheme.sql:/var/lib/postgresql/init_scripts/neon-db.sql
+    entrypoint: "/bin/bash -c"
+    command:
+      - |
+        echo "Started..."
+        export DATABASE_URL="postgresql://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT";
+        psql $$DATABASE_URL/$$POSTGRES_DB?sslmode=$$POSTGRES_SSL -a -f /var/lib/postgresql/init_scripts/neon-db.sql;
+        echo "Finished."
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - net
+
+  postgres:
+    container_name: postgres
+    image: postgres:${PG_VERSION:-15.6}
+    platform: linux/amd64
+    command: postgres -c 'max_connections=1000'
+    environment:
+      POSTGRES_DB: neon-db
+      POSTGRES_USER: neon-db-user
+      POSTGRES_PASSWORD: neon-db-password
+    hostname: postgres
+    healthcheck:
+      test: [ CMD-SHELL, "pg_isready -h localhost -p 5432 -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - ./indexer_db:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - net
+
+networks:
+  net:

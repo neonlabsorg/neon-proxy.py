@@ -13,7 +13,7 @@ from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
-from common.solana.transaction import SolTx, SolTxIx, SOL_PACKET_SIZE
+from common.solana.transaction import SolTx, SolTxIx
 from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
@@ -146,7 +146,7 @@ class BaseTxStrategy(abc.ABC):
     @cached_property
     def _sol_tx_list_sender(self) -> SolTxListSender:
         watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
-        return SolTxListSender(self._ctx.cfg, watch_session, self._ctx.sol_tx_list_signer)
+        return SolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
@@ -200,7 +200,7 @@ class BaseTxStrategy(abc.ABC):
 
     @cached_property
     def _base_sol_pkt_size(self) -> int:
-        return SOL_PACKET_SIZE - NeonProg.BaseAccountCnt * SolPubKey.KeySize
+        return SolTx.PktSize - NeonProg.BaseAccountCnt * SolPubKey.KeySize
 
     async def _build_prep_tx_list(self) -> list[list[SolTx]]:
         tx_list_list: list[list[SolTx]] = list()

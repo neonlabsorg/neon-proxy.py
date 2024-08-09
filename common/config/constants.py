@@ -2,13 +2,12 @@ import os
 from typing import Final
 
 from ..solana.pubkey import SolPubKey
-from ..solana.transaction import SOL_PACKET_SIZE as _SOL_PKT_SIZE
 
 ######################################
 # Solana general settings:
 ONE_BLOCK_SEC: Final[float] = float(os.environ.get("SOLANA_BLOCK_SEC", "0.4"))
 MIN_FINALIZE_SEC: Final[float] = ONE_BLOCK_SEC * 32
-SOL_PACKET_SIZE: Final[int] = _SOL_PKT_SIZE
+SOL_PKT_SIZE: Final[int] = 1280 - 40 - 8
 
 ######################################
 # Solana CB settings:
