@@ -23,12 +23,14 @@ class NeonEvmProtocol(IntEnum):
     v1004 = 1004  # 1.4  -> 1.004
     v1013 = 1013  # 1.13 -> 1.013
     v1014 = 1014  # 1.14 -> 1.014
+    v1015 = 1015  # 1.15 -> 1.015
 
 
 SUPPORTED_VERSION_SET = frozenset(
     (
         NeonEvmProtocol.v1013,
         NeonEvmProtocol.v1014,
+        NeonEvmProtocol.v1015,
     )
 )
 
@@ -96,7 +98,7 @@ class NeonIxMode(IntEnum):
 class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
-    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1013
+    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1015
     _evm_version: ClassVar[str] = "v1.13.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
