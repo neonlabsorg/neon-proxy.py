@@ -130,7 +130,7 @@ jobs:
       - name: Define dapps tests list
         id: dapps_list
         run: |
-          default="aave,saddle,uniswap-v3"
+          default="aave-v2,saddle,uniswap-v3"
           extended=",uniswap-v2,yearn,compound,robonomics,curve,saddle,pancake"
           result=$( (${{ steps.full_test_suite.outputs.value }} && echo "${default}${extended}") || echo "${default}" )
           echo "dapps_list=$result" >> $GITHUB_OUTPUT
