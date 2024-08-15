@@ -71,7 +71,7 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             value=self.value,
             data=self.data.to_bytes(),
             gas_limit=self.gas,
-            gas_price=self.gasPrice,
+            gas_price=self.gasPrice if self.txType == 0 else self.maxFeePerGas - self.maxPriorityFeePerGas,
             chain_id=chain_id,
         )
 
