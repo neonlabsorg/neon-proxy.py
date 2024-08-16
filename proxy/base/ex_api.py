@@ -8,7 +8,7 @@ from pydantic import PlainValidator, PlainSerializer
 from common.ethereum.hash import EthTxHashField
 from common.solana.alt_program import SolAltID
 from common.utils.pydantic import BaseModel
-from .mp_api import MpTxModel, MpStuckTxModel
+from .mp_api import MpTxModel, MpStuckTxModel, MpGasPriceModel, MpTokenGasPriceModel
 from .op_api import OpResourceModel
 
 EXECUTOR_ENDPOINT = "/api/v1/executor/"
@@ -17,11 +17,13 @@ EXECUTOR_ENDPOINT = "/api/v1/executor/"
 class ExecTxRequest(BaseModel):
     tx: MpTxModel
     resource: OpResourceModel
+    gas_price: MpGasPriceModel
 
 
 class ExecStuckTxRequest(BaseModel):
     stuck_tx: MpStuckTxModel
     resource: OpResourceModel
+    gas_price: MpGasPriceModel
 
 
 class ExecTxRespCode(IntEnum):

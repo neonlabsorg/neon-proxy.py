@@ -138,6 +138,7 @@ class MpTokenGasPriceModel(BaseModel):
     is_default_token: bool
 
     suggested_gas_price: int
+    cu_gas_price: int
     is_const_gas_price: bool
     min_acceptable_gas_price: int
     min_executable_gas_price: int
@@ -147,6 +148,7 @@ class MpGasPriceModel(BaseModel):
     chain_token_price_usd: int
 
     operator_fee: int
+    cu_price_level: str
     cu_price: int
     simple_cu_price: int
 

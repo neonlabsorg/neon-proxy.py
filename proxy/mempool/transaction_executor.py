@@ -15,7 +15,14 @@ from .transaction_dict import MpTxDict
 from .transaction_schedule import MpTxSchedule
 from .transaction_stuck_dict import MpStuckTxDict
 from ..base.ex_api import ExecTxRespCode, ExecTxResp
-from ..base.mp_api import MpTxResp, MpTxRespCode, MpTxPoolContentResp, MpTxModel, MpStuckTxModel, MpGasPriceModel
+from ..base.mp_api import (
+    MpTxResp,
+    MpTxRespCode,
+    MpTxPoolContentResp,
+    MpTxModel,
+    MpStuckTxModel,
+    MpGasPriceModel,
+)
 from ..base.op_api import OpResourceModel
 from ..stat.api import NeonTxDoneData, NeonTxFailData, NeonTxPoolData, NeonTxTokenPoolData
 
@@ -143,7 +150,7 @@ class MpTxExecutor(MempoolComponent):
                     break
 
                 gas_price = self._server.get_gas_price()
-                while (await self._acquire_stuck_tx()) or (await self._acquire_scheduled_tx(gas_price)):
+                while (await self._acquire_stuck_tx(gas_price)) or (await self._acquire_scheduled_tx(gas_price)):
                     continue
 
                 task_list, self._completed_task_list = self._completed_task_list, list()
@@ -167,7 +174,7 @@ class MpTxExecutor(MempoolComponent):
         )
         self._stat_client.commit_neon_tx_pool(data)
 
-    async def _acquire_stuck_tx(self) -> bool:
+    async def _acquire_stuck_tx(self, gas_price: MpGasPriceModel) -> bool:
         if self._cfg.mp_skip_stuck_tx:
             return False
 
@@ -190,17 +197,29 @@ class MpTxExecutor(MempoolComponent):
                 return False
 
             self._stuck_tx_dict.acquire_tx(stuck_tx)
-            self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(self._exec_stuck_tx(stuck_tx, resource))
+            self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(
+                self._exec_stuck_tx(stuck_tx, resource, gas_price)
+            )
 
         return True
 
-    async def _exec_stuck_tx(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> None:
+    async def _exec_stuck_tx(
+        self,
+        stuck_tx: MpStuckTxModel,
+        resource: OpResourceModel,
+        gas_price: MpGasPriceModel,
+    ) -> None:
         with logging_context(tx=stuck_tx.tx_id):
-            await self._exec_stuck_tx_impl(stuck_tx, resource)
+            await self._exec_stuck_tx_impl(stuck_tx, resource, gas_price)
 
-    async def _exec_stuck_tx_impl(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> None:
+    async def _exec_stuck_tx_impl(
+        self,
+        stuck_tx: MpStuckTxModel,
+        resource: OpResourceModel,
+        gas_price: MpGasPriceModel,
+    ) -> None:
         try:
-            resp = await self._exec_client.complete_stuck_tx(stuck_tx, resource)
+            resp = await self._exec_client.complete_stuck_tx(stuck_tx, resource, gas_price)
         except BaseException as exc:
             resp = ExecTxResp(code=ExecTxRespCode.Failed)
             _LOG.error("error on send stuck NeonTx to executor", exc_info=exc)
@@ -258,18 +277,25 @@ class MpTxExecutor(MempoolComponent):
                 break
 
             tx_schedule.acquire_tx(tx)
-            self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(self._exec_scheduled_tx(tx, resource))
+            self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(
+                self._exec_scheduled_tx(tx, resource, gas_price)
+            )
             return True
 
         return False
 
-    async def _exec_scheduled_tx(self, tx: MpTxModel, resource: OpResourceModel) -> None:
+    async def _exec_scheduled_tx(self, tx: MpTxModel, resource: OpResourceModel, gas_price: MpGasPriceModel) -> None:
         with logging_context(tx=tx.tx_id):
-            await self._exec_scheduled_tx_impl(tx, resource)
+            await self._exec_scheduled_tx_impl(tx, resource, gas_price)
 
-    async def _exec_scheduled_tx_impl(self, tx: MpTxModel, resource: OpResourceModel) -> None:
+    async def _exec_scheduled_tx_impl(
+        self,
+        tx: MpTxModel,
+        resource: OpResourceModel,
+        gas_price: MpGasPriceModel,
+    ) -> None:
         try:
-            resp = await self._exec_client.exec_tx(tx, resource)
+            resp = await self._exec_client.exec_tx(tx, resource, gas_price)
         except BaseException as exc:
             resp = ExecTxResp(code=ExecTxRespCode.Failed)
             _LOG.error("error on send NeonTx to executor", exc_info=exc)

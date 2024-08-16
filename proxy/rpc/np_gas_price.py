@@ -31,6 +31,8 @@ class _RpcGasPriceModel(BaseJsonRpcModel):
 
     operatorFee: HexUIntField
 
+    solanaCUGasPrice: HexUIntField
+    solanaCUPriorityLevel: str
     solanaCUPriorityFee: HexUIntField
     solanaSimpleCUPriorityFee: HexUIntField
 
@@ -61,6 +63,8 @@ class _RpcDefaultGasPriceModel(_RpcGasPriceModel):
             chainTokenPriceUsd=price.chain_token_price_usd,
             tokenPriceUsd=token_price.token_price_usd,
             operatorFee=price.operator_fee,
+            solanaCUGasPrice=token_price.cu_gas_price,
+            solanaCUPriorityLevel=price.cu_price_level,
             solanaCUPriorityFee=price.cu_price,
             solanaSimpleCUPriorityFee=price.simple_cu_price,
         )

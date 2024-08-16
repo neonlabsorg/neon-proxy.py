@@ -12,6 +12,7 @@ import pythclient.utils as _pyth_utils
 
 from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, CHAIN_TOKEN_NAME
 from common.neon_rpc.api import EvmConfigModel, TokenModel
+from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import log_msg, logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
@@ -109,14 +110,18 @@ class MpGasPriceCalculator(MempoolComponent):
                     _LOG.error("error on update gas-price", exc_info=exc)
 
     async def _get_gas_price(self, evm_cfg: EvmConfigModel) -> MpGasPriceModel | None:
-        base_price_usd = self._base_price_acct.aggregate_price_info.price if self._base_price_acct else 0.0
+        if (self._cfg.const_gas_price is None) and (not self._price_acct_full_dict):
+            return None
 
         token_dict: dict[str, MpTokenGasPriceModel] = dict()
         default_token: MpTokenGasPriceModel | None = None
 
+        base_price_usd = self._base_price_acct.aggregate_price_info.price if self._base_price_acct else 0.0
+        cu_price = await self._fee_client.get_cu_price([])
+
         for token in evm_cfg.token_dict.values():
             price_acct = await self._get_price_account(token.name)
-            token_gas_price = self._calc_token_gas_price(token, base_price_usd, price_acct)
+            token_gas_price = self._calc_token_gas_price(token, base_price_usd, cu_price, price_acct)
             if token_gas_price:
                 token_dict[token.name] = token_gas_price
                 if token_gas_price.is_default_token:
@@ -129,7 +134,8 @@ class MpGasPriceCalculator(MempoolComponent):
         return MpGasPriceModel(
             chain_token_price_usd=int(base_price_usd * self._token_usd_precision),
             operator_fee=int(self._cfg.operator_fee * 100_000),
-            cu_price=self._cfg.cu_price,
+            cu_price_level=self._fee_client.cu_price_level.name,
+            cu_price=cu_price,
             simple_cu_price=self._cfg.simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
             token_dict=token_dict,
@@ -140,6 +146,7 @@ class MpGasPriceCalculator(MempoolComponent):
         self,
         token: TokenModel,
         base_price_usd: float,
+        cu_price: int,
         price_acct: _PythPriceAcct | None,
     ) -> MpTokenGasPriceModel | None:
         is_const_price = False
@@ -172,6 +179,12 @@ class MpGasPriceCalculator(MempoolComponent):
                 min_price_deque.popleft()
             min_price = min(min_price_deque)
 
+        # Add gas price to pay for Compute Units in X iterations
+        cu_gas_price = 0
+        if self._cfg.include_cu_in_gas_price:
+            cu_gas_price = SolCbProg.MaxCuLimit * cu_price * min_price / 5000
+            suggested_price += cu_gas_price
+
         return MpTokenGasPriceModel(
             chain_id=token.chain_id,
             token_name=token.name,
@@ -179,6 +192,7 @@ class MpGasPriceCalculator(MempoolComponent):
             token_price_usd=int(token_price_usd * self._token_usd_precision),
             is_default_token=token.is_default,
             suggested_gas_price=suggested_price,
+            cu_gas_price=cu_gas_price,
             is_const_gas_price=is_const_price,
             min_acceptable_gas_price=self._cfg.min_gas_price or 0,
             min_executable_gas_price=min_price,

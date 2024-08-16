@@ -137,6 +137,7 @@ class Config:
     cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_name: Final[str] = "CU_PRIORITY_FEE"
     simple_cu_price_name: Final[str] = "SIMPLE_CU_PRIORITY_FEE"
+    include_cu_in_gas_price_name: Final[str] = "INCLUDE_CU_PRIORITY_FEE_IN_GAS_PRICE"
     atlas_fee_url_name: Final[str] = "ATLAS_PRIORITY_FEE_URL"
     atlas_fee_level_name: Final[str] = "ATLAS_PRIORITY_FEE_LEVEL"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
@@ -680,6 +681,10 @@ class Config:
         return self._env_num(self.simple_cu_price_name, 0, 0, 1_000_000)
 
     @cached_property
+    def include_cu_in_gas_price(self) -> bool:
+        return self._env_bool(self.include_cu_in_gas_price_name, False)
+
+    @cached_property
     def atlas_fee_url_list(self) -> tuple[str, ...]:
         atlas_url_list = self._split_str(os.environ.get(self.atlas_fee_url_name, ""))
         if not atlas_url_list:
@@ -918,6 +923,7 @@ class Config:
             self.cu_limit_name: self.cu_limit,
             self.cu_price_name: self.cu_price,
             self.simple_cu_price_name: self.simple_cu_price,
+            self.include_cu_in_gas_price_name: self.include_cu_in_gas_price,
             self.atlas_fee_url_name: self.atlas_fee_url_list,
             self.atlas_fee_level_name: self.atlas_fee_level,
             self.min_gas_price_name: self.min_gas_price,

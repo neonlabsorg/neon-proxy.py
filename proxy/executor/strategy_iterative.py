@@ -156,7 +156,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 #     3. mark holder as finalized
                 if not optimal_cfg:
                     cu_limit = self._def_cu_limit or (self._cu_limit // 2)
-                    optimal_cfg = dataclasses.replace(base_cfg, cu_limit=cu_limit)
+                    optimal_cfg = await self._replace_cu_limit(base_cfg, cu_limit=cu_limit)
 
                 if await self._send_tx_list([self._build_cancel_tx(optimal_cfg)]):
                     return ExecTxRespCode.Failed
@@ -328,7 +328,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             tx_list = tuple(map(lambda x: x.tx, emul_tx_list[:iter_cnt]))
             return dataclasses.replace(base_cfg, iter_cnt=iter_cnt, tx_list=tx_list), evm_step_cnt
 
-        optimal_cfg = dataclasses.replace(base_cfg, iter_cnt=iter_cnt, cu_limit=round_cu_limit)
+        optimal_cfg = await self._replace_cu_limit(base_cfg, cu_limit=round_cu_limit, iter_cnt=iter_cnt)
         return optimal_cfg, evm_step_cnt
 
     async def _get_def_iter_list_cfg(self) -> _SolIterListCfg:
@@ -383,7 +383,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         # if it's impossible to optimize the CU budget, switch to default mode with the decreased CU limit in 2 times
         cu_limit = self._def_cu_limit or (self._cu_limit // 2)
         _LOG.debug("single: %s EVM steps, %s CUs", base_cfg.evm_step_cnt, cu_limit)
-        return dataclasses.replace(base_cfg, cu_limit=cu_limit, is_default=True)
+        return await self._replace_cu_limit(base_cfg, cu_limit=cu_limit, is_default=True)
 
     @dataclass(frozen=True)
     class _SolIterListCfg(SolTxCfg):
@@ -418,6 +418,10 @@ class IterativeTxStrategy(BaseTxStrategy):
             tx_list=tx_list,
             is_default=is_default,
         )
+
+    async def _replace_cu_limit(self, base_cfg: _SolIterListCfg, cu_limit: int, **kwargs) -> _SolIterListCfg:
+        cu_price = await self._calc_cu_price(cu_limit)
+        return dataclasses.replace(base_cfg, cu_limit=cu_limit, cu_price=cu_price, **kwargs)
 
     def _calc_total_evm_step_cnt(self) -> int:
         return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)

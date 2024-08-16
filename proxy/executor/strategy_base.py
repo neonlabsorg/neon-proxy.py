@@ -247,6 +247,22 @@ class BaseTxStrategy(abc.ABC):
     def _cu_limit(self) -> int:
         return self._ctx.cb_prog.MaxCuLimit
 
+    async def _calc_cu_price(self, cu_limit: int) -> int:
+        suggested_cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+
+        if not (base_cu_gas_price := self._ctx.gas_price_model.cu_gas_price):
+            return suggested_cu_price
+
+        base_gas_price = self._ctx.gas_price_model.suggested_gas_price - base_cu_gas_price
+        min_gas_price = self._ctx.gas_price_model.min_executable_gas_price
+        if avail_cu_gas_price := max(self._ctx.neon_tx_gas_price - base_gas_price, 0):
+            calc_cu_price = avail_cu_gas_price * 5000  // cu_limit // min_gas_price
+            _LOG.debug("calculated CU-price %s, suggested CU-price %s", calc_cu_price, suggested_cu_price)
+            return min(calc_cu_price, suggested_cu_price)
+
+        _LOG.debug("no available CU-price in gas-price, suggested CU-price %s", suggested_cu_price)
+        return 0
+
     async def _init_sol_tx_cfg(
         self,
         *,
@@ -257,14 +273,14 @@ class BaseTxStrategy(abc.ABC):
         cu_price: int = 0,
         heap_size: int = 0
     ) -> SolTxCfg:
-        if not cu_price:
-            cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+        cu_limit = cu_limit or self._cu_limit
+        cu_price = cu_price or await self._calc_cu_price(cu_limit)
 
         return SolTxCfg(
             name=name or self.name,
             evm_step_cnt=evm_step_cnt or self._ctx.evm_step_cnt_per_iter,
             ix_mode=ix_mode or NeonIxMode.Default,
-            cu_limit=cu_limit or self._cu_limit,
+            cu_limit=cu_limit,
             cu_price=cu_price,
             heap_size=heap_size or self._ctx.cb_prog.MaxHeapSize,
         )

@@ -6,6 +6,7 @@ import asyncio
 from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
+from common.atlas.fee_client import AtlasFeeClient
 from common.config.config import Config
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
@@ -37,6 +38,10 @@ class MempoolComponent(BaseIntlProxyComponent):
         return self._server._op_client  # noqa
 
     @cached_property
+    def _fee_client(self) -> AtlasFeeClient:
+        return self._server._fee_client  # noqa
+
+    @cached_property
     def _stat_client(self) -> StatClient:
         return self._server._stat_client  # noqa
 
@@ -55,12 +60,14 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
         sol_client: SolClient,
         exec_client: ExecutorClient,
         op_client: OpResourceClient,
+        fee_client: AtlasFeeClient,
         stat_client: StatClient,
         db: IndexerDbClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._exec_client = exec_client
         self._op_client = op_client
+        self._fee_client = fee_client
         self._stat_client = stat_client
         self._db = db
 

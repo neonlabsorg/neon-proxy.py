@@ -27,6 +27,7 @@ from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.utils.cached import cached_property, cached_method, reset_cached_method
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
+from ..base.mp_api import MpTokenGasPriceModel
 from ..base.op_client import OpResourceClient
 from ..stat.client import StatClient
 
@@ -311,6 +312,10 @@ class NeonExecTxCtx:
         return isinstance(self._tx_request, ExecStuckTxRequest)
 
     @cached_property
+    def gas_price_model(self) -> MpTokenGasPriceModel:
+        return self._tx_request.gas_price.chain_dict[self.chain_id]
+
+    @cached_property
     def payer(self) -> SolPubKey:
         return self._tx_request.resource.owner
 
@@ -330,6 +335,12 @@ class NeonExecTxCtx:
         assert self.is_stuck_tx
         assert self._holder
         return self._holder.tx
+
+    @cached_property
+    def neon_tx_gas_price(self) -> int:
+        if self.is_stuck_tx:
+            return self.holder_tx.gas_price
+        return self._tx_request.tx.neon_tx.gas_price
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:

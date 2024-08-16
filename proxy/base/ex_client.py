@@ -10,7 +10,7 @@ from .ex_api import (
     DestroyAltListResp,
     NeonAltModel,
 )
-from .mp_api import MpTxModel, MpStuckTxModel
+from .mp_api import MpTxModel, MpStuckTxModel, MpTokenGasPriceModel, MpGasPriceModel
 from .op_api import OpResourceModel
 
 
@@ -20,11 +20,22 @@ class ExecutorClient(AppDataClient):
         self.connect(host=self._cfg.exec_ip, port=self._cfg.exec_port, path=EXECUTOR_ENDPOINT)
         self.set_timeout_sec(60 * 90)  # 90 minutes
 
-    async def exec_tx(self, tx: MpTxModel, resource: OpResourceModel) -> ExecTxResp:
-        return await self._exec_tx(ExecTxRequest(tx=tx, resource=resource))
+    async def exec_tx(self, tx: MpTxModel, resource: OpResourceModel, gas_price: MpGasPriceModel) -> ExecTxResp:
+        return await self._exec_tx(ExecTxRequest(tx=tx, resource=resource, gas_price=gas_price))
 
-    async def complete_stuck_tx(self, stuck_tx: MpStuckTxModel, resource: OpResourceModel) -> ExecTxResp:
-        return await self._complete_stuck_tx(ExecStuckTxRequest(stuck_tx=stuck_tx, resource=resource))
+    async def complete_stuck_tx(
+        self,
+        stuck_tx: MpStuckTxModel,
+        resource: OpResourceModel,
+        gas_price: MpGasPriceModel,
+    ) -> ExecTxResp:
+        return await self._complete_stuck_tx(
+            ExecStuckTxRequest(
+                stuck_tx=stuck_tx,
+                resource=resource,
+                gas_price=gas_price,
+            )
+        )
 
     async def destroy_alt_list(self, req_id: dict, stuck_alt_list: Sequence[NeonAltModel]) -> None:
         req = DestroyAltListRequest(req_id=req_id, alt_list=list(stuck_alt_list))

@@ -5,6 +5,7 @@ from .fee_api import FeeLevelValidator, FeeLevel, FeeResp, FeeRequest, FeeCfg
 from ..http.utils import HttpURL
 from ..jsonrpc.client import JsonRpcClient
 from ..solana.pubkey import SolPubKey
+from ..utils.cached import cached_property
 
 _LOG = logging.getLogger(__name__)
 
@@ -18,16 +19,13 @@ class AtlasFeeClient(JsonRpcClient):
             self.connect(base_url_list=url_list)
             self._is_active = True
 
-            fee_level = FeeLevelValidator.from_raw(self._cfg.atlas_fee_level)
-            if fee_level == FeeLevel.Unknown:
-                fee_level = FeeLevel.Recommended
-                _LOG.debug("use '%s' level", fee_level)
+            fee_level = self.cu_price_level
+            _LOG.debug("use '%s' level", fee_level)
 
             if fee_level == FeeLevel.Recommended:
                 self._fee_cfg = FeeCfg(recommended=True)
             else:
                 self._fee_cfg = FeeCfg(level=fee_level, include_vote=False)
-
         else:
             self._is_active = False
             self._fee_cfg = FeeCfg()
@@ -48,6 +46,13 @@ class AtlasFeeClient(JsonRpcClient):
 
         _LOG.debug("use default CU-price %s", int(self._cfg.cu_price))
         return self._cfg.cu_price
+
+    @cached_property
+    def cu_price_level(self) -> FeeLevel:
+        fee_level = FeeLevelValidator.from_raw(self._cfg.atlas_fee_level)
+        if fee_level == FeeLevel.Unknown:
+            fee_level = FeeLevel.Recommended
+        return fee_level
 
     @JsonRpcClient.method(name="getPriorityFeeEstimate")
     async def _estimate_fee(self, fee_request: FeeRequest) -> FeeResp: ...
