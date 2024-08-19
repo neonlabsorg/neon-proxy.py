@@ -249,6 +249,21 @@ class BaseTxStrategy(abc.ABC):
     def _cu_limit(self) -> int:
         return self._ctx.cb_prog.MaxCuLimit
 
+    async def _estimate_cu_price(self) -> int:
+        # We estimate the cu_price from the recent blocks.
+        # Solana currently does not really take into account writeable account list,
+        # so the decent estimation level should be achieved by taking a weighted average from
+        # the percentiles of compute unit prices across recent blocks.
+        est_num_blocks: int = self._ctx.cfg.cu_price_estimator_num_blocks
+        est_percentile: int = self._ctx.cfg.cu_price_estimator_percentile
+        cu_price_list: list[PriorityFeePercentiles] = await self._ctx.db.get_recent_priority_fees(est_num_blocks)
+
+        return int(
+            CuPricePercentilesModel.get_weighted_percentile(
+                est_percentile, len(cu_price_list), map(lambda v: v.cu_price_percentiles, cu_price_list)
+            )
+        )
+
     async def _init_sol_tx_cfg(
         self,
         *,
@@ -266,27 +281,18 @@ class BaseTxStrategy(abc.ABC):
         if not cu_price:
             if self._ctx.tx_type == 0:
                 # For legacy transactions: we estimate the cu_price from the recent blocks.
-                # Solana currently does not really take into account writeable account list,
-                # so the decent estimation level should be achieved by taking a weighted average from
-                # the percentiles of compute unit prices across recent blocks.
-                est_num_blocks: int = self._ctx.cfg.cu_price_estimator_num_blocks
-                est_percentile: int = self._ctx.cfg.cu_price_estimator_percentile
-                cu_price_list: list[PriorityFeePercentiles] = await self._ctx.db.get_recent_priority_fees(
-                    est_num_blocks
-                )
-
-                cu_price = int(
-                    CuPricePercentilesModel.get_weighted_percentile(
-                        est_percentile, len(cu_price_list), map(lambda v: v.cu_price_percentiles, cu_price_list)
-                    )
-                )
+                cu_price = await self._estimate_cu_price()
             else:
-                # For Dynamic Gas transactions: we take the cu_price according to what the User set in Neon tx.
                 base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
-                assert base_fee_per_gas > 0
-                max_priority_fee_per_gas = self._ctx.max_priority_fee_per_gas
-                # TODO EIP1559: fix formula.
-                cu_price = max(1, int(max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit)))
+                assert base_fee_per_gas >= 0
+                # For metamask case (max_fee_per_gas = max_priority_fee_per_gas), we treat it as a legacy transaction.
+                if base_fee_per_gas == 0:
+                    cu_price = await self._estimate_cu_price()
+                else:
+                    # For general Dynamic Gas transactions: we take the cu_price according to what the User set in Neon tx.
+                    cu_price = max(
+                        1, int(self._ctx.max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit))
+                    )
 
         return SolTxCfg(
             name=name or self.name,
