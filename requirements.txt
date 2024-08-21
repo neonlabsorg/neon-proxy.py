@@ -7,7 +7,7 @@ hvac==2.3.0
 aioprometheus==23.12.0
 pydantic==2.8.2
 git+https://github.com/neonlabsorg/Robyn
-aiohttp==3.10.3
+aiohttp==3.10.5
 backoff==2.2.1
 uvloop==0.20.0
 aiochclient[aiohttp]==2.6.0
