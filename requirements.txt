@@ -14,7 +14,7 @@ aiochclient[aiohttp]==2.6.0
 
 eth-bloom==3.0.1
 eth-keys==0.5.1
-eth-account==0.13.1
+eth-account==0.13.2
 eth-hash==0.7.0
 safe-pysha3==1.0.4
 ecdsa==0.19.0
