@@ -24,11 +24,6 @@ from .stuck_alt_db import StuckNeonAltDb
 from .stuck_neon_tx_db import StuckNeonTxDb
 
 
-# Max value for the block_slot (which is of a bigint type in the Postgres).
-# This is to avoid additional get_latest_slot query when querying over recent blocks data.
-_MAX_LATEST_BLOCK_SLOT: int = 9223372036854775807
-
-
 class IndexerDbClient:
     def __init__(self, cfg: Config, db_conn: DbConnection, slot_range=IndexerDbSlotRange()) -> None:
         self._cfg = cfg
@@ -106,7 +101,8 @@ class IndexerDbClient:
         return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks, latest_block)
 
     async def get_recent_priority_fees(self, num_blocks: int) -> list[PriorityFeePercentiles]:
-        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks, _MAX_LATEST_BLOCK_SLOT)
+        last_slot: int = await self.get_latest_slot()
+        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks, last_slot)
 
     async def _get_slot_range(self) -> SolSlotRange:
         slot_list = await self._constant_db.get_int_list(

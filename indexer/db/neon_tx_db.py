@@ -111,9 +111,11 @@ class NeonTxDb(HistoryDbTable):
               WHERE
                 t.chain_id = {chain_id}
                 AND t.max_fee_per_gas != ''
-                AND t.block_slot <= {latest_slot}
+                AND t.block_slot BETWEEN {earliest_slot} AND {latest_slot}
               GROUP BY
                 block_slot
+              ORDER BY
+                block_slot DESC
               LIMIT {num_blocks}
             ) a
             ORDER BY
@@ -124,6 +126,7 @@ class NeonTxDb(HistoryDbTable):
             chain_id=DbSqlParam("chain_id"),
             num_blocks=DbSqlParam("num_blocks"),
             latest_slot=DbSqlParam("latest_slot"),
+            earliest_slot=DbSqlParam("earliest_slot"),
         )
 
         (
@@ -194,7 +197,9 @@ class NeonTxDb(HistoryDbTable):
         return await self._fetch_all(
             ctx,
             self._select_base_fee_list_query,
-            _ByChainIdBlockCount(chain_id, num_blocks, latest_slot),
+            # In general, earliest_slot is bounded by the latest_slot - num_blocks in the ideal world.
+            # On average, Solana misses 5% of slots because of forks, 20% is taken here as a safe margin.
+            _ByChainIdBlockCount(chain_id, num_blocks, int(latest_slot - num_blocks * 1.2), latest_slot),
             record_type=BlockFeeGasData,
         )
 
@@ -352,7 +357,7 @@ class _RecordWithBlock(_Record):
 
         params = dict(
             tx_type=self.tx_type,
-            tx_chain_id=None if self.chain_id == 0 else self.chain_id,
+            tx_chain_id=None if not self.chain_id else self.chain_id,
             neon_tx_hash=self.neon_sig,
             from_address=self.from_addr,
             to_address=self.to_addr,
@@ -452,4 +457,6 @@ class _ByIndex:
 class _ByChainIdBlockCount:
     chain_id: int
     num_blocks: int
+    # Despite num_blocks and latest_slot is specified, earlist_slot is for the optimization purposes.
+    earliest_slot: int
     latest_slot: int

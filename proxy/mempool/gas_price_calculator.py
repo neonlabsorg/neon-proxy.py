@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import logging
 from collections import deque
-import time
 from typing import Final
 
 import pythclient.pythaccounts as _pyth_acct
@@ -128,7 +127,7 @@ class MpGasPriceCalculator(MempoolComponent):
 
         for token in evm_cfg.token_dict.values():
             price_acct = await self._get_price_account(token.name)
-            token_gas_price = self._calc_token_gas_price(token, base_price_usd, price_acct)
+            token_gas_price = await self._calc_token_gas_price(token, base_price_usd, price_acct)
             if token_gas_price:
                 token_dict[token.name] = token_gas_price
                 if token_gas_price.is_default_token:
@@ -148,7 +147,7 @@ class MpGasPriceCalculator(MempoolComponent):
             default_token=default_token,
         )
 
-    def _calc_token_gas_price(
+    async def _calc_token_gas_price(
         self,
         token: TokenModel,
         base_price_usd: float,
@@ -186,9 +185,8 @@ class MpGasPriceCalculator(MempoolComponent):
 
         # Populate data regardless if const_gas_price or not.
         token_gas_price_deque = self._recent_gas_prices.setdefault(token.chain_id, deque())
-        token_gas_price_deque.append(
-            MpGasPriceTimestamped(timestamp=int(time.time() * 1000), token_gas_price=suggested_price)
-        )
+        recent_slot: int = await self._sol_client.get_recent_slot()
+        token_gas_price_deque.append(MpGasPriceTimestamped(slot=recent_slot, token_gas_price=suggested_price))
         if len(token_gas_price_deque) > self._recent_gas_price_cnt:
             token_gas_price_deque.popleft()
 

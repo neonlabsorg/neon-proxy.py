@@ -279,20 +279,21 @@ class BaseTxStrategy(abc.ABC):
         #    cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
         cu_limit = cu_limit or self._cu_limit
         if not cu_price:
-            if self._ctx.tx_type == 0:
-                # For legacy transactions: we estimate the cu_price from the recent blocks.
-                cu_price = await self._estimate_cu_price()
-            else:
+            # For legacy transactions: we estimate the cu_price from the recent blocks.
+            cu_price = await self._estimate_cu_price()
+            if self._ctx.tx_type == 2:
                 base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
                 assert base_fee_per_gas >= 0
-                # For metamask case (max_fee_per_gas = max_priority_fee_per_gas), we treat it as a legacy transaction.
-                if base_fee_per_gas == 0:
-                    cu_price = await self._estimate_cu_price()
-                else:
-                    # For general Dynamic Gas transactions: we take the cu_price according to what the User set in Neon tx.
-                    cu_price = max(
-                        1, int(self._ctx.max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit))
+                # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
+                # For the general case, we take into account the gas fee parameters set in Neon tx.
+                if base_fee_per_gas != 0:
+                    cu_price = min(
+                        cu_price,
+                        int(self._ctx.max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit)),
                     )
+                # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
+                # and neon-evm does not digest it.
+                cu_price = max(1, cu_price)
 
         return SolTxCfg(
             name=name or self.name,

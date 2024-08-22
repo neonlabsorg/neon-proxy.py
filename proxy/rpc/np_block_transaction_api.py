@@ -478,17 +478,15 @@ class NpBlockTxApi(NeonProxyApi):
         # or from the transactions inside that block (for the historical block).
         base_fee_per_gas: int | None = None
 
-        # Try recent mempool gas prices first.
-        mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
-        if mempool_basefee_gas_prices.token_gas_prices:
-            latest_slot: int = await self._db.get_latest_slot()
-            if block.slot > latest_slot:
-                # If block is pending, set baseFeePerGas to the current suggested token gas price.
-                _, token_gas_price = await self._get_token_gas_price(ctx)
-                base_fee_per_gas = token_gas_price.suggested_gas_price
-            else:
-                # Try finding the corresponding gas price from recent mempool prices.
-                base_fee_per_gas = mempool_basefee_gas_prices.find_gas_price(block.slot, latest_slot)
+        latest_slot: int = await self._db.get_latest_slot()
+        if block.slot > latest_slot:
+            # If block is pending, set baseFeePerGas to the current suggested token gas price.
+            _, token_gas_price = await self._get_token_gas_price(ctx)
+            base_fee_per_gas = token_gas_price.suggested_gas_price
+        else:
+            # Try recent mempool gas prices.
+            mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
+            base_fee_per_gas = mempool_basefee_gas_prices.find_gas_price(block.slot)
 
         if base_fee_per_gas is None:
             # Recent gas prices from the mempool is lacking the data, we have to take it from the transaction list.

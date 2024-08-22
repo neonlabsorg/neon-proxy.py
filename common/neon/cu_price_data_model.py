@@ -18,7 +18,7 @@ class CuPricePercentilesModel(BaseModel):
     _PercentileCount: Final[int] = 11  # 100 / step + 1.
     _PercentileList: Final[list[int]] = [i * 10 for i in range(11)]  # 0, 10, ..., 100
 
-    _default: ClassVar[list[int] | None] = None
+    _default: ClassVar[CuPricePercentilesModel | None] = None
 
     data: list[int] = list()
 
@@ -72,9 +72,6 @@ class CuPricePercentilesModel(BaseModel):
             start_val
             + (end_val - start_val) * (pp - self._PercentileList[biggest_known_p_idx - 1]) / self._PercentileStep
         )
-
-    def get_median(self) -> float:
-        return self.get_percentile(50)
 
     @classmethod
     def get_weighted_percentile(cls, pp: int, num_data_points: int, price_seq: Iterable[list[int]]) -> float:
