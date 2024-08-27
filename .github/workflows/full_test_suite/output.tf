@@ -5,7 +5,3 @@ output "solana_ip" {
 output "proxy_ip" {
   value = hcloud_server.proxy.ipv4_address
 }
-
-output "branch" {
-  value = var.branch
-}
