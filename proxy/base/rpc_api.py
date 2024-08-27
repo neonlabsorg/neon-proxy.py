@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import AliasChoices, Field
 from typing_extensions import Self
@@ -52,6 +52,11 @@ class RpcEthTxRequest(BaseJsonRpcModel):
     chainId: HexUIntField = Field(default=0)
 
     _default: ClassVar[RpcEthTxRequest | None] = None
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if self.txType != 0:
+            if self.maxPriorityFeePerGas > self.maxFeePerGas:
+                raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
 
     @classmethod
     def default(cls) -> Self:

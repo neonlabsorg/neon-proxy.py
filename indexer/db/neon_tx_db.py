@@ -374,9 +374,7 @@ class _RecordWithBlock(_Record):
             s=self.s,
         )
         # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
-        # Alternatively, allow non-frozen model and modify it in the model_post_init.
-        NeonTxModel.pop_ctr_params(params)
-        neon_tx = NeonTxModel(**params)
+        neon_tx = NeonTxModel.from_dict(params)
 
         neon_tx_rcpt = NeonTxReceiptModel(
             slot=self.block_slot,

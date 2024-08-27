@@ -91,6 +91,11 @@ class NeonTxModel(BaseModel):
         )
 
     @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        NeonTxModel._pop_ctr_params(data)
+        return super().from_dict(data)
+
+    @classmethod
     def from_raw(cls, data: _RawNeonTxModel, *, raise_exception=False) -> Self:
         if isinstance(data, cls):
             return data
@@ -136,7 +141,7 @@ class NeonTxModel(BaseModel):
             )
 
     @classmethod
-    def pop_ctr_params(cls, params_dict: dict) -> None:
+    def _pop_ctr_params(cls, params_dict: dict) -> None:
         if params_dict["tx_type"] == 0:
             params_dict.pop("max_fee_per_gas", None)
             params_dict.pop("max_priority_fee_per_gas", None)
@@ -164,8 +169,7 @@ class NeonTxModel(BaseModel):
             call_data=tx.call_data,
             error=None,
         )
-        cls.pop_ctr_params(params)
-        return cls(**params)
+        return cls.from_dict(params)
 
     @cached_method
     def _to_eth_tx(self) -> EthTx:
