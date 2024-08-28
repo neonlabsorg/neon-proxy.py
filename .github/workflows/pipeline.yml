@@ -103,7 +103,7 @@ jobs:
           echo "is_proxy_release=${{ env.IS_PROXY_RELEASE }}" >> "$GITHUB_OUTPUT"
           echo "evm_tag=${{ env.EVM_TAG }}" >> "$GITHUB_OUTPUT"
           echo "evm_sha_tag=${{ env.EVM_SHA_TAG }}" >> "$GITHUB_OUTPUT"
-          echo "evm_pr_version_branch=${{ github.event.inputs.evm_pr_version_branch }} >> "$GITHUB_OUTPUT"
+          echo "evm_pr_version_branch=${{ github.event.inputs.evm_pr_version_branch }}" >> "$GITHUB_OUTPUT"
           echo "faucet_tag=${{ env.FAUCET_TAG }}" >> "$GITHUB_OUTPUT"
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
 
