@@ -573,6 +573,7 @@ class EmulNeonCallRequest(BaseModel):
         serialization_alias="solana_overrides"
     )
     slot: int | None
+    provide_account_info: str | None = None
 
 
 class EmulNeonCallExitCode(StrEnum):
