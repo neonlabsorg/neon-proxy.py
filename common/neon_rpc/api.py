@@ -616,6 +616,7 @@ class EmulNeonCallResp(BaseModel):
     external_sol_call: bool = Field(validation_alias="external_solana_call")
     revert_before_sol_call: bool = Field(validation_alias="reverts_before_solana_calls")
     revert_after_sol_call: bool = Field(validation_alias="reverts_after_solana_calls")
+    is_timestamp_number_used: bool = Field(validation_alias="is_timestamp_number_used")
 
     result: EthBinStrField
     evm_step_cnt: int = Field(validation_alias="steps_executed")
