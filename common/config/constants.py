@@ -2,13 +2,12 @@ import os
 from typing import Final
 
 from ..solana.pubkey import SolPubKey
-from ..solana.transaction import SOL_PACKET_SIZE as _SOL_PKT_SIZE
 
 ######################################
 # Solana general settings:
 ONE_BLOCK_SEC: Final[float] = float(os.environ.get("SOLANA_BLOCK_SEC", "0.4"))
 MIN_FINALIZE_SEC: Final[float] = ONE_BLOCK_SEC * 32
-SOL_PACKET_SIZE: Final[int] = _SOL_PKT_SIZE
+SOL_PKT_SIZE: Final[int] = 1280 - 40 - 8
 
 ######################################
 # Solana CB settings:
@@ -46,7 +45,7 @@ ROLLUP_GENESIS_TIME: Final[int] = int(os.environ.get("ROLLUP_GENESIS_TIME", "0")
 UNKNOWN_GENESIS_HASH: Final[str] = "JEKNVnkbo3jma5nREBBJCDoXFVeKkD56V3xKrvRmWcmM"  # Fake 0xFFFF..0000
 
 _MAJOR_VER = 1
-_MINOR_VER = 14
+_MINOR_VER = 15
 _BUILD_VER = 0
 _REVISION = "dev-NEON_PROXY_REVISION_TO_BE_REPLACED"
 NEON_PROXY_VER = f"v{_MAJOR_VER}.{_MINOR_VER}.{_BUILD_VER}-{_REVISION}"

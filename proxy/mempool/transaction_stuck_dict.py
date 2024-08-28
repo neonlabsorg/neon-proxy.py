@@ -79,7 +79,7 @@ class MpStuckTxDict:
         sleep_sec: Final[float] = ONE_BLOCK_SEC * 3
         with logging_context(ctx="mp-scan-stuck-txs"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break

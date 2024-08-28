@@ -78,7 +78,7 @@ class JsonRpcErrorModel(BaseJsonRpcModel):
 class JsonRpcResp(BaseJsonRpcModel):
     jsonrpc: Literal["2.0"]
     id: HttpRequestIdField
-    result: dict | list | str | bool | None = None
+    result: dict | list | str | bool | int | None = None
     error: JsonRpcErrorModel | None = None
 
     @property

@@ -2,20 +2,22 @@ from __future__ import annotations
 
 from common.app_data.client import AppDataClient
 from common.config.config import Config
+from common.solana_rpc.transaction_list_sender_stat import SolTxStatClient, SolTxFailData, SolTxDoneData
 from common.stat.api import RpcCallData
-from common.stat.client import BaseStatClient, RpcStatClient
+from common.stat.client import BaseStatClient
+from common.stat.client_rpc import RpcStatClient
 from .api import (
     OpEarnedTokenBalanceData,
     OpResourceHolderStatusData,
-    OpExecutionTokenBalanceData,
+    OpExecTokenBalanceData,
     STATISTIC_ENDPOINT,
-    TxDoneData,
-    TxFailData,
-    TxPoolData,
+    NeonTxDoneData,
+    NeonTxFailData,
+    NeonTxPoolData,
 )
 
 
-class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
+class StatClient(AppDataClient, BaseStatClient, RpcStatClient, SolTxStatClient):
     def __init__(self, cfg: Config) -> None:
         AppDataClient.__init__(self, cfg)
         BaseStatClient.__init__(self, cfg)
@@ -36,17 +38,26 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     def commit_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
         self._put_to_queue(self._commit_op_resource_holder_status, data)
 
-    def commit_op_execution_token_balance(self, data: OpExecutionTokenBalanceData) -> None:
+    def commit_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
         self._put_to_queue(self._commit_op_exec_token_balance, data)
 
-    def commit_tx_done(self, data: TxDoneData) -> None:
-        self._put_to_queue(self._commit_tx_done, data)
+    def commit_neon_tx_done(self, data: NeonTxDoneData) -> None:
+        self._put_to_queue(self._commit_neon_tx_done, data)
 
-    def commit_tx_fail(self, data: TxFailData) -> None:
-        self._put_to_queue(self._commit_tx_fail, data)
+    def commit_neon_tx_fail(self, data: NeonTxFailData) -> None:
+        self._put_to_queue(self._commit_neon_tx_fail, data)
 
-    def commit_tx_pool(self, data: TxPoolData) -> None:
-        self._put_to_queue(self._commit_tx_pool, data)
+    def commit_neon_tx_pool(self, data: NeonTxPoolData) -> None:
+        self._put_to_queue(self._commit_neon_tx_pool, data)
+
+    def commit_rpc_call(self, data: RpcCallData) -> None:
+        self._put_to_queue(self._commit_rpc_call, data)
+
+    def commit_sol_tx_done(self, data: SolTxDoneData) -> None:
+        self._put_to_queue(self._commit_sol_tx_done, data)
+
+    def commit_sol_tx_fail(self, data: SolTxFailData) -> None:
+        self._put_to_queue(self._commit_sol_tx_fail, data)
 
     @AppDataClient.method(name="commitOpEarnedTokensBalance")
     async def _commit_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None: ...
@@ -55,16 +66,22 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
     async def _commit_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None: ...
 
     @AppDataClient.method(name="commitOpExecutionTokenBalance")
-    async def _commit_op_exec_token_balance(self, data: OpExecutionTokenBalanceData) -> None: ...
+    async def _commit_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None: ...
 
     @AppDataClient.method(name="commitRpcCall")
     async def _commit_rpc_call(self, data: RpcCallData) -> None: ...
 
-    @AppDataClient.method(name="commitTransactionDone")
-    async def _commit_tx_done(self, data: TxDoneData) -> None: ...
+    @AppDataClient.method(name="commitNeonTransactionDone")
+    async def _commit_neon_tx_done(self, data: NeonTxDoneData) -> None: ...
 
-    @AppDataClient.method(name="commitTransactionFail")
-    async def _commit_tx_fail(self, data: TxFailData) -> None: ...
+    @AppDataClient.method(name="commitNeonTransactionFail")
+    async def _commit_neon_tx_fail(self, data: NeonTxFailData) -> None: ...
 
-    @AppDataClient.method(name="commitPool")
-    async def _commit_tx_pool(self, data: TxPoolData) -> None: ...
+    @AppDataClient.method(name="commitNeonTransactionPool")
+    async def _commit_neon_tx_pool(self, data: NeonTxPoolData) -> None: ...
+
+    @AppDataClient.method(name="commitSolanaTransactionDone")
+    async def _commit_sol_tx_done(self, data: SolTxDoneData) -> None: ...
+
+    @AppDataClient.method(name="commitSolanaTransactionFail")
+    async def _commit_sol_tx_fail(self, data: SolTxFailData) -> None: ...

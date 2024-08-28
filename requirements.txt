@@ -2,19 +2,19 @@ solders==0.21.0
 pythclient==0.1.24
 base58==2.1.1
 
-psycopg[binary,pool]==3.1.19
+psycopg[binary,pool]==3.2.1
 hvac==2.3.0
 aioprometheus==23.12.0
-pydantic==2.7.4
+pydantic==2.8.2
 git+https://github.com/neonlabsorg/Robyn
-aiohttp==3.9.5
+aiohttp==3.10.5
 backoff==2.2.1
-uvloop==0.19.0
+uvloop==0.20.0
 aiochclient[aiohttp]==2.6.0
 
 eth-bloom==3.0.1
 eth-keys==0.5.1
-eth-account==0.13.0
+eth-account==0.13.1
 eth-hash==0.7.0
 safe-pysha3==1.0.4
 ecdsa==0.19.0

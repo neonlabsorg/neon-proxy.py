@@ -13,7 +13,7 @@ from typing_extensions import Self
 from .utils import HttpURL, HttpStrOrURL
 from ..config.config import Config
 from ..config.utils import LogMsgFilter
-from ..utils.cached import cached_property
+from ..utils.cached import cached_property, reset_cached_method
 
 _LOG = logging.getLogger(__name__)
 
@@ -28,15 +28,14 @@ class HttpClientRequest:
     header_dict: dict[str, str]
     path: HttpURL | None
 
-    base_url: HttpURL | None = None
-    url: HttpURL | None = None
-
-    def build_url(self, base_url: HttpURL) -> Self:
-        if base_url == self.base_url:
-            return self
-
-        self.base_url = base_url
-        self.url = base_url.join(self.path) if self.path else base_url
+    @classmethod
+    def from_raw(
+        cls,
+        *,
+        data: str,
+        path: HttpURL | None = None,
+    ) -> Self:
+        return cls(data=data, header_dict=dict(), path=path)
 
 
 class HttpClient:
@@ -122,18 +121,37 @@ class HttpClient:
         _LOG.debug("connect to the URL: %s", str(base_url), extra=self._msg_filter)
         self._base_url_list.append(base_url)
 
-    async def _send_post_request(self, data: str, *, path: HttpURL | None = None) -> str:
-        assert len(self._base_url_list), "HttpClient must have at least one remote URL"
-
-        request = HttpClientRequest(
-            data=data,
-            header_dict=self._header_dict,
+    async def _send_raw_data_request(
+        self,
+        data: str,
+        *,
+        base_url_list: Sequence[HttpURL] = tuple(),
+        path: HttpURL | None = None,
+    ) -> str:
+        return await self._send_client_request(
+            HttpClientRequest.from_raw(data=data),
             path=path,
+            base_url_list=base_url_list,
         )
-        return await _send_post_request(self, request)
 
-    def _exception_handler(self, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
-        """Exception handler for send request.
+    async def _send_client_request(
+        self,
+        request: HttpClientRequest,
+        *,
+        base_url_list: Sequence[HttpURL] = tuple(),
+        path: HttpURL | None = None,
+    ) -> str:
+        if not base_url_list:
+            base_url_list = self._base_url_list
+        assert base_url_list, "HttpClient must have at least one remote URL"
+
+        request.path = path
+        request.header_dict = self._header_dict
+        return await _send_client_request(self, base_url_list, request)
+
+    def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+        """
+        Exception handler for send request.
         Can reraise the exception if it's needed.
         By default, output to logs the exception message.
         """
@@ -141,7 +159,7 @@ class HttpClient:
         msg = dict(
             message="error on retry {Retry} on request to {Path}: {Error}",
             Retry=retry,
-            Path=str(request.url),
+            Path=str(url),
             Error=str(exc),
         )
         _LOG.warning(msg, extra=self._msg_filter)
@@ -151,30 +169,53 @@ class HttpClient:
             raise
 
 
-async def _send_post_request(self: HttpClient, req: HttpClientRequest) -> str:
-    base_url_list = self._base_url_list.copy()
+async def _send_client_request(self: HttpClient, base_url_list: Sequence[HttpURL], request: HttpClientRequest) -> str:
+    request_url = _HttpRequestUrl(path=request.path)
+
+    base_url_list = list(base_url_list)
     random.shuffle(base_url_list)
     base_url_list = itertools.cycle(base_url_list)
+
     for retry in itertools.count():
         if self._is_stopped:
             break
 
-        base_url = next(base_url_list)
-        req.build_url(base_url)
+        request_url.build_url(next(base_url_list))
 
         try:
-            if req.data:
-                resp = await self.session.post(req.url, data=req.data, headers=req.header_dict)
+            if request.data:
+                resp = await self.session.post(request_url.value, data=request.data, headers=request.header_dict)
             else:
-                resp = await self.session.get(req.url, headers=req.header_dict)
+                resp = await self.session.get(request_url.value, headers=request.header_dict)
 
             if self._raise_for_status:
                 resp.raise_for_status()
             return await resp.text()
         except BaseException as exc:
             # Can reraise exception inside
-            self._exception_handler(req, retry, exc)
+            self._exception_handler(request_url.value, request, retry, exc)
 
         await asyncio.sleep(1)
         if retry > 0:
             _LOG.debug("attempt %d to repeat...", retry + 1)
+
+
+@dataclass
+class _HttpRequestUrl:
+    base_url: HttpURL | None = None
+    path: HttpURL | None = None
+
+    def build_url(self, base_url: HttpURL) -> None:
+        if base_url == self.base_url:
+            return
+
+        self.base_url = base_url
+        self._get_value.reset_cache(self)
+
+    @property
+    def value(self) -> HttpURL:
+        return self._get_value()
+
+    @reset_cached_method
+    def _get_value(self) -> HttpURL:
+        return self.base_url.join(self.path) if self.path else self.base_url

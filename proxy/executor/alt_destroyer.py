@@ -11,7 +11,9 @@ from typing import Final, Sequence
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
 from common.solana.alt_program import SolAltID, SolAltProg, SolAltIxCode
+from common.solana.cb_program import SolCbProg
 from common.solana.commit_level import SolCommit
+from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolNoMoreRetriesError
@@ -81,7 +83,7 @@ class SolAltDestroyer(ExecutorComponent):
     async def _destroy_alt_loop(self) -> None:
         with logging_context(ctx="destroy-alt"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), self._finalize_sec)
                 if self._stop_event.is_set():
                     break
@@ -131,8 +133,7 @@ class SolAltDestroyer(ExecutorComponent):
             self._alt_queue = deque(new_destroy_queue)
 
     async def _destroy_alt(self, signer_list: Sequence[SolPubKey], alt: _NeonAltInfo, slot: int) -> int:
-        acct = await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)
-        if acct.is_empty:
+        if not (await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)).is_exist:
             msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
             _LOG.debug(msg)
             return 0
@@ -160,18 +161,22 @@ class SolAltDestroyer(ExecutorComponent):
 
     async def _deactivate_alt(self, alt: SolAltID) -> bool:
         ix = SolAltProg(alt.owner).make_deactivate_alt_ix(alt)
-        tx = SolLegacyTx(name=SolAltIxCode.Deactivate.name + "ALT", ix_list=[ix])
-        return await self._send_tx(alt, tx)
+        return await self._send_tx(alt, SolAltIxCode.Deactivate.name, ix)
 
     async def _close_alt(self, alt: SolAltID) -> bool:
         ix = SolAltProg(alt.owner).make_close_alt_ix(alt)
-        tx = SolLegacyTx(name=SolAltIxCode.Close.name + "ALT", ix_list=[ix])
-        return await self._send_tx(alt, tx)
+        return await self._send_tx(alt, SolAltIxCode.Close.name, ix)
 
-    async def _send_tx(self, alt: SolAltID, tx: SolLegacyTx) -> bool:
+    async def _send_tx(self, alt: SolAltID, name: str, ix: SolTxIx) -> bool:
         tx_list_signer = OpTxListSigner(dict(alt=alt.ctx_id), alt.owner, self._op_client)
         watch_session = SolWatchTxSession(self._cfg, self._sol_client)
-        return await SolTxListSender(self._cfg, watch_session, tx_list_signer).send(tuple([tx]))
+
+        cb_prog = SolCbProg()
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cfg.simple_cu_price or 10_000)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(3_000)
+
+        tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
+        return await SolTxListSender(self._cfg, self._stat_client, watch_session, tx_list_signer).send(tuple([tx]))
 
     @staticmethod
     def _get_now() -> int:

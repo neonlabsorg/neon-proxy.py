@@ -700,7 +700,7 @@ class MpTxSchedule:
     async def _update_state_tx_cnt_loop(self) -> None:
         sleep_sec: Final[float] = ONE_BLOCK_SEC * 3
         while True:
-            with contextlib.suppress(asyncio.TimeoutError):
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
             if self._stop_event.is_set():
                 break
@@ -726,7 +726,7 @@ class MpTxSchedule:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10
         with logging_context(ctx="mp-heartbeat-clear-txs"):
             while True:
-                with contextlib.suppress(asyncio.TimeoutError):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                     await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
                 if self._stop_event.is_set():
                     break

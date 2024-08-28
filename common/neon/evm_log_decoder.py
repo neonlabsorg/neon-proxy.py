@@ -34,6 +34,7 @@ class NeonTxEventModelType(enum.IntEnum):
     Log = 1
 
     StepReset = 50
+    InvalidRevision = 51
 
     EnterCall = 101
     EnterCallCode = 102
@@ -354,6 +355,34 @@ class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
         log.tx_event_list.append(event)
 
 
+class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "INVALID_REVISION"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+        """
+        Unpacks Neon event about changed account:
+        INVALID_REVISION Solana-address
+        """
+        if len(data_list) != 1:
+            _LOG.error("failed to decode %s: should be 0 element in %s", cls.name, data_list)
+            return
+
+        sol_addr = base64.b64decode(data_list[0])
+        if len(sol_addr) != 32:
+            _LOG.error("failed to decode %s: wrong Solana address length %s", cls.name, len(sol_addr))
+            return
+
+        event = _NeonTxEventDraft.from_raw(
+            event_type=NeonTxEventModel.Type.InvalidRevision,
+            is_hidden=True,
+            address=bytes(),
+            topic_list=list(),
+            data=sol_addr,
+        )
+        log.tx_event_list.append(event)
+
+
 class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "HASH"
 
@@ -529,6 +558,7 @@ class NeonEvmLogDecoder:
         _NeonEvmHashLogDecoder.name: _NeonEvmHashLogDecoder,
         _NeonEvmMinerDecoder.name: _NeonEvmMinerDecoder,
         _NeonEvmResetLogDecoder.name: _NeonEvmResetLogDecoder,
+        _NeonEvmInvalidRevisionDecoder.name: _NeonEvmInvalidRevisionDecoder,
         _NeonEvmStepLogDecoder.name: _NeonEvmStepLogDecoder,
         _NeonEvmReturnLogDecoder.name: _NeonEvmReturnLogDecoder,
         _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,
@@ -549,7 +579,7 @@ class NeonEvmLogDecoder:
 
         tail: str = match.group(1)
         data_list: tuple[str, ...] = tuple(tail.split())
-        if len(data_list) < 2:
+        if len(data_list) < 1:
             return "", tuple()
 
         mnemonic = str(base64.b64decode(data_list[0]), "utf-8")

@@ -77,7 +77,7 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
         )
         req_json = req_model.to_json()
 
-        resp_json = await self._send_post_request(req_json)
+        resp_json = await self._send_raw_data_request(req_json)
         try:
             resp_model = JsonRpcResp.from_json(resp_json)
         except PydanticValidationError as exc:
@@ -95,7 +95,7 @@ def _kwargs_to_params(method: JsonRpcMethod, args: list[Any], **kwargs) -> list:
     param_name_list = method.param_name_list
 
     for param_name, param_value in zip(param_name_list, args):
-        assert param_name in kwargs, f"Duplicate value for {param_name}"
+        assert param_name not in kwargs, f"Duplicate value for {param_name}"
         kwargs[param_name] = param_value
     assert len(kwargs) <= len(param_name_list)
     params_model = method.RequestValidator(**kwargs)
@@ -135,7 +135,7 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
             req_list.append(req_model)
         req_json = req_list.to_json()
 
-        resp_json = await self._send_post_request(req_json)
+        resp_json = await self._send_raw_data_request(req_json)
         try:
             resp_list = JsonRpcListResp.from_json(resp_json)
         except PydanticValidationError as exc:

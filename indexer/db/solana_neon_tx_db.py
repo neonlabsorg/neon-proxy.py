@@ -160,11 +160,13 @@ class _RecordWithCost(_Record):
     sol_spent: int
 
     def to_sol_neon_ix(self) -> SolNeonTxIxMetaModel:
+        inner_ix_idx = None if (self.inner_idx is None) or (self.inner_idx < 0) else self.inner_idx
+
         return SolNeonTxIxMetaModel(
             sol_tx_sig=self.sol_sig,
             slot=self.block_slot,
             sol_ix_idx=self.idx,
-            sol_inner_ix_idx=self.inner_idx,
+            sol_inner_ix_idx=inner_ix_idx,
             is_success=self.is_success,
             neon_tx_hash=self.neon_sig,
             neon_ix_code=self.ix_code,

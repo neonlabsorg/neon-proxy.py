@@ -19,26 +19,26 @@ class OpResourceHolderStatusData(BaseModel):
     blocked_holder_cnt: int
 
 
-class OpExecutionTokenBalanceData(BaseModel):
+class OpExecTokenBalanceData(BaseModel):
     owner: SolPubKeyField
     balance: int
 
 
-class TxDoneData(BaseModel):
+class NeonTxDoneData(BaseModel):
     time_nsec: int
 
 
-class TxFailData(BaseModel):
+class NeonTxFailData(BaseModel):
     time_nsec: int
 
 
-class TxTokenPoolData(BaseModel):
+class NeonTxTokenPoolData(BaseModel):
     token: str
     queue_len: int
 
 
-class TxPoolData(BaseModel):
-    scheduling_queue: list[TxTokenPoolData] = 0
+class NeonTxPoolData(BaseModel):
+    scheduling_queue: list[NeonTxTokenPoolData] = 0
     processing_queue_len: int = 0
     stuck_queue_len: int = 0
     processing_stuck_queue_len: int = 0
@@ -48,11 +48,3 @@ class TxPoolData(BaseModel):
 #     token_name: str
 #     min_gas_price: int
 #     token_price_usd: int
-#
-#
-# class OpResourceStat(BaseModel):
-#     secret_cnt: int
-#     total_resource_cnt: int
-#     free_resource_cnt: int
-#     used_resource_cnt: int
-#     disabled_resource_cnt: int

@@ -2,9 +2,11 @@ import json
 import unittest
 
 from common.solana.pubkey import SolPubKey
+from common.solana.signature import SolTxSig
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 from common.solana_rpc.transaction_list_sender import SolTxListSender
+from common.solana_rpc.transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from common.utils.cached import cached_property
 
 
@@ -403,6 +405,14 @@ class TestCbExceeded(unittest.TestCase):
             return self._tx_meta.transaction.transaction.message
 
         @cached_property
+        def is_signed(self) -> bool:
+            return True
+
+        @cached_property
+        def sig(self) -> SolTxSig:
+            return SolTxSig.from_raw(self._tx_meta.transaction.transaction.signatures[0])
+
+        @cached_property
         def account_key_list(self):
             raw_key_list = self._tx_meta.transaction.transaction.message.account_keys
             alt_key_list = self._tx_meta.transaction.meta.loaded_addresses
@@ -419,8 +429,18 @@ class TestCbExceeded(unittest.TestCase):
         self.assertTrue(error_parser.check_if_cb_exceeded)
 
     def test_tx_sender(self):
-        tx_sender = SolTxListSender(None, None, None)
-        status = tx_sender._decode_tx_status(self._get_tx(), self._test_meta_tx)
+        class _Cfg:
+            @property
+            def commit_timeout_sec(self) -> int:
+                return 10
+
+        class _SolTxStatClient(SolTxStatClient):
+            def commit_sol_tx_done(self, data: SolTxDoneData) -> None: pass
+            def commit_sol_tx_fail(self, data: SolTxFailData) -> None: pass
+
+
+        tx_sender = SolTxListSender(_Cfg(), _SolTxStatClient(), None, None)
+        status = tx_sender._decode_tx_status(self._get_tx(), 0, self._test_meta_tx)
         self.assertEqual(status.tx_status, status.tx_status.CbExceededError)
 
 

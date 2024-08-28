@@ -15,8 +15,8 @@ class SimpleHolderTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(WriteHolderTxPrepStage(*args, **kwargs))
 
-    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_account_solana_call_ix(), cfg)
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_account_solana_call_ix(), tx_cfg)
 
     async def _validate(self) -> bool:
         return (

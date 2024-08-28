@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Annotated, Final, Sequence, ClassVar
 
-from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer
+from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, ConfigDict
 from strenum import StrEnum
 from typing_extensions import Self
 
@@ -19,13 +19,14 @@ from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex
-from ..utils.pydantic import HexUIntField, BytesField, DecIntField, ConfigDict, BaseModel as _BaseModel
+from ..utils.json_logger import get_ctx
+from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel
 
 _LOG = logging.getLogger(__name__)
 
 
 class BaseModel(_BaseModel):
-    _model_config = _BaseModel.model_config
+    _model_config = _BaseModel.model_config.copy()
     _model_config.pop("extra")
 
     model_config = ConfigDict(
@@ -80,7 +81,7 @@ class NeonAccountListRequest(BaseModel):
 
     @classmethod
     def from_raw(cls, account_list: Sequence[NeonAccount], slot: int | None) -> Self:
-        return cls(account_list=tuple([_AccountModel.from_raw(a) for a in account_list]), slot=slot)
+        return cls(account_list=tuple([_AccountModel.from_raw(a) for a in account_list]), slot=slot, id=get_ctx())
 
 
 class NeonAccountStatus(StrEnum):
@@ -183,7 +184,7 @@ class NeonStorageAtRequest(BaseModel):
     slot: int | None
 
 
-class OperatorAccountModel(BaseModel):
+class OpEarnAccountModel(BaseModel):
     status: NeonAccountStatusField
     operator_key: SolPubKeyField
     neon_account: NeonAccountField
@@ -391,7 +392,7 @@ class HolderAccountRequest(BaseModel):
 
     @classmethod
     def from_raw(cls, pubkey: SolPubKey) -> Self:
-        return cls(pubkey=pubkey)
+        return cls(pubkey=pubkey, id=get_ctx())
 
 
 class HolderAccountStatus(StrEnum):
@@ -502,6 +503,14 @@ class HolderAccountModel(BaseModel):
     def is_empty(self) -> bool:
         return self.status in (HolderAccountStatus.Empty, HolderAccountStatus.Error)
 
+    @property
+    def is_active(self) -> bool:
+        return self.status == HolderAccountStatus.Active
+
+    @property
+    def is_finalized(self) -> bool:
+        return self.status == HolderAccountStatus.Finalized
+
 
 class _CrateModel(BaseModel):
     name: str
@@ -564,6 +573,7 @@ class EmulNeonCallRequest(BaseModel):
         serialization_alias="solana_overrides"
     )
     slot: int | None
+    provide_account_info: str | None = None
 
 
 class EmulNeonCallExitCode(StrEnum):

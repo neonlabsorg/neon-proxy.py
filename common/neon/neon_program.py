@@ -23,12 +23,14 @@ class NeonEvmProtocol(IntEnum):
     v1004 = 1004  # 1.4  -> 1.004
     v1013 = 1013  # 1.13 -> 1.013
     v1014 = 1014  # 1.14 -> 1.014
+    v1015 = 1015  # 1.15 -> 1.015
 
 
 SUPPORTED_VERSION_SET = frozenset(
     (
         NeonEvmProtocol.v1013,
         NeonEvmProtocol.v1014,
+        NeonEvmProtocol.v1015,
     )
 )
 
@@ -45,13 +47,13 @@ class NeonEvmIxCode(IntEnum):
     CreateAccountBalance = 0x30                # 48
     Deposit = 0x31                             # 49
 
-    TxExecFromData = 0x32                      # 50
+    TxExecFromData = 0x3d                      # 61
     TxExecFromAccount = 0x33                   # 51
     TxStepFromData = 0x34                      # 52
     TxStepFromAccount = 0x35                   # 53
     TxStepFromAccountNoChainId = 0x36          # 54
 
-    TxExecFromDataSolanaCall = 0x38            # 56
+    TxExecFromDataSolanaCall = 0x3e            # 62
     TxExecFromAccountSolanaCall = 0x39         # 57
 
     CancelWithHash = 0x37                      # 55
@@ -59,6 +61,9 @@ class NeonEvmIxCode(IntEnum):
     CreateOperatorBalance = 0x3a               # 58
     DeleteOperatorBalance = 0x3b               # 59
     WithdrawOperatorBalance = 0x3c             # 60
+
+    OldTxExecFromDataV1013 = 0x32              # 50
+    OldTxExecFromDataSolanaCallV1013 = 0x38    # 56
 
     OldDepositV1004 = 0x27                     # 39
     OldCreateAccountV1004 = 0x28               # 40
@@ -81,6 +86,8 @@ class NeonEvmIxCode(IntEnum):
 
 
 class NeonIxMode(IntEnum):
+    Unknown = 0
+
     Readable = 1
     Writable = 2
     FullWritable = 3
@@ -91,7 +98,7 @@ class NeonIxMode(IntEnum):
 class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
-    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1013
+    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1015
     _evm_version: ClassVar[str] = "v1.13.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
@@ -179,6 +186,7 @@ class NeonProg:
         self._acct_meta_list = list(account_meta_list)
         self._get_ro_acct_meta_list.reset_cache(self)
         self._get_rw_acct_meta_list.reset_cache(self)
+        self._get_rw_acct_key_list.reset_cache(self)
         self._ro_addr_set.clear()
         return self
 
@@ -202,6 +210,10 @@ class NeonProg:
     def holder_msg(self) -> bytes:
         assert self._eth_rlp_tx is not None
         return self._eth_rlp_tx
+
+    @property
+    def rw_account_key_list(self) -> tuple[SolPubKey, ...]:
+        return self._get_rw_acct_key_list()
 
     def make_delete_holder_ix(self) -> SolTxIx:
         self.validate_protocol()
@@ -400,14 +412,7 @@ class NeonProg:
             self._treasury_pool_index_buf,
             self._eth_rlp_tx,
         )
-        acct_meta_list = [
-            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
-            SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
-        ] + self._acct_meta_list
-
-        return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
+        return self._make_holder_ix(ix_data=bytes().join(ix_data_list), acct_meta_list=self._acct_meta_list)
 
     def _make_tx_step_ix(
         self,
@@ -428,6 +433,7 @@ class NeonProg:
         if data is not None:
             ix_data += data
 
+        assert mode != NeonIxMode.Unknown
         if mode == NeonIxMode.Readable:
             return self._make_holder_ix(ix_data, self._ro_acct_meta_list)
         elif mode == NeonIxMode.Writable:
@@ -481,3 +487,13 @@ class NeonProg:
                 self._acct_meta_list,
             )
         )
+
+    @reset_cached_method
+    def _get_rw_acct_key_list(self) -> tuple[SolPubKey, ...]:
+        base_key_list = [
+            self._holder_addr,
+            self._payer,
+            self._treasury_pool_addr,
+            self._token_sol_addr,
+        ]
+        return tuple(base_key_list + [SolPubKey.from_raw(x.pubkey) for x in self._acct_meta_list if x.is_writable])

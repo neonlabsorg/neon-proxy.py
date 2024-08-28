@@ -2,6 +2,7 @@ import logging
 import signal
 import time
 
+from common.atlas.fee_client import AtlasFeeClient
 from common.config.config import Config
 from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
@@ -35,11 +36,13 @@ class NeonProxyApp:
 
         self._recv_sig_num = signal.SIG_DFL
 
+        self._stat_client = StatClient(cfg)
+
         # Init Solana client
-        sol_client = SolClient(cfg)
+        sol_client = SolClient(cfg, self._stat_client)
 
         # Init Indexer Db client
-        db_conn = DbConnection(cfg)
+        db_conn = DbConnection(cfg, self._stat_client)
         db = IndexerDbClient(cfg, db_conn)
         gas_tank = GasLessAccountDb(db_conn)
 
@@ -47,11 +50,11 @@ class NeonProxyApp:
         self._core_api_server = CoreApiServer(cfg)
 
         # Init clients
-        core_api_client = CoreApiClient(cfg, sol_client)
+        core_api_client = CoreApiClient(cfg, sol_client, self._stat_client)
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)
-        stat_client = StatClient(cfg)
+        fee_client = AtlasFeeClient(cfg)
 
         # Init Executor server
         self._exec_server = ExecutorServer(
@@ -60,6 +63,8 @@ class NeonProxyApp:
             sol_client=sol_client,
             mp_client=mp_client,
             op_client=op_client,
+            fee_client=fee_client,
+            stat_client=self._stat_client,
         )
 
         # Init Resource server
@@ -68,7 +73,7 @@ class NeonProxyApp:
             core_api_client=core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
-            stat_client=stat_client,
+            stat_client=self._stat_client,
         )
 
         # Init Mempool
@@ -78,7 +83,7 @@ class NeonProxyApp:
             sol_client=sol_client,
             exec_client=exec_client,
             op_client=op_client,
-            stat_client=stat_client,
+            stat_client=self._stat_client,
             db=db,
         )
 
@@ -94,7 +99,7 @@ class NeonProxyApp:
                 core_api_client=core_api_client,
                 sol_client=sol_client,
                 mp_client=mp_client,
-                stat_client=stat_client,
+                stat_client=self._stat_client,
                 op_client=op_client,
                 db=db,
             )
@@ -105,7 +110,7 @@ class NeonProxyApp:
             core_api_client=core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
-            stat_client=stat_client,
+            stat_client=self._stat_client,
             db=db,
             gas_tank=gas_tank,
         )

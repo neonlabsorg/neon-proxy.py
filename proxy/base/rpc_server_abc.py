@@ -173,7 +173,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
             )
             _LOG.info(msg)
 
-        stat = RpcCallData(service=self._stat_name, method="BIG", time_nsec=ctx.process_time_nsec, is_error=False)
+        stat = RpcCallData(service=self._stat_name, method="BIG", time_nsec=ctx.process_time_nsec)
         self._stat_client.commit_rpc_call(stat)
 
     def on_bad_request(self, ctx: HttpRequestCtx) -> None:

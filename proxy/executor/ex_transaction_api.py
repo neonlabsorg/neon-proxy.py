@@ -79,5 +79,7 @@ class NeonTxExecApi(ExecutorApi):
             self._sol_client,
             self._core_api_client,
             self._op_client,
+            self._fee_client,
+            self._stat_client,
             tx_request,
         )

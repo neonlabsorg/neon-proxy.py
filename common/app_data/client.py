@@ -2,22 +2,38 @@ from __future__ import annotations
 
 import itertools
 from types import NoneType
-from typing import Callable
+from typing import Callable, Union, Awaitable
 
 from .api import AppRequest, AppResp
 from .errors import BaseAppDataError, BadRespError, PydanticValidationError
 from .utils import AppDataMethod
+from ..http.client import HttpClient
 from ..http.utils import HttpURL
-from ..simple_app_data.client import SimpleAppDataClient, SimpleAppDataClientSender
+from ..utils.pydantic import BaseModel
 
 
-class AppDataClient(SimpleAppDataClient):
+class AppDataClient(HttpClient):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._req_id = itertools.count()
 
     @classmethod
-    def _register_data_sender(cls, handler: SimpleAppDataClientSender, name: str) -> Callable:
+    def method(
+        cls,
+        handler: AppDataClientSender | None = None,
+        *,
+        name: str = None,
+    ) -> Callable:
+        def _registrator(_handler: AppDataClientSender) -> AppDataClientSender:
+            return cls._register_data_sender(_handler, name)
+
+        if handler:
+            return _registrator(handler)
+
+        return _registrator
+
+    @classmethod
+    def _register_data_sender(cls, handler: AppDataClientSender, name: str) -> Callable:
         method = AppDataMethod.from_handler(handler, name)
         assert method.is_async_def, "AppDataClient support only async methods"
         assert method.has_self, "AppDataClient support only object methods"
@@ -52,7 +68,7 @@ class AppDataClient(SimpleAppDataClient):
             req_id = str(next(self._req_id))
             req_data = AppRequest(id=req_id, data=data).to_json()
 
-            resp_data = await self._send_post_request(req_data, path=method_path)
+            resp_data = await self._send_raw_data_request(req_data, path=method_path)
             resp = AppResp.from_json(resp_data)
             if resp.id != req_id:
                 raise BadRespError(error_list=f"Bad ID in the response {resp.id} != {req_id}")
@@ -78,4 +94,7 @@ class AppDataClient(SimpleAppDataClient):
         return _wrapper
 
 
-AppDataClientSender = SimpleAppDataClientSender
+AppDataClientSender = Union[
+    Callable[[AppDataClient, BaseModel], Awaitable[BaseModel]],
+    Callable[[AppDataClient], Awaitable[BaseModel]],
+]

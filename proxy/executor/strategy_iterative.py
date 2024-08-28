@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Final, ClassVar, Sequence
 
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
-from common.neon_rpc.api import HolderAccountModel, HolderAccountStatus
+from common.neon_rpc.api import HolderAccountModel
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import (
@@ -16,14 +16,47 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolUnknownReceiptError,
 )
-from common.solana_rpc.transaction_list_sender import SolTxSendState
+from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
+from common.solana_rpc.ws_client import SolWatchTxSession
+from common.utils.cached import cached_property
 from .errors import StuckTxError
+from .holder_validator import HolderAccountValidator
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
 from ..base.ex_api import ExecTxRespCode
 
 _LOG = logging.getLogger(__name__)
+
+
+class _HolderAccountValidator(HolderAccountValidator):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._is_stuck = False
+
+    def mark_stuck_tx(self) -> None:
+        self._is_stuck = True
+
+    async def is_finalized(self) -> bool:
+        await self.refresh()
+        if (not self.is_valid) and self._holder_acct.is_active:
+            # strange case, because the holder was tested on the start...
+            #  it is possible if the operator-key and the holder-id are defined on two different proxies
+            raise StuckTxError(self._holder_acct)
+
+        if self._is_stuck:
+            return (not self.is_valid) or self._holder_acct.is_finalized
+
+        return self.is_valid and self._holder_acct.is_finalized
+
+
+class _SolTxListSender(SolTxListSender):
+    def __init__(self, *args, holder_account_validator: _HolderAccountValidator) -> None:
+        super().__init__(*args)
+        self._holder_acct_validator = holder_account_validator
+
+    async def _is_done(self) -> bool:
+        return await self._holder_acct_validator.is_finalized()
 
 
 class IterativeTxStrategy(BaseTxStrategy):
@@ -34,99 +67,105 @@ class IterativeTxStrategy(BaseTxStrategy):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(NewAccountTxPrepStage(*args, **kwargs))
-        self._completed_evm_step_cnt = 0
         self._def_ix_mode: NeonIxMode | None = None
         self._def_cu_limit = 0
-        self._cu_price_mult = 1
+
+    @cached_property
+    def _sol_tx_list_sender(self) -> _SolTxListSender:
+        return _SolTxListSender(
+            self._ctx.cfg,
+            self._ctx.stat_client,
+            SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client),
+            self._ctx.sol_tx_list_signer,
+            holder_account_validator=self._holder_acct_validator,
+        )
+
+    @cached_property
+    def _holder_acct_validator(self) -> _HolderAccountValidator:
+        return _HolderAccountValidator(self._ctx.core_api_client, self._ctx.holder_address, self._ctx.neon_tx_hash)
 
     @property
-    def _cu_price(self) -> int:
-        return self._ctx.cfg.cu_price * self._cu_price_mult
+    def _holder_acct(self) -> HolderAccountModel:
+        return self._holder_acct_validator.holder_account
 
     async def execute(self) -> ExecTxRespCode:
-        self._cu_price_mult = 1
-        for retry in itertools.count():
-            completed_evm_step_cnt = self._completed_evm_step_cnt
-
-            try:
-                return await self._execute_impl()
-
-            except (SolNoMoreRetriesError, SolCbExceededError, SolCbExceededCriticalError):
-                if completed_evm_step_cnt != self._completed_evm_step_cnt:
-                    _LOG.debug(
-                        "retry %d: completed evm steps have changed (%d != %d), trying to commit again...",
-                        retry,
-                        completed_evm_step_cnt,
-                        self._completed_evm_step_cnt,
-                    )
-                    continue
-                else:
-                    _LOG.debug("retry %d: completed evm steps haven't changed", retry)
-
-                self._cu_price_mult *= 2
-                if self._cu_price_mult <= self._ctx.cfg.max_cu_price_mult:
-                    _LOG.debug(
-                        "retry %d: increase base CU price in %d times to %d, trying to commit again...",
-                        retry,
-                        self._cu_price_mult,
-                        self._cu_price,
-                    )
-                    continue
-                else:
-                    _LOG.debug("retry %d: reached the maximum CU price", retry)
-
-                raise
-
-    async def _execute_impl(self) -> ExecTxRespCode:
         assert self.is_valid
 
-        if await self._is_finalized_holder():
-            return ExecTxRespCode.Failed
+        if self._ctx.is_stuck_tx:
+            self._holder_acct_validator.mark_stuck_tx()
 
-        if not await self._recheck_tx_list(self.name):
-            if not self._ctx.is_stuck_tx:
+        evm_step_cnt = -1
+        fail_retry_cnt = 0
+
+        for retry in itertools.count():
+            if await self._holder_acct_validator.is_finalized():
+                return ExecTxRespCode.Failed
+
+            if evm_step_cnt == self._holder_acct.evm_step_cnt:
+                fail_retry_cnt += 1
+                if fail_retry_cnt > self._ctx.cfg.retry_on_fail:
+                    raise SolNoMoreRetriesError()
+
+            elif evm_step_cnt != -1:
+                _LOG.debug(
+                    "retry %d: the number of completed EVM steps has changed (%d != %d)",
+                    retry,
+                    evm_step_cnt,
+                    self._holder_acct.evm_step_cnt,
+                )
+                fail_retry_cnt = 0
+
+            evm_step_cnt = self._holder_acct.evm_step_cnt
+
+            try:
+                await self._recheck_tx_list(self.name)
+                if (exit_code := await self._decode_neon_tx_return()) is not None:
+                    return exit_code
+
                 await self._emulate_and_send_tx_list()
+                if (exit_code := await self._decode_neon_tx_return()) is not None:
+                    return exit_code
 
-        # Not enough iterations, try `retry_on_fail` times to complete the Neon Tx
-        retry_on_fail = self._ctx.cfg.retry_on_fail
-        for retry in range(retry_on_fail):
-            if (exit_code := await self._decode_neon_tx_return()) is not None:
-                return exit_code
-
-            _LOG.debug("no receipt -> execute additional iterations...")
-            await self._emulate_and_send_tx_list()
-
-        raise SolNoMoreRetriesError()
+            except SolNoMoreRetriesError:
+                pass
 
     async def cancel(self) -> ExecTxRespCode | None:
-        holder = await self._get_holder_acct()
-        if (holder.status != HolderAccountStatus.Active) or (holder.neon_tx_hash != self._ctx.neon_tx_hash):
-            _LOG.debug("holder %s doesn't contain %s NeonTx", holder.address, self._ctx.neon_tx_hash)
+        self._holder_acct_validator.mark_stuck_tx()
+        if await self._holder_acct_validator.is_finalized():
             return ExecTxRespCode.Failed
-
-        if await self._recheck_tx_list(self._cancel_name):
+        elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed
             return ExecTxRespCode.Failed
 
         # generate cancel tx with the default CU budget
         self._reset_to_def()
-        self._cu_price_mult = 1
-        iter_list_info = self._IterListInfo(1, 1, NeonIxMode.Default, name=self._cancel_name)
-        tx_list = tuple([self._build_cancel_tx(iter_list_info.sol_tx_cfg)])
+        base_cfg = await self._init_sol_iter_list_cfg(name=self._cancel_name)
+        tx_list = tuple([self._build_cancel_tx(base_cfg)])
 
         # get optimal CU budget
-        new_iter_list_info, _ = await self._calc_cu_budget("cancel", iter_list_info, tx_list)
+        optimal_cfg, _ = await self._calc_cu_budget("cancel", base_cfg, tx_list)
 
-        # if it is impossible to decrease the CU limit, switch to default mode with the decreased CU limit in 2 times
-        if not new_iter_list_info:
-            cu_limit = self._cu_limit // 2
-            cu_price = self._cu_price * 2
-            new_iter_list_info = dataclasses.replace(iter_list_info, cu_limit=cu_limit, cu_price=cu_price)
+        # two attempts to cancel tx
+        for retry in range(2):
+            try:
+                # if it is impossible to decrease the CU limit,
+                #  switch to default mode with the decreased CU limit in 2 times,
+                #  it should be enough because the cancel ix do only 3 steps:
+                #     1. unpack holder
+                #     2. return not-used gas-tokens
+                #     3. mark holder as finalized
+                if not optimal_cfg:
+                    cu_limit = self._def_cu_limit or (self._cu_limit // 2)
+                    optimal_cfg = dataclasses.replace(base_cfg, cu_limit=cu_limit)
 
-        if await self._send_tx_list([self._build_cancel_tx(new_iter_list_info.sol_tx_cfg)]):
-            return ExecTxRespCode.Failed
+                if await self._send_tx_list([self._build_cancel_tx(optimal_cfg)]):
+                    return ExecTxRespCode.Failed
 
-        _LOG.error("no!? cancel tx")
+            except SolCbExceededError:
+                optimal_cfg = None
+                self._def_cu_limit = self._cu_limit
+
+        _LOG.error("failed!? cancel tx")
         return None
 
     def _reset_to_def(self) -> None:
@@ -138,13 +177,13 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         while True:
             try:
-                if not (iter_list_info := await self._get_single_iter_list_info()):
-                    iter_list_info = await self._get_iter_list_info()
+                if not (iter_list_cfg := await self._get_single_iter_list_cfg()):
+                    if not (iter_list_cfg := await self._get_iter_list_cfg()):
+                        return False
 
-                tx_list = iter_list_info.tx_list
+                tx_list = iter_list_cfg.tx_list
                 if not tx_list:
-                    tx_cfg = iter_list_info.sol_tx_cfg
-                    tx_list = tuple(self._build_tx(tx_cfg) for _ in range(iter_list_info.iter_cnt))
+                    tx_list = tuple(self._build_tx(iter_list_cfg) for _ in range(iter_list_cfg.iter_cnt))
 
                 return await self._send_tx_list(tx_list)
 
@@ -172,20 +211,11 @@ class IterativeTxStrategy(BaseTxStrategy):
                     )
                     raise SolCbExceededCriticalError()
 
-    async def _get_iter_list_info(self) -> _IterListInfo:
-        _LOG.debug(
-            "%d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
-            self._ctx.total_evm_step_cnt,
-            self._completed_evm_step_cnt,
-            self._ctx.evm_step_cnt_per_iter,
-        )
-
+    async def _get_iter_list_cfg(self) -> _SolIterListCfg | None:
         evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
-        total_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
         ix_mode: Final[NeonIxMode] = self._calc_ix_mode()
-        wrap_iter_cnt: Final[int] = self._calc_wrap_iter_cnt(ix_mode)
 
-        # 5? attempts looks enough for evm steps calculations:
+        # 7? attempts looks enough for evm steps calculations:
         #   1 step:
         #      - emulate the whole NeonTx in 1 iteration with the huge CU-limit
         #      - get the maximum-CU-usage for the whole NeonTx
@@ -194,7 +224,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         #           - no:  go to the step 2
         #
         #   2 step:
-        #      - divide the maximum-CU-usage on 85% of CU-limit of 1 SolTx
+        #      - divide the maximum-CU-usage on 95% of CU-limit of 1 SolTx
         #           => the number of iterations
         #      - divide the total-EVM-steps on the number of iterations
         #           => the number of EVM steps in 1 iteration
@@ -204,17 +234,29 @@ class IterativeTxStrategy(BaseTxStrategy):
         #           - yes: we found the number of EVM steps
         #           - no:  repeat the step 2
         #
-        # Thus, it looks enough to predict EVM steps for 5 attempts...
+        # Thus, it looks enough to predict EVM steps for 7 attempts...
 
-        evm_step_cnt = max(total_step_cnt, evm_step_cnt_per_iter)
-        for retry in range(5):
-            # don't try the number of step less than default per iteration
-            if evm_step_cnt <= evm_step_cnt_per_iter:
-                break
+        evm_step_cnt = max(self._ctx.total_evm_step_cnt, evm_step_cnt_per_iter)
+        for retry in range(7):
+            if await self._holder_acct_validator.is_finalized():
+                return None
 
-            exec_iter_cnt = (total_step_cnt // evm_step_cnt) + (1 if (total_step_cnt % evm_step_cnt) > 1 else 0)
-            # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
-            iter_cnt = exec_iter_cnt + wrap_iter_cnt
+            _LOG.debug(
+                "retry %d: %d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
+                retry,
+                self._ctx.total_evm_step_cnt,
+                self._holder_acct.evm_step_cnt,
+                evm_step_cnt,
+            )
+
+            total_evm_step_cnt = self._calc_total_evm_step_cnt()
+            exec_iter_cnt = (total_evm_step_cnt // evm_step_cnt) + (1 if (total_evm_step_cnt % evm_step_cnt) > 1 else 0)
+
+            if self._ctx.cfg.mp_send_batch_tx:
+                # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
+                iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
+            else:
+                iter_cnt = 1
 
             # the possible case:
             #    1 iteration: 17'000 steps
@@ -224,29 +266,25 @@ class IterativeTxStrategy(BaseTxStrategy):
             #    1 iteration: 11'667
             #    2 iteration: 11'667
             #    3 iteration: 11'667
-            evm_step_cnt = max(total_step_cnt // exec_iter_cnt + 1, evm_step_cnt_per_iter)
+            evm_step_cnt = max(total_evm_step_cnt // max(exec_iter_cnt, 1) + 1, evm_step_cnt_per_iter)
 
-            iter_list_info = self._IterListInfo(evm_step_cnt, iter_cnt, ix_mode)
-            tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_cnt))
-            iter_list_info, new_evm_step_cnt = await self._calc_cu_budget(f"retry {retry}", iter_list_info, tx_list)
-            if iter_list_info:
-                return iter_list_info
+            base_cfg = await self._init_sol_iter_list_cfg(evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt, ix_mode=ix_mode)
+            tx_list = tuple(self._build_tx(base_cfg) for _ in range(iter_cnt))
+            optimal_cfg, new_evm_step_cnt = await self._calc_cu_budget(f"retry {retry}", base_cfg, tx_list)
+            if optimal_cfg:
+                return optimal_cfg
             elif new_evm_step_cnt == evm_step_cnt:
                 break
             evm_step_cnt = new_evm_step_cnt
 
-        return self._get_def_iter_list_info()
+        return await self._get_def_iter_list_cfg()
 
     async def _calc_cu_budget(
         self,
         hdr: str,
-        iter_list_info: _IterListInfo,
+        base_cfg: _SolIterListCfg,
         tx_list: Sequence[SolTx],
-    ) -> tuple[_IterListInfo | None, int]:
-        # constants
-        cu_limit: Final[int] = self._cu_limit
-        # decrease the available CU limit in Neon iteration, because Solana decreases it by default,
-        max_cu_limit: Final[int] = int(self._cu_limit * 0.95)  # 95% of the maximum
+    ) -> tuple[_SolIterListCfg | None, int]:
         evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
 
         # emulate
@@ -255,16 +293,20 @@ class IterativeTxStrategy(BaseTxStrategy):
         except SolCbExceededError:
             return None, evm_step_cnt_per_iter
 
+        cu_limit: Final[int] = self._cu_limit
+        # decrease the available CU limit in Neon iteration, because Solana decreases it by default
+        max_cu_limit: Final[int] = int(cu_limit * 0.95)  # 95% of the maximum
+
         used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
         iter_cnt = max(next((idx for idx, x in enumerate(emul_tx_list) if x.meta.error), len(emul_tx_list)), 1)
-        evm_step_cnt = iter_list_info.evm_step_cnt
+        evm_step_cnt = base_cfg.evm_step_cnt
 
         _LOG.debug(
-            "%s: %d EVM steps, %d max CUs, %d executed iterations, %d success iterations",
+            "%s: %d EVM steps, %d CUs, %d executed iterations, %d success iterations",
             hdr,
             evm_step_cnt,
             used_cu_limit,
-            iter_list_info.iter_cnt,
+            base_cfg.iter_cnt,
             iter_cnt,
         )
 
@@ -277,41 +319,49 @@ class IterativeTxStrategy(BaseTxStrategy):
             return None, new_evm_step_cnt
 
         round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 150_000
-        used_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
-        _LOG.debug("%s: %d EVM steps, %d CU limit, %d iterations", hdr, evm_step_cnt, used_cu_limit, iter_cnt)
+        inc_coeff: Final[int] = 100_000
+        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
+        _LOG.debug("%s: %d EVM steps, %d CUs, %d iterations", hdr, evm_step_cnt, round_cu_limit, iter_cnt)
 
         # if it's impossible to decrease the CU limit, use the list of already signed txs
-        if used_cu_limit == cu_limit:
+        if round_cu_limit == cu_limit:
             tx_list = tuple(map(lambda x: x.tx, emul_tx_list[:iter_cnt]))
-            return dataclasses.replace(iter_list_info, iter_cnt=iter_cnt, tx_list=tx_list), evm_step_cnt
+            return dataclasses.replace(base_cfg, iter_cnt=iter_cnt, tx_list=tx_list), evm_step_cnt
 
-        # decrease the cu-limit, increase the cu-price, the tx list will be signed again
-        cu_price = self._cu_price * (cu_limit // used_cu_limit)
-        _LOG.debug("%s: increase CU-price from %d to %d", hdr, self._cu_price, cu_price)
-        optimal_info = dataclasses.replace(iter_list_info, iter_cnt=iter_cnt, cu_price=cu_price, cu_limit=used_cu_limit)
-        return optimal_info, evm_step_cnt
+        optimal_cfg = dataclasses.replace(base_cfg, iter_cnt=iter_cnt, cu_limit=round_cu_limit)
+        return optimal_cfg, evm_step_cnt
 
-    def _get_def_iter_list_info(self) -> _IterListInfo:
+    async def _get_def_iter_list_cfg(self) -> _SolIterListCfg:
+        cu_limit: Final[int] = self._def_cu_limit or (self._cu_limit // 2)
+        ix_mode: Final[NeonIxMode] = self._calc_ix_mode()
+
         evm_step_cnt_per_iter = self._ctx.evm_step_cnt_per_iter
         total_evm_step_cnt = self._calc_total_evm_step_cnt()
-        exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt_per_iter - 1) // evm_step_cnt_per_iter, 1)
-        ix_mode = self._calc_ix_mode()
-        cu_limit = self._def_cu_limit or (self._cu_limit // 2)
-        cu_price = self._cu_price * 2
-        iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
+
+        if self._ctx.cfg.mp_send_batch_tx:
+            exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt_per_iter - 1) // evm_step_cnt_per_iter, 1)
+            iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
+        else:
+            iter_cnt = 1
 
         _LOG.debug(
-            "use defaults %s EVM steps per iteration, %s iterations (%s total EVM steps, %s completed EVM steps)",
+            "default: %s EVM steps, %s CUs, %s iterations (%s total EVM steps, %s completed EVM steps)",
             evm_step_cnt_per_iter,
+            cu_limit,
             iter_cnt,
-            self._ctx.total_evm_step_cnt,
-            self._completed_evm_step_cnt,
+            total_evm_step_cnt,
+            self._holder_acct.evm_step_cnt,
         )
 
-        return self._IterListInfo(evm_step_cnt_per_iter, iter_cnt, ix_mode, cu_price, cu_limit, is_default=True)
+        return await self._init_sol_iter_list_cfg(
+            evm_step_cnt=evm_step_cnt_per_iter,
+            iter_cnt=iter_cnt,
+            ix_mode=ix_mode,
+            cu_limit=cu_limit,
+            is_default=True,
+        )
 
-    async def _get_single_iter_list_info(self) -> _IterListInfo | None:
+    async def _get_single_iter_list_cfg(self) -> _SolIterListCfg | None:
         if self._ctx.is_stuck_tx:
             pass
         elif self._def_cu_limit:
@@ -321,47 +371,56 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         _LOG.debug("just 1 iteration")
 
-        iter_cnt = 1
-        evm_step_cnt = self._ctx.evm_step_cnt_per_iter
-        ix_mode = self._def_ix_mode or (NeonIxMode.Readable if self._ctx.is_stuck_tx else NeonIxMode.Writable)
-        iter_list_info = self._IterListInfo(evm_step_cnt, iter_cnt, ix_mode)
+        base_cfg = await self._init_sol_iter_list_cfg(iter_cnt=1)
 
         if not self._def_cu_limit:
-            # generate the tx list to calculate the CU limit
-            tx_list = tuple(self._build_tx(iter_list_info.sol_tx_cfg) for _ in range(iter_cnt))
-            new_iter_list_info, _ = await self._calc_cu_budget("single", iter_list_info, tx_list)
-            if new_iter_list_info:
-                return new_iter_list_info
+            # generate the tx list to calculate the optimal CU budget
+            tx_list = tuple([self._build_tx(base_cfg)])
+            optimal_cfg, _ = await self._calc_cu_budget("single", base_cfg, tx_list)
+            if optimal_cfg:
+                return optimal_cfg
 
         # if it's impossible to optimize the CU budget, switch to default mode with the decreased CU limit in 2 times
         cu_limit = self._def_cu_limit or (self._cu_limit // 2)
-        cu_price = self._cu_price * 2
-        return dataclasses.replace(iter_list_info, cu_limit=cu_limit, cu_price=cu_price, is_default=True)
+        _LOG.debug("single: %s EVM steps, %s CUs", base_cfg.evm_step_cnt, cu_limit)
+        return dataclasses.replace(base_cfg, cu_limit=cu_limit, is_default=True)
 
     @dataclass(frozen=True)
-    class _IterListInfo:
-        evm_step_cnt: int
-        iter_cnt: int
-        ix_mode: NeonIxMode
-        cu_price: int = 0
-        cu_limit: int = 0
+    class _SolIterListCfg(SolTxCfg):
+        iter_cnt: int = 0
         tx_list: tuple[SolTx, ...] = tuple()
         is_default: bool = False
-        name: str = ""
 
-        @property
-        def sol_tx_cfg(self) -> SolTxCfg:
-            return SolTxCfg(
-                evm_step_cnt=self.evm_step_cnt,
-                ix_mode=self.ix_mode,
-                cu_price=self.cu_price,
-                cu_limit=self.cu_limit,
-                name=self.name,
-            )
+    async def _init_sol_iter_list_cfg(
+        self,
+        *,
+        name: str = "",
+        evm_step_cnt: int = 0,
+        ix_mode: NeonIxMode = NeonIxMode.Unknown,
+        cu_limit: int = 0,
+        cu_price: int = 0,
+        heap_size: int = 0,
+        iter_cnt: int = 0,
+        tx_list: tuple[SolTx, ...] = tuple(),
+        is_default: bool = False,
+    ) -> _SolIterListCfg:
+        tx_cfg = await self._init_sol_tx_cfg(
+            name=name,
+            evm_step_cnt=evm_step_cnt,
+            ix_mode=ix_mode or self._calc_ix_mode(),
+            cu_limit=self._def_cu_limit or cu_limit,
+            cu_price=cu_price,
+            heap_size=heap_size,
+        )
+        return self._SolIterListCfg(
+            **dataclasses.asdict(tx_cfg),
+            iter_cnt=iter_cnt or 1,
+            tx_list=tx_list,
+            is_default=is_default,
+        )
 
     def _calc_total_evm_step_cnt(self) -> int:
-        assert not self._ctx.is_stuck_tx
-        return max(self._ctx.total_evm_step_cnt - self._completed_evm_step_cnt, 0)
+        return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)
 
     def _calc_wrap_iter_cnt(self, mode: NeonIxMode) -> int:
         # if there are NO completed evm steps,
@@ -374,17 +433,26 @@ class IterativeTxStrategy(BaseTxStrategy):
         if mode == NeonIxMode.Readable:
             base_iter_cnt -= 1
 
-        iter_cnt = max(base_iter_cnt if (not self._completed_evm_step_cnt) else 0, 0)
+        iter_cnt = max(base_iter_cnt if (not self._holder_acct.evm_step_cnt) else 0, 0)
         return iter_cnt
 
     def _calc_ix_mode(self) -> NeonIxMode:
         if self._def_ix_mode:
-            return self._def_ix_mode
-
-        if self._ctx.resize_iter_cnt > 0:
-            _LOG.debug("NeonTx has resize iterations, force the writable mode")
-            return NeonIxMode.Writable
-        return NeonIxMode.Readable
+            ix_mode = self._def_ix_mode
+            _LOG.debug("forced ix-mode %s", self._def_ix_mode.name)
+        elif not self._calc_total_evm_step_cnt():
+            ix_mode = NeonIxMode.Writable
+            _LOG.debug("no EVM steps, ix-mode %s", ix_mode.name)
+        elif self._ctx.is_stuck_tx:
+            ix_mode = NeonIxMode.Readable
+            _LOG.debug("stuck NeonTx, ix-mode %s", ix_mode.name)
+        elif self._ctx.resize_iter_cnt > 0:
+            ix_mode = NeonIxMode.Writable
+            _LOG.debug("resize iterations, ix-mode %s", ix_mode.name)
+        else:
+            ix_mode = NeonIxMode.Readable
+            _LOG.debug("default ix-mode %s", ix_mode.name)
+        return ix_mode
 
     async def _validate(self) -> bool:
         # fmt: off
@@ -396,17 +464,17 @@ class IterativeTxStrategy(BaseTxStrategy):
         )
         # fmt: on
 
-    def _build_tx(self, cfg: SolTxCfg = SolTxCfg.default()) -> SolLegacyTx:
-        step_cnt = cfg.evm_step_cnt or self._ctx.evm_step_cnt_per_iter
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        step_cnt = tx_cfg.evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
-        return self._build_cu_tx(prog.make_tx_step_from_data_ix(cfg.ix_mode, step_cnt, uniq_idx), cfg)
+        return self._build_cu_tx(prog.make_tx_step_from_data_ix(tx_cfg.ix_mode, step_cnt, uniq_idx), tx_cfg)
 
-    def _build_cancel_tx(self, cfg: SolTxCfg) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_cancel_ix(), cfg)
+    def _build_cancel_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        return self._build_cu_tx(self._ctx.neon_prog.make_cancel_ix(), tx_cfg)
 
     async def _decode_neon_tx_return(self) -> ExecTxRespCode | None:
-        tx_state_list = self._ctx.sol_tx_list_sender.tx_state_list
+        tx_state_list = self._sol_tx_list_sender.tx_state_list
         total_gas_used = 0
         has_already_finalized = False
         status = SolTxSendState.Status
@@ -430,30 +498,10 @@ class IterativeTxStrategy(BaseTxStrategy):
         if has_already_finalized:
             return ExecTxRespCode.Failed
 
-        if await self._is_finalized_holder():
+        if await self._holder_acct_validator.is_finalized():
             return ExecTxRespCode.Failed
 
         return None
-
-    async def _is_finalized_holder(self) -> bool:
-        holder = await self._get_holder_acct()
-        if holder.status == HolderAccountStatus.Finalized:
-            if holder.neon_tx_hash == self._ctx.neon_tx_hash:
-                _LOG.warning("holder %s has finalized tag", holder.address)
-                return True
-        elif holder.status == HolderAccountStatus.Active:
-            if holder.neon_tx_hash != self._ctx.neon_tx_hash:
-                # strange case, because the holder was tested on the start...
-                raise StuckTxError(holder)
-
-            _LOG.debug("holder %s has %s completed EVM steps", holder.address, holder.evm_step_cnt)
-            self._completed_evm_step_cnt = holder.evm_step_cnt
-        else:
-            self._completed_evm_step_cnt = 0
-        return False
-
-    async def _get_holder_acct(self) -> HolderAccountModel:
-        return await self._ctx.core_api_client.get_holder_account(self._ctx.holder_address)
 
 
 @alt_strategy

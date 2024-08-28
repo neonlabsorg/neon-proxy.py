@@ -10,6 +10,8 @@ from typing_extensions import Self
 from ..config.config import Config
 from ..neon_rpc.client import CoreApiClient
 from ..solana_rpc.client import SolClient
+from ..stat.api import RpcCallData
+from ..stat.client_rpc import RpcStatClient
 from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
@@ -50,18 +52,26 @@ class BaseCmdHandler:
         return req_id
 
     @cached_method
+    def _get_rpc_stat_client(self) -> _FakeRpcStatClient:
+        return _FakeRpcStatClient()
+
+    @cached_method
     async def _get_sol_client(self) -> SolClient:
-        return await self._new_client(SolClient, self._cfg)
+        return await self._new_client(SolClient, self._cfg, self._get_rpc_stat_client())
 
     @cached_method
     async def _get_core_api_client(self) -> CoreApiClient:
-        return await self._new_client(CoreApiClient, self._cfg, await self._get_sol_client())
+        stat_client = self._get_rpc_stat_client()
+        sol_client = await self._get_sol_client()
+        return await self._new_client(CoreApiClient, self._cfg, sol_client, stat_client)
 
     async def _new_client(self, client_type: type, *args):
         if client := self._client_dict.get(client_type.__name__, None):
             return client
 
         client = client_type(*args)
+        if hasattr(client, "set_timeout_sec"):
+            client.set_timeout_sec(300)
 
         async def _stop():
             await client.stop()
@@ -71,3 +81,8 @@ class BaseCmdHandler:
 
         await client.start()
         return client
+
+
+class _FakeRpcStatClient(RpcStatClient):
+    def commit_rpc_call(self, data: RpcCallData) -> None:
+        pass

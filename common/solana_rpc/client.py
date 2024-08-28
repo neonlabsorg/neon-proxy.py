@@ -10,14 +10,16 @@ from typing import TypeVar, Sequence, Union, Final
 import solders.account_decoder as _acct
 import solders.rpc.config as _cfg
 import solders.rpc.errors as _err
+import solders.rpc.filter as _filter
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
 import solders.transaction_status as _tx
-import solders.rpc.filter as _filter
 
 from .errors import SolRpcError
+from ..config.config import Config
+from ..http.client import HttpClient, HttpClientRequest
 from ..http.utils import HttpURL
-from ..jsonrpc.client import HttpClient
+from ..jsonrpc.errors import InternalJsonRpcError
 from ..solana.account import SolAccountModel
 from ..solana.alt_program import SolAltAccountInfo
 from ..solana.block import SolRpcBlockInfo
@@ -35,6 +37,7 @@ from ..solana.transaction_meta import (
     SolRpcNodeUnhealthyErrorInfo,
     SolRpcInvalidParamErrorInfo,
 )
+from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import ttl_cached_method
 
 _SolRpcResp = TypeVar("_SolRpcResp", bound=_resp.RPCResult)
@@ -66,6 +69,7 @@ _SoldersGetSlot = _req.GetSlot
 _SoldersGetBlock = _req.GetBlock
 _SoldersGetBlockCommit = _req.GetBlockCommitment
 _SoldersGetLatestBlockhash = _req.GetLatestBlockhash
+_SoldersGetBlockHeight = _req.GetBlockHeight
 _SoldersGetTxSigForAddr = _req.GetSignaturesForAddress
 _SoldersGetTx = _req.GetTransaction
 _SoldersGetRentBalance = _req.GetMinimumBalanceForRentExemption
@@ -83,6 +87,7 @@ _SoldersGetSlotResp = _resp.GetSlotResp
 _SoldersGetBlockResp = _resp.GetBlockResp
 _SoldersGetBlockCommitResp = _resp.GetBlockCommitmentResp
 _SoldersGetLatestBlockhashResp = _resp.GetLatestBlockhashResp
+_SoldersGetBlockHeightResp = _resp.GetBlockHeightResp
 _SoldersGetTxSigForAddrResp = _resp.GetSignaturesForAddressResp
 _SoldersGetTxResp = _resp.GetTransactionResp
 _SoldersGetRentBalanceResp = _resp.GetMinimumBalanceForRentExemptionResp
@@ -119,29 +124,71 @@ class SolBlockStatus:
 
 
 class SolClient(HttpClient):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.set_timeout_sec(self._cfg.sol_timeout_sec)
+    _stat_name: Final[str] = "Solana"
 
+    def __init__(self, cfg: Config, stat_client: RpcStatClient) -> None:
+        super().__init__(cfg)
+        self.set_timeout_sec(cfg.sol_timeout_sec)
+
+        self._stat_client = stat_client
         self._id = itertools.count()
 
         url_list = tuple([HttpURL(url) for url in self._cfg.sol_url_list])
         self.connect(base_url_list=url_list)
 
+        self._send_tx_url_list = tuple([HttpURL(url) for url in self._cfg.sol_send_tx_url_list])
+        for url in self._send_tx_url_list:
+            assert url.is_absolute(), "Solana URL for send transaction must be absolute"
+
     def _get_next_id(self) -> int:
         return next(self._id)
 
-    async def _send_request(self, request: _SoldersRpcReq, parser: type[_SolRpcResp]) -> _SolRpcResp:
-        req_json = request.to_json()
+    async def _send_request(
+        self,
+        request: _SoldersRpcReq,
+        parser: type[_SolRpcResp],
+        *,
+        base_url_list: Sequence[HttpURL] = tuple(),
+    ) -> _SolRpcResp:
+        request = RpcClientRequest.from_raw(
+            data=request.to_json(),
+            stat_client=self._stat_client,
+            stat_name=self._stat_name,
+            method=request.__class__.__name__[:1].lower() + request.__class__.__name__[1:]
+        )
 
-        resp_json = await self._send_post_request(req_json)
-        resp = parser.from_json(resp_json)
-        if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
-            raise SolRpcError(resp)
-        elif isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
-            raise SolRpcError(resp)
+        with request:
+            for retry in itertools.count():
+                request.start_timer()
+                resp_json = await self._send_client_request(request, base_url_list=base_url_list)
+                try:
 
-        return resp
+                    resp = parser.from_json(resp_json)
+                    if isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
+                        raise SolRpcError(resp)
+
+                except BaseException as exc:
+                    if retry > self._max_retry_cnt:
+                        if isinstance(exc, SolRpcError):
+                            raise exc
+                        raise InternalJsonRpcError(exc)
+
+                    _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, request.data)
+                    request.commit_stat(is_error=True)
+                    await asyncio.sleep(0.2)
+                    continue
+
+                if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
+                    raise SolRpcError(resp)
+
+                return resp
+
+    def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+        super()._exception_handler(url, request, retry, exc)
+
+        # if the previous call has reraised an exception, this code isn't called
+        assert isinstance(request, RpcClientRequest)
+        request.commit_stat(is_error=True)
 
     @ttl_cached_method(ttl_sec=60)
     async def get_version(self) -> str:
@@ -171,7 +218,7 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetAcctInfoResp)
         return SolAccountModel.from_raw(address, resp.value)
 
-    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo | None:
+    async def get_alt_account(self, address: SolPubKey, commit=SolCommit.Confirmed) -> SolAltAccountInfo:
         acct = await self.get_account(address, commit=commit)
         return SolAltAccountInfo.from_bytes(address, acct.data)
 
@@ -223,9 +270,6 @@ class SolClient(HttpClient):
                 if SolBlockHash.from_raw(resp.value.previous_blockhash).is_empty:
                     _LOG.debug("error on get block %s: empty parentBlockhash", slot)
                     return SolRpcBlockInfo.new_empty(slot, commit=commit)
-                elif not resp.value.transactions:
-                    _LOG.debug("error on get block %s: empty transactionList", slot)
-                    return SolRpcBlockInfo.new_empty(slot, commit=commit)
         except SolRpcError as exc:
             _LOG.debug("error on get block %s: %s", slot, exc.message, extra=self._msg_filter)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)
@@ -259,9 +303,14 @@ class SolClient(HttpClient):
         resp = await self._get_latest_blockhash(commit)
         return resp.context.slot
 
-    async def get_recent_blockhash(self, commit=SolCommit.Confirmed) -> SolBlockHash:
+    async def get_recent_blockhash(self, commit=SolCommit.Confirmed) -> tuple[SolBlockHash, int]:
         resp = await self._get_latest_blockhash(commit)
-        return SolBlockHash.from_raw(resp.value.blockhash)
+        return SolBlockHash.from_raw(resp.value.blockhash), resp.value.last_valid_block_height
+
+    async def get_block_height(self, commit=SolCommit.Confirmed) -> int:
+        cfg = _SoldersRpcCtxCfg(commitment=commit.to_rpc_commit())
+        resp = await self._send_request(_SoldersGetBlockHeight(cfg, self._get_next_id()), _SoldersGetBlockHeightResp)
+        return resp.value
 
     async def get_tx_sig_list(
         self,
@@ -295,14 +344,20 @@ class SolClient(HttpClient):
         tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit, json_format) for tx_sig in tx_sig_list])
         return tuple(tx_list)
 
-    async def send_tx(self, tx: SolTx, skip_preflight: bool) -> SolRpcSendTxResultInfo | None:
+    async def send_tx(
+        self,
+        tx: SolTx,
+        skip_preflight: bool,
+        max_retry_cnt: int | None,
+    ) -> SolRpcSendTxResultInfo | None:
         cfg = _SoldersSendTxCfg(
             skip_preflight=skip_preflight,
             preflight_commitment=SolCommit.Processed.to_rpc_commit(),
+            max_retries=max_retry_cnt,
         )
         req = _SoldersSendTx(tx.serialize(), cfg, self._get_next_id())
         try:
-            resp = await self._send_request(req, _SoldersSendTxResp)
+            resp = await self._send_request(req, _SoldersSendTxResp, base_url_list=self._send_tx_url_list)
             return SolTxSig.from_raw(resp.value)
         except SolRpcError as exc:
             if isinstance(exc.rpc_data, _SoldersNodeUnhealthyError):
@@ -319,10 +374,11 @@ class SolClient(HttpClient):
         self,
         tx_list: Sequence[SolTx],
         skip_preflight: bool,
+        max_retry_cnt: int | None,
     ) -> tuple[SolRpcSendTxResultInfo | None, ...]:
         if not tx_list:
             return tuple()
-        tx_sig_list = await asyncio.gather(*[self.send_tx(tx, skip_preflight) for tx in tx_list])
+        tx_sig_list = await asyncio.gather(*[self.send_tx(tx, skip_preflight, max_retry_cnt) for tx in tx_list])
         return tuple(tx_sig_list)
 
     async def get_rent_balance_for_size(self, size: int, commit=SolCommit.Confirmed) -> int:

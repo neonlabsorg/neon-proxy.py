@@ -23,7 +23,7 @@ from .constants import (
     ONE_BLOCK_SEC,
     MIN_FINALIZE_SEC,
     DEFAULT_TOKEN_NAME,
-    SOL_PACKET_SIZE,
+    SOL_PKT_SIZE,
     CHAIN_TOKEN_NAME,
 )
 from ..solana.commit_level import SolCommit
@@ -87,6 +87,7 @@ class Config:
     hide_sensitive_info_name: Final[str] = "HIDE_SENSITIVE_INFO"
     sol_url_name: Final[str] = "SOLANA_URL"
     sol_ws_url_name: Final[str] = "SOLANA_WS_URL"
+    sol_send_tx_url_name: Final[str] = "SOLANA_SEND_TRANSACTIONS_URL"
     sol_timeout_sec_name: Final[str] = "SOLANA_TIMEOUT"
     enable_private_api_name: Final[str] = "ENABLE_PRIVATE_API"
     enable_send_tx_api_name: Final[str] = "ENABLE_SEND_TX_API"
@@ -123,6 +124,7 @@ class Config:
     mp_exec_worker_cnt_name: Final[str] = "MEMPOOL_EXECUTOR_WORKER_COUNT"
     mp_skip_stuck_tx_name: Final[str] = "MEMPOOL_SKIP_STUCK_TRANSACTIONS"
     mp_lost_alt_timeout_sec_name: Final[str] = "MEMPOOL_LOST_ALT_TIMEOUT_SEC"
+    mp_send_batch_tx_name: Final[str] = "MEMPOOL_SEND_BATCH_TRANSACTIONS"
     # Transaction execution settings
     retry_on_fail_name: Final[str] = "RETRY_ON_FAIL"
     commit_timeout_sec_name: Final[str] = "COMMIT_TIMEOUT_SEC"
@@ -135,7 +137,8 @@ class Config:
     cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_name: Final[str] = "CU_PRIORITY_FEE"
     simple_cu_price_name: Final[str] = "SIMPLE_CU_PRIORITY_FEE"
-    max_cu_price_mult_name: Final[str] = "MAXIMUM_CU_PRIORITY_FEE_MULTIPLIER"
+    atlas_fee_url_name: Final[str] = "ATLAS_PRIORITY_FEE_URL"
+    atlas_fee_level_name: Final[str] = "ATLAS_PRIORITY_FEE_LEVEL"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
@@ -158,7 +161,6 @@ class Config:
     stuck_object_validate_blockout_name: Final[str] = "STUCK_OBJECT_VALIDATE_BLOCKOUT"
     alt_freeing_depth_name: Final[str] = "ALT_FREEING_DEPTH"
     metrics_log_skip_cnt_name: Final[str] = "METRICS_LOG_SKIP_COUNT"
-    op_key_list_name: Final[str] = "OPERATOR_ACCOUNT_LIST"
     # Integration Indexer with Tracer API
     slot_processing_delay_name: Final[str] = "SLOT_PROCESSING_DELAY"
     clickhouse_dsn_list_name: Final[str] = "CLICKHOUSE_DSN_LIST"
@@ -200,10 +202,10 @@ class Config:
             _LOG.warning("%s contains bad Solana account %s", name, value)
             return SolPubKey.default()
 
-    def _env_sol_acct(self, name: str) -> SolPubKey:
+    def _env_sol_acct(self, name: str, default=SolPubKey.default()) -> SolPubKey:
         value = os.environ.get(name, None)
         if not value:
-            return SolPubKey.default()
+            return default
 
         return self._validate_sol_acct(name, value)
 
@@ -348,6 +350,10 @@ class Config:
             sol_url_list = ["http://localhost:8899"]
         return tuple(sol_url_list)
 
+    @cached_property
+    def sol_send_tx_url_list(self) -> tuple[str, ...]:
+        return tuple(self._split_str(os.environ.get(self.sol_send_tx_url_name, "")))
+
     @property
     def random_sol_url(self) -> str:
         return self._random_from_list(self.sol_url_list)
@@ -390,6 +396,7 @@ class Config:
             list(self.sol_url_list)
             + list(self.pyth_url_list)
             + list(self.sol_ws_url_list)
+            + list(self.atlas_fee_url_list)
             + list(self.pyth_ws_url_list)
             + list(self.ch_dsn_list)
             + [self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
@@ -530,6 +537,10 @@ class Config:
     def mp_lost_alt_timeout_sec(self) -> int:
         return self._env_num(self.mp_lost_alt_timeout_sec_name, 6 * self._1hour, 1 * self._1hour)
 
+    @cached_property
+    def mp_send_batch_tx(self) -> bool:
+        return self._env_bool(self.mp_send_batch_tx_name, False)
+
     ########################
     # Neon Core API settings
 
@@ -547,7 +558,10 @@ class Config:
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
-        return self._env_sol_acct(self.sol_key_for_evm_cfg_name)
+        return self._env_sol_acct(
+            self.sol_key_for_evm_cfg_name,
+            SolPubKey.from_raw("J4hWtdRER39G4iwTa1Xaw5HCAhbYrt2c5o57JyXWMjao")
+        )
 
     ###########################
     # Postgres DB settings
@@ -590,7 +604,7 @@ class Config:
 
     @cached_property
     def commit_timeout_sec(self) -> int:
-        return self._env_num(self.commit_timeout_sec_name, int(MIN_FINALIZE_SEC), 1.2, 60)
+        return self._env_num(self.commit_timeout_sec_name, MIN_FINALIZE_SEC, 1.2, 60)
 
     @cached_property
     def commit_type(self) -> SolCommit:
@@ -666,8 +680,15 @@ class Config:
         return self._env_num(self.simple_cu_price_name, 0, 0, 1_000_000)
 
     @cached_property
-    def max_cu_price_mult(self) -> int:
-        return self._env_num(self.max_cu_price_mult_name, 16, 1, 128)
+    def atlas_fee_url_list(self) -> tuple[str, ...]:
+        atlas_url_list = self._split_str(os.environ.get(self.atlas_fee_url_name, ""))
+        if not atlas_url_list:
+            _LOG.debug("%s is not defined", self.atlas_fee_url_name)
+        return tuple(atlas_url_list)
+
+    @cached_property
+    def atlas_fee_level(self) -> str | None:
+        return os.environ.get(self.atlas_fee_level_name, None)
 
     @cached_property
     def min_gas_price(self) -> int | None:
@@ -772,10 +793,6 @@ class Config:
     def metrics_log_skip_cnt(self) -> int:
         return self._env_num(self.metrics_log_skip_cnt_name, 1000, 1, 100_000)
 
-    @cached_property
-    def op_key_set(self) -> set[SolPubKey]:
-        return self._env_sol_acct_set(self.op_key_list_name)
-
     ######################################
     # Integration Indexer with Tracer API
 
@@ -847,10 +864,11 @@ class Config:
             "NEON_EVM_PROGRAM": NEON_EVM_PROGRAM_ID,
             "SOLANA_BLOCK_SEC": ONE_BLOCK_SEC,
             "MINIMAL_FINALIZATION_SEC": MIN_FINALIZE_SEC,
-            "SOLANA_PACKET_SIZE": SOL_PACKET_SIZE,
+            "SOLANA_PACKET_SIZE": SOL_PKT_SIZE,
             "DEFAULT_TOKEN_NAME": DEFAULT_TOKEN_NAME,
             "CHAIN_TOKEN_NAME": CHAIN_TOKEN_NAME,
             self.sol_url_name: self.sol_url_list,
+            self.sol_send_tx_url_name: self.sol_send_tx_url_list,
             self.sol_ws_url_name: self.sol_ws_url_list,
             self.sol_timeout_sec_name: self.sol_timeout_sec,
             self.enable_private_api_name: self.enable_private_api,
@@ -877,6 +895,7 @@ class Config:
             self.mp_exec_worker_cnt_name: self.mp_exec_worker_cnt,
             self.mp_skip_stuck_tx_name: self.mp_skip_stuck_tx,
             self.mp_lost_alt_timeout_sec_name: self.mp_lost_alt_timeout_sec,
+            self.mp_send_batch_tx_name: self.mp_send_batch_tx,
             # Neon Core API settings
             self.neon_core_api_server_cnt_name: self.neon_core_api_server_cnt,
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,
@@ -899,7 +918,8 @@ class Config:
             self.cu_limit_name: self.cu_limit,
             self.cu_price_name: self.cu_price,
             self.simple_cu_price_name: self.simple_cu_price,
-            self.max_cu_price_mult_name: self.max_cu_price_mult,
+            self.atlas_fee_url_name: self.atlas_fee_url_list,
+            self.atlas_fee_level_name: self.atlas_fee_level,
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,
