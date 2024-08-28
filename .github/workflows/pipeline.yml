@@ -12,6 +12,9 @@ on:
       evm_tag:
         required: false
         description: "Neon EVM branch image tag"
+      evm_pr_version_branch:
+        required: false
+        description: "Neon EVM base branch for PR to version branch"
       initial_pr:
         required: false
         description: "Initial PR"
@@ -67,6 +70,7 @@ jobs:
       is_proxy_release: ${{ steps.tags.outputs.is_proxy_release }}
       evm_tag: ${{ steps.tags.outputs.evm_tag }}
       evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
+      evm_pr_version_branch: ${{ steps.tags.outputs.evm_pr_version_branch }}
       faucet_tag: ${{ steps.tags.outputs.faucet_tag }}
       neon_test_tag: ${{ steps.tags.outputs.neon_test_tag }}
       full_test_suite: ${{ steps.full_test_suite.outputs.value }}
@@ -99,8 +103,10 @@ jobs:
           echo "is_proxy_release=${{ env.IS_PROXY_RELEASE }}" >> "$GITHUB_OUTPUT"
           echo "evm_tag=${{ env.EVM_TAG }}" >> "$GITHUB_OUTPUT"
           echo "evm_sha_tag=${{ env.EVM_SHA_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "evm_pr_version_branch=${{ github.event.inputs.evm_pr_version_branch }} >> "$GITHUB_OUTPUT"
           echo "faucet_tag=${{ env.FAUCET_TAG }}" >> "$GITHUB_OUTPUT"
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
+
       - name: Define test set
         id: full_test_suite
         run: |
