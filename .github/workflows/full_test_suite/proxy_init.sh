@@ -82,7 +82,6 @@ EOF
 SERVICES=$(docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
-docker login -u ${docker_username} -p ${docker_password}
 docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull $SERVICES
 
 
