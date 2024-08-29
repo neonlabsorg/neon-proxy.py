@@ -66,67 +66,108 @@ docker_client = docker.APIClient()
 terraform = Terraform(working_dir=pathlib.Path(
     __file__).parent / "full_test_suite")
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
+RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 
 
-def docker_compose(args: str):
-    command = f'docker login -u {DOCKER_USERNAME} -p {DOCKER_PASSWORD}'
-    click.echo(f"run command: {command}")
-    out = subprocess.run(command, shell=True)
-    click.echo("return code: " + str(out.returncode))
-
-    command = f'docker-compose --compatibility {args}'
-    click.echo(f"run command: {command}")
-    out = subprocess.run(command, shell=True)
-    click.echo("return code: " + str(out.returncode))
-    if out.returncode != 0:
-        raise RuntimeError(f"Command {command} failed. Err: {out.stderr}")
-
-    return out
-
-
-def check_neon_evm_tag(tag):
+def is_image_exist(image, tag):
     response = requests.get(
-        url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/evm_loader/tags/{tag}")
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"evm_loader image with {tag} tag isn't found. Response: {response.json()}")
+        url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag}")
+    return response.status_code == 200
 
 
-def is_branch_exist(branch, repo):
-    if branch:
-        response = requests.get(f"https://api.github.com/repos/{GH_ORG_NAME}/{repo}/branches/{branch}")
-        if response.status_code == 200:
-            click.echo(f"The branch {branch} exist in the {repo} repository")
-            return True
+def ref_to_image_tag(ref):
+    return ref.split('/')[-1]
+
+
+@cli.command(name="specify_image_tags")
+@click.option('--git_sha')
+@click.option('--git_ref')
+@click.option('--git_head_ref')
+@click.option('--git_base_ref')
+@click.option('--evm_sha_tag')
+@click.option('--evm_tag')
+@click.option('--default_evm_tag')
+@click.option('--default_faucet_tag')
+def specify_image_tags(git_sha,
+                       git_ref,
+                       git_head_ref,
+                       git_base_ref,
+                       evm_sha_tag,
+                       evm_tag,
+                       default_evm_tag,
+                       default_faucet_tag):
+
+    # proxy_tag
+    if "refs/pull" in git_ref:
+        proxy_tag = ref_to_image_tag(git_head_ref)
+    elif git_ref == "refs/heads/develop":
+        proxy_tag = "latest"
     else:
-        return False
+        proxy_tag = ref_to_image_tag(git_ref)
 
+    # proxy_sha_tag
+    proxy_sha_tag = git_sha
+    if evm_sha_tag:
+        proxy_sha_tag = f"{proxy_sha_tag}-{evm_sha_tag[:7]}"
 
-def update_neon_evm_tag_if_same_branch_exists(branch, neon_evm_tag):
-    if is_branch_exist(branch, "neon-evm"):
-        neon_evm_tag = branch.split('/')[-1]
-        check_neon_evm_tag(neon_evm_tag)
-    return neon_evm_tag
+    # proxy_pr_version_branch
+    proxy_pr_version_branch = ""
+    if git_base_ref:
+        if re.match(VERSION_BRANCH_TEMPLATE,  ref_to_image_tag(git_base_ref)) is not None:
+            proxy_pr_version_branch = ref_to_image_tag(git_base_ref)
 
-def update_faucet_tag_if_same_branch_exists(branch, faucet_tag):
-    if is_branch_exist(branch, "neon-faucet"):
-        faucet_tag = branch.split('/')[-1]
-    print(f"faucet image tag: {faucet_tag}")
-    return faucet_tag
+    # is_proxy_release
+    if re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is not None:
+        is_proxy_release = True
+    else:
+        is_proxy_release = False
+
+    # evm_tag and evm_sha_tag
+    if evm_sha_tag:
+        evm_sha_tag = evm_sha_tag
+        evm_tag = evm_tag
+    else:
+        evm_sha_tag = ""
+        evm_tag = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
+
+    # faucet_tag
+    faucet_tag = proxy_tag if is_image_exist("neon-faucet", proxy_tag) else default_faucet_tag
+
+    # test_image_tag
+    if evm_tag and is_image_exist("neon-tests", evm_tag):
+        neon_test_tag = evm_tag
+    elif "refs/tags/" in git_ref:
+        neon_test_tag = re.sub(r'\.[0-9]*$', '.x', proxy_tag)
+        if not is_image_exist("neon-tests", neon_test_tag):
+            raise RuntimeError(f"neon-tests image with {neon_test_tag} tag isn't found")
+    elif is_image_exist("neon-tests", proxy_tag):
+        neon_test_tag = proxy_tag
+    elif proxy_pr_version_branch and is_image_exist("neon-tests", proxy_pr_version_branch):
+        neon_test_tag = proxy_pr_version_branch
+    else:
+        neon_test_tag = "latest"
+
+    env = dict(proxy_tag=proxy_tag,
+               proxy_sha_tag=proxy_sha_tag,
+               proxy_pr_version_branch=proxy_pr_version_branch,
+               is_proxy_release=is_proxy_release,
+               evm_tag=evm_tag,
+               evm_sha_tag=evm_sha_tag,
+               faucet_tag=faucet_tag,
+               neon_test_tag=neon_test_tag)
+    set_github_env(env)
 
 
 @cli.command(name="build_docker_image")
-@click.option('--neon_evm_tag', help="the neon evm_loader image tag that will be used for the build")
+@click.option('--evm_tag', help="the neon evm_loader image tag that will be used for the build")
 @click.option('--proxy_tag', help="a tag to be generated for the proxy image")
-@click.option('--head_ref_branch')
 @click.option('--skip_pull', is_flag=True, default=False, help="skip pulling of docker images from the docker-hub")
-def build_docker_image(neon_evm_tag,  proxy_tag, head_ref_branch, skip_pull):
-    neon_evm_tag = update_neon_evm_tag_if_same_branch_exists(head_ref_branch, neon_evm_tag)
-    neon_evm_image = f'{DOCKERHUB_ORG_NAME}/evm_loader:{neon_evm_tag}'
+def build_docker_image(evm_tag,  proxy_tag, skip_pull):
+    neon_evm_image = f'{DOCKERHUB_ORG_NAME}/evm_loader:{evm_tag}'
 
-    click.echo(f"neon-evm image: {neon_evm_image}")
+    click.echo(f"evm_loader image: {neon_evm_image}")
     if not skip_pull:
         click.echo('pull docker images...')
         out = docker_client.pull(neon_evm_image, stream=True, decode=True)
@@ -135,7 +176,7 @@ def build_docker_image(neon_evm_tag,  proxy_tag, head_ref_branch, skip_pull):
     else:
         click.echo('skip pulling of docker images')
 
-    buildargs = {"NEON_EVM_COMMIT": neon_evm_tag,
+    buildargs = {"NEON_EVM_COMMIT": evm_tag,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
                  "PROXY_REVISION": proxy_tag}
 
@@ -147,18 +188,13 @@ def build_docker_image(neon_evm_tag,  proxy_tag, head_ref_branch, skip_pull):
 
 
 @cli.command(name="publish_image")
+@click.option('--proxy_sha_tag')
 @click.option('--proxy_tag')
-@click.option('--head_ref')
-@click.option('--github_ref_name')
-def publish_image(proxy_tag, head_ref, github_ref_name):
-    push_image_with_tag(proxy_tag, proxy_tag)
-    branch_name_tag = None
-    if head_ref:
-        branch_name_tag = head_ref.split('/')[-1]
-    elif re.match(VERSION_BRANCH_TEMPLATE,  github_ref_name):
-        branch_name_tag = github_ref_name
-    if branch_name_tag:
-        push_image_with_tag(proxy_tag, branch_name_tag)
+def publish_image(proxy_sha_tag, proxy_tag):
+    push_image_with_tag(proxy_sha_tag, proxy_sha_tag)
+    # push latest and version tags only on the finalizing step
+    if proxy_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is None:
+        push_image_with_tag(proxy_sha_tag, proxy_tag)
 
 
 def push_image_with_tag(sha, tag):
@@ -168,44 +204,28 @@ def push_image_with_tag(sha, tag):
     out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
     process_output(out)
 
-@cli.command(name="finalize_image")
-@click.option('--github_ref')
-@click.option('--proxy_tag')
-def finalize_image(github_ref, proxy_tag):
-    final_tag = ""
-    if 'refs/tags/' in github_ref:
-        final_tag = github_ref.replace("refs/tags/", "")
-    elif github_ref == 'refs/heads/develop':
-        final_tag = 'latest'
 
-    if final_tag:
-        out = docker_client.pull(f"{IMAGE_NAME}:{proxy_tag}", decode=True, stream=True)
-        process_output(out)
-        push_image_with_tag(proxy_tag, final_tag)
+@cli.command(name="finalize_image")
+@click.option('--proxy_sha_tag')
+@click.option('--proxy_tag')
+def finalize_image(proxy_sha_tag, proxy_tag):
+    if re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is not None or proxy_tag == "latest":
+        push_image_with_tag(proxy_sha_tag, proxy_tag)
     else:
-        click.echo(f"Nothing to finalize, github_ref {github_ref} is not a tag or develop ref")
+        click.echo(f"Nothing to finalize, the tag {proxy_tag} is not version tag or latest")
 
 
 @cli.command(name="terraform_infrastructure")
-@click.option('--head_ref_branch')
-@click.option('--github_ref_name')
 @click.option('--proxy_tag')
-@click.option('--neon_evm_tag')
+@click.option('--evm_tag')
 @click.option('--faucet_tag')
 @click.option('--run_number')
-def terraform_build_infrastructure(head_ref_branch, github_ref_name, proxy_tag, neon_evm_tag, faucet_tag, run_number):
-    branch = head_ref_branch if head_ref_branch != "" else github_ref_name
-    neon_evm_tag = update_neon_evm_tag_if_same_branch_exists(head_ref_branch, neon_evm_tag)
-    if branch not in ['master', 'develop']:
-        faucet_tag = update_faucet_tag_if_same_branch_exists(branch, faucet_tag)
-    os.environ["TF_VAR_branch"] = branch.replace('_', '-')
+def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
-    os.environ["TF_VAR_neon_evm_commit"] = neon_evm_tag
+    os.environ["TF_VAR_neon_evm_commit"] = evm_tag
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
     os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
     os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
-    os.environ["TF_VAR_docker_username"] = DOCKER_USERNAME
-    os.environ["TF_VAR_docker_password"] = DOCKER_PASSWORD
 
     thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
 
@@ -237,6 +257,7 @@ def set_github_env(envs: tp.Dict, upper=True) -> None:
     """Set environment for github action"""
     path = os.getenv("GITHUB_ENV", str())
     if os.path.exists(path):
+        print(f"Set environment variables: {envs}")
         with open(path, "a") as env_file:
             for key, value in envs.items():
                 env_file.write(f"\n{key.upper() if upper else key}={str(value)}")
@@ -257,8 +278,6 @@ def destroy_terraform(proxy_tag, run_number):
 
     os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
     os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
-    os.environ["TF_VAR_docker_username"] = DOCKER_USERNAME
-    os.environ["TF_VAR_docker_password"] = DOCKER_PASSWORD
 
     def format_tf_output(output):
         return re.sub(r'(?m)^', ' ' * TF_OUTPUT_OFFSET, str(output))
@@ -384,7 +403,7 @@ def get_test_list(cont_id: str) -> tp.List[tp.Tuple[str, str]]:
 
 def run_test(cont_id, dir_name, file_name):
     # it is a fake configuration, which isn't used in a test,
-    #  but it allows to ckip validation step of the Config object
+    #  but it allows to skip validation step of the Config object
     local_env = {
         "EVM_LOADER": "53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io",
         "SOLANA_URL": "https://solana:8899",

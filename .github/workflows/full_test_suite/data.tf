@@ -11,11 +11,6 @@ data "hcloud_ssh_key" "ci-ssh-key" {
   name = "hcloud-ci-stands"
 }
 
-variable "branch" {
-  type = string
-}
-
-
 variable "proxy_image_tag" {
   type = string
 }
@@ -37,7 +32,6 @@ data "template_file" "solana_init" {
   template = file("solana_init.sh")
 
   vars = {
-    branch              = "${var.branch}"
     proxy_image_tag     = "${var.proxy_image_tag}"
     neon_evm_commit     = "${var.neon_evm_commit}"
     faucet_model_commit = "${var.faucet_model_commit}"
@@ -49,7 +43,6 @@ data "template_file" "proxy_init" {
   template = file("proxy_init.sh")
 
   vars = {
-    branch              = "${var.branch}"
     proxy_image_tag     = "${var.proxy_image_tag}"
     solana_ip           = hcloud_server.solana.network.*.ip[0]
     neon_evm_commit     = "${var.neon_evm_commit}"
@@ -57,7 +50,5 @@ data "template_file" "proxy_init" {
     ci_pp_solana_url    = "${var.ci_pp_solana_url}"
     dockerhub_org_name  = "${var.dockerhub_org_name}"
     proxy_image_name    = "${var.proxy_image_name}"
-    docker_username     = "${var.docker_username}"
-    docker_password     = "${var.docker_password}"
   }
 }
