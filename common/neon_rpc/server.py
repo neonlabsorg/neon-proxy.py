@@ -58,9 +58,9 @@ class _Server:
         self._process.join()
 
     def tracer_db_type(ch_dns_list: list) -> str:
-        if ch_dns_list.len() > 0
+        if ch_dns_list.len() > 0:
             return "clickhouse"
-        else
+        else:
             return "none"
 
 
