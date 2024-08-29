@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Union
-
+from typing import Final, Union
 from typing_extensions import Self
+
+from .cu_price_data_model import CuPricePercentilesModel
 
 from ..ethereum.commit_level import EthCommit, EthCommitField
 from ..ethereum.hash import EthBlockHash, EthBlockHashField
@@ -13,12 +14,16 @@ from ..utils.pydantic import BaseModel
 
 
 class NeonBlockHdrModel(BaseModel):
+    PercentileStep: Final[int] = 10  # Percentiles are a multiple of 10.
+    PercentileCount: Final[int] = 11  # 100 / step + 1.
+
     slot: int
     commit: EthCommitField
     block_hash: EthBlockHashField
     block_time: int | None
     parent_slot: int | None
     parent_block_hash: EthBlockHashField
+    cu_price_data: CuPricePercentilesModel
 
     @classmethod
     def default(cls) -> Self:
@@ -29,6 +34,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     @classmethod
@@ -40,6 +46,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     @classmethod
@@ -65,6 +72,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=raw.block_time,
             parent_slot=raw.parent_slot,
             parent_block_hash=EthBlockHash.from_raw(raw.parent_block_hash.to_bytes()),
+            cu_price_data=CuPricePercentilesModel.from_sol_block(raw),
         )
 
     def to_pending(self) -> Self:
@@ -75,6 +83,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=self.block_hash,
+            cu_price_data=self.cu_price_data,
         )
 
     def to_genesis_child(self, genesis_hash: EthBlockHash) -> Self:
@@ -85,6 +94,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=genesis_hash,
+            cu_price_data=self.cu_price_data,
         )
 
     @property

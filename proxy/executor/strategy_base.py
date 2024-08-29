@@ -7,6 +7,7 @@ from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
+from common.neon.cu_price_data_model import CuPricePercentilesModel
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
@@ -21,6 +22,7 @@ from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
+from indexer.db.solana_block_db import PriorityFeePercentiles
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
 
@@ -70,7 +72,7 @@ class SolTxCfg:
             ix_mode=NeonIxMode.Default,
             cu_limit=100_000,
             cu_price=10_000,
-            heap_size=100_000
+            heap_size=100_000,
         )
 
 
@@ -247,6 +249,21 @@ class BaseTxStrategy(abc.ABC):
     def _cu_limit(self) -> int:
         return self._ctx.cb_prog.MaxCuLimit
 
+    async def _estimate_cu_price(self) -> int:
+        # We estimate the cu_price from the recent blocks.
+        # Solana currently does not really take into account writeable account list,
+        # so the decent estimation level should be achieved by taking a weighted average from
+        # the percentiles of compute unit prices across recent blocks.
+        est_num_blocks: int = self._ctx.cfg.cu_price_estimator_num_blocks
+        est_percentile: int = self._ctx.cfg.cu_price_estimator_percentile
+        cu_price_list: list[PriorityFeePercentiles] = await self._ctx.db.get_recent_priority_fees(est_num_blocks)
+
+        return int(
+            CuPricePercentilesModel.get_weighted_percentile(
+                est_percentile, len(cu_price_list), map(lambda v: v.cu_price_percentiles, cu_price_list)
+            )
+        )
+
     async def _init_sol_tx_cfg(
         self,
         *,
@@ -255,16 +272,34 @@ class BaseTxStrategy(abc.ABC):
         ix_mode: NeonIxMode = NeonIxMode.Unknown,
         cu_limit: int = 0,
         cu_price: int = 0,
-        heap_size: int = 0
+        heap_size: int = 0,
     ) -> SolTxCfg:
+        # TODO EIP1559 churn: remove atlas.
+        # if not cu_price:
+        #    cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+        cu_limit = cu_limit or self._cu_limit
         if not cu_price:
-            cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+            # For legacy transactions: we estimate the cu_price from the recent blocks.
+            cu_price = await self._estimate_cu_price()
+            if self._ctx.tx_type == 2:
+                base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
+                assert base_fee_per_gas >= 0
+                # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
+                # For the general case, we take into account the gas fee parameters set in Neon tx.
+                if base_fee_per_gas != 0:
+                    cu_price = min(
+                        cu_price,
+                        int(self._ctx.max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit)),
+                    )
+                # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
+                # and neon-evm does not digest it.
+                cu_price = max(1, cu_price)
 
         return SolTxCfg(
             name=name or self.name,
             evm_step_cnt=evm_step_cnt or self._ctx.evm_step_cnt_per_iter,
             ix_mode=ix_mode or NeonIxMode.Default,
-            cu_limit=cu_limit or self._cu_limit,
+            cu_limit=cu_limit,
             cu_price=cu_price,
             heap_size=heap_size or self._ctx.cb_prog.MaxHeapSize,
         )

@@ -10,6 +10,7 @@ from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQue
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.hash import EthBlockHash
 from common.neon.block import NeonBlockHdrModel
+from common.neon.cu_price_data_model import CuPricePercentilesModel
 from common.utils.format import hex_to_int
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
@@ -34,6 +35,7 @@ class SolBlockDb(HistoryDbTable):
         self._finalize_query = DbQueryBody()
         self._deactivate_query = DbQueryBody()
         self._activate_query = DbQueryBody()
+        self._select_cu_price_percentile_list_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -177,6 +179,25 @@ class SolBlockDb(HistoryDbTable):
             slot_list=DbSqlParam("slot_list"),
         )
 
+        select_cu_price_percentile_list_sql = DbSql(
+            """
+            SELECT 
+              a.cu_price_percentiles,
+              a.block_slot
+            FROM 
+              {table_name} AS a
+            WHERE 
+              a.block_slot <= {latest_block}
+            ORDER BY 
+              a.block_slot DESC
+            LIMIT {block_cnt}
+            """
+        ).format(
+            table_name=self._table_name,
+            block_cnt=DbSqlParam("block_cnt"),
+            latest_block=DbSqlParam("latest_block"),
+        )
+
         (
             self._block_time_query,
             self._block_by_slot_query,
@@ -184,6 +205,7 @@ class SolBlockDb(HistoryDbTable):
             self._finalize_query,
             self._deactivate_query,
             self._activate_query,
+            self._select_cu_price_percentile_list_query,
         ) = await self._db.sql_to_query(
             block_time_sql,
             block_by_slot_sql,
@@ -191,6 +213,7 @@ class SolBlockDb(HistoryDbTable):
             finalize_sql,
             deactivate_sql,
             activate_sql,
+            select_cu_price_percentile_list_sql,
         )
 
     @staticmethod
@@ -233,7 +256,10 @@ class SolBlockDb(HistoryDbTable):
             return NeonBlockHdrModel.new_empty(slot=0)
 
         if not (block_time := await self._generate_block_time(ctx, slot)):
-            return NeonBlockHdrModel(slot=slot)
+            return NeonBlockHdrModel(
+                slot=slot,
+                cu_price_data=CuPricePercentilesModel.default(),
+            )
 
         is_finalized = slot <= slot_range.finalized_slot
         sol_commit = EthCommit.Finalized if is_finalized else EthCommit.Latest
@@ -243,8 +269,9 @@ class SolBlockDb(HistoryDbTable):
             commit=sol_commit,
             block_hash=self._generate_fake_block_hash(slot),
             block_time=block_time,
-            parent_slot=slot-1,
+            parent_slot=slot - 1,
             parent_block_hash=self._generate_fake_block_hash(slot - 1),
+            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     async def _block_from_value(
@@ -264,6 +291,7 @@ class SolBlockDb(HistoryDbTable):
             block_time=block_time,
             parent_slot=slot - 1,
             parent_block_hash=self._check_block_hash(slot - 1, rec.parent_block_hash),
+            cu_price_data=CuPricePercentilesModel.from_raw(rec.cu_price_percentiles),
         )
 
     async def get_block_by_slot(self, ctx: DbTxCtx, slot: int, slot_range: SolSlotRange) -> NeonBlockHdrModel:
@@ -312,6 +340,16 @@ class SolBlockDb(HistoryDbTable):
         await self._update_row(ctx, self._deactivate_query, by_slot_range)
         await self._update_row(ctx, self._activate_query, by_slot_range)
 
+    async def get_cu_price_percentile_list(
+        self, ctx: DbTxCtx, block_cnt: int, latest_block: int
+    ) -> list[PriorityFeePercentiles]:
+        return await self._fetch_all(
+            ctx,
+            self._select_cu_price_percentile_list_query,
+            _BlockCountAndLatest(block_cnt, latest_block),
+            record_type=PriorityFeePercentiles,
+        )
+
 
 @dataclass(frozen=True)
 class _Record:
@@ -321,6 +359,7 @@ class _Record:
     parent_block_slot: int
     is_finalized: bool
     is_active: bool
+    cu_price_percentiles: list[int]
 
     @classmethod
     def from_block_hdr(cls, hdr: NeonBlockHdrModel) -> Self:
@@ -331,6 +370,7 @@ class _Record:
             parent_block_slot=hdr.parent_slot,
             is_finalized=hdr.is_finalized,
             is_active=hdr.is_finalized,
+            cu_price_percentiles=hdr.cu_price_data.data,
         )
 
 
@@ -362,3 +402,15 @@ class _BySlotRange:
     from_slot: int
     to_slot: int
     slot_list: list[int]
+
+
+@dataclass(frozen=True)
+class _BlockCountAndLatest:
+    block_cnt: int
+    latest_block: int
+
+
+@dataclass(frozen=True)
+class PriorityFeePercentiles:
+    cu_price_percentiles: list[int]
+    block_slot: int

@@ -17,6 +17,7 @@ class SolSysProg:
     EpochScheduleVar: Final[SolPubKey] = SolPubKey.from_raw(_var.EPOCH_SCHEDULE)
     IxListVar: Final[SolPubKey] = SolPubKey.from_raw(_var.INSTRUCTIONS)
     SlotHashVar: Final[SolPubKey] = SolPubKey.from_raw(_var.SLOT_HASHES)
+    VoteProgram: Final[SolPubKey] = SolPubKey.from_string("Vote111111111111111111111111111111111111111")
 
     @classmethod
     def make_create_account_with_seed_ix(
