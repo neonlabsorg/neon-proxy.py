@@ -25,7 +25,7 @@ from common.utils.cached import ttl_cached_method, cached_property
 from common.utils.json_logger import logging_context, log_msg
 from common.utils.process_pool import ProcessPool
 from indexer.db.indexer_db_client import IndexerDbClient
-from .mp_api import MpGasPriceModel, MpTokenGasPriceModel
+from .mp_api import MpGasPriceModel, MpRecentGasPricesModel, MpTokenGasPriceModel
 from ..base.mp_client import MempoolClient
 from ..stat.client import StatClient
 
@@ -234,6 +234,9 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
             raise HttpRouteError()
         return gas_price, token_price
 
+    async def get_recent_gas_prices_list(self, ctx: HttpRequestCtx) -> MpRecentGasPricesModel:
+        return await self._mp_client.get_recent_gas_prices_list(self.get_ctx_id(ctx), self.get_chain_id(ctx))
+
     @abc.abstractmethod
     async def has_fee_less_tx_permit(
         self,
@@ -242,8 +245,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         contract: EthAddress,
         tx_nonce: int,
         tx_gas_limit: int,
-    ) -> bool:
-        ...
+    ) -> bool: ...
 
     # protected:
 

@@ -102,9 +102,13 @@ class NeonProg:
     _evm_version: ClassVar[str] = "v1.13.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
+    # The notation is as follows:
+    #   The first, without +, goes required accounts for the Neon instruction.
+    #   Then, with + prefix, follows accounts that aren't listed in the Neon instruction, but are a part of Solana
+    #   transaction account list.
     # 1. holder
     # 2. payer
-    # 3. treasury-pool-address,
+    # 3. treasury-pool-address
     # 4. payer-token-address
     # 5. SolSysProg.ID
     # +6: NeonProg.ID

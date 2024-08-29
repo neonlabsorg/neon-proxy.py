@@ -27,6 +27,7 @@ class NeonTxReceiptModel(BaseModel):
 
     total_gas_used: HexUIntField
     sum_gas_used: HexUIntField
+    priority_fee_spent: HexUIntField
 
     event_list: list[NeonTxEventModel]
 
@@ -45,6 +46,7 @@ class NeonTxReceiptModel(BaseModel):
             status=0,
             total_gas_used=0,
             sum_gas_used=0,
+            priority_fee_spent=0,
             event_list=list(),
             is_completed=False,
             is_canceled=False,

@@ -181,6 +181,10 @@ class SolNeonTxIxMetaInfo:
     def neon_total_gas_used(self) -> int:
         return self._neon_log.tx_ix_gas.total_gas_used
 
+    @property
+    def neon_tx_ix_priority_fee(self) -> int:
+        return self._neon_log.tx_ix_priority_fee.priority_fee_paid
+
     def to_string(self) -> str:
         return self._sol_tx_ix.to_string()
 

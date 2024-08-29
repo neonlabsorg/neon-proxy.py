@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import AliasChoices, Field
 from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField, EthBinStr
-from common.ethereum.hash import EthAddressField, EthHash32Field, EthAddress, EthTxHash, EthBlockHashField, \
-    EthTxHashField
+from common.ethereum.hash import (
+    EthAddressField,
+    EthHash32Field,
+    EthAddress,
+    EthTxHash,
+    EthBlockHashField,
+    EthTxHashField,
+)
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
@@ -47,6 +53,11 @@ class RpcEthTxRequest(BaseJsonRpcModel):
 
     _default: ClassVar[RpcEthTxRequest | None] = None
 
+    def model_post_init(self, _ctx: Any) -> None:
+        if self.txType != 0:
+            if self.maxPriorityFeePerGas > self.maxFeePerGas:
+                raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
+
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
@@ -65,8 +76,8 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             value=self.value,
             data=self.data.to_bytes(),
             gas_limit=self.gas,
-            gas_price=self.gasPrice,
-            chain_id=chain_id
+            gas_price=self.gasPrice if self.txType == 0 else self.maxFeePerGas - self.maxPriorityFeePerGas,
+            chain_id=chain_id,
         )
 
     def to_neon_tx(self) -> NeonTxModel:
@@ -96,6 +107,8 @@ class RpcEthTxResp(BaseJsonRpcModel):
     fromAddress: EthAddressField = Field(serialization_alias="from")
     nonce: HexUIntField
     gasPrice: HexUIntField
+    maxPriorityFeePerGas: HexUIntField | None
+    maxFeePerGas: HexUIntField | None
     gas: HexUIntField
     toAddress: EthAddressField = Field(serialization_alias="to")
     value: HexUIntField
@@ -114,12 +127,16 @@ class RpcEthTxResp(BaseJsonRpcModel):
             blockhash = rcpt.block_hash
             slot = rcpt.slot
             tx_idx = rcpt.neon_tx_idx
+            gas_price = meta.effective_gas_price
         else:
             tx = meta
 
             blockhash = None
             slot = None
             tx_idx = None
+            # if tx model is passed (instead of tx meta model with full receipt), then the best we can return is
+            # "theoretical" gas price: max_fee_per_gas for Dynamic Gas tx and usual gas_price for legacy.
+            gas_price = tx.gas_price
 
         return cls(
             blockHash=blockhash,
@@ -129,11 +146,16 @@ class RpcEthTxResp(BaseJsonRpcModel):
             txType=tx.tx_type,
             fromAddress=tx.from_address.to_string(),
             nonce=tx.nonce,
-            gasPrice=tx.gas_price,
+            gasPrice=gas_price,
+            maxPriorityFeePerGas=tx.max_priority_fee_per_gas,
+            maxFeePerGas=tx.max_fee_per_gas,
             gas=tx.gas_limit,
             toAddress=tx.to_address,
             value=tx.value,
             data=tx.call_data,
+            # chainId will be returned even for the legacy transactions.
+            # N.B. Various RPC providers differ in this regard.
+            # For example Infura claims to NOT return it for the legacy transaction in the docs, but they still do...
             chainId=tx.chain_id,
             v=tx.v,
             r=tx.r,
