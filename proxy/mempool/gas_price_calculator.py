@@ -15,7 +15,12 @@ from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import log_msg, logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
-from ..base.mp_api import MpGasPriceModel, MpTokenGasPriceModel
+from ..base.mp_api import (
+    MpGasPriceModel,
+    MpGasPriceTimestamped,
+    MpRecentGasPricesModel,
+    MpTokenGasPriceModel,
+)
 
 _LOG = logging.getLogger(__name__)
 _PythClient = _pyth.PythClient
@@ -64,9 +69,12 @@ class MpGasPriceCalculator(MempoolComponent):
             token_dict=dict(),
         )
 
-        self._min_exec_gas_price_dict: dict[int, deque[int]] = dict()
         _1min: Final[int] = 60  # 60 seconds
-        self._min_exec_gas_price_cnt: Final[int] = int(_1min / self._update_sec * self._cfg.mp_gas_price_min_window)
+
+        self._min_exec_gas_price_dict: dict[int, deque[int]] = dict()
+        self._recent_gas_price_cnt: Final[int] = int(_1min / self._update_sec * self._cfg.mp_gas_price_min_window)
+        # TODO: most likely, we can refactor and merge _min_exec_gas_price_dict and _recent_gas_prices.
+        self._recent_gas_prices: dict[int, deque[MpGasPriceTimestamped]] = dict()
 
     async def start(self) -> None:
         self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
@@ -92,6 +100,9 @@ class MpGasPriceCalculator(MempoolComponent):
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price
 
+    def get_recent_gas_prices_list(self, chain_id: int) -> MpRecentGasPricesModel:
+        return MpRecentGasPricesModel(token_gas_prices=list(self._recent_gas_prices.get(chain_id, deque())))
+
     async def _update_gas_price_loop(self) -> None:
         while True:
             sleep_sec = self._update_sec if not self._gas_price.is_empty else 1
@@ -116,7 +127,7 @@ class MpGasPriceCalculator(MempoolComponent):
 
         for token in evm_cfg.token_dict.values():
             price_acct = await self._get_price_account(token.name)
-            token_gas_price = self._calc_token_gas_price(token, base_price_usd, price_acct)
+            token_gas_price = await self._calc_token_gas_price(token, base_price_usd, price_acct)
             if token_gas_price:
                 token_dict[token.name] = token_gas_price
                 if token_gas_price.is_default_token:
@@ -136,7 +147,7 @@ class MpGasPriceCalculator(MempoolComponent):
             default_token=default_token,
         )
 
-    def _calc_token_gas_price(
+    async def _calc_token_gas_price(
         self,
         token: TokenModel,
         base_price_usd: float,
@@ -168,9 +179,16 @@ class MpGasPriceCalculator(MempoolComponent):
 
             min_price_deque = self._min_exec_gas_price_dict.setdefault(token.chain_id, deque())
             min_price_deque.append(net_price)
-            if len(min_price_deque) > self._min_exec_gas_price_cnt:
+            if len(min_price_deque) > self._recent_gas_price_cnt:
                 min_price_deque.popleft()
             min_price = min(min_price_deque)
+
+        # Populate data regardless if const_gas_price or not.
+        token_gas_price_deque = self._recent_gas_prices.setdefault(token.chain_id, deque())
+        recent_slot: int = await self._sol_client.get_recent_slot()
+        token_gas_price_deque.append(MpGasPriceTimestamped(slot=recent_slot, token_gas_price=suggested_price))
+        if len(token_gas_price_deque) > self._recent_gas_price_cnt:
+            token_gas_price_deque.popleft()
 
         return MpTokenGasPriceModel(
             chain_id=token.chain_id,

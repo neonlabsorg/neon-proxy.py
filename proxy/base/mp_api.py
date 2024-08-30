@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 import time
 from enum import IntEnum
 from typing import Annotated
@@ -7,6 +8,7 @@ from typing import Annotated
 from pydantic import Field, PlainValidator, PlainSerializer
 from typing_extensions import Self
 
+from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthTxHashField, EthTxHash, EthAddress
 from common.neon.account import NeonAccountField
@@ -58,6 +60,7 @@ class MpTxModel(BaseModel):
     @property
     def gas_price(self) -> int:
         # this property is used for sorting, and can be changed by the mempool logic
+        # TODO EIP1559: should we rely upon max_priority_fee_per_gas?
         return self.order_gas_price or self.neon_tx.gas_price
 
     @property
@@ -162,6 +165,28 @@ class MpGasPriceModel(BaseModel):
     @property
     def is_empty(self) -> bool:
         return not self.token_dict
+
+
+class MpGasPriceTimestamped(BaseModel):
+    slot: int
+    token_gas_price: int
+
+
+class MpRecentGasPricesModel(BaseModel):
+    token_gas_prices: list[MpGasPriceTimestamped]
+
+    def find_gas_price(self, block_slot: int) -> int | None:
+        if not self.token_gas_prices:
+            return None
+        if self.token_gas_prices[0].slot > block_slot:
+            return None
+        if block_slot >= self.token_gas_prices[-1].slot:
+            return self.token_gas_prices[-1].token_gas_price
+
+        idx: int = bisect_left(self.token_gas_prices, block_slot, key=lambda v: v.slot)
+        if idx >= 0 and self.token_gas_prices[idx].slot != block_slot:
+            idx -= 1
+        return self.token_gas_prices[idx].token_gas_price
 
 
 class MpRequest(BaseModel):

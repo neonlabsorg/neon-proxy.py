@@ -29,6 +29,7 @@ class NeonTxDb(HistoryDbTable):
         self._select_by_nonce_query = DbQueryBody()
         self._select_by_block_query = DbQueryBody()
         self._select_by_index_query = DbQueryBody()
+        self._select_base_fee_list_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -96,16 +97,50 @@ class NeonTxDb(HistoryDbTable):
             index=DbSqlParam("index"),
         )
 
+        select_base_fee_list_sql = DbSql(
+            """
+            SELECT DISTINCT ON (a.block_slot)
+              a.block_slot,
+              a.average_base_fee
+            FROM (
+              SELECT
+                block_slot,
+                AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee
+              FROM
+                {table_name} as t
+              WHERE
+                t.chain_id = {chain_id}
+                AND t.max_fee_per_gas != ''
+                AND t.block_slot BETWEEN {earliest_slot} AND {latest_slot}
+              GROUP BY
+                block_slot
+              ORDER BY
+                block_slot DESC
+              LIMIT {num_blocks}
+            ) a
+            ORDER BY
+              a.block_slot DESC
+            """
+        ).format(
+            table_name=self._table_name,
+            chain_id=DbSqlParam("chain_id"),
+            num_blocks=DbSqlParam("num_blocks"),
+            latest_slot=DbSqlParam("latest_slot"),
+            earliest_slot=DbSqlParam("earliest_slot"),
+        )
+
         (
             self._select_by_tx_sig_query,
             self._select_by_nonce_query,
             self._select_by_block_query,
             self._select_by_index_query,
+            self._select_base_fee_list_query,
         ) = await self._db.sql_to_query(
             select_by_tx_sig_sql,
             select_by_nonce_sql,
             select_by_block_sql,
             select_by_index_sql,
+            select_base_fee_list_sql,
         )
 
     async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
@@ -155,6 +190,18 @@ class NeonTxDb(HistoryDbTable):
             ctx, self._select_by_index_query, _ByIndex(slot, tx_idx), record_type=_RecordWithBlock
         )
         return _RecordWithBlock.to_meta(rec)
+
+    async def get_base_fee_list(
+        self, ctx: DbTxCtx, chain_id: int, num_blocks: int, latest_slot: int
+    ) -> list[BlockFeeGasData]:
+        return await self._fetch_all(
+            ctx,
+            self._select_base_fee_list_query,
+            # In general, earliest_slot is bounded by the latest_slot - num_blocks in the ideal world.
+            # On average, Solana misses 5% of slots because of forks, 20% is taken here as a safe margin.
+            _ByChainIdBlockCount(chain_id, num_blocks, int(latest_slot - num_blocks * 1.2), latest_slot),
+            record_type=BlockFeeGasData,
+        )
 
 
 # TODO: remove after converting all records
@@ -233,6 +280,7 @@ class _Record:
     neon_sig: str
 
     tx_type: int
+    chain_id: int | None  # absent for the legacy transactions.
     from_addr: str
     nonce: str
     to_addr: str | None
@@ -240,6 +288,9 @@ class _Record:
     value: str
     calldata: str
     gas_price: str
+    max_fee_per_gas: str | None
+    max_priority_fee_per_gas: str | None
+    priority_fee_spent: str | None  # 0 for the legacy, total priority fee spent for dynamic gas neon transaction.
     gas_limit: str
     gas_used: str
     sum_gas_used: str
@@ -264,13 +315,19 @@ class _Record:
             tx_idx=neon_rcpt.neon_tx_idx,
             neon_sig=neon_tx.neon_tx_hash.to_string(),
             tx_type=neon_tx.tx_type,
+            chain_id=neon_tx.tx_chain_id,
             from_addr=neon_tx.from_address.to_string(),
             nonce=hex(neon_tx.nonce),
             to_addr=neon_tx.to_address.to_string(None),
             contract=neon_tx.contract.to_string(None),
             value=hex(neon_tx.value),
             calldata=neon_tx.call_data.to_string(),
-            gas_price=hex(neon_tx.gas_price),
+            gas_price=hex(NeonTxMetaModel.calc_effective_gas_price(neon_tx, neon_rcpt)),
+            max_fee_per_gas=hex(neon_tx.max_fee_per_gas) if neon_tx.max_fee_per_gas is not None else None,
+            max_priority_fee_per_gas=(
+                hex(neon_tx.max_priority_fee_per_gas) if neon_tx.max_priority_fee_per_gas is not None else None
+            ),
+            priority_fee_spent=hex(neon_rcpt.priority_fee_spent) if neon_rcpt.priority_fee_spent else None,
             gas_limit=hex(neon_tx.gas_limit),
             gas_used=hex(neon_rcpt.total_gas_used),
             sum_gas_used=hex(neon_rcpt.sum_gas_used),
@@ -298,14 +355,17 @@ class _RecordWithBlock(_Record):
         if not self:
             return None
 
-        neon_tx = NeonTxModel(
+        params = dict(
             tx_type=self.tx_type,
+            tx_chain_id=None if not self.chain_id else self.chain_id,
             neon_tx_hash=self.neon_sig,
             from_address=self.from_addr,
             to_address=self.to_addr,
             contract=self.contract,
             nonce=self.nonce,
-            gas_price=self.gas_price,
+            gas_price_legacy=self.gas_price,
+            max_fee_per_gas=self.max_fee_per_gas,
+            max_priority_fee_per_gas=self.max_priority_fee_per_gas,
             gas_limit=self.gas_limit,
             value=self.value,
             call_data=self.calldata,
@@ -313,6 +373,8 @@ class _RecordWithBlock(_Record):
             r=self.r,
             s=self.s,
         )
+        # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
+        neon_tx = NeonTxModel.from_dict(params)
 
         neon_tx_rcpt = NeonTxReceiptModel(
             slot=self.block_slot,
@@ -324,6 +386,7 @@ class _RecordWithBlock(_Record):
             status=self.status,
             total_gas_used=self.gas_used,
             sum_gas_used=self.sum_gas_used,
+            priority_fee_spent=self.priority_fee_spent or 0,
             is_completed=self.is_completed,
             is_canceled=self.is_canceled,
             event_list=self._decode_event_list(self.logs),
@@ -360,6 +423,12 @@ class _RecordWithBlock(_Record):
 
 
 @dataclass(frozen=True)
+class BlockFeeGasData:
+    block_slot: int
+    average_base_fee: float
+
+
+@dataclass(frozen=True)
 class _ByNeonTxSig:
     neon_tx_hash: str
 
@@ -380,3 +449,12 @@ class _ByBlock:
 class _ByIndex:
     slot: int
     index: int
+
+
+@dataclass(frozen=True)
+class _ByChainIdBlockCount:
+    chain_id: int
+    num_blocks: int
+    # Despite num_blocks and latest_slot is specified, earlist_slot is for the optimization purposes.
+    earliest_slot: int
+    latest_slot: int

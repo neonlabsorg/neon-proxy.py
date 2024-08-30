@@ -25,6 +25,7 @@ from common.solana.transaction import SolTx
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.utils.cached import cached_property, cached_method, reset_cached_method
+from indexer.db.indexer_db_client import IndexerDbClient
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
 from ..base.op_client import OpResourceClient
@@ -35,28 +36,30 @@ _LOG = logging.getLogger(__name__)
 
 class NeonExecTxCtx:
     # TODO: remove after re-emulate implementation
-    _global_ro_addr_set: Final[frozenset[SolPubKey]] = frozenset([
-        NeonProg.ID,
-        SolCbProg.ID,
-        SolAltProg.ID,
-        SplTokenProg.ID,
-        SolSysProg.ID,
-        SolSysProg.ClockVar,
-        SolSysProg.RecentBlockHashVar,
-        SolSysProg.RentVar,
-        SolSysProg.RewardVar,
-        SolSysProg.StakeHistoryVar,
-        SolSysProg.EpochScheduleVar,
-        SolSysProg.IxListVar,
-        SolSysProg.SlotHashVar,
-        # Some popular addresses
-        SolPubKey.from_raw("1nc1nerator11111111111111111111111111111111"),
-        SolPubKey.from_raw("p1exdMJcjVao65QdewkaZRUnU6VPSXhus9n2GzWfh98"),   # metaplex
-        SolPubKey.from_raw("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),  # USDC
-        SolPubKey.from_raw("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),  # USDT
-        SolPubKey.from_raw("So11111111111111111111111111111111111111112"),   # wSOL
-        SolPubKey.from_raw("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),  # wETH
-    ])
+    _global_ro_addr_set: Final[frozenset[SolPubKey]] = frozenset(
+        [
+            NeonProg.ID,
+            SolCbProg.ID,
+            SolAltProg.ID,
+            SplTokenProg.ID,
+            SolSysProg.ID,
+            SolSysProg.ClockVar,
+            SolSysProg.RecentBlockHashVar,
+            SolSysProg.RentVar,
+            SolSysProg.RewardVar,
+            SolSysProg.StakeHistoryVar,
+            SolSysProg.EpochScheduleVar,
+            SolSysProg.IxListVar,
+            SolSysProg.SlotHashVar,
+            # Some popular addresses
+            SolPubKey.from_raw("1nc1nerator11111111111111111111111111111111"),
+            SolPubKey.from_raw("p1exdMJcjVao65QdewkaZRUnU6VPSXhus9n2GzWfh98"),  # metaplex
+            SolPubKey.from_raw("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),  # USDC
+            SolPubKey.from_raw("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),  # USDT
+            SolPubKey.from_raw("So11111111111111111111111111111111111111112"),  # wSOL
+            SolPubKey.from_raw("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),  # wETH
+        ]
+    )
 
     def __init__(
         self,
@@ -66,6 +69,7 @@ class NeonExecTxCtx:
         op_client: OpResourceClient,
         fee_client: AtlasFeeClient,
         stat_client: StatClient,
+        db: IndexerDbClient,
         tx_request: ExecTxRequest | ExecStuckTxRequest,
     ) -> None:
         self._cfg = cfg
@@ -74,12 +78,18 @@ class NeonExecTxCtx:
         self._op_client = op_client
         self._fee_client = fee_client
         self._stat_client = stat_client
+        self._db = db
 
         self._tx_request = tx_request
         self._holder: HolderAccountModel | None = None
 
         self._token_sol_addr = tx_request.resource.token_sol_address
         self._evm_step_cnt_per_iter: int | None = 0
+
+        self._tx_type: int | None = None
+        self._tx_max_fee_per_gas: int = 0
+        self._tx_max_priority_fee_per_gas: int = 0
+
         self._uniq_idx = itertools.count()
         self._alt_id_set: set[SolAltID] = set()
         self._sol_tx_list_dict: dict[str, list[SolTx]] = dict()
@@ -124,6 +134,10 @@ class NeonExecTxCtx:
     @property
     def stat_client(self) -> StatClient:
         return self._stat_client
+
+    @property
+    def db(self) -> IndexerDbClient:
+        return self._db
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
@@ -170,6 +184,10 @@ class NeonExecTxCtx:
     def set_holder_account(self, holder: HolderAccountModel) -> None:
         assert self.is_stuck_tx
         assert holder.neon_tx_hash == self.neon_tx_hash
+
+        self._tx_type = holder.tx_type
+        self._tx_max_fee_per_gas = holder.max_fee_per_gas
+        self._tx_max_priority_fee_per_gas = holder.max_priority_fee_per_gas
 
         self._holder = holder
         self._update_acct_meta_list_from_holder(set())
@@ -319,6 +337,28 @@ class NeonExecTxCtx:
         if self.is_stuck_tx:
             return self._tx_request.stuck_tx.holder_address
         return self._tx_request.resource.holder_address
+
+    @cached_property
+    def tx_type(self) -> int:
+        if self.is_stuck_tx:
+            # Should be set from the Holder.
+            assert self._tx_type is not None
+            return self._tx_type
+        return self.neon_tx.tx_type
+
+    @cached_property
+    def max_fee_per_gas(self) -> int:
+        assert self.tx_type == 2
+        if self.is_stuck_tx:
+            return self._tx_max_fee_per_gas
+        return self.neon_tx.max_fee_per_gas
+
+    @cached_property
+    def max_priority_fee_per_gas(self) -> int:
+        assert self.tx_type == 2
+        if self.is_stuck_tx:
+            return self._tx_max_priority_fee_per_gas
+        return self.neon_tx.max_priority_fee_per_gas
 
     @cached_property
     def neon_tx(self) -> NeonTxModel:
