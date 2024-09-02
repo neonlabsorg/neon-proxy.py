@@ -136,15 +136,15 @@ def specify_image_tags(git_sha,
     faucet_tag = proxy_tag if is_image_exist("neon-faucet", proxy_tag) else default_faucet_tag
 
     # test_image_tag
-    if evm_tag and is_image_exist("neon-tests", evm_tag):
+    if evm_tag and is_image_exist(NEON_TESTS_IMAGE, evm_tag):
         neon_test_tag = evm_tag
     elif "refs/tags/" in git_ref:
         neon_test_tag = re.sub(r'\.[0-9]*$', '.x', proxy_tag)
-        if not is_image_exist("neon-tests", neon_test_tag):
-            raise RuntimeError(f"neon-tests image with {neon_test_tag} tag isn't found")
-    elif is_image_exist("neon-tests", proxy_tag):
+        if not is_image_exist(NEON_TESTS_IMAGE, neon_test_tag):
+            raise RuntimeError(f"{NEON_TESTS_IMAGE} image with {neon_test_tag} tag isn't found")
+    elif is_image_exist(NEON_TESTS_IMAGE, proxy_tag):
         neon_test_tag = proxy_tag
-    elif proxy_pr_version_branch and is_image_exist("neon-tests", proxy_pr_version_branch):
+    elif proxy_pr_version_branch and is_image_exist(NEON_TESTS_IMAGE, proxy_pr_version_branch):
         neon_test_tag = proxy_pr_version_branch
     else:
         neon_test_tag = "latest"
