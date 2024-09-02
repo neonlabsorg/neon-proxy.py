@@ -46,6 +46,7 @@ env:
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   PROXY_IMAGE_NAME: "neon-proxy.py"
+  NEON_TESTS_IMAGE: "neon_tests"
   FAUCET_COMMIT: ${{vars.FAUCET_COMMIT}}
   GH_ORG_NAME: ${{vars.GH_ORG_NAME}}
   IMAGE_NAME: ${{vars.IMAGE_NAME}}
@@ -64,7 +65,7 @@ jobs:
   build-image:
     runs-on: build-runner
     outputs:
-      proxy_tag: ${{ steps.tags.outputs.proxy }}
+      proxy_tag: ${{ steps.tags.outputs.proxy_tag }}
       proxy_sha_tag: ${{ steps.tags.outputs.proxy_sha_tag }}
       proxy_pr_version_branch: ${{ steps.tags.outputs.proxy_pr_version_branch }}
       is_proxy_release: ${{ steps.tags.outputs.is_proxy_release }}
