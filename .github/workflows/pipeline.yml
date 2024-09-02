@@ -82,7 +82,7 @@ jobs:
            fetch-depth: 0
       - name: output branches name
         run: |
-          echo "neon_evm_branch = ${{ github.event.inputs.neon_evm_branch }}"
+          echo "neon_evm_tag/branch = ${{ github.event.inputs.evm_tag }}"
           echo "proxy_branch = ${{ github.ref }}"
       - name: Specify image tags
         run: |
@@ -155,7 +155,7 @@ jobs:
   prepare-infrastructure:
     needs:
       - build-image
-    timeout-minutes: 10
+    timeout-minutes: 15
     runs-on: test-runner
     steps:
       - uses: actions/checkout@v4
