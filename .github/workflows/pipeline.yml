@@ -286,6 +286,13 @@ jobs:
       proxy_ip: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
       solana_ip: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       external_call: true
+      repo: ${{ needs.build-image.outputs.evm_sha_tag == '' && 'proxy' || 'evm' }}
+      evm_tag: ${{ needs.build-image.outputs.evm_tag }}
+      evm_sha_tag: ${{ needs.build-image.outputs.evm_sha_tag }}
+      proxy_tag: ${{ needs.build-image.outputs.proxy_tag }}
+      proxy_sha_tag: ${{ needs.build-image.outputs.proxy_sha_tag }}
+      proxy_pr_version_branch: ${{ needs.build-image.outputs.proxy_pr_version_branch }}
+      evm_pr_version_branch: ${{ needs.build-image.outputs.evm_pr_version_branch }}
 
   requests-report:
     needs:
