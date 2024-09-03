@@ -9,7 +9,7 @@ from .mp_gas_price_api import MpGasPriceApi
 from .mp_transaction_api import MpTxApi
 from .server_abc import MempoolServerAbc
 from .transaction_executor import MpTxExecutor
-from ..base.mp_api import MpGasPriceModel
+from ..base.mp_api import MpGasPriceModel, MpRecentGasPricesModel
 
 
 class MempoolServer(MempoolServerAbc):
@@ -44,3 +44,6 @@ class MempoolServer(MempoolServerAbc):
 
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price_calc.get_gas_price()
+
+    def get_recent_gas_prices_list(self, chain_id: int) -> MpRecentGasPricesModel:
+        return self._gas_price_calc.get_recent_gas_prices_list(chain_id)

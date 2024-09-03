@@ -322,6 +322,7 @@ class _NeonTxReceiptDraft:
 
     total_gas_used: int
     sum_gas_used: int
+    priority_fee_spent: int
 
     event_list: list[NeonTxEventModel]
 
@@ -359,6 +360,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         operator: SolPubKeyField
         gas_used: int
         total_gas_used: int
+        total_priority_fee: int = 0
         has_truncated_log: bool
         neon_tx: NeonTxModel
         neon_tx_event_list: list[NeonTxEventModel]
@@ -374,6 +376,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx_rcpt: NeonTxReceiptModel,
         gas_used: int,
         total_gas_used: int,
+        total_priority_fee: int,
         has_truncated_log: bool,
         alt_address_list: list[SolPubKey],
         **kwargs,
@@ -387,6 +390,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._operator = operator
         self._gas_used = gas_used
         self._total_gas_used = total_gas_used
+        self._total_priority_fee = total_priority_fee
         self._has_truncated_log = has_truncated_log
         self._alt_addr_list = alt_address_list
 
@@ -407,6 +411,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             neon_tx_rcpt=NeonTxReceiptModel.default(),
             gas_used=0,
             total_gas_used=0,
+            total_priority_fee=0,
             has_truncated_log=False,
             alt_address_list=list(),
         )
@@ -423,6 +428,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             neon_tx_rcpt=init.neon_tx_rcpt,
             gas_used=init.gas_used,
             total_gas_used=init.total_gas_used,
+            total_priority_fee=init.total_priority_fee,
             has_truncated_log=init.has_truncated_log,
             alt_address_list=init.alt_address_list,
             init=init,
@@ -444,6 +450,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             operator=self._operator,
             gas_used=self._gas_used,
             total_gas_used=self._total_gas_used,
+            total_priority_fee=self._total_priority_fee,
             has_truncated_log=self._has_truncated_log,
             neon_tx=self._neon_tx,
             neon_tx_rcpt=self._neon_tx_rcpt.to_clean_copy(),
@@ -548,6 +555,8 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         if sol_neon_ix.neon_total_gas_used > self._total_gas_used:
             self._total_gas_used = sol_neon_ix.neon_total_gas_used
 
+        self._total_priority_fee += sol_neon_ix.neon_tx_ix_priority_fee
+
         if self._operator.is_empty:
             self._operator = sol_neon_ix.operator
 
@@ -584,6 +593,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         rcpt.block_hash = neon_block_hdr.block_hash
         rcpt.neon_tx_idx = neon_tx_idx
         rcpt.sum_gas_used = sum_gas_used
+        rcpt.priority_fee_spent = self._total_priority_fee
 
         neon_tx_event_list = self._get_sorted_tx_event_list()
         self._fill_tx_event_order_nums(neon_tx_event_list)

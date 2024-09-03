@@ -31,6 +31,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, Hex256UIntField, Hex8UIntField, Base58Field, HexUInt64Field
+from ..base.mp_api import MpRecentGasPricesModel
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxResp
@@ -85,6 +86,7 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
     def _to_dict(neon_tx_meta: NeonTxMetaModel) -> dict:
         tx = neon_tx_meta.neon_tx
         rcpt = neon_tx_meta.neon_tx_rcpt
+
         return dict(
             transactionHash=tx.neon_tx_hash,
             transactionIndex=rcpt.neon_tx_idx,
@@ -93,7 +95,7 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
             blockNumber=rcpt.slot,
             fromAddress=tx.from_address,
             toAddress=tx.to_address,
-            effectiveGasPrice=tx.gas_price,
+            effectiveGasPrice=neon_tx_meta.effective_gas_price,
             gasUsed=rcpt.total_gas_used,
             cumulativeGasUsed=rcpt.sum_gas_used,
             contractAddress=tx.contract,
@@ -328,6 +330,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
 
     gasLimit: HexUIntField
     gasUsed: HexUIntField
+    baseFeePerGas: HexUIntField
     blockHash: EthBlockHashField | None = Field(serialization_alias="hash")
     number: HexUIntField
     parentHash: EthBlockHashField
@@ -339,7 +342,13 @@ class _RpcBlockResp(BaseJsonRpcModel):
     _sha3uncle_hash: Final[EthHash32Field] = "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
 
     @classmethod
-    def from_raw(cls, block: NeonBlockHdrModel, tx_list: tuple[NeonTxMetaModel, ...], full: bool) -> Self:
+    def from_raw(
+        cls,
+        block: NeonBlockHdrModel,
+        tx_list: tuple[NeonTxMetaModel, ...],
+        full: bool,
+        base_fee_per_gas: int,
+    ) -> Self:
         is_pending = block.commit == EthCommit.Pending
 
         total_gas_used = 0
@@ -375,6 +384,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
             #
             gasLimit=max(48_000_000_000_000, total_gas_used),
             gasUsed=total_gas_used,
+            baseFeePerGas=base_fee_per_gas,
             number=block.slot,
             parentHash=block.parent_block_hash,
             timestamp=block.block_time,
@@ -417,7 +427,9 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockNumberAndIndex")
-    async def get_tx_by_block_number_idx(self, block_tag: RpcBlockRequest, index: HexUInt64Field) -> RpcEthTxResp | None:
+    async def get_tx_by_block_number_idx(
+        self, block_tag: RpcBlockRequest, index: HexUInt64Field
+    ) -> RpcEthTxResp | None:
         block = await self.get_block_by_tag(block_tag)
         if block.is_empty:
             return None
@@ -426,7 +438,9 @@ class NpBlockTxApi(NeonProxyApi):
         return RpcEthTxResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getTransactionByBlockHashAndIndex")
-    async def get_tx_by_block_hash_idx(self, block_hash: EthBlockHashField, index: HexUInt64Field) -> RpcEthTxResp | None:
+    async def get_tx_by_block_hash_idx(
+        self, block_hash: EthBlockHashField, index: HexUInt64Field
+    ) -> RpcEthTxResp | None:
         block = await self._db.get_block_by_hash(block_hash)
         if block.is_empty:
             return None
@@ -435,27 +449,60 @@ class NpBlockTxApi(NeonProxyApi):
         return RpcEthTxResp.from_raw(neon_tx_meta)
 
     @NeonProxyApi.method(name="eth_getBlockByNumber")
-    async def get_block_by_number(self, block_tag: RpcBlockRequest, full: bool) -> _RpcBlockResp | None:
+    async def get_block_by_number(
+        self, ctx: HttpRequestCtx, block_tag: RpcBlockRequest, full: bool
+    ) -> _RpcBlockResp | None:
         block = await self.get_block_by_tag(block_tag)
         if block.is_empty:
             return None
-        return await self._fill_block(block, full)
+        return await self._fill_block(ctx, block, full)
 
     @NeonProxyApi.method(name="eth_getBlockByHash")
-    async def get_block_by_hash(self, block_hash: EthBlockHashField, full: bool) -> _RpcBlockResp | None:
+    async def get_block_by_hash(
+        self, ctx: HttpRequestCtx, block_hash: EthBlockHashField, full: bool
+    ) -> _RpcBlockResp | None:
         block = await self._db.get_block_by_hash(block_hash)
         if block.is_empty:
             return None
-        return await self._fill_block(block, full)
+        return await self._fill_block(ctx, block, full)
 
-    async def _fill_block(self, block: NeonBlockHdrModel, full: bool) -> _RpcBlockResp:
+    async def _fill_block(self, ctx: HttpRequestCtx, block: NeonBlockHdrModel, full: bool) -> _RpcBlockResp:
         tx_list = tuple()
         if block.commit != EthCommit.Pending:
             try:
                 tx_list = await self._db.get_tx_list_by_slot(block.slot)
             except BaseException as exc:
                 _LOG.debug("error on loading txs", exc_info=exc, extra=self._msg_filter)
-        return _RpcBlockResp.from_raw(block, tx_list, full)
+
+        # BaseFeePerGas for the block response is taken either from the mempool recent gas prices (for the recent block)
+        # or from the transactions inside that block (for the historical block).
+        base_fee_per_gas: int | None = None
+
+        latest_slot: int = await self._db.get_latest_slot()
+        if block.slot > latest_slot:
+            # If block is pending, set baseFeePerGas to the current suggested token gas price.
+            _, token_gas_price = await self._get_token_gas_price(ctx)
+            base_fee_per_gas = token_gas_price.suggested_gas_price
+        else:
+            # Try recent mempool gas prices.
+            mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
+            base_fee_per_gas = mempool_basefee_gas_prices.find_gas_price(block.slot)
+
+        if base_fee_per_gas is None:
+            # Recent gas prices from the mempool is lacking the data, we have to take it from the transaction list.
+            if all(not tx_meta.neon_tx.is_dynamic_gas_tx for tx_meta in tx_list):
+                # Take current token suggested gas price in case there are no Dynamic Gas transactions in the block.
+                _, token_gas_price = await self._get_token_gas_price(ctx)
+                base_fee_per_gas = token_gas_price.suggested_gas_price
+            else:
+                # Otherwise, set base_fee_per_gas as maximum from the transactions in the block.
+                base_fee_per_gas = 0
+                for tx_meta in tx_list:
+                    if tx_meta.neon_tx.is_dynamic_gas_tx:
+                        base_fee_per_gas = max(
+                            base_fee_per_gas, tx_meta.neon_tx.max_fee_per_gas - tx_meta.neon_tx.max_priority_fee_per_gas
+                        )
+        return _RpcBlockResp.from_raw(block, tx_list, full, base_fee_per_gas)
 
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByNumber")
     async def get_tx_cnt_by_block_number(self, block_tag: RpcBlockRequest) -> HexUIntField:
@@ -543,7 +590,9 @@ class NpBlockTxApi(NeonProxyApi):
         return _RpcNeonTxReceiptResp.from_raw(neon_tx_meta, detail=detail, sol_meta_list=meta_list)
 
     @staticmethod
-    def _sort_alt_sol_tx_list(alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig) -> tuple[Any, ...]:
+    def _sort_alt_sol_tx_list(
+        alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig
+    ) -> tuple[Any, ...]:
         # signatures with Neon-Receipt (or Solana-Fail + Neon-Cancel) should be at the end of the list,
         #   because it simplifies the user experience
         if (pos := next((idx for idx, v in enumerate(sol_meta_list) if v.sol_tx_sig == rcpt_sol_tx_sig), -1)) == -1:

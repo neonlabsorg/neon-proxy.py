@@ -71,8 +71,11 @@ CREATE TABLE IF NOT EXISTS solana_blocks (
     block_time BIGINT,
     parent_block_slot BIGINT,
     is_finalized BOOL,
-    is_active BOOL
+    is_active BOOL,
+    cu_price_percentiles INT ARRAY
 );
+ALTER TABLE solana_blocks
+    ADD COLUMN IF NOT EXISTS cu_price_percentiles INT ARRAY;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_solana_blocks_slot ON solana_blocks(block_slot);
 CREATE INDEX IF NOT EXISTS idx_solana_blocks_hash ON solana_blocks(block_hash);
 CREATE INDEX IF NOT EXISTS idx_solana_blocks_slot_active ON solana_blocks(block_slot, is_active);
@@ -151,8 +154,12 @@ CREATE TABLE IF NOT EXISTS neon_transactions (
     block_slot BIGINT,
     tx_idx INT,
 
+    chain_id INT DEFAULT 0,
     nonce TEXT,
     gas_price TEXT,
+    max_fee_per_gas TEXT,
+    max_priority_fee_per_gas TEXT,
+    priority_fee_spent TEXT,
     gas_limit TEXT,
     value TEXT,
     gas_used TEXT,
@@ -172,6 +179,13 @@ CREATE TABLE IF NOT EXISTS neon_transactions (
     calldata TEXT,
     logs BYTEA
 );
+
+ALTER TABLE neon_transactions
+    ADD COLUMN IF NOT EXISTS chain_id INT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS max_fee_per_gas TEXT,
+    ADD COLUMN IF NOT EXISTS max_priority_fee_per_gas TEXT,
+    ADD COLUMN IF NOT EXISTS priority_fee_spent TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_neon_transactions_sol_sig_block ON neon_transactions(sol_sig, block_slot);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_neon_transactions_neon_sig_block ON neon_transactions(neon_sig, block_slot);
 DROP INDEX IF EXISTS idx_neon_transactions_sender_nonce_block;

@@ -11,7 +11,7 @@ _LOG_OBJECT_INFO_LIMIT = int(os.environ.get("LOG_OBJECT_INFO_LIMIT", str(2**64))
 # fmt: on
 
 
-def str_fmt_object(obj, skip_underscore_prefix=True, name="") -> str:
+def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_keys=None) -> str:
     def _decode_name(value) -> str:
         return type(value).__name__
 
@@ -84,6 +84,8 @@ def str_fmt_object(obj, skip_underscore_prefix=True, name="") -> str:
             if not isinstance(key, str):
                 key = str(key)
             if skip_underscore_prefix and key.startswith("_"):
+                continue
+            if skip_keys is not None and key in skip_keys:
                 continue
 
             has_value, value = _decode_value(value)
