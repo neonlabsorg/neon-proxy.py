@@ -72,10 +72,8 @@ class _Server:
             # storage for AccountsDb when running Solana Bank Emulator
             SOLANA_RAYON_THREADS="1",
         )
-
         if len(self._cfg.ch_dsn_list) > 0:
             new_env['TRACER_DB_TYPE'] = 'clickhouse'
-
         env = dict(os.environ)
         env.update(new_env)
 
