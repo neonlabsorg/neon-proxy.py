@@ -115,7 +115,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
 
     @staticmethod
     def _prevalidate_tx_size(neon_tx: NeonTxModel):
-        if len(neon_tx.call_data) > (127 * 1024):
+        if len(neon_tx.call_data) > (3 * 128 * 1024):
             raise EthError(message="transaction size is too big")
 
     def _prevalidate_tx_gas_limit(self, neon_tx: NeonTxModel, tx_gas_limit: int) -> None:
