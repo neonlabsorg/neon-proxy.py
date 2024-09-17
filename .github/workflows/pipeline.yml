@@ -273,7 +273,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    uses: ${{ github.repository_owner }}/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
     secrets: inherit
     with:
       network: custom
