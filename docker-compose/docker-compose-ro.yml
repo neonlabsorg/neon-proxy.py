@@ -1,7 +1,7 @@
 services:
   indexer:
     container_name: indexer
-    image: neonlabsorg/neon-proxy.py:${VERSION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${VERSION}
     platform: linux/amd64
     restart: unless-stopped
     environment:
@@ -22,7 +22,7 @@ services:
 
   proxy:
     container_name: proxy
-    image: neonlabsorg/neon-proxy.py:${VERSION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${VERSION}
     platform: linux/amd64
     restart: unless-stopped
     environment:
@@ -53,7 +53,7 @@ services:
 
   dbcreation:
     container_name: dbcreation
-    image: neonlabsorg/neon-proxy.py:${VERSION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${VERSION}
     platform: linux/amd64
     environment:
       SOLANA_URL: ${SOLANA_URL}
