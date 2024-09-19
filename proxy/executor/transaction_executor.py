@@ -8,7 +8,7 @@ from typing import ClassVar
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.account import NeonAccount
-from common.neon_rpc.api import CoreApiTxModel
+from common.neon_rpc.api import CoreApiTxModel, HolderAccountModel
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
@@ -25,6 +25,7 @@ from .errors import BadResourceError, StuckTxError, WrongStrategyError
 from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent
 from .strategy_base import BaseTxStrategy
+from .strategy_block_overrides import BlockOverridesStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
 from .strategy_iterative_holder import HolderTxStrategy, AltHolderTxStrategy
 from .strategy_iterative_no_chain_id import NoChainIdTxStrategy, AltNoChainIdTxStrategy
@@ -105,7 +106,23 @@ class NeonTxExecutor(ExecutorComponent):
             # get the list of accounts for validation
             await self._emulate_neon_tx(ctx)
 
-            exit_code = await self._select_strategy(ctx, self._tx_strategy_list)
+            if ctx.is_timestamp_number_used:
+                # Block timestamp or block number is detected during emulation.
+                # No need to try any standard strategy as it likely will not work.
+                # We need a special strategy to execute this transaction -
+                # this strategy re-emulates the whole transaction after the first iteration,
+                # this is required to get the correct account list.
+                _LOG.debug("encountered block timestamp or number during emulation.")
+                strategy = BlockOverridesStrategy(ctx)
+                if not await strategy.validate():
+                    _LOG.debug("skip strategy %s: %s", strategy.name, strategy.validation_error_msg)
+                    exit_code = ExecTxRespCode.Failed
+                else:
+                    _LOG.debug("use strategy %s", strategy.name)
+                    exit_code = await self._exec_neon_tx(ctx, strategy)
+                    _LOG.debug("done strategy %s with result %s", strategy.name, exit_code.name)
+            else:
+                exit_code = await self._select_strategy(ctx, self._tx_strategy_list)
             state_tx_cnt = await self._get_state_tx_cnt(ctx)
 
         except EthNonceTooLowError as exc:
@@ -167,6 +184,8 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxRespCode.Failed
 
     async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxRespCode | None:
+        # CRUTCH: need_reemulate depends on the special exception handling below.
+        need_reemulate = False
         for retry in itertools.count():
             if retry > 0:
                 _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
@@ -174,8 +193,14 @@ class NeonTxExecutor(ExecutorComponent):
             try:
                 has_changes = await strategy.prep_before_emulate()
                 if not ctx.is_stuck_tx:
-                    await self._validate_nonce(ctx)
-                    await self._emulate_neon_tx(ctx)
+                    if need_reemulate:
+                        # CRUTCH: we shouldn't validate the nonce for the block_timestamp and block_number case.
+                        # await self._validate_nonce(ctx)
+                        await self._emulate_neon_tx(ctx, with_block_overrides=True)
+                        need_reemulate = False
+                    else:
+                        await self._validate_nonce(ctx)
+                        await self._emulate_neon_tx(ctx)
 
                 if has_changes:
                     await strategy.update_after_emulate()
@@ -210,11 +235,20 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("wrong strategy error: %s", str(exc))
                 return None
 
+            except SolUnknownReceiptError as exc:
+                ctx.mark_skip_simple_strategy()
+                _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
+                if ctx.is_timestamp_number_used and not strategy.is_simple:
+                    need_reemulate = True
+                    await asyncio.sleep(ONE_BLOCK_SEC / 2)
+                else:
+                    return await self._cancel_neon_tx(strategy)
+
             except (
                 EthError,
                 SolCbExceededCriticalError,
                 SolOutOfMemoryError,
-                SolUnknownReceiptError,
+                # SolUnknownReceiptError,
                 SolNoMoreRetriesError,
             ) as exc:
                 ctx.mark_skip_simple_strategy()
@@ -249,7 +283,7 @@ class NeonTxExecutor(ExecutorComponent):
                 )
                 return None
 
-    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
+    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, *, with_block_overrides=False) -> None:
         # don't emulate if the slot is the same
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)
         if slot == ctx.emulator_slot:
@@ -264,11 +298,19 @@ class NeonTxExecutor(ExecutorComponent):
         else:
             core_tx = CoreApiTxModel.from_neon_tx(ctx.neon_tx, ctx.chain_id)
 
+        block_overrides = None
+        if with_block_overrides:
+            # Get Holder and take the block_overrides.
+            holder_resp: HolderAccountModel = await self._core_api_client.get_holder_account(ctx.holder_address)
+            params = holder_resp.block_params
+            block_overrides = tuple([int(params[0], 16), int(params[1], 16)])
+
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
             core_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
+            block_params=block_overrides,
         )
 
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)

@@ -6,6 +6,7 @@ import logging
 from typing import Sequence, Final, TypeVar
 
 from .api import (
+    BlockOverridesModel,
     CoreApiResp,
     CoreApiResultCode,
     EvmConfigModel,
@@ -240,14 +241,18 @@ class CoreApiClient(HttpClient):
         preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         block: NeonBlockHdrModel | None = None,
+        block_params: tuple[int, int] | None = None,
     ) -> EmulNeonCallResp:
         emul_sol_acct_dict = dict()
         if sol_account_dict:
             emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
 
-        if tx.nonce is not None:
-            emul_neon_acct_dict = {tx.from_address: EmulNeonAccountModel(nonce=tx.nonce)}
-            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict)
+        if tx.nonce is not None or block_params is not None:
+            emul_neon_acct_dict = {tx.from_address: EmulNeonAccountModel(nonce=tx.nonce)} if tx.nonce else dict()
+            block_overrides: BlockOverridesModel | None = None
+            if block_params:
+                block_overrides = BlockOverridesModel(time=block_params[0], number=block_params[1])
+            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict, block_overrides=block_overrides)
         else:
             emul_trace_cfg = None
 
