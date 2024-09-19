@@ -69,7 +69,7 @@ resource "hcloud_server" "proxy" {
 }
 
 resource "hcloud_server" "solana" {
-  name        = "solana-${var.run_number}-${var.neon_evm_commit}"
+  name        = "solana-${var.run_number}-${replace(var.neon_evm_commit, "_", "-")}"
   image       = data.hcloud_image.ci-image.id
   server_type = var.server_type
   location    = var.location
