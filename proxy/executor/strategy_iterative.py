@@ -118,9 +118,11 @@ class IterativeTxStrategy(BaseTxStrategy):
             evm_step_cnt = self._holder_acct.evm_step_cnt
 
             try:
-                await self._recheck_tx_list(self.name)
-                if (exit_code := await self._decode_neon_tx_return()) is not None:
-                    return exit_code
+                # CRUTCH, won't work in the general case: RECHECKS ARE RESENDING THE SAME TRANSACTIONS
+                # WITH THE SAME OLD ACCOUNT LIST.
+                # await self._recheck_tx_list(self.name)
+                # if (exit_code := await self._decode_neon_tx_return()) is not None:
+                #    return exit_code
 
                 await self._emulate_and_send_tx_list()
                 if (exit_code := await self._decode_neon_tx_return()) is not None:
@@ -174,6 +176,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     async def _emulate_and_send_tx_list(self) -> bool:
         self._reset_to_def()
+        _LOG.debug("AZAZA EMULATE AND SEND")
 
         while True:
             try:

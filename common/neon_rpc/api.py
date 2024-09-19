@@ -476,6 +476,8 @@ class HolderAccountModel(BaseModel):
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
 
+    block_params: list[str] | None = Field(default=None, validation_alias="block_params")
+
     chain_id: int = Field(default=0)
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
@@ -563,8 +565,14 @@ class EmulNeonAccountModel(BaseModel):
     balance: int | None = None
 
 
+class BlockOverridesModel(BaseModel):
+    number: int | None = Field(default=None, serialization_alias="number")
+    time: int | None = Field(default=None, serialization_alias="time")
+
+
 class EmulTraceCfgModel(BaseModel):
     neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
+    block_overrides: BlockOverridesModel | None = Field(default=None, serialization_alias="blockOverrides")
 
 
 class EmulNeonCallRequest(BaseModel):

@@ -458,6 +458,14 @@ class NeonExecTxCtx:
         return self._emulator_resp.external_sol_call
 
     @property
+    def is_timestamp_number_used(self) -> bool:
+        if self.is_stuck_tx:
+            return False
+
+        assert self._emulator_resp
+        return self._emulator_resp.is_timestamp_number_used
+
+    @property
     def alt_id_list(self) -> tuple[SolAltID, ...]:
         return tuple(self._alt_id_set)
 
