@@ -267,7 +267,7 @@ jobs:
           fi
       - name: Run docker container
         run: |
-          image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
+          image="${{ env.NEON_TEST_IMAGE }}:t0.0.x"
           docker pull $image
           docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} \
           --name=${{ env.CONTAINER }} $image /bin/bash
