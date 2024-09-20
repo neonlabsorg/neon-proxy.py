@@ -253,6 +253,13 @@ jobs:
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
     steps:
+      - name: Determine Cost Report Generation
+        run: |
+          if [[ "${{ needs.build-image.outputs.evm_tag }}" =~ ^[vt][0-9]+\.[0-9]+\.x$ ]] || [[ "${{ needs.build-image.outputs.proxy_tag }}" =~ ^[vt][0-9]+\.[0-9]+\.x$ ]]; then
+            echo "GENERATE_COST_REPORT=true" >> $GITHUB_ENV
+          else
+            echo "GENERATE_COST_REPORT=false" >> $GITHUB_ENV
+          fi
       - name: Run docker container
         run: |
           image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
@@ -261,8 +268,31 @@ jobs:
           --name=${{ env.CONTAINER }} $image /bin/bash
       - name: Run basic tests
         run: |
-          docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}
+          CMD="python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}"
+
+          if [[ "${{ env.GENERATE_COST_REPORT }}" == "true" ]]; then
+            CMD="$CMD --cost_reports_dir reports/cost_reports"
+          fi
+
+          docker exec -i ${{ env.CONTAINER }} $CMD
+      - name: Copy cost reports from container
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        run: |
+          mkdir -p ./reports/cost_reports/ && \
+          docker cp ${{ env.CONTAINER }}:/opt/neon-tests/reports/cost_reports/. ./reports/cost_reports/
+      - name: Upload cost reports as artifacts
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-reports
+          path: reports/cost_reports/**.json
+      - name: Swap Cost Reports and echo to Summary
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        run: |
+          docker exec -i -e NETWORK=${{ env.NETWORK }} ${{ env.CONTAINER }} \
+            python3 ./clickfile.py dapps save_dapps_cost_report_to_md \
+            --directory reports/cost_reports && \
+          docker exec -i ${{ env.CONTAINER }} cat cost_reports.md >> $GITHUB_STEP_SUMMARY
       - name: Remove docker container
         if: always()
         run: docker rm -f ${{ env.CONTAINER }}
