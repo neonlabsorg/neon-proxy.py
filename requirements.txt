@@ -2,7 +2,7 @@ solders==0.21.0
 pythclient==0.1.24
 base58==2.1.1
 
-psycopg[binary,pool]==3.2.2
+psycopg[binary,pool]==3.2.3
 hvac==2.3.0
 aioprometheus==23.12.0
 pydantic==2.9.1
