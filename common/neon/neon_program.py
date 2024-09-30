@@ -373,6 +373,7 @@ class NeonProg:
         return self._make_holder_ix(bytes().join(ix_data_list), self._acct_meta_list)
 
     def make_tx_step_from_account_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
+        _LOG.debug(f"AZAZA MAKING TX STEP FROM ACCOUNT")
         return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccount, mode, step_cnt, index, None)
 
     def make_tx_step_from_account_no_chain_id_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
@@ -445,6 +446,9 @@ class NeonProg:
 
     def _make_holder_ix(self, ix_data: bytes, acct_meta_list: list[SolAccountMeta]) -> SolTxIx:
         self.validate_protocol()
+
+        accs = [m.pubkey for m in acct_meta_list]
+        _LOG.debug(f"AZAZA holder={self._holder_addr}, accounts={accs}")
 
         acct_meta_list = [
             SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),

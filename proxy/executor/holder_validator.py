@@ -21,9 +21,10 @@ class HolderAccountValidator:
         self._holder_acct = await self._core_api_client.get_holder_account(self._holder_address)
 
         _LOG.debug(
-            "holder %s contains NeonTx %s with status %s and %d completed EVM steps",
+            "holder %s contains NeonTx %s with block_params %s, status %s and %d completed EVM steps",
             self._holder_address,
             self._holder_acct.neon_tx_hash,
+            self._holder_acct.block_params,
             self._holder_acct.status,
             self._holder_acct.evm_step_cnt,
         )
