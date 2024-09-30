@@ -89,6 +89,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return self._holder_acct_validator.holder_account
 
     async def execute(self) -> ExecTxRespCode:
+        _LOG.debug("AZAZA EXECUTE")
         assert self.is_valid
 
         if self._ctx.is_stuck_tx:
@@ -118,20 +119,23 @@ class IterativeTxStrategy(BaseTxStrategy):
             evm_step_cnt = self._holder_acct.evm_step_cnt
 
             try:
-                # CRUTCH, won't work in the general case: RECHECKS ARE RESENDING THE SAME TRANSACTIONS
-                # WITH THE SAME OLD ACCOUNT LIST.
-                # await self._recheck_tx_list(self.name)
-                # if (exit_code := await self._decode_neon_tx_return()) is not None:
-                #    return exit_code
+                _LOG.debug("AZAZA RECHECK")
+                await self._recheck_tx_list(self.name)
+                if (exit_code := await self._decode_neon_tx_return()) is not None:
+                    _LOG.debug(f"AZAZA RECHECK RETURNS {exit_code}")
+                    return exit_code
 
+                _LOG.debug("AZAZA SIMULATE AND SEND")
                 await self._emulate_and_send_tx_list()
                 if (exit_code := await self._decode_neon_tx_return()) is not None:
+                    _LOG.debug(f"AZAZA SIMULATE AND SEND RETURNS {exit_code}")
                     return exit_code
 
             except SolNoMoreRetriesError:
                 pass
 
     async def cancel(self) -> ExecTxRespCode | None:
+        _LOG.debug("AZAZA CANCELLING")
         self._holder_acct_validator.mark_stuck_tx()
         if await self._holder_acct_validator.is_finalized():
             return ExecTxRespCode.Failed
@@ -176,7 +180,6 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     async def _emulate_and_send_tx_list(self) -> bool:
         self._reset_to_def()
-        _LOG.debug("AZAZA EMULATE AND SEND")
 
         while True:
             try:

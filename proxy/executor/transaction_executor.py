@@ -12,6 +12,7 @@ from common.neon_rpc.api import CoreApiTxModel, HolderAccountModel
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
+from common.solana.pubkey import SolPubKey
 from common.solana_rpc.errors import (
     SolCbExceededError,
     SolNeonRequireResizeIterError,
@@ -25,7 +26,6 @@ from .errors import BadResourceError, StuckTxError, WrongStrategyError
 from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent
 from .strategy_base import BaseTxStrategy
-from .strategy_block_overrides import BlockOverridesStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
 from .strategy_iterative_holder import HolderTxStrategy, AltHolderTxStrategy
 from .strategy_iterative_no_chain_id import NoChainIdTxStrategy, AltNoChainIdTxStrategy
@@ -106,23 +106,7 @@ class NeonTxExecutor(ExecutorComponent):
             # get the list of accounts for validation
             await self._emulate_neon_tx(ctx)
 
-            if ctx.is_timestamp_number_used:
-                # Block timestamp or block number is detected during emulation.
-                # No need to try any standard strategy as it likely will not work.
-                # We need a special strategy to execute this transaction -
-                # this strategy re-emulates the whole transaction after the first iteration,
-                # this is required to get the correct account list.
-                _LOG.debug("encountered block timestamp or number during emulation.")
-                strategy = BlockOverridesStrategy(ctx)
-                if not await strategy.validate():
-                    _LOG.debug("skip strategy %s: %s", strategy.name, strategy.validation_error_msg)
-                    exit_code = ExecTxRespCode.Failed
-                else:
-                    _LOG.debug("use strategy %s", strategy.name)
-                    exit_code = await self._exec_neon_tx(ctx, strategy)
-                    _LOG.debug("done strategy %s with result %s", strategy.name, exit_code.name)
-            else:
-                exit_code = await self._select_strategy(ctx, self._tx_strategy_list)
+            exit_code = await self._select_strategy(ctx, self._tx_strategy_list)
             state_tx_cnt = await self._get_state_tx_cnt(ctx)
 
         except EthNonceTooLowError as exc:
@@ -184,25 +168,27 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxRespCode.Failed
 
     async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxRespCode | None:
-        # CRUTCH: need_reemulate depends on the special exception handling below.
-        need_reemulate = False
         for retry in itertools.count():
-            if retry > 0:
-                _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
+            _LOG.debug("AZAZA executor attempt %s to execute %s, ...", retry + 1, strategy.name)
 
             try:
                 has_changes = await strategy.prep_before_emulate()
                 if not ctx.is_stuck_tx:
-                    if need_reemulate:
-                        # CRUTCH: we shouldn't validate the nonce for the block_timestamp and block_number case.
+                    _LOG.debug("AZAZA NOT STUCK")
+                    if ctx.is_timestamp_number_used:
+                        _LOG.debug("AZAZA TIMESTAMP USED")
+                        # Small caveat: we shouldn't validate the nonce for the block_timestamp and block_number case
+                        # because the first iteration (in the prep_before_emulate) changed the nonce already.
                         # await self._validate_nonce(ctx)
                         await self._emulate_neon_tx(ctx, with_block_overrides=True)
-                        need_reemulate = False
                     else:
                         await self._validate_nonce(ctx)
                         await self._emulate_neon_tx(ctx)
+                else:
+                    _LOG.debug("AZAZA STUCK")
 
                 if has_changes:
+                    _LOG.debug("AZAZA HAS CHANGES, SKIPPING")
                     await strategy.update_after_emulate()
                     # Preparations made changes in the Solana state -> repeat the preparation and emulation
                     continue
@@ -235,20 +221,11 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("wrong strategy error: %s", str(exc))
                 return None
 
-            except SolUnknownReceiptError as exc:
-                ctx.mark_skip_simple_strategy()
-                _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
-                if ctx.is_timestamp_number_used and not strategy.is_simple:
-                    need_reemulate = True
-                    await asyncio.sleep(ONE_BLOCK_SEC / 2)
-                else:
-                    return await self._cancel_neon_tx(strategy)
-
             except (
                 EthError,
                 SolCbExceededCriticalError,
                 SolOutOfMemoryError,
-                # SolUnknownReceiptError,
+                SolUnknownReceiptError,
                 SolNoMoreRetriesError,
             ) as exc:
                 ctx.mark_skip_simple_strategy()
@@ -284,10 +261,13 @@ class NeonTxExecutor(ExecutorComponent):
                 return None
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, *, with_block_overrides=False) -> None:
+        _LOG.debug("AZAZA EMULATING")
         # don't emulate if the slot is the same
+        await asyncio.sleep(10)
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)
-        if slot == ctx.emulator_slot:
-            return
+        # if slot == ctx.emulator_slot:
+        #    _LOG.debug("AZAZA EMULATING DIDNT START")
+        #    return
 
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
@@ -298,20 +278,33 @@ class NeonTxExecutor(ExecutorComponent):
         else:
             core_tx = CoreApiTxModel.from_neon_tx(ctx.neon_tx, ctx.chain_id)
 
-        block_overrides = None
         if with_block_overrides:
             # Get Holder and take the block_overrides.
-            holder_resp: HolderAccountModel = await self._core_api_client.get_holder_account(ctx.holder_address)
-            params = holder_resp.block_params
+            holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
+            holder = await holder_validator.refresh()
+            _LOG.debug(f"azaza holder accounts {holder.account_key_list}")
+            params = holder.block_params
             block_overrides = tuple([int(params[0], 16), int(params[1], 16)])
+            _LOG.debug(f"AZAZA WITH BLOCK OVERRIDES {block_overrides}")
 
-        emul_resp = await self._core_api_client.emulate_neon_call(
-            evm_cfg,
-            core_tx,
-            preload_sol_address_list=ctx.account_key_list,
-            check_result=False,
-            block_params=block_overrides,
-        )
+            emul_resp = await self._core_api_client.emulate_neon_call(
+                evm_cfg,
+                core_tx,
+                preload_sol_address_list=ctx.account_key_list,
+                check_result=False,
+                block_params=block_overrides,
+            )
+        else:
+            emul_resp = await self._core_api_client.emulate_neon_call(
+                evm_cfg,
+                core_tx,
+                preload_sol_address_list=ctx.account_key_list,
+                check_result=False,
+            )
+
+        accs = [acc.pubkey for acc in emul_resp.sol_account_meta_list]
+
+        _LOG.debug(f"AZAZA EMULATOR RESPONSE ACCOUNTS = {accs}")
 
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)
         ctx.set_emulator_result(slot, emul_resp)
@@ -320,6 +313,7 @@ class NeonTxExecutor(ExecutorComponent):
         acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)
         ro_addr_list = [acct.address for acct in acct_list if acct.executable]
         ctx.set_ro_address_list(ro_addr_list)
+        _LOG.debug("AZAZA EMULATING FINISHED")
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
         if ctx.has_good_sol_tx_receipt:

@@ -96,6 +96,12 @@ class BaseTxStrategy(abc.ABC):
 
     async def validate(self) -> bool:
         self._validation_error_msg = None
+
+        if self._ctx.is_timestamp_number_used and self.is_simple:
+            # TODO modify error msg
+            self._validation_error_msg = "is_timestamp_number_used ERROR"
+            return False
+
         try:
             if result := await self._validate():
                 result = self._validate_tx_size()
@@ -110,6 +116,7 @@ class BaseTxStrategy(abc.ABC):
         assert self.is_valid
 
     async def prep_before_emulate(self) -> bool:
+        _LOG.debug("AZAZA PREP BEFORE EMULATE")
         assert self.is_valid
 
         # recheck already sent transactions
@@ -125,6 +132,7 @@ class BaseTxStrategy(abc.ABC):
         for tx_list in tx_list_list:
             if await self._send_tx_list(tx_list):
                 has_list = True
+        _LOG.debug("AZAZA PREP BEFORE EMULATE FINISHED")
         return has_list
 
     async def update_after_emulate(self) -> None:
