@@ -51,7 +51,6 @@ COPY --from=spl \
 COPY --from=spl \
     /root/.local/share/solana/install/active_release/bin/spl-token \
     /opt/create-test-accounts.sh \
-    /opt/neon-cli \
     /opt/evm_loader-keypair.json \
     /spl/bin/
 RUN chmod +x /spl/bin/create-test-accounts.sh

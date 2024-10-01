@@ -9,7 +9,6 @@ from common.ethereum.bin_str import EthBinStrField
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.cmd_client import NeonCmdClient
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
 from .server_abc import NeonProxyApi
@@ -19,7 +18,6 @@ class _RpcVersionResp(BaseJsonRpcModel):
     proxy: str
     evm: str
     core: str
-    cli: str
     solana: str
 
 
@@ -38,14 +36,6 @@ class _RpcNeonEvmParamResp(BaseJsonRpcModel):
 
 class NpVersionApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::Version"
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._cmd_client = NeonCmdClient(self._cfg)
-
-    @NeonProxyApi.method(name=["neon_cliVersion", "neon_cli_version"])
-    async def neon_cmd_client_version(self) -> str:
-        return await self._cmd_client.get_version()
 
     @NeonProxyApi.method(name="neon_coreVersion")
     async def neon_core_api_version(self) -> str:
@@ -74,7 +64,6 @@ class NpVersionApi(NeonProxyApi):
             proxy=NEON_PROXY_PKG_VER,
             evm=await self.neon_evm_version(),
             core=await self.neon_core_api_version(),
-            cli=await self.neon_cmd_client_version(),
             solana=await self.neon_solana_version(),
         )
 
