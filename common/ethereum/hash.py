@@ -134,11 +134,21 @@ class EthHash32(_BaseHash):
     def to_string(self, default: str | None = None) -> str | None:
         return self._to_string() if self._data else default
 
+    @property
+    def is_empty(self) -> bool:
+        if super().is_empty:
+            return True
+        elif self._to_string() == self.ZeroHash:
+            return True
+        return False
+
     def __str__(self) -> str:
-        return self._to_string() or "None"
+        if self.is_empty:
+            return "None"
+        return self._to_string()
 
     def __repr__(self) -> str:
-        return self._to_string() or "None"
+        return self.__str__()
 
 
 EthHash32Field = Annotated[

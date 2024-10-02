@@ -48,7 +48,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         self._ctx.add_alt_id(actual_alt.ident)
 
         self._last_alt = actual_alt
-        return self._alt_builder.build_prep_alt_list(alt_tx_set)
+        return alt_tx_set.tx_list_list
 
     async def update_after_emulate(self) -> None:
         last_alt = self._last_alt

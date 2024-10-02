@@ -30,6 +30,8 @@ from .op_api import (
     OpGetEthAddressListRequest,
     OpEthAddressListResp,
     OpEthAddressModel,
+    OpDestroyHolderRequest,
+    OpDestroyHolderResp,
 )
 
 
@@ -83,6 +85,10 @@ class OpResourceClient(AppDataClient):
         req = OpWithdrawTokenRequest(req_id=req_id, chain_list=chain_list)
         _resp = await self._withdraw(req)
 
+    async def destroy_holder(self, req_id: dict, owner: SolPubKey, holder: SolPubKey) -> None:
+        req = OpDestroyHolderRequest(req_id=req_id, owner=owner, holder=holder)
+        _resp = await self._destroy_holder(req)
+
     @AppDataClient.method(name="getOperatorResource")
     async def _get_resource(self, request: OpGetResourceRequest) -> OpResourceModel: ...
 
@@ -109,3 +115,6 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="withdrawEarnedTokens")
     async def _withdraw(self, request: OpWithdrawTokenRequest) -> OpWithdrawTokenResp: ...
+
+    @AppDataClient.method(name="destroyHolder")
+    async def _destroy_holder(self, request: OpDestroyHolderRequest) -> OpDestroyHolderResp: ...

@@ -128,7 +128,7 @@ class SolAltLoader(MempoolComponent):
         owner = signer_list[idx % len(signer_list)]
         idx += 1
 
-        acct_list = await self._sol_client.get_prg_account_list(
+        acct_list = await self._sol_client.get_prog_account_list(
             prg_key=SolAltProg.ID,
             offset=0,
             size=SolAltAccountInfo.MetaSize,

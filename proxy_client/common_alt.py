@@ -33,7 +33,7 @@ class SolAltFunc:
 
     @staticmethod
     async def _get_alt_list(sol_client: SolClient, owner: SolPubKey) -> tuple[SolAccountModel, ...]:
-        return await sol_client.get_prg_account_list(
+        return await sol_client.get_prog_account_list(
             prg_key=SolAltProg.ID,
             offset=0,
             size=SolAltAccountInfo.MetaSize,
