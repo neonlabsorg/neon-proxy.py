@@ -37,7 +37,6 @@ class InfoHandler:
         h = InfoHandler()
         h.root_parser = parsers.add_parser(h.command)
         h.sub_parser = h.root_parser.add_subparsers(title='command', dest='subcommand', description='valid commands')
-        h.holder_parser = h.sub_parser.add_parser('holder-accounts')
         h.solana_pk_parser = h.sub_parser.add_parser('solana-private-keys')
         h.neon_pk_parser = h.sub_parser.add_parser('neon-private-keys')
         h.neon_parser = h.sub_parser.add_parser('neon-accounts')
@@ -46,9 +45,7 @@ class InfoHandler:
         return h
 
     def execute(self, args) -> None:
-        if args.subcommand == 'holder-accounts':
-            self._holder_accounts_info(args)
-        elif args.subcommand == 'solana-private-keys':
+        if args.subcommand == 'solana-private-keys':
             self._sol_client_private_key_info(args)
         elif args.subcommand == 'neon-private-keys':
             self._neon_private_key_info(args)
@@ -61,17 +58,6 @@ class InfoHandler:
         else:
             print(f'Unknown command {args.subcommand} for info', file=sys.stderr)
             return
-
-    def _holder_accounts_info(self, _) -> None:
-        res_info_list = get_res_info_list()
-        for res_info in res_info_list:
-            acct_info = self._sol_client.get_account_info(res_info.holder_address)
-            if acct_info is None:
-                continue
-
-            balance = Decimal(acct_info.lamports) / 1_000_000_000
-            holder_address = str(res_info.holder_address)
-            print(f'{ holder_address }\t { str(res_info) }\t { balance:,.9f} SOL')
 
     @staticmethod
     def _solana_private_key_info(_) -> None:

@@ -15,26 +15,45 @@ from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_legacy import SolLegacyTx
+from ..utils.cached import reset_cached_method
 
 _LOG = logging.getLogger(__name__)
 
 
 class SolAltTxSet:
     def __init__(self, create_alt_tx_list: Sequence[SolLegacyTx], extend_alt_tx_list: Sequence[SolLegacyTx]) -> None:
-        self.create_alt_tx_list = list(create_alt_tx_list)
-        self.extend_alt_tx_list = list(extend_alt_tx_list)
+        self._create_alt_tx_list = list(create_alt_tx_list)
+        self._extend_alt_tx_list = list(extend_alt_tx_list)
 
     def extend(self, tx_list: SolAltTxSet) -> Self:
-        self.create_alt_tx_list.extend(tx_list.create_alt_tx_list)
-        self.extend_alt_tx_list.extend(tx_list.extend_alt_tx_list)
+        self._built_tx_list_list.reset_cache(self)
+        self._create_alt_tx_list.extend(tx_list._create_alt_tx_list)
+        self._extend_alt_tx_list.extend(tx_list._extend_alt_tx_list)
         return self
 
     def __len__(self) -> int:
-        return len(self.create_alt_tx_list) + len(self.extend_alt_tx_list)
+        return len(self._create_alt_tx_list) + len(self._extend_alt_tx_list)
 
     def clear(self) -> None:
-        self.create_alt_tx_list.clear()
-        self.extend_alt_tx_list.clear()
+        self._built_tx_list_list.reset_cache(self)
+        self._create_alt_tx_list.clear()
+        self._extend_alt_tx_list.clear()
+
+    @property
+    def tx_list_list(self) -> list[list[SolTx]]:
+        return self._built_tx_list_list()
+
+    @reset_cached_method
+    def _built_tx_list_list(self) -> list[list[SolTx]]:
+        tx_list_list: list[list[SolTx]] = list()
+
+        if self._create_alt_tx_list:
+            tx_list_list.append(self._create_alt_tx_list)
+
+        if self._extend_alt_tx_list:
+            tx_list_list.append(self._extend_alt_tx_list)
+
+        return tx_list_list
 
 
 class SolAltTxBuilder:
@@ -121,18 +140,6 @@ class SolAltTxBuilder:
             extend_alt_tx_list = extend_alt_tx_list[1:]
 
         return SolAltTxSet(create_alt_tx_list=create_alt_tx_list, extend_alt_tx_list=extend_alt_tx_list)
-
-    @classmethod
-    def build_prep_alt_list(cls, alt_tx_set: SolAltTxSet) -> list[list[SolTx]]:
-        tx_list_list: list[list[SolTx]] = list()
-
-        if alt_tx_set.create_alt_tx_list:
-            tx_list_list.append(alt_tx_set.create_alt_tx_list)
-
-        if alt_tx_set.extend_alt_tx_list:
-            tx_list_list.append(alt_tx_set.extend_alt_tx_list)
-
-        return tx_list_list
 
     async def update_alt(self, alt_list: SolAltInfo | Sequence[SolAltInfo]) -> None:
         # Account keys in Account Lookup Table can be reordered, because ExtendLookup txs can be committed in any order

@@ -141,3 +141,13 @@ class OpWithdrawTokenRequest(BaseModel):
 
 class OpWithdrawTokenResp(BaseModel):
     total_amount_dict: dict[str, int]
+
+
+class OpDestroyHolderRequest(BaseModel):
+    req_id: dict
+    owner: SolPubKeyField
+    holder: SolPubKeyField
+
+
+class OpDestroyHolderResp(BaseModel):
+    result: bool

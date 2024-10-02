@@ -250,6 +250,13 @@ class OpResourceMng(OpResourceComponent):
         )
         return tuple(key_set)
 
+    def destroy_holder(self, owner: SolPubKey, holder: SolPubKey) -> bool:
+        if holder in self._blocked_holder_addr_dict:
+            return False
+
+        self._blocked_holder_addr_dict[holder] = owner
+        return True
+
     def _find_op_signer(self, owner: SolPubKey) -> OpSignerInfo | None:
         if not (op_signer := self._active_signer_dict.get(owner, None)):
             if not (op_signer := self._deactivated_signer_dict.get(owner, None)):
