@@ -410,7 +410,7 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetNodeListResp)
         return resp.value
 
-    async def get_prg_account_list(
+    async def get_prog_account_list(
         self,
         prg_key: SolPubKey,
         offset: int,
