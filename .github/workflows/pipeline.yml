@@ -6,12 +6,15 @@ on:
         default: "false"
         required: true
         description: "Run full test suite"
-      neon_evm_commit:
+      evm_sha_tag:
         required: false
         description: "Neon EVM commit"
-      neon_evm_branch:
+      evm_tag:
         required: false
-        description: "Neon EVM branch"
+        description: "Neon EVM branch image tag"
+      evm_pr_version_branch:
+        required: false
+        description: "Neon EVM base branch for PR to version branch"
       initial_pr:
         required: false
         description: "Initial PR"
@@ -25,8 +28,8 @@ on:
     tags:
       - "*"
 env:
-  NEON_EVM_TAG: "v1.15.1"
-  FAUCET_TAG: "latest"
+  DEFAULT_NEON_EVM_TAG: "v1.15.1"
+  DEFAULT_FAUCET_TAG: "latest"
   AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
   AWS_DEFAULT_REGION: ${{secrets.AWS_DEFAULT_REGION}}
   AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
@@ -40,11 +43,10 @@ env:
   TF_VAR_faucet_model_commit: ${{vars.FAUCET_COMMIT}}
   TV_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
   TF_VAR_proxy_image_name: "neon-proxy.py"
-  TF_VAR_docker_username: ${{secrets.DOCKER_USERNAME}}
-  TF_VAR_docker_password: ${{secrets.DOCKER_PASSWORD}}
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   PROXY_IMAGE_NAME: "neon-proxy.py"
+  NEON_TESTS_IMAGE: "neon_tests"
   FAUCET_COMMIT: ${{vars.FAUCET_COMMIT}}
   GH_ORG_NAME: ${{vars.GH_ORG_NAME}}
   IMAGE_NAME: ${{vars.IMAGE_NAME}}
@@ -55,20 +57,29 @@ env:
   TFSTATE_KEY_PREFIX: ${{vars.TFSTATE_KEY_PREFIX}}
   TFSTATE_REGION: ${{vars.TFSTATE_REGION}}
   GITHUB_RUN_NUMBER: ${{ github.run_number }}
+  TEST_RESULTS_DB_HOST: ${{ secrets.TEST_RESULTS_DB_HOST }}
+  TEST_RESULTS_DB_PORT: ${{ secrets.TEST_RESULTS_DB_PORT }}
+  TEST_RESULTS_DB_NAME: ${{ secrets.TEST_RESULTS_DB_NAME }}
+  TEST_RESULTS_DB_USER: ${{ secrets.TEST_RESULTS_DB_USER }}
+  TEST_RESULTS_DB_PASSWORD: ${{ secrets.TEST_RESULTS_DB_PASSWORD }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.inputs.neon_evm_commit }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.inputs.evm_sha_tag }}
   cancel-in-progress: true
 jobs:
   build-image:
     runs-on: build-runner
     outputs:
-      proxy_tag: ${{ steps.tags.outputs.proxy }}
-      neon_evm_tag: ${{ steps.tags.outputs.neon_evm }}
-      is_version_proxy_branch: ${{ steps.is_version_proxy_branch.outputs.value }}
-      tag_creation_base_branch: ${{ steps.tag_creation.outputs.base_branch }}
+      proxy_tag: ${{ steps.tags.outputs.proxy_tag }}
+      proxy_sha_tag: ${{ steps.tags.outputs.proxy_sha_tag }}
+      proxy_pr_version_branch: ${{ steps.tags.outputs.proxy_pr_version_branch }}
+      is_proxy_release: ${{ steps.tags.outputs.is_proxy_release }}
+      evm_tag: ${{ steps.tags.outputs.evm_tag }}
+      evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
+      evm_pr_version_branch: ${{ steps.tags.outputs.evm_pr_version_branch }}
+      faucet_tag: ${{ steps.tags.outputs.faucet_tag }}
+      neon_test_tag: ${{ steps.tags.outputs.neon_test_tag }}
       full_test_suite: ${{ steps.full_test_suite.outputs.value }}
-      neon_test_tag: ${{ steps.neon_test_final_tag.outputs.value }}
       dapps_list: ${{ steps.dapps_list.outputs.dapps_list }}
     steps:
       - uses: actions/checkout@v4
@@ -76,51 +87,38 @@ jobs:
            fetch-depth: 0
       - name: output branches name
         run: |
-          echo "neon_evm_branch = ${{ github.event.inputs.neon_evm_branch }}"
+          echo "neon_evm_tag/branch = ${{ github.event.inputs.evm_tag }}"
           echo "proxy_branch = ${{ github.ref }}"
-      - name: Check if proxy branch is version branch
-        id: is_version_proxy_branch
+      - name: Specify image tags
         run: |
-          if [[ "${{ github.ref }}" =~ "refs/heads/"[vt][0-9]+\.[0-9]+\.x ]]; then
-            echo "value=true"
-            echo "value=true" >> $GITHUB_OUTPUT
-          else
-            echo "value=false"
-            echo "value=false" >> $GITHUB_OUTPUT
-          fi
-      - name: Define base branch if the action is tag creation
-        id: tag_creation
-        if:  startsWith(github.ref , 'refs/tags/')
-        run: |
-          base_branch=`echo ${{ github.ref_name }} | sed 's/\.[0-9]*$/\.x/'`
-          echo "base_branch=$base_branch" >> $GITHUB_OUTPUT
-          echo "base_branch=$base_branch"
-      - name: Define images tags
+          python3 ./.github/workflows/deploy.py specify_image_tags \
+          --git_sha=${{ github.sha }} \
+          --git_ref=${{ github.ref }} \
+          --git_head_ref=${{ github.head_ref }} \
+          --git_base_ref=${{ github.base_ref }} \
+          --evm_sha_tag=${{ github.event.inputs.evm_sha_tag }} \
+          --evm_tag=${{ github.event.inputs.evm_tag }} \
+          --default_evm_tag=${DEFAULT_NEON_EVM_TAG} \
+          --default_faucet_tag=${DEFAULT_FAUCET_TAG}
+      - name: Set outputs
         id: tags
         run: |
-          if [[ "${{ github.event.inputs.neon_evm_commit }}" != "" ]]; then
-            neon_evm_tag=${{ github.event.inputs.neon_evm_commit }}
-          else
-            neon_evm_tag="${NEON_EVM_TAG}"
-          fi;
-          echo "neon_evm_tag=${neon_evm_tag}"
-          echo "neon_evm=${neon_evm_tag}" >> $GITHUB_OUTPUT
+          echo "proxy_tag=${{ env.PROXY_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "proxy_sha_tag=${{ env.PROXY_SHA_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "proxy_pr_version_branch=${{ env.PROXY_PR_VERSION_BRANCH }}" >> "$GITHUB_OUTPUT"
+          echo "is_proxy_release=${{ env.IS_PROXY_RELEASE }}" >> "$GITHUB_OUTPUT"
+          echo "evm_tag=${{ env.EVM_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "evm_sha_tag=${{ env.EVM_SHA_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "evm_pr_version_branch=${{ github.event.inputs.evm_pr_version_branch }}" >> "$GITHUB_OUTPUT"
+          echo "faucet_tag=${{ env.FAUCET_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ github.event.inputs.neon_evm_commit }}" != "" ]]; then
-            evm_short_commit=`git rev-parse --short ${{ github.event.inputs.neon_evm_commit }}`
-            proxy_tag="${{ github.sha }}-${evm_short_commit}"
-          else
-            proxy_tag="${{ github.sha }}"
-          fi;
-          echo "proxy_tag=${proxy_tag}"
-          echo "proxy=$proxy_tag" >> $GITHUB_OUTPUT
       - name: Define test set
         id: full_test_suite
         run: |
           if [[ "${{ contains(github.event.pull_request.labels.*.name, 'fullTestSuite') }}" == "true" || "${{ github.event.inputs.full_test_suite }}" == "true" ||
-          ("${{ github.ref_name }}" == 'develop' && "${{github.event.inputs.neon_evm_commit }}" == "") ||
-          ("${{ steps.is_version_proxy_branch.outputs.is_version_proxy_branch }}" == 'true' && "${{ github.event.inputs.neon_evm_commit }}" == '') ||
-          "${{ steps.tag_creation.outputs.base_branch }}" != "" ]]; then
+          ("${{ github.ref_name }}" == 'develop' && "${{github.event.inputs.evm_sha_tag }}" == "") ||
+          "${{ steps.tags.outputs.is_proxy_release }}" == "True" || "${{ steps.tags.outputs.proxy_pr_version_branch }}" != "" ]]; then
             value=true
           else
             value=false
@@ -135,65 +133,16 @@ jobs:
           result=$( (${{ steps.full_test_suite.outputs.value }} && echo "${default}${extended}") || echo "${default}" )
           echo "dapps_list=$result" >> $GITHUB_OUTPUT
           echo "dapps_list=$result"
-      - name: Define test image tag
-        id: neon_test_tag
-        run: |
-          if ${{ steps.is_version_proxy_branch.outputs.value }}; then
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          elif [[ "${{ steps.tag_creation.outputs.base_branch }}" != "" ]]; then
-            tag=${{ steps.tag_creation.outputs.base_branch }}
-
-          elif [[ "${{ github.base_ref }}" =~ "refs/heads/"[vt][0-9]+\.[0-9]+\.x ]]; then # pr to version branch
-            tag=${GITHUB_BASE_REF/refs\/heads\//}
-
-          elif [[ "${{ github.head_ref }}" != "" ]]; then # pr to feature branch
-            tag=${{ github.head_ref }}
-
-          elif [[ "{{github.event.inputs.neon_evm_branch}}" != "" && "{{github.event.inputs.neon_evm_branch}}" != "refs/heads/develop" ]]; then # triggered by neon evm workflow
-            tag=${{ github.event.inputs.neon_evm_branch }}
-
-          elif [[ "${{ github.ref }}" =~ "refs/heads".+ ]] ; then # triggered by pr to develop
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          else
-            tag='latest'
-          fi
-          echo "value=${tag}"
-          echo "value=${tag}" >> $GITHUB_OUTPUT
-      - name: Check image
-        id: test_image_exists
-        uses: cloudposse/github-action-docker-image-exists@main
-        continue-on-error: true
-        with:
-          registry: registry.hub.docker.com
-          organization: "neonlabsorg"
-          repository: "neon_tests"
-          login: ${{secrets.DOCKER_USERNAME}}
-          password: ${{secrets.DOCKER_PASSWORD}}
-          tag: ${{ steps.neon_test_tag.outputs.value}}
-      - name: Set latest tag for test image if feature/version branch doesn't exist
-        id: neon_test_final_tag
-        run: |
-          if [[ "${{ steps.test_image_exists.outcome }}" == "success" ]]; then
-            tag=${{ steps.neon_test_tag.outputs.value}}
-          else
-            tag='latest'
-          fi
-          echo "value=${tag}"
-          echo "value=${tag}" >> $GITHUB_OUTPUT
       - name: Build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
-          --neon_evm_tag=${{ steps.tags.outputs.neon_evm }} \
-          --proxy_tag=${{ steps.tags.outputs.proxy }} \
-          --head_ref_branch=${{ github.head_ref }}
+          --evm_tag=${{ steps.tags.outputs.evm_sha_tag || steps.tags.outputs.evm_tag }} \
+          --proxy_tag=${{ steps.tags.outputs.proxy_sha_tag }}
       - name: Publish image
         run: |
           python3 ./.github/workflows/deploy.py publish_image \
-          --proxy_tag=${{ steps.tags.outputs.proxy }} \
-          --head_ref=${{ github.head_ref }} \
-          --github_ref_name=${{ github.ref_name }}
+          --proxy_sha_tag=${{ steps.tags.outputs.proxy_sha_tag }} \
+          --proxy_tag=${{ steps.tags.outputs.proxy_tag }}
   deploy-check:
     needs:
       - build-image
@@ -204,19 +153,14 @@ jobs:
         timeout-minutes: 60
         run: |
           python3 ./.github/workflows/deploy.py deploy_check \
-          --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Docker logs
-          path: ./*.log
+          --proxy_tag=${{ needs.build-image.outputs.proxy_sha_tag }}
       - name: canceling the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
   prepare-infrastructure:
     needs:
       - build-image
-    timeout-minutes: 10
+    timeout-minutes: 15
     runs-on: test-runner
     steps:
       - uses: actions/checkout@v4
@@ -226,15 +170,13 @@ jobs:
           chmod 600 ${HOME}/.ssh/ci-stands
       - name: Remove known_host
         run: rm -f ${HOME}/.ssh/known_hosts
-      - name: Terraform build infra structure
+      - name: Terraform build infrastructure
         id: terraform
         run: |
           python3 ./.github/workflows/deploy.py terraform_infrastructure \
-            --github_ref_name=${{ github.ref_name }} \
-            --head_ref_branch=${{ github.head_ref }} \
-            --neon_evm_tag=${{ needs.build-image.outputs.neon_evm_tag }} \
-            --proxy_tag=${{ needs.build-image.outputs.proxy_tag }} \
-            --faucet_tag=${{ env.FAUCET_TAG }} \
+            --proxy_tag=${{ needs.build-image.outputs.proxy_sha_tag }} \
+            --evm_tag=${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }} \
+            --faucet_tag=${{ needs.build-image.outputs.faucet_tag }} \
             --run_number=${{ env.GITHUB_RUN_NUMBER }}
       - name: Set outputs
         id: share
@@ -316,21 +258,65 @@ jobs:
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
     steps:
+      - name: Determine Cost Report Generation
+        run: |
+          if [[ "${{ needs.build-image.outputs.evm_tag }}" =~ ^[vt][0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "${{ needs.build-image.outputs.proxy_tag }}" =~ ^[vt][0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "GENERATE_COST_REPORT=true" >> $GITHUB_ENV
+          else
+            echo "GENERATE_COST_REPORT=false" >> $GITHUB_ENV
+          fi
       - name: Run docker container
         run: |
           image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
           docker pull $image
           docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} \
           --name=${{ env.CONTAINER }} $image /bin/bash
-      - name: Update contracts in the container
-        run: |
-          docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py update-contracts \
-          --branch ${{ needs.build-image.outputs.tag_creation_base_branch || github.head_ref || github.ref_name }}
       - name: Run basic tests
         run: |
-          docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}
+          CMD="python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}"
+
+          if [[ "${{ env.GENERATE_COST_REPORT }}" == "true" ]]; then
+            CMD="$CMD --cost_reports_dir reports/cost_reports"
+          fi
+
+          docker exec -i ${{ env.CONTAINER }} $CMD
+      - name: Copy cost reports from container
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        run: |
+          mkdir -p ./reports/cost_reports/ && \
+          docker cp ${{ env.CONTAINER }}:/opt/neon-tests/reports/cost_reports/. ./reports/cost_reports/
+      - name: Upload cost reports as artifacts
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-reports
+          path: reports/cost_reports/**.json
+      - name: Swap Cost Reports and echo to Summary
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        run: |
+          docker exec -i -e NETWORK=${{ env.NETWORK }} ${{ env.CONTAINER }} \
+            python3 ./clickfile.py dapps save_dapps_cost_report_to_md \
+            --directory reports/cost_reports && \
+          docker exec -i ${{ env.CONTAINER }} cat cost_reports.md >> $GITHUB_STEP_SUMMARY
+      - name: "Save Cost Report to DB"
+        id: save-cost-report-to-db
+        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+        run: |
+          docker exec -i \
+            -e NETWORK=${{ env.NETWORK }} \
+            -e TEST_RESULTS_DB_HOST=${{ env.TEST_RESULTS_DB_HOST }} \
+            -e TEST_RESULTS_DB_PORT=${{ env.TEST_RESULTS_DB_PORT }} \
+            -e TEST_RESULTS_DB_NAME=${{ env.TEST_RESULTS_DB_NAME }} \
+            -e TEST_RESULTS_DB_USER=${{ env.TEST_RESULTS_DB_USER }} \
+            -e TEST_RESULTS_DB_PASSWORD=${{ env.TEST_RESULTS_DB_PASSWORD }} \
+            ${{ env.CONTAINER }} \
+            python3 ./clickfile.py dapps save_dapps_cost_report_to_db \
+            --directory="reports/cost_reports" \
+            --repo="${{ needs.build-image.outputs.evm_sha_tag == '' && 'proxy' || 'evm' }}" \
+            --evm_tag="${{ needs.build-image.outputs.evm_tag }}" \
+            --proxy_tag="${{ needs.build-image.outputs.proxy_tag }}" \
+            --evm_commit_sha="${{ needs.build-image.outputs.evm_sha_tag }}" \
+            --proxy_commit_sha="${{ needs.build-image.outputs.proxy_sha_tag }}"
       - name: Remove docker container
         if: always()
         run: docker rm -f ${{ env.CONTAINER }}
@@ -354,6 +340,13 @@ jobs:
       proxy_ip: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
       solana_ip: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       external_call: true
+      repo: ${{ needs.build-image.outputs.evm_sha_tag == '' && 'proxy' || 'evm' }}
+      evm_tag: ${{ needs.build-image.outputs.evm_tag }}
+      evm_sha_tag: ${{ needs.build-image.outputs.evm_sha_tag }}
+      proxy_tag: ${{ needs.build-image.outputs.proxy_tag }}
+      proxy_sha_tag: ${{ needs.build-image.outputs.proxy_sha_tag }}
+      proxy_pr_version_branch: ${{ needs.build-image.outputs.proxy_pr_version_branch }}
+      evm_pr_version_branch: ${{ needs.build-image.outputs.evm_pr_version_branch }}
 
   requests-report:
     needs:
@@ -373,7 +366,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
            fetch-depth: 0
-      - name: "Request report"
+      - name: Request report
         id: request_report
         run: |
           stats=$(python3 ./.github/workflows/deploy.py parse_logs --solana_ip=${{ env.SOLANA_IP }})
@@ -393,37 +386,6 @@ jobs:
           python3 ./.github/workflows/deploy.py post_comment --message="${{ steps.request_report.outputs.stats }}" \
           --pull_request="${{ steps.request_report.outputs.pull_request }}" \
           --token=${{ secrets.GHTOKEN }}
-
-  #  will be fixed by NDEV-2766
-#  economy-tests:
-#    if: needs.build-image.outputs.full_test_suite=='true'
-#    needs:
-#      - prepare-infrastructure
-#      - dapps-tests
-#      - basic-tests
-#      - openzeppelin-tests
-#      - build-image
-#    runs-on: test-runner
-#    env:
-#      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
-#      PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-#      CONTAINER: economy-${{ github.run_id }}
-#      NETWORK: terraform
-#    steps:
-#      - name: Run docker container
-#        run: |
-#          image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
-#          docker pull $image
-#          docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} \
-#          --name=${{ env.CONTAINER }} $image /bin/bash
-#      - name: Run economy tests
-#        run: |
-#          docker exec -i ${{ env.CONTAINER }} \
-#            python3 ./clickfile.py run economy -n ${{ env.NETWORK }}
-#      - name: Remove docker container
-#        if: always()
-#        run: docker rm -f ${{ env.CONTAINER }}
-
 
   destroy-terraform:
     needs:
@@ -457,12 +419,10 @@ jobs:
         run: echo "bname=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       - name: Destroy terraform infrastructure
         if: ${{always() && needs.prepare-infrastructure.result != 'skipped'}}
-        env:
-          TF_VAR_branch: ${{ steps.vars.outputs.bname }}
         run: |
           python3 ./.github/workflows/deploy.py destroy_terraform \
           --run_number=${{env.GITHUB_RUN_NUMBER}} \
-          --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
+          --proxy_tag=${{ needs.build-image.outputs.proxy_sha_tag }}
   finalize-image:
     runs-on: build-runner
     needs:
@@ -479,13 +439,10 @@ jobs:
       contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result)
     steps:
       - uses: actions/checkout@v4
-      - name: Tag published image
-        if: ${{ (github.event.inputs.neon_evm_commit == ''  &&
-            needs.build-image.outputs.is_version_proxy_branch == 'false') ||
-            github.event.inputs.neon_evm_branch == 'refs/heads/develop' }}
+      - name: Tag published image if tag is latest or version
         run: |
           python3 ./.github/workflows/deploy.py finalize_image \
-          --github_ref=${GITHUB_REF} \
+          --proxy_sha_tag=${{ needs.build-image.outputs.proxy_sha_tag }} \
           --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
   notification:
     runs-on: build-runner
