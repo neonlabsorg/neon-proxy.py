@@ -28,8 +28,6 @@ class NeonEvmProtocol(IntEnum):
 
 SUPPORTED_VERSION_SET = frozenset(
     (
-        NeonEvmProtocol.v1013,
-        NeonEvmProtocol.v1014,
         NeonEvmProtocol.v1015,
     )
 )
@@ -99,7 +97,7 @@ class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1015
-    _evm_version: ClassVar[str] = "v1.13.0"
+    _evm_version: ClassVar[str] = "v1.15.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
 
     # The notation is as follows:
