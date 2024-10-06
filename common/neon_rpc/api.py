@@ -564,7 +564,7 @@ class EmulNeonAccountModel(BaseModel):
 
 
 class EmulTraceCfgModel(BaseModel):
-    neon_account_dict: dict[EthAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
+    neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
 
 
 class EmulNeonCallRequest(BaseModel):
