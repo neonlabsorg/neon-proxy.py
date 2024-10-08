@@ -192,7 +192,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
 
         info = dict(IP=ctx.ip_addr, ReqID=request.id, Method=request.method)
         with logging_context(ctx=self.get_ctx_id(ctx), chain_id=chain_id):
-            # _LOG.info(log_msg("handle request <<< {IP} req={ReqID} {Method} {Params}", Params=request.params, **info))
+            _LOG.info(log_msg("handle request <<< {IP} req={ReqID} {Method} {Params}", Params=request.params, **info))
 
             resp = await handler(ctx, request)
             if resp.is_error:
@@ -207,7 +207,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
                     Result=resp.result,
                     **info,
                 )
-            # _LOG.info(dict(**msg, TimeMS=ctx.process_time_msec))
+            _LOG.info(dict(**msg, TimeMS=ctx.process_time_msec))
 
             stat = RpcCallData(
                 service=self._stat_name,

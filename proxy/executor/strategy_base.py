@@ -46,7 +46,7 @@ class BaseTxPrepStage(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def update_after_emulate(self) -> None:
+    async def update_after_emulation(self) -> bool:
         pass
 
 
@@ -97,11 +97,6 @@ class BaseTxStrategy(abc.ABC):
     async def validate(self) -> bool:
         self._validation_error_msg = None
 
-        if self._ctx.is_timestamp_number_used and self.is_simple:
-            # TODO modify error msg
-            self._validation_error_msg = "is_timestamp_number_used ERROR"
-            return False
-
         try:
             if result := await self._validate():
                 result = self._validate_tx_size()
@@ -112,11 +107,7 @@ class BaseTxStrategy(abc.ABC):
             self._validation_error_msg = str(e)
             return False
 
-    def complete_init(self) -> None:
-        assert self.is_valid
-
-    async def prep_before_emulate(self) -> bool:
-        _LOG.debug("AZAZA PREP BEFORE EMULATE")
+    async def prep_before_emulation(self) -> None:
         assert self.is_valid
 
         # recheck already sent transactions
@@ -128,18 +119,16 @@ class BaseTxStrategy(abc.ABC):
         # generate new transactions
         tx_list_list = await self._build_prep_tx_list()
 
-        has_list = False
         for tx_list in tx_list_list:
-            if await self._send_tx_list(tx_list):
-                has_list = True
-        _LOG.debug("AZAZA PREP BEFORE EMULATE FINISHED")
-        return has_list
+            await self._send_tx_list(tx_list)
 
-    async def update_after_emulate(self) -> None:
+    async def update_after_emulation(self) -> bool:
         assert self.is_valid
 
+        result = True
         for stage in self._prep_stage_list:
-            await stage.update_after_emulate()
+            result = await stage.update_after_emulation() and result
+        return result
 
     @property
     def has_good_sol_tx_receipt(self) -> bool:
@@ -208,6 +197,13 @@ class BaseTxStrategy(abc.ABC):
         self._validation_error_msg = f"NeonTx has size {neon_tx_size} > {self._base_sol_pkt_size}"
         return False
 
+    def _validate_no_holder_block(self) -> bool:
+        if not self._ctx.has_holder_block:
+            return True
+
+        self._validation_error_msg = "emulator uses block"
+        return False
+
     @cached_property
     def _base_sol_pkt_size(self) -> int:
         return SolTx.PktSize - NeonProg.BaseAccountCnt * SolPubKey.KeySize
@@ -251,7 +247,12 @@ class BaseTxStrategy(abc.ABC):
 
     def _store_sol_tx_list(self):
         tx_list_sender = self._sol_tx_list_sender
-        self._ctx.add_sol_tx_list([tx_state.tx for tx_state in tx_list_sender.tx_state_list])
+        self._ctx.add_sol_tx_list(
+            [
+                (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
+                for tx_state in tx_list_sender.tx_state_list
+            ]
+        )
 
     @cached_property
     def _cu_limit(self) -> int:
