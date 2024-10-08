@@ -11,6 +11,7 @@ from typing_extensions import Self
 from ..config.constants import DEFAULT_TOKEN_NAME
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress
+from ..ethereum.transaction import calc_contract_address
 from ..neon.account import NeonAccount, NeonAccountField
 from ..neon.transaction_model import NeonTxModel
 from ..solana.account import SolAccountModel
@@ -450,6 +451,8 @@ class CoreApiTxModel(BaseModel):
     data: CoreApiHexStrField
     gas_limit: HexUIntField | None
     gas_price: HexUIntField | None
+    max_fee_per_gas: HexUIntField = Field(default=0)
+    max_priority_fee_per_gas: HexUIntField = Field(default=0)
     chain_id: int | None = None
 
     @classmethod
@@ -465,6 +468,45 @@ class CoreApiTxModel(BaseModel):
             chain_id=chain_id,
         )
 
+    @cached_property
+    def sender(self) -> NeonAccount:
+        return NeonAccount.from_raw(self.from_address, self.chain_id)
+
+    @cached_property
+    def receiver(self) -> NeonAccount:
+        if not self.to_address.is_empty:
+            return NeonAccount.from_raw(self.to_address, self.chain_id)
+
+        contract_addr = calc_contract_address(self.to_address, self.from_address, self.nonce)
+        return NeonAccount.from_raw(contract_addr, self.chain_id)
+
+
+class CoreApiBlockModel(BaseModel):
+    timestamp: int | None = Field(default=None, serialization_alias="time")
+    slot: int | None = Field(default=None, serialization_alias="number")
+
+    _default: ClassVar[CoreApiBlockModel | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not cls._default:
+            cls._default = CoreApiBlockModel()
+        return cls._default
+
+    @classmethod
+    def from_raw(cls, raw_list: list[str] | None) -> Self:
+        if not raw_list:
+            return cls.default()
+
+        return cls(
+            timestamp=int(raw_list[0], 16),
+            slot=int(raw_list[1], 16),
+        )
+
+    @property
+    def is_empty(self) -> bool:
+        return self.slot is None
+
 
 class HolderAccountModel(BaseModel):
     address: SolPubKeyField
@@ -474,17 +516,12 @@ class HolderAccountModel(BaseModel):
     owner: SolPubKeyField = Field(default=SolPubKey.default())
 
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
+    tx_type: int = Field(default=0)
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
+    block: CoreApiBlockModel
 
-    block_params: list[str] | None = Field(default=None, validation_alias="block_params")
-
-    chain_id: int | None = Field(default=0)
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
-
-    tx_type: int = Field(default=0)
-    max_fee_per_gas: HexUIntField = Field(default=0)
-    max_priority_fee_per_gas: HexUIntField = Field(default=0)
 
     @classmethod
     def new_empty(cls, address: SolPubKey) -> Self:
@@ -494,18 +531,16 @@ class HolderAccountModel(BaseModel):
             size=0,
             owner=SolPubKey.default(),
             neon_tx_hash=EthTxHash.default(),
+            block=CoreApiBlockModel.default(),
         )
 
     @classmethod
     def from_dict(cls, address: SolPubKey, def_chain_id: int, data: dict) -> Self:  # noqa
         data["address"] = address
+        data["block"] = CoreApiBlockModel.from_raw(data.pop("block_params", None))
         if HolderAccountStatus.from_raw(data.get("status", "")) == HolderAccountStatus.Active:
             data["chain_id"] = data.get("chain_id", None) or def_chain_id
         return cls.model_validate(data)
-
-    @cached_property
-    def sender(self) -> NeonAccount:
-        return NeonAccount.from_raw(self.tx.from_address, self.chain_id)
 
     @property
     def is_empty(self) -> bool:
@@ -567,14 +602,9 @@ class EmulNeonAccountModel(BaseModel):
     balance: int | None = None
 
 
-class BlockOverridesModel(BaseModel):
-    number: int | None = Field(default=None, serialization_alias="number")
-    time: int | None = Field(default=None, serialization_alias="time")
-
-
 class EmulTraceCfgModel(BaseModel):
     neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
-    block_overrides: BlockOverridesModel | None = Field(default=None, serialization_alias="blockOverrides")
+    block: CoreApiBlockModel | None = Field(default=None, serialization_alias="blockOverrides")
 
 
 class EmulNeonCallRequest(BaseModel):
@@ -626,7 +656,7 @@ class EmulNeonCallResp(BaseModel):
     external_sol_call: bool = Field(validation_alias="external_solana_call")
     revert_before_sol_call: bool = Field(validation_alias="reverts_before_solana_calls")
     revert_after_sol_call: bool = Field(validation_alias="reverts_after_solana_calls")
-    is_timestamp_number_used: bool = Field(validation_alias="is_timestamp_number_used")
+    is_block_used: bool = Field(validation_alias="is_timestamp_number_used")
 
     result: EthBinStrField
     evm_step_cnt: int = Field(validation_alias="steps_executed")

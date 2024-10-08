@@ -103,7 +103,7 @@ class EthAddress(_BaseHash):
         return self._to_checksum() or "None"
 
     def __repr__(self) -> str:
-        return self._to_checksum() or "None"
+        return self.__str__()
 
 
 EthAddressField = Annotated[

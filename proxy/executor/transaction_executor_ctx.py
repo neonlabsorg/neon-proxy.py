@@ -10,9 +10,15 @@ from common.atlas.fee_client import AtlasFeeClient
 from common.config.config import Config
 from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
-from common.neon.neon_program import NeonProg
+from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
+from common.neon_rpc.api import (
+    EmulNeonCallResp,
+    HolderAccountModel,
+    EvmConfigModel,
+    CoreApiTxModel,
+    CoreApiBlockModel,
+)
 from common.neon_rpc.client import CoreApiClient
 from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.cb_program import SolCbProg
@@ -86,20 +92,15 @@ class NeonExecTxCtx:
         self._token_sol_addr = tx_request.resource.token_sol_address
         self._evm_step_cnt_per_iter: int | None = 0
 
-        self._tx_type: int | None = None
-        self._tx_max_fee_per_gas: int = 0
-        self._tx_max_priority_fee_per_gas: int = 0
-
         self._uniq_idx = itertools.count()
         self._alt_id_set: set[SolAltID] = set()
-        self._sol_tx_list_dict: dict[str, list[SolTx]] = dict()
-        self._has_completed_receipt = False
+        self._sol_tx_list_dict: dict[str, list[tuple[SolTx, bool]]] = dict()
 
-        self._sender_sol_address: SolPubKey = SolPubKey.default()
-        self._ro_addr_list: tuple[SolPubKey] = tuple()
+        self._base_tx_acct_set = NeonBaseTxAccountSet.default()
+
+        self._ro_addr_list: tuple[SolPubKey, ...] = tuple()
         self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
-        self._emulator_resp: EmulNeonCallResp | None = None
-        self._emulator_slot = 0
+        self._emul_resp: EmulNeonCallResp | None = None
 
         self._skip_simple_strategy = False
         self._test_mode = False
@@ -166,53 +167,17 @@ class NeonExecTxCtx:
     def mark_skip_simple_strategy(self) -> None:
         self._skip_simple_strategy = True
 
-    def set_sender_sol_address(self, sol_address: SolPubKey) -> None:
-        self._sender_sol_address = sol_address
-
-    def set_emulator_result(self, slot: int, resp: EmulNeonCallResp) -> None:
-        _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
-
-        self._emulator_resp = resp
-        self._emulator_slot = slot
-
-        if self.is_stuck_tx:
-            ro_addr_set = set(m.pubkey for m in resp.raw_meta_list if not m.is_writable)
-            self._update_acct_meta_list_from_holder(ro_addr_set)
-        else:
-            self._update_acct_meta_list_from_emul(resp)
+    def set_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> None:
+        self._base_tx_acct_set = base_tx_account_set
 
     def set_holder_account(self, holder: HolderAccountModel) -> None:
-        assert self.is_stuck_tx
-        assert holder.neon_tx_hash == self.neon_tx_hash
-
-        self._tx_type = holder.tx_type
-        self._tx_max_fee_per_gas = holder.max_fee_per_gas
-        self._tx_max_priority_fee_per_gas = holder.max_priority_fee_per_gas
-
         self._holder = holder
-        self._update_acct_meta_list_from_holder(set())
 
-    def _update_acct_meta_list_from_emul(self, resp: EmulNeonCallResp) -> None:
-        # sort accounts in a predictable order
-        acct_meta_list = tuple(sorted(resp.sol_account_meta_list, key=lambda m: bytes(m.pubkey)))
-        if acct_meta_list == self._acct_meta_list:
-            _LOG.debug("emulator result contains the same %d accounts", len(resp.raw_meta_list))
-        else:
-            self._get_acct_key_list.reset_cache(self)
-            self._acct_meta_list = acct_meta_list
-            acct_meta_cnt = NeonProg.BaseAccountCnt + len(acct_meta_list)
-            if acct_meta_cnt > self._cfg.max_tx_account_cnt:
-                _LOG.warning(
-                    "account list is too long, %d > %d(limit)",
-                    acct_meta_cnt,
-                    self._cfg.max_tx_account_cnt,
-                )
-                prog_acct_meta_list = self._acct_meta_list[: self._cfg.max_tx_account_cnt]
-            else:
-                prog_acct_meta_list = self._acct_meta_list
-            self._neon_prog.init_account_meta_list(prog_acct_meta_list)
-            self._test_neon_prog.init_account_meta_list(prog_acct_meta_list)
-            _LOG.debug("emulator result contains %d accounts: %s", len(resp.raw_meta_list), self._FmtAcctMeta(self))
+    def set_emulator_result(self, resp: EmulNeonCallResp) -> None:
+        _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
+
+        self._emul_resp = resp
+        self._update_acct_meta_list()
 
         # reset calculated cache
         self._calc_total_evm_step_cnt.reset_cache(self)
@@ -220,27 +185,56 @@ class NeonExecTxCtx:
         self._calc_wrap_iter_cnt.reset_cache(self)
         self._calc_resize_iter_cnt.reset_cache(self)
 
-    def _update_acct_meta_list_from_holder(self, ro_addr_set: set[SolPubKey]) -> None:
-        assert self._holder
+    def _update_acct_meta_list(self) -> None:
+        # Get metas from the emulator
+        acct_meta_dict: dict[SolPubKey, SolAccountMeta] = {
+            SolPubKey.from_raw(m.pubkey): m
+            for m in self._emul_resp.sol_account_meta_list
+        }
 
-        # !don't! sort accounts, use sorted order from the holder
-        raw_addr_list = self._holder.account_key_list
+        # Keep metas from the holder
+        for key in self._holder.account_key_list:
+            if key not in acct_meta_dict:
+                acct_meta_dict[key] = SolAccountMeta(pubkey=key, is_signer=False, is_writable=True)
 
-        acct_meta_list = tuple(
-            map(lambda x: SolAccountMeta(x, is_signer=False, is_writable=(x not in ro_addr_set)), raw_addr_list)
+        acct_meta_list = tuple(sorted(acct_meta_dict.values(), key=lambda m: bytes(m.pubkey)))
+        if acct_meta_list == self._acct_meta_list:
+            _LOG.debug("emulator result contains the same %d accounts", len(acct_meta_list))
+            return
+
+        _LOG.debug(
+            "emulator result contains %d accounts: %s",
+            len(self._emul_resp.sol_account_meta_list),
+            self._FmtAcctMeta(self._emul_resp.sol_account_meta_list),
+        )
+        _LOG.debug(
+            "holder contains %d accounts, total %d accounts: %s",
+            len(self._holder.account_key_list),
+            len(acct_meta_list),
+            self._FmtAcctMeta(acct_meta_list),
         )
 
-        if acct_meta_list == self._acct_meta_list:
-            _LOG.debug("holder contains the same %d accounts", len(raw_addr_list))
-        else:
-            self._acct_meta_list = acct_meta_list
-            self._neon_prog.init_account_meta_list(self._acct_meta_list)
-            self._test_neon_prog.init_account_meta_list(self._acct_meta_list)
-            _LOG.debug("holder contains %d accounts: %s", len(raw_addr_list), self._FmtAcctMeta(self))
+        acct_meta_cnt = NeonProg.BaseAccountCnt + len(acct_meta_list)
+        if acct_meta_cnt > self._cfg.max_tx_account_cnt:
+            _LOG.warning(
+                "account list is too long, %d > %d(limit)",
+                acct_meta_cnt,
+                self._cfg.max_tx_account_cnt,
+            )
+            if self._holder and self._holder.account_key_list:
+                acct_meta_list = tuple([acct_meta_dict.get(key) for key in self._holder.account_key_list])
+                _LOG.debug("use %d holder accounts", len(acct_meta_list))
+            else:
+                acct_meta_list = acct_meta_list[: self._cfg.max_tx_account_cnt]
+
+        self._get_acct_key_list.reset_cache(self)
+        self._acct_meta_list = acct_meta_list
+        self._neon_prog.init_account_meta_list(acct_meta_list)
+        self._test_neon_prog.init_account_meta_list(acct_meta_list)
 
     @property
-    def emulator_slot(self) -> int:
-        return self._emulator_slot
+    def holder_block(self) -> CoreApiBlockModel:
+        return self._holder.block
 
     @property
     def ro_address_list(self) -> tuple[SolPubKey, ...]:
@@ -256,8 +250,8 @@ class NeonExecTxCtx:
         self._test_neon_prog.init_ro_address_list(addr_list)
 
     class _FmtAcctMeta:
-        def __init__(self, ctx: NeonExecTxCtx) -> None:
-            self._acct_meta_list = ctx._acct_meta_list
+        def __init__(self, acct_meta_list: Sequence[SolAccountMeta]) -> None:
+            self._acct_meta_list = acct_meta_list
 
         @cached_method
         def to_string(self) -> str:
@@ -315,8 +309,7 @@ class NeonExecTxCtx:
         else:
             eth_rlp_tx = bytes()
         prog.init_neon_tx(self.neon_tx_hash, eth_rlp_tx)
-        prog.init_sender_sol_address(self._sender_sol_address)
-
+        prog.init_tx_sol_address(self._base_tx_acct_set)
         return prog
 
     def set_token_sol_address(self, token_address: SolPubKey) -> None:
@@ -341,23 +334,21 @@ class NeonExecTxCtx:
     @cached_property
     def tx_type(self) -> int:
         if self.is_stuck_tx:
-            # Should be set from the Holder.
-            assert self._tx_type is not None
-            return self._tx_type
+            return self._holder.tx_type
         return self.neon_tx.tx_type
 
     @cached_property
     def max_fee_per_gas(self) -> int:
         assert self.tx_type == 2
         if self.is_stuck_tx:
-            return self._tx_max_fee_per_gas
+            return self._holder.tx.max_fee_per_gas
         return self.neon_tx.max_fee_per_gas
 
     @cached_property
     def max_priority_fee_per_gas(self) -> int:
         assert self.tx_type == 2
         if self.is_stuck_tx:
-            return self._tx_max_priority_fee_per_gas
+            return self._holder.tx.max_priority_fee_per_gas
         return self.neon_tx.max_priority_fee_per_gas
 
     @cached_property
@@ -367,9 +358,9 @@ class NeonExecTxCtx:
 
     @cached_property
     def holder_tx(self) -> CoreApiTxModel:
-        assert self.is_stuck_tx
-        assert self._holder
-        return self._holder.tx
+        if self.is_stuck_tx:
+            return self._holder.tx
+        return CoreApiTxModel.from_neon_tx(self.neon_tx, self.chain_id)
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:
@@ -388,17 +379,22 @@ class NeonExecTxCtx:
     @cached_property
     def chain_id(self) -> int:
         if self.is_stuck_tx:
-            assert self._holder
-            return self._holder.chain_id
+            return self._holder.tx.chain_id
         return self._tx_request.tx.chain_id
 
     @cached_property
     def sender(self) -> NeonAccount:
         if self.is_stuck_tx:
-            assert self._holder
-            return NeonAccount.from_raw(self._holder.sender, self._holder.chain_id)
+            return self._holder.tx.sender
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.sender, tx.chain_id)
+
+    @cached_property
+    def receiver(self) -> NeonAccount:
+        if self.is_stuck_tx:
+            return self._holder.tx.receiver
+        tx = self._tx_request.tx
+        return NeonAccount.from_raw(tx.receiver, tx.chain_id)
 
     def next_uniq_idx(self) -> int:
         return next(self._uniq_idx)
@@ -413,8 +409,8 @@ class NeonExecTxCtx:
 
     @reset_cached_method
     def _calc_total_evm_step_cnt(self) -> int:
-        assert self._emulator_resp
-        return self._emulator_resp.evm_step_cnt
+        assert self._emul_resp
+        return self._emul_resp.evm_step_cnt
 
     @property
     def total_iter_cnt(self) -> int:
@@ -423,9 +419,9 @@ class NeonExecTxCtx:
     @reset_cached_method
     def _calc_total_iter_cnt(self) -> int:
         assert not self.is_stuck_tx
-        assert self._emulator_resp
+        assert self._emul_resp
 
-        return max(self._emulator_resp.iter_cnt, 1)
+        return max(self._emul_resp.iter_cnt, 1)
 
     @property
     def wrap_iter_cnt(self) -> int:
@@ -454,16 +450,13 @@ class NeonExecTxCtx:
         if self.is_stuck_tx:
             return False
 
-        assert self._emulator_resp
-        return self._emulator_resp.external_sol_call
+        assert self._emul_resp
+        return self._emul_resp.external_sol_call
 
     @property
-    def is_timestamp_number_used(self) -> bool:
-        if self.is_stuck_tx:
-            return False
-
-        assert self._emulator_resp
-        return self._emulator_resp.is_timestamp_number_used
+    def has_holder_block(self) -> bool:
+        assert self._emul_resp
+        return self._emul_resp.is_block_used
 
     @property
     def alt_id_list(self) -> tuple[SolAltID, ...]:
@@ -477,23 +470,21 @@ class NeonExecTxCtx:
     def add_alt_id(self, alt_id: SolAltID) -> None:
         self._alt_id_set.add(alt_id)
 
-    @property
-    def has_good_sol_tx_receipt(self) -> bool:
-        return self._has_completed_receipt
-
-    def mark_good_sol_tx_receipt(self) -> None:
-        self._has_completed_receipt = True
-
-    def has_sol_tx(self, name: str) -> bool:
-        return name in self._sol_tx_list_dict
+    def good_sol_tx_cnt(self, name: str) -> int:
+        cnt = 0
+        if tx_list := self._sol_tx_list_dict.get(name, None):
+            for _, is_success in tx_list:
+                if is_success:
+                    cnt += 1
+        return cnt
 
     def pop_sol_tx_list(self, tx_name_list: tuple[str, ...]) -> tuple[SolTx, ...]:
         tx_list: list[SolTx] = list()
         for tx_name in tx_name_list:
             if tx_sublist := self._sol_tx_list_dict.pop(tx_name, None):
-                tx_list.extend(tx_sublist)
+                tx_list.extend([tx for tx, _ in tx_sublist])
         return tuple(tx_list)
 
-    def add_sol_tx_list(self, tx_list: Sequence[SolTx]) -> None:
-        for tx in tx_list:
-            self._sol_tx_list_dict.setdefault(tx.name, list()).append(tx)
+    def add_sol_tx_list(self, tx_list: Sequence[tuple[SolTx, bool]]) -> None:
+        for tx, is_success in tx_list:
+            self._sol_tx_list_dict.setdefault(tx.name, list()).append((tx, is_success))

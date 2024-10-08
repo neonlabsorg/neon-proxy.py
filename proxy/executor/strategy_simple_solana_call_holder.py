@@ -21,6 +21,7 @@ class SimpleHolderTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
     async def _validate(self) -> bool:
         return (
             self._validate_not_stuck_tx()
+            and self._validate_no_holder_block()
             and self._validate_gas_price()
             and self._validate_has_chain_id()
             and self._validate_has_sol_call()
