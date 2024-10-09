@@ -87,7 +87,21 @@ class OpResourceMng(OpResourceComponent):
         if self._activate_signer_task:
             await self._activate_signer_task
 
-    async def get_resource(self, chain_id: int | None) -> OpResourceModel:
+    def get_resource(self, owner: SolPubKey, holder_address: SolPubKey, chain_id: int | None) -> OpResourceModel:
+        if (op_signer := self._active_signer_dict.get(owner, None)) is None:
+            return self._get_free_resource(chain_id)
+        elif not op_signer.free_holder_list:
+            return self._get_free_resource(chain_id)
+
+        for idx, op_holder in enumerate(op_signer.free_holder_list):
+            if op_holder.address == holder_address:
+                del op_signer.free_holder_list[idx]
+                return self._ret_resource(op_signer, op_holder, chain_id)
+
+        op_holder = op_signer.free_holder_list.popleft()
+        return self._ret_resource(op_signer, op_holder, chain_id)
+
+    def _get_free_resource(self, chain_id: int | None) -> OpResourceModel:
         if not (op_signer_list := list(self._active_signer_dict.values())):
             return OpResourceModel.default()
 
@@ -101,25 +115,28 @@ class OpResourceMng(OpResourceComponent):
             if not op_signer.free_holder_list:
                 continue
 
-            with logging_context(opkey=self._opkey(op_signer)):
-                owner_token_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
-
-                op_holder = op_signer.free_holder_list.popleft()
-                op_signer.used_holder_dict[op_holder.address] = op_holder
-
-                op_resource = OpResourceModel(
-                    owner=op_signer.owner,
-                    holder_address=op_holder.address,
-                    resource_id=op_holder.resource_id,
-                    chain_id=chain_id,
-                    eth_address=op_signer.eth_address,
-                    token_sol_address=owner_token_addr,
-                )
-
-                _LOG.debug("got resource: %s", op_resource)
-                return op_resource
+            op_holder = op_signer.free_holder_list.popleft()
+            return self._ret_resource(op_signer, op_holder, chain_id)
 
         return OpResourceModel.default()
+
+    def _ret_resource(self, op_signer: OpSignerInfo, op_holder: OpHolderInfo, chain_id: int | None) -> OpResourceModel:
+        with logging_context(opkey=self._opkey(op_signer)):
+            owner_token_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
+
+            op_signer.used_holder_dict[op_holder.address] = op_holder
+
+            op_resource = OpResourceModel(
+                owner=op_signer.owner,
+                holder_address=op_holder.address,
+                resource_id=op_holder.resource_id,
+                chain_id=chain_id,
+                eth_address=op_signer.eth_address,
+                token_sol_address=owner_token_addr,
+            )
+
+            _LOG.debug("got resource: %s", op_resource)
+            return op_resource
 
     async def free_resource(self, is_good_resource: bool, op_res: OpResourceModel) -> None:
         with logging_context(opkey=self._opkey(op_res.owner)):
@@ -252,9 +269,23 @@ class OpResourceMng(OpResourceComponent):
 
     def destroy_holder(self, owner: SolPubKey, holder: SolPubKey) -> bool:
         if holder in self._blocked_holder_addr_dict:
+            _LOG.debug("holder %s of owner %s is already blocked", holder, owner)
             return False
 
         self._blocked_holder_addr_dict[holder] = owner
+        return True
+
+    def unblock_holder(self, holder: SolPubKey) -> bool:
+        if (owner := self._blocked_holder_addr_dict.pop(holder, None)) is None:
+            _LOG.debug("holder %s isn't blocked", holder)
+            return False
+
+        self._deleted_holder_addr_set.discard(holder)
+        if op_signer := self._active_signer_dict.get(owner, None):
+            if op_holder := next((h for h in op_signer.deleted_holder_list if h.address == holder), None):
+                op_signer.disabled_holder_list.append(op_holder)
+
+        _LOG.debug("holder %s for owner %s is unblocked", holder, owner)
         return True
 
     def _find_op_signer(self, owner: SolPubKey) -> OpSignerInfo | None:
@@ -318,6 +349,7 @@ class OpResourceMng(OpResourceComponent):
             free_holder_list=deque(),
             used_holder_dict=dict(),
             disabled_holder_list=deque([OpHolderInfo.from_raw(signer.pubkey, rid) for rid in range(start_id, stop_id)]),
+            deleted_holder_list=deque(),
         )
 
     async def _activate_signer_loop(self) -> None:
@@ -509,15 +541,17 @@ class OpResourceMng(OpResourceComponent):
             ResourceID=op_holder.resource_id,
         )
         _LOG.debug(msg)
+        return await self._delete_holder_by_address(signer, op_holder.address)
 
+    async def _delete_holder_by_address(self, signer: SolSigner, holder_address: SolPubKey) -> bool:
         cb_prog = SolCbProg()
         cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
         cu_limit_ix = cb_prog.make_cu_limit_ix(7_500)
 
-        delete_ix = NeonProg(signer.pubkey).init_holder_address(op_holder.address).make_delete_holder_ix()
+        delete_ix = NeonProg(signer.pubkey).init_holder_address(holder_address).make_delete_holder_ix()
         tx = SolLegacyTx(name="deleteHolderAccount", ix_list=tuple([cu_price_ix, cu_limit_ix, delete_ix]))
         if result := await self._send_tx(signer, tx):
-            self._deleted_holder_addr_set.add(op_holder.address)
+            self._deleted_holder_addr_set.add(holder_address)
         return result
 
     async def _validate_neon_acct_list(self, op_signer: OpSignerInfo, evm_cfg: EvmConfigModel) -> bool:
@@ -635,29 +669,68 @@ class OpResourceMng(OpResourceComponent):
                 _LOG.debug("skip deletion of holder %s, because it's used in tx processing", holder_addr)
                 continue
 
-            if next((h for h in op_signer.disabled_holder_list if h.address == holder_addr), None):
-                self._deleted_holder_addr_set.add(holder_addr)
+            if await self._delete_holder_from_list(op_signer, op_signer.disabled_holder_list, holder_addr):
+                changed_owner_set.add(owner)
                 continue
 
-            for holder in op_signer.free_holder_list:
-                if holder.address == holder_addr:
-                    _LOG.debug(
-                        "found blocked holder %s for resource %s:%s",
-                        holder_addr,
-                        op_signer.owner,
-                        holder.resource_id,
-                    )
-                    await self._delete_holder_acct(op_signer.signer, holder)
-                    changed_owner_set.add(owner)
-                    break
-            else:
-                _LOG.debug("operator key %s doesn't have holder %s", owner, holder_addr)
-                self._blocked_holder_addr_dict.pop(holder_addr)
+            if await self._delete_holder_from_list(op_signer, op_signer.free_holder_list, holder_addr):
+                changed_owner_set.add(owner)
+                continue
+
+            if await self._delete_arbitrary_holder(op_signer, holder_addr):
                 changed_owner_set.add(owner)
 
         for owner in changed_owner_set:
             if op_signer := self._find_op_signer(owner):
                 self._send_op_resource_holder_stat(op_signer)
+
+    async def _delete_arbitrary_holder(self, op_signer: OpSignerInfo, holder_address: SolPubKey) -> bool:
+        holder_acct = await self._core_api_client.get_holder_account(holder_address)
+        if holder_acct.owner != op_signer.owner:
+            _LOG.debug("operator key %s doesn't have holder %s", op_signer.owner, holder_address)
+            self._blocked_holder_addr_dict.pop(holder_address)
+        elif holder_acct.is_active:
+            _LOG.debug("skip deleting the active holder %s", op_signer.owner, holder_address)
+            return False
+        else:
+            msg = log_msg(
+                "delete an arbitrary holder account {Holder} for resource {Owner}:{XXX}",
+                Holder=holder_address,
+                Owner=op_signer.owner,
+            )
+            _LOG.debug(msg)
+            await self._delete_holder_by_address(op_signer.signer, holder_address)
+            if (await self._core_api_client.get_holder_account(holder_address)).is_empty:
+                self._blocked_holder_addr_dict.pop(holder_address)
+
+        return True
+
+    async def _delete_holder_from_list(
+        self,
+        op_signer: OpSignerInfo,
+        holder_list: deque[OpHolderInfo],
+        holder_address: SolPubKey
+    ) -> bool:
+        for idx, holder in enumerate(holder_list):
+            if holder.address != holder_address:
+                continue
+
+            _LOG.debug(
+                "found blocked holder %s for resource %s:%s",
+                holder_address,
+                op_signer.owner,
+                holder.resource_id,
+            )
+
+            if not (await self._core_api_client.get_holder_account(holder_address)).is_empty:
+                await self._delete_holder_acct(op_signer.signer, holder)
+                if not (await self._core_api_client.get_holder_account(holder_address)).is_empty:
+                    return True
+
+            del holder_list[idx]
+            op_signer.deleted_holder_list.append(holder)
+            return True
+        return False
 
     async def _send_tx(self, signer: SolSigner, tx: SolTx) -> bool:
         return await self._send_tx_list(signer, tuple([tx]))

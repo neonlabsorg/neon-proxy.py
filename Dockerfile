@@ -68,6 +68,7 @@ COPY patch/disable_robyn_argument_parser.py .venv/lib64/python3.10/site-packages
 ARG PROXY_REVISION
 RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'${PROXY_REVISION}'/g' ./common/config/constants.py
 RUN ln -s /opt/neon-proxy/proxy_client/proxy-cli /opt/neon-proxy/proxy-cli
+RUN ln -s /opt/neon-proxy/proxy_client/run-core-api /opt/neon-proxy/run-core-api
 RUN ln -s /opt/neon-proxy/indexer_client/indexer-cli /opt/neon-proxy/indexer-cli
 
 # for backward compatibility

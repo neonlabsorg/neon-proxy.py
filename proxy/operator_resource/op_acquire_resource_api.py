@@ -20,7 +20,7 @@ class OpAcquireResourceApi(OpResourceApi):
     @OpResourceApi.method(name="getOperatorResource")
     async def get_resource(self, request: OpGetResourceRequest) -> OpResourceModel:
         with logging_context(**request.req_id):
-            return await self._op_resource_mng.get_resource(request.chain_id)
+            return self._op_resource_mng.get_resource(request.owner, request.holder_address, request.chain_id)
 
     @OpResourceApi.method(name="freeOperatorResource")
     async def free_resource(self, request: OpFreeResourceRequest) -> OpResourceResp:

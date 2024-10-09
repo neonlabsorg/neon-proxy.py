@@ -28,14 +28,20 @@ class BaseCmdExecutor:
 
         arg_space = self._parser.parse_args()
         if arg_space.command is None:
-            return 0
+            _LOG.error("command is missing")
+            self._parser.print_help()
+            return 1
 
         if not (handler := self._handler_dict.get(arg_space.command, None)):
             _LOG.error("unknown command %s", arg_space.command)
             return 1
 
+        loop.run_until_complete(self._before_exec_handler(arg_space))
+
         exit_code = loop.run_until_complete(self._exec_handler(handler, arg_space))
         return exit_code
+
+    async def _before_exec_handler(self, arg_space) -> None: ...
 
     async def _init_handler_dict(self) -> None:
         for _Handler in self._handler_type_list:
