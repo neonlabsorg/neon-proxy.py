@@ -19,17 +19,25 @@ from .common_alt import SolAltFunc
 _LOG = logging.getLogger(__name__)
 
 
-class AltHandler(BaseNPCmdHandler, SolAltFunc):
+class AltHandler(BaseNPCmdHandler):
     command: ClassVar[str] = "alt"
     #
     # protected:
     _list: Final[str] = "list"
+    _info: Final[str] = "info"
     _destroy: Final[str] = "destroy"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._alt_func = SolAltFunc()
 
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
         self = cls(cfg)
-        self._root_parser = cmd_list_parser.add_parser(self.command)
+        self._root_parser = cmd_list_parser.add_parser(
+            self.command,
+            description="Commands on Address Lookup Tables",
+        )
         self._cmd_parser = self._root_parser.add_subparsers(
             title="command",
             dest="subcommand",
@@ -42,6 +50,14 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
             "owner",
             type=str,
             help="owner of the Address Lookup Table",
+        )
+
+        self._info_parser = self._cmd_parser.add_parser(self._info, help="info about Address Lookup Tables")
+        self._subcmd_dict[self._info] = self._info_cmd
+        self._info_parser.add_argument(
+            "address",
+            type=str,
+            help="address of the Address Lookup Table",
         )
 
         self._destroy_parser = self._cmd_parser.add_parser(cls._destroy, help="destroy Address Lookup Tables")
@@ -63,8 +79,16 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
         with logging_context(**req_id):
             sol_client = await self._get_sol_client()
             op_client = await self._get_op_client()
-            await self.print_alt(req_id, arg_space.owner, op_client, sol_client)
+            await self._alt_func.print_alt_list(req_id, arg_space.owner, op_client, sol_client)
             return 0
+
+    async def _info_cmd(self, arg_space) -> int:
+        req_id = self._gen_req_id()
+        addr = SolPubKey.from_raw(arg_space.address)
+        with logging_context(**req_id):
+            sol_client = await self._get_sol_client()
+            await self._alt_func.print_alt(sol_client, addr)
+        return 0
 
     async def _destroy_cmd(self, arg_space) -> int:
         req_id = self._gen_req_id()
@@ -76,7 +100,7 @@ class AltHandler(BaseNPCmdHandler, SolAltFunc):
             if arg_space.address.upper() == "ALL":
                 result = 0
                 for owner in owner_list:
-                    acct_list = await self._get_alt_list(sol_client, owner)
+                    acct_list = await self._alt_func.get_alt_list(sol_client, owner)
                     for acct in acct_list:
                         result += await self._destroy_alt(
                             req_id,
