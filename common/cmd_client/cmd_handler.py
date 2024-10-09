@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
+import uuid
 from typing import ClassVar, Callable
 
 from typing_extensions import Self
@@ -47,7 +47,7 @@ class BaseCmdHandler:
 
     @staticmethod
     def _gen_req_id() -> dict:
-        req_id = dict(timestamp=int(time.monotonic()))
+        req_id = dict(uuid=str(uuid.uuid4()))
         _LOG.info("new req_id: %s", req_id)
         return req_id
 
