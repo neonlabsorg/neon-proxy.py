@@ -32,6 +32,8 @@ from .op_api import (
     OpEthAddressModel,
     OpDestroyHolderRequest,
     OpDestroyHolderResp,
+    OpUnblockHolderRequest,
+    OpUnblockHolderResp,
 )
 
 
@@ -44,8 +46,21 @@ class OpResourceClient(AppDataClient):
             path=OP_RESOURCE_ENDPOINT,
         )
 
-    async def get_resource(self, req_id: dict, chain_id: int | None) -> OpResourceModel:
-        return await self._get_resource(OpGetResourceRequest(req_id=req_id, chain_id=chain_id))
+    async def get_resource(
+        self,
+        req_id: dict,
+        chain_id: int | None,
+        owner=SolPubKey.default(),
+        holder_address=SolPubKey.default(),
+    ) -> OpResourceModel:
+        return await self._get_resource(
+            OpGetResourceRequest(
+                req_id=req_id,
+                chain_id=chain_id,
+                owner=owner,
+                holder_address=holder_address,
+            )
+        )
 
     async def free_resource(self, req_id: dict, is_good_resource: bool, resource: OpResourceModel) -> bool:
         req = OpFreeResourceRequest(req_id=req_id, is_good=is_good_resource, resource=resource)
@@ -89,6 +104,11 @@ class OpResourceClient(AppDataClient):
         req = OpDestroyHolderRequest(req_id=req_id, owner=owner, holder=holder)
         _resp = await self._destroy_holder(req)
 
+    async def unblock_holder(self, req_id: dict, holder: SolPubKey) -> bool:
+        req = OpUnblockHolderRequest(req_id=req_id, holder=holder)
+        resp = await self._unblock_holder(req)
+        return resp.result
+
     @AppDataClient.method(name="getOperatorResource")
     async def _get_resource(self, request: OpGetResourceRequest) -> OpResourceModel: ...
 
@@ -118,3 +138,6 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="destroyHolder")
     async def _destroy_holder(self, request: OpDestroyHolderRequest) -> OpDestroyHolderResp: ...
+
+    @AppDataClient.method(name="unblockHolder")
+    async def _unblock_holder(self, request: OpUnblockHolderRequest) -> OpUnblockHolderResp: ...

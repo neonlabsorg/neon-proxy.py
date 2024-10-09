@@ -538,7 +538,7 @@ class CoreApiBuildModel(BaseModel):
 
 
 class EmulSolAccountModel(BaseModel):
-    lamports: int
+    balance: int = Field(serialization_alias="lamports")
     data: CoreApiHexStrField
     owner: SolPubKeyField
     executable: bool
@@ -550,7 +550,7 @@ class EmulSolAccountModel(BaseModel):
             return None
 
         return cls(
-            lamports=raw.lamports,
+            balance=raw.balance,
             data=raw.data,
             owner=raw.owner,
             executable=raw.executable,

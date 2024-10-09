@@ -22,8 +22,8 @@ from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
 from proxy.base.op_api import OpResourceModel
 from proxy.base.op_client import OpResourceClient
-from proxy.operator_resource.key_info import OpHolderInfo
 from .cmd_handler import BaseNPCmdHandler
+from .common_holder import OpHolderFunc
 
 _LOG = logging.getLogger(__name__)
 
@@ -32,19 +32,36 @@ class HolderHandler(BaseNPCmdHandler):
     command = "holder"
     #
     # protected:
-    _cancel: Final[str] = "cancel"
     _list: Final[str] = "list"
+    _info: Final[str] = "info"
+    _cancel: Final[str] = "cancel"
     _destroy: Final[str] = "destroy"
+    _unblock: Final[str] = "unblock"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._holder_func = OpHolderFunc()
 
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
         self = cls(cfg)
-        self._root_parser = cmd_list_parser.add_parser(self.command)
+        self._root_parser = cmd_list_parser.add_parser(
+            self.command,
+            description="Commands on Holder accounts"
+        )
         self._cmd_parser = self._root_parser.add_subparsers(
             title="command",
             dest="subcommand",
             description="valid commands",
         )
+
+        self._list_parser = self._cmd_parser.add_parser(self._list, help="list Holder accounts")
+        self._subcmd_dict[self._list] = self._list_cmd
+        self._holder_func.init_list_cmd(cfg, self._list_parser)
+
+        self._info_parser = self._cmd_parser.add_parser(self._info, help="detailed information about Holder account")
+        self._subcmd_dict[self._info] = self._info_cmd
+        self._holder_func.init_info_cmd(self._info_parser)
 
         self._cancel_parser = self._cmd_parser.add_parser(cls._cancel, help="cancel a Neon transaction in a Holder")
         self._subcmd_dict[cls._cancel] = self._cancel_cmd
@@ -52,7 +69,7 @@ class HolderHandler(BaseNPCmdHandler):
             "holder",
             type=str,
             nargs="?",
-            help="address of the holder",
+            help="address of the Holder",
         )
         self._cancel_parser.add_argument(
             "timeout",
@@ -60,30 +77,6 @@ class HolderHandler(BaseNPCmdHandler):
             default=3,
             nargs="?",
             help="timeout in seconds to wait the result from Solana",
-        )
-
-        self._list_parser = self._cmd_parser.add_parser(cls._list, help="list Holders")
-        self._subcmd_dict[cls._list] = self._list_cmd
-        self._list_parser.add_argument(
-            "start",
-            type=int,
-            nargs="?",
-            default=self._cfg.perm_account_id,
-            help="start identifier for Holder",
-        )
-        self._list_parser.add_argument(
-            "number",
-            type=int,
-            nargs="?",
-            default=self._cfg.perm_account_limit,
-            help="number of Holders to list",
-        )
-        self._list_parser.add_argument(
-            "seed",
-            type=str,
-            nargs="?",
-            default=OpHolderInfo.default_prefix.decode("utf-8"),
-            help="seed prefix for the Holder PDA",
         )
 
         self._destroy_parser = self._cmd_parser.add_parser(cls._destroy, help="destroy a Holder")
@@ -95,7 +88,36 @@ class HolderHandler(BaseNPCmdHandler):
             help="address of the Holder",
         )
 
+        self._unblock_parser = self._cmd_parser.add_parser(cls._unblock, help="unblock a blocked Holder")
+        self._subcmd_dict[self._unblock] = self._unblock_cmd
+        self._unblock_parser.add_argument(
+            "holder",
+            type=str,
+            nargs="?",
+            help="address of the Holder",
+        )
+
         return self
+
+    async def _list_cmd(self, arg_space) -> int:
+        cmd = self._holder_func.parse_list_cmd(arg_space)
+        req_id = self._gen_req_id()
+        with logging_context(**req_id):
+            op_client: OpResourceClient = await self._get_op_client()
+            core_api_client: CoreApiClient = await self._get_core_api_client()
+            sol_client: SolClient = await self._get_sol_client()
+            signer_key_list = await op_client.get_signer_key_list(req_id)
+            await self._holder_func.print_holder_list(core_api_client, sol_client, signer_key_list, cmd)
+        return 0
+
+    async def _info_cmd(self, arg_space) -> int:
+        cmd = self._holder_func.parse_info_cmd(arg_space)
+        req_id = self._gen_req_id()
+        with logging_context(**req_id):
+            core_api_client: CoreApiClient = await self._get_core_api_client()
+            sol_client: SolClient = await self._get_sol_client()
+            await self._holder_func.print_holder(core_api_client, sol_client, cmd)
+        return 0
 
     async def _cancel_cmd(self, arg_space) -> int:
         req_id = self._gen_req_id()
@@ -111,7 +133,7 @@ class HolderHandler(BaseNPCmdHandler):
             _LOG.info("holder %s has the active NeonTx %s", holder_addr, holder.neon_tx_hash)
 
             op_client: OpResourceClient = await self._get_op_client()
-            if (op_res := await op_client.get_resource(req_id, holder.chain_id)).is_empty:
+            if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder_addr)).is_empty:
                 _LOG.error("no available resource to process the NeonTx canceling")
                 return 1
 
@@ -128,63 +150,6 @@ class HolderHandler(BaseNPCmdHandler):
             finally:
                 await op_client.free_resource(req_id, True, op_res)
 
-    async def _list_cmd(self, arg_space) -> int:
-        assert arg_space.number > 0
-        assert arg_space.start >= 0
-
-        start_id = arg_space.start
-        stop_id = start_id + arg_space.number
-        seed = arg_space.seed.encode("utf-8")
-
-        op_client: OpResourceClient = await self._get_op_client()
-        core_api_client: CoreApiClient = await self._get_core_api_client()
-        sol_client: SolClient = await self._get_sol_client()
-
-        size_balance_dict: dict[int, int] = dict()
-
-        async def _balance(size: int) -> int:
-            if not size:
-                return 0
-
-            if value := size_balance_dict.get(size, 0):
-                return value
-
-            value = await sol_client.get_rent_balance_for_size(size)
-            size_balance_dict[size] = value
-            return value
-
-        total_balance = 0
-        req_id = self._gen_req_id()
-        with logging_context(**req_id):
-            key_list = await op_client.get_signer_key_list(req_id)
-
-            for key in key_list:
-                key_total_balance = 0
-                print("{}:".format(key))
-
-                for res_id in range(start_id, stop_id):
-                    op_info = OpHolderInfo.from_raw(key, res_id, seed)
-                    holder: HolderAccountModel = await core_api_client.get_holder_account(op_info.address)
-                    balance = await _balance(holder.size)
-                    key_total_balance += balance
-                    total_balance += balance
-
-                    print(
-                        "  {}: status={}, tx={}, size={} bytes, balance={:.9f} SOLs".format(
-                            holder.address,
-                            holder.status.name,
-                            holder.neon_tx_hash,
-                            holder.size,
-                            balance / (10**9),
-                        )
-                    )
-
-                print("total {}: {:.9f} SOLs".format(key, key_total_balance / (10**9)))
-                print()
-
-            print("total: {:.9f} SOLs".format(total_balance / (10**9)))
-        return 0
-
     async def _destroy_cmd(self, arg_space) -> int:
         core_api_client: CoreApiClient = await self._get_core_api_client()
         op_client: OpResourceClient = await self._get_op_client()
@@ -192,7 +157,6 @@ class HolderHandler(BaseNPCmdHandler):
         req_id = self._gen_req_id()
         with logging_context(**req_id):
             holder_addr = SolPubKey.from_raw(arg_space.holder)
-
             holder: HolderAccountModel = await core_api_client.get_holder_account(holder_addr)
             if holder.status == HolderAccountStatus.Empty:
                 _LOG.error("holder %s doesn't exist", holder_addr)
@@ -205,6 +169,19 @@ class HolderHandler(BaseNPCmdHandler):
 
             await op_client.destroy_holder(req_id, holder.owner, holder.address)
 
+        return 0
+
+    async def _unblock_cmd(self, arg_space) -> int:
+        op_client: OpResourceClient = await self._get_op_client()
+
+        req_id = self._gen_req_id()
+        with logging_context(**req_id):
+            holder_addr = SolPubKey.from_raw(arg_space.holder)
+            if await op_client.unblock_holder(req_id, holder_addr):
+                _LOG.debug("holder %s is unblocked", holder_addr)
+            else:
+                _LOG.warning("holder %s can't be unblocked", holder_addr)
+                return 1
         return 0
 
     @cached_property
