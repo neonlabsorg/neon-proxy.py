@@ -76,7 +76,7 @@ class _Server:
         return env
 
     def _run(self):
-        cmd = ["neon-core-api", "-H", self._host]
+        cmd = [self._cfg.neon_core_api_server_bin, "-H", self._host]
         env = self._create_env()
 
         while not self._stop_event.is_set():
@@ -113,6 +113,9 @@ class _Server:
 class CoreApiServer:
     def __init__(self, cfg: Config) -> None:
         self._instance_list: list[_Server] = list()
+
+        if cfg.external_neon_core_api:
+            return
 
         idx = itertools.count()
         for _ in range(cfg.neon_core_api_server_cnt):

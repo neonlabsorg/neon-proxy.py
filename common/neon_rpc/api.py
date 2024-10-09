@@ -440,8 +440,8 @@ class CoreApiTxModel(BaseModel):
         serialization_alias="from",
     )
     nonce: int | None
-    to_address: EthAddressField | None = Field(
-        default=None,
+    to_address: EthAddressField = Field(
+        default=EthAddress.default(),
         validation_alias=AliasChoices("to", "to_address"),
         serialization_alias="to",
     )
@@ -533,7 +533,7 @@ class CoreApiBuildModel(BaseModel):
 
 
 class EmulSolAccountModel(BaseModel):
-    lamports: int
+    balance: int = Field(serialization_alias="lamports")
     data: CoreApiHexStrField
     owner: SolPubKeyField
     executable: bool
@@ -545,7 +545,7 @@ class EmulSolAccountModel(BaseModel):
             return None
 
         return cls(
-            lamports=raw.lamports,
+            balance=raw.balance,
             data=raw.data,
             owner=raw.owner,
             executable=raw.executable,

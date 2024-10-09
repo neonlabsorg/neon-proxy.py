@@ -16,6 +16,9 @@ OP_RESOURCE_ENDPOINT = "/api/v1/resource/"
 class OpGetResourceRequest(BaseModel):
     req_id: dict
     chain_id: int | None
+    owner: SolPubKeyField
+    holder_address: SolPubKeyField
+
 
 
 class OpFreeResourceRequest(BaseModel):
@@ -141,3 +144,22 @@ class OpWithdrawTokenRequest(BaseModel):
 
 class OpWithdrawTokenResp(BaseModel):
     total_amount_dict: dict[str, int]
+
+
+class OpDestroyHolderRequest(BaseModel):
+    req_id: dict
+    owner: SolPubKeyField
+    holder: SolPubKeyField
+
+
+class OpDestroyHolderResp(BaseModel):
+    result: bool
+
+
+class OpUnblockHolderRequest(BaseModel):
+    req_id: dict
+    holder: SolPubKeyField
+
+
+class OpUnblockHolderResp(BaseModel):
+    result: bool

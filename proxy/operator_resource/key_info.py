@@ -45,6 +45,7 @@ class OpSignerInfo:
     free_holder_list: deque[OpHolderInfo]
     used_holder_dict: dict[SolPubKey, OpHolderInfo]
     disabled_holder_list: deque[OpHolderInfo]
+    deleted_holder_list: deque[OpHolderInfo]
 
     error_cnt: int = 0
     warn_cnt: int = 0
