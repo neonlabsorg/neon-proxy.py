@@ -29,7 +29,6 @@ class NeonTxDb(HistoryDbTable):
         self._select_by_nonce_query = DbQueryBody()
         self._select_by_block_query = DbQueryBody()
         self._select_by_index_query = DbQueryBody()
-        self._select_base_fee_list_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -97,50 +96,16 @@ class NeonTxDb(HistoryDbTable):
             index=DbSqlParam("index"),
         )
 
-        select_base_fee_list_sql = DbSql(
-            """
-            SELECT DISTINCT ON (a.block_slot)
-              a.block_slot,
-              a.average_base_fee
-            FROM (
-              SELECT
-                block_slot,
-                AVG(Cast(max_fee_per_gas as Float) - Cast(max_priority_fee_per_gas as Float)) as average_base_fee
-              FROM
-                {table_name} as t
-              WHERE
-                t.chain_id = {chain_id}
-                AND t.max_fee_per_gas != ''
-                AND t.block_slot BETWEEN {earliest_slot} AND {latest_slot}
-              GROUP BY
-                block_slot
-              ORDER BY
-                block_slot DESC
-              LIMIT {num_blocks}
-            ) a
-            ORDER BY
-              a.block_slot DESC
-            """
-        ).format(
-            table_name=self._table_name,
-            chain_id=DbSqlParam("chain_id"),
-            num_blocks=DbSqlParam("num_blocks"),
-            latest_slot=DbSqlParam("latest_slot"),
-            earliest_slot=DbSqlParam("earliest_slot"),
-        )
-
         (
             self._select_by_tx_sig_query,
             self._select_by_nonce_query,
             self._select_by_block_query,
             self._select_by_index_query,
-            self._select_base_fee_list_query,
         ) = await self._db.sql_to_query(
             select_by_tx_sig_sql,
             select_by_nonce_sql,
             select_by_block_sql,
             select_by_index_sql,
-            select_base_fee_list_sql,
         )
 
     async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
@@ -190,18 +155,6 @@ class NeonTxDb(HistoryDbTable):
             ctx, self._select_by_index_query, _ByIndex(slot, tx_idx), record_type=_RecordWithBlock
         )
         return _RecordWithBlock.to_meta(rec)
-
-    async def get_base_fee_list(
-        self, ctx: DbTxCtx, chain_id: int, num_blocks: int, latest_slot: int
-    ) -> list[BlockFeeGasData]:
-        return await self._fetch_all(
-            ctx,
-            self._select_base_fee_list_query,
-            # In general, earliest_slot is bounded by the latest_slot - num_blocks in the ideal world.
-            # On average, Solana misses 5% of slots because of forks, 20% is taken here as a safe margin.
-            _ByChainIdBlockCount(chain_id, num_blocks, int(latest_slot - num_blocks * 1.2), latest_slot),
-            record_type=BlockFeeGasData,
-        )
 
 
 # TODO: remove after converting all records
@@ -423,12 +376,6 @@ class _RecordWithBlock(_Record):
 
 
 @dataclass(frozen=True)
-class BlockFeeGasData:
-    block_slot: int
-    average_base_fee: float
-
-
-@dataclass(frozen=True)
 class _ByNeonTxSig:
     neon_tx_hash: str
 
@@ -449,12 +396,3 @@ class _ByBlock:
 class _ByIndex:
     slot: int
     index: int
-
-
-@dataclass(frozen=True)
-class _ByChainIdBlockCount:
-    chain_id: int
-    num_blocks: int
-    # Despite num_blocks and latest_slot is specified, earlist_slot is for the optimization purposes.
-    earliest_slot: int
-    latest_slot: int

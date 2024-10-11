@@ -8,7 +8,6 @@ from common.neon_rpc.api import EvmConfigModel
 from .mp_api import (
     MP_ENDPOINT,
     MpGasPriceModel,
-    MpRecentGasPricesModel,
     MpRequest,
     MpTxCntRequest,
     MpTxCntResp,
@@ -32,9 +31,6 @@ class MempoolClient(AppDataClient):
 
     async def get_gas_price(self) -> MpGasPriceModel:
         return await self._get_gas_price()
-
-    async def get_recent_gas_prices_list(self, ctx_id: str, chain_id: int) -> MpRecentGasPricesModel:
-        return await self._get_recent_gas_prices_list(MpRequest(ctx_id=ctx_id, chain_id=chain_id))
 
     async def get_pending_tx_cnt(self, ctx_id: str, sender: NeonAccount) -> int | None:
         req = MpTxCntRequest(ctx_id=ctx_id, sender=sender)
@@ -69,9 +65,6 @@ class MempoolClient(AppDataClient):
 
     @AppDataClient.method(name="getGasPrice")
     async def _get_gas_price(self) -> MpGasPriceModel: ...
-
-    @AppDataClient.method(name="getRecentGasPricesList")
-    async def _get_recent_gas_prices_list(self, request: MpRequest) -> MpRecentGasPricesModel: ...
 
     @AppDataClient.method(name="sendRawTransaction")
     async def _send_raw_transaction(self, request: MpTxRequest) -> MpTxResp: ...
