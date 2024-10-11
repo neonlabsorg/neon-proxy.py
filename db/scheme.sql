@@ -80,6 +80,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_solana_blocks_slot ON solana_blocks(block_
 CREATE INDEX IF NOT EXISTS idx_solana_blocks_hash ON solana_blocks(block_hash);
 CREATE INDEX IF NOT EXISTS idx_solana_blocks_slot_active ON solana_blocks(block_slot, is_active);
 
+CREATE TABLE IF NOT EXISTS neon_block_fees (
+    block_slot BIGINT,
+    chain_id BIGINT,
+    base_fee TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_neon_block_fees ON neon_block_fees(block_slot, chain_id);
+
 CREATE TABLE IF NOT EXISTS neon_transaction_logs (
     address TEXT,
     block_slot BIGINT,

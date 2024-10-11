@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Final, Union
+from dataclasses import dataclass
+from typing import Union
+
 from typing_extensions import Self
 
-from .cu_price_data_model import CuPricePercentilesModel
-
+from .cu_price_data_model import CuPricePercentileModel
 from ..ethereum.commit_level import EthCommit, EthCommitField
 from ..ethereum.hash import EthBlockHash, EthBlockHashField
 from ..solana.block import SolRpcBlockInfo
@@ -13,17 +14,34 @@ from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
 
 
-class NeonBlockHdrModel(BaseModel):
-    PercentileStep: Final[int] = 10  # Percentiles are a multiple of 10.
-    PercentileCount: Final[int] = 11  # 100 / step + 1.
+@dataclass(frozen=True)
+class NeonBlockCuPriceInfo:
+    slot: int
+    cu_price_list: list[int]
 
+    @classmethod
+    def from_raw(cls, slot: int, cu_price_list: list[int] | None) -> NeonBlockCuPriceInfo:
+        return cls(
+            slot=slot,
+            cu_price_list=CuPricePercentileModel.from_raw(cu_price_list).cu_price_list,
+        )
+
+
+@dataclass(frozen=True)
+class NeonBlockBaseFeeInfo:
+    slot: int
+    base_fee: int
+    chain_id: int = 0
+
+
+class NeonBlockHdrModel(BaseModel):
     slot: int
     commit: EthCommitField
     block_hash: EthBlockHashField
     block_time: int | None
     parent_slot: int | None
     parent_block_hash: EthBlockHashField
-    cu_price_data: CuPricePercentilesModel
+    cu_price_list: list[int] = CuPricePercentileModel.default().cu_price_list
 
     @classmethod
     def default(cls) -> Self:
@@ -34,7 +52,6 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
-            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     @classmethod
@@ -46,7 +63,6 @@ class NeonBlockHdrModel(BaseModel):
             block_time=None,
             parent_slot=None,
             parent_block_hash=EthBlockHashField.default(),
-            cu_price_data=CuPricePercentilesModel.default(),
         )
 
     @classmethod
@@ -72,7 +88,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=raw.block_time,
             parent_slot=raw.parent_slot,
             parent_block_hash=EthBlockHash.from_raw(raw.parent_block_hash.to_bytes()),
-            cu_price_data=CuPricePercentilesModel.from_sol_block(raw),
+            cu_price_list=CuPricePercentileModel.from_sol_block(raw).cu_price_list,
         )
 
     def to_pending(self) -> Self:
@@ -83,7 +99,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=self.block_hash,
-            cu_price_data=self.cu_price_data,
+            cu_price_list=self.cu_price_list,
         )
 
     def to_genesis_child(self, genesis_hash: EthBlockHash) -> Self:
@@ -94,7 +110,7 @@ class NeonBlockHdrModel(BaseModel):
             block_time=self.block_time,
             parent_slot=self.slot,
             parent_block_hash=genesis_hash,
-            cu_price_data=self.cu_price_data,
+            cu_price_list=self.cu_price_list,
         )
 
     @property
