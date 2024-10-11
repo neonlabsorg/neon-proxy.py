@@ -459,7 +459,7 @@ class CoreApiTxModel(BaseModel):
     def from_neon_tx(cls, tx: NeonTxModel, chain_id: int) -> Self:
         return cls(
             from_address=tx.from_address,
-            nonce=None,
+            nonce=tx.nonce,
             to_address=tx.to_address,
             value=tx.value,
             data=tx.call_data.to_bytes(),
@@ -603,7 +603,7 @@ class EmulNeonAccountModel(BaseModel):
 
 
 class EmulTraceCfgModel(BaseModel):
-    neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
+    neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="stateOverrides")
     block: CoreApiBlockModel | None = Field(default=None, serialization_alias="blockOverrides")
 
 
