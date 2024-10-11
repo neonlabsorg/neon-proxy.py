@@ -143,8 +143,7 @@ class Config:
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
-    priority_fee_block_cnt_to_avg_name: Final[str] = "PRIORITY_FEE_NUM_BLOCKS_TO_AVERAGE"
-    cu_price_estimator_num_blocks_name: Final[str] = "CU_PRICE_ESTIMATOR_NUM_BLOCKS"
+    cu_price_estimator_block_cnt_name: Final[str] = "CU_PRICE_ESTIMATOR_BLOCK_COUNT"
     cu_price_estimator_percentile_name: Final[str] = "CU_PRICE_ESTIMATOR_PERCENTILE"
     # Operator resources
     holder_size_name: Final[str] = "HOLDER_SIZE"
@@ -741,12 +740,8 @@ class Config:
         return const_gas_price * (10**9)
 
     @cached_property
-    def priority_fee_block_cnt_to_avg(self) -> int:
-        return self._env_num(self.priority_fee_block_cnt_to_avg_name, 10, 1, 1000)
-
-    @cached_property
-    def cu_price_estimator_num_blocks(self) -> int:
-        return self._env_num(self.cu_price_estimator_num_blocks_name, 50, 1, 1000)
+    def cu_price_estimator_block_cnt(self) -> int:
+        return self._env_num(self.cu_price_estimator_block_cnt_name, 50, 1, 1000)
 
     @cached_property
     def cu_price_estimator_percentile(self) -> int:
@@ -959,8 +954,7 @@ class Config:
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,
-            self.priority_fee_block_cnt_to_avg_name: self.priority_fee_block_cnt_to_avg,
-            self.cu_price_estimator_num_blocks_name: self.cu_price_estimator_num_blocks,
+            self.cu_price_estimator_block_cnt_name: self.cu_price_estimator_block_cnt,
             self.cu_price_estimator_percentile_name: self.cu_price_estimator_percentile,
             # Operator resources
             self.holder_size_name: self.holder_size,

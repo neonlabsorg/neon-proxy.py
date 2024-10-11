@@ -13,9 +13,9 @@ from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property, ttl_cached_method
 from indexer.db.indexer_db_client import IndexerDbClient
 from ..base.ex_client import ExecutorClient
-from ..base.mp_api import MpGasPriceModel, MP_ENDPOINT, MpRecentGasPricesModel
-from ..base.op_client import OpResourceClient
 from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
+from ..base.mp_api import MpGasPriceModel, MP_ENDPOINT
+from ..base.op_client import OpResourceClient
 from ..stat.client import StatClient
 
 
@@ -83,9 +83,6 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
 
     @abc.abstractmethod
     def get_gas_price(self) -> MpGasPriceModel: ...
-
-    @abc.abstractmethod
-    def get_recent_gas_prices_list(self, chain_id: int) -> MpRecentGasPricesModel: ...
 
     def _add_api(self, api: MempoolApi) -> Self:
         return self.add_api(api, endpoint=MP_ENDPOINT)

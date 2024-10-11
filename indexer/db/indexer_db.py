@@ -10,6 +10,7 @@ from common.db.constant_db import ConstantDb
 from common.db.db_connect import DbConnection, DbTxCtx
 from common.utils.cached import cached_property, cached_method
 from .gas_less_usage_db import GasLessUsageDb
+from .neon_block_fee_db import NeonBlockFeeDB
 from .neon_tx_db import NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
 from .solana_alt_tx_db import SolAltTxDb
@@ -30,7 +31,7 @@ class IndexerDbSlotRange:
     start_slot: int = 0
     min_used_slot: int = 0
 
-    max_slot: Final[int] = 2 ** 64 - 1
+    max_slot: Final[int] = 2**64 - 1
     stop_slot: int = max_slot
     term_slot: int = max_slot
 
@@ -82,7 +83,7 @@ class IndexerDbSlotRange:
 
 
 class IndexerDb:
-    def __init__(self, cfg: Config, db_conn: DbConnection, slot_range=IndexerDbSlotRange()):
+    def __init__(self, cfg: Config, def_chain_id: int, db_conn: DbConnection, slot_range=IndexerDbSlotRange()):
         self._cfg = cfg
         self._db_conn = db_conn
 
@@ -97,6 +98,7 @@ class IndexerDb:
 
         self._constant_db = ConstantDb(db_conn)
         self._sol_block_db = SolBlockDb(db_conn)
+        self._neon_block_fee_db = NeonBlockFeeDB(db_conn, def_chain_id)
         self._sol_tx_cost_db = SolTxCostDb(db_conn)
         self._neon_tx_db = NeonTxDb(db_conn)
         self._sol_neon_tx_db = SolNeonTxDb(db_conn)
@@ -110,6 +112,7 @@ class IndexerDb:
         self._db_list = (
             self._constant_db,
             self._sol_block_db,
+            self._neon_block_fee_db,
             self._sol_tx_cost_db,
             self._neon_tx_db,
             self._sol_neon_tx_db,
@@ -123,6 +126,7 @@ class IndexerDb:
 
         self._history_db_list = (
             self._sol_tx_cost_db,
+            self._neon_block_fee_db,
             self._neon_tx_db,
             self._sol_neon_tx_db,
             self._neon_tx_log_db,
