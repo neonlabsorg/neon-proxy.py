@@ -1,40 +1,37 @@
 from __future__ import annotations
 
-from bisect import bisect_left
 import math
-from typing import Any, ClassVar, Final, Iterable
+from bisect import bisect_left
+from typing import ClassVar, Final, Iterable
+
 from typing_extensions import Self
 
-from ..solana.sys_program import SolSysProg
-
-from ..solana.transaction_decoder import SolTxMetaInfo
-
 from ..solana.block import SolRpcBlockInfo
+from ..solana.sys_program import SolSysProg
+from ..solana.transaction_decoder import SolTxMetaInfo
 from ..utils.pydantic import BaseModel
 
 
-class CuPricePercentilesModel(BaseModel):
+class CuPricePercentileModel(BaseModel):
     _PercentileStep: Final[int] = 10  # Percentiles are a multiple of 10.
     _PercentileCount: Final[int] = 11  # 100 / step + 1.
     _PercentileList: Final[list[int]] = [i * 10 for i in range(11)]  # 0, 10, ..., 100
 
-    _default: ClassVar[CuPricePercentilesModel | None] = None
+    _default: ClassVar[CuPricePercentileModel | None] = None
 
-    data: list[int] = list()
+    cu_price_list: list[int] = list()
 
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
-            cls._default = cls(data=[0] * cls._PercentileCount)
+            cls._default = cls(cu_price_list=[0] * cls._PercentileCount)
         return cls._default
 
-    def model_post_init(self, _ctx: Any) -> None:
-        if len(self.data) != self._PercentileCount:
-            raise ValueError(f"Compute Units Percentiles should contain exactly {self._PercentileCount} elements")
-
     @classmethod
-    def from_raw(cls, cu_prices_data: list[int]) -> Self:
-        return cls(data=cu_prices_data)
+    def from_raw(cls, cu_price_list: list[int] | None) -> Self:
+        if (not cu_price_list) or (len(cu_price_list) < cls._PercentileCount):
+            return cls.default()
+        return cls(cu_price_list=cu_price_list)
 
     @classmethod
     def from_sol_block(cls, sol_block: SolRpcBlockInfo) -> Self:
@@ -65,24 +62,27 @@ class CuPricePercentilesModel(BaseModel):
         """
         biggest_known_p_idx = bisect_left(self._PercentileList, pp)
         if self._PercentileList[biggest_known_p_idx] == pp:
-            return self.data[biggest_known_p_idx]
-        start_val = self.data[biggest_known_p_idx - 1]
-        end_val = self.data[biggest_known_p_idx]
+            return self.cu_price_list[biggest_known_p_idx]
+        start_val = self.cu_price_list[biggest_known_p_idx - 1]
+        end_val = self.cu_price_list[biggest_known_p_idx]
         return (
             start_val
             + (end_val - start_val) * (pp - self._PercentileList[biggest_known_p_idx - 1]) / self._PercentileStep
         )
 
     @classmethod
-    def get_weighted_percentile(cls, pp: int, num_data_points: int, price_seq: Iterable[list[int]]) -> float:
+    def get_weighted_percentile(cls, pp: int, data_point_cnt: int, cu_price_list_seq: Iterable[list[int]]) -> float:
         """
         Returns weighted average of `pp` percentiles for each price data in `price_seq`.
-        The first price data is taked with the most significant weight.
+        The first price data is taken with the most significant weight.
         """
+        if not data_point_cnt:
+            return 0
+
         val: float = 0
-        for idx, price_data in enumerate(price_seq):
+        for idx, cu_price_list in enumerate(cu_price_list_seq):
             # Skip data for empty blocks, treat it as 0.
-            if not price_data:
+            if not cu_price_list:
                 continue
-            val += CuPricePercentilesModel.from_raw(price_data).get_percentile(pp) * (num_data_points - idx)
-        return val / (num_data_points * (num_data_points + 1) / 2)
+            val += CuPricePercentileModel.from_raw(cu_price_list).get_percentile(pp) * (data_point_cnt - idx)
+        return val / (data_point_cnt * (data_point_cnt + 1) / 2)

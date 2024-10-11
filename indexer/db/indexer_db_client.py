@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+
 from typing_extensions import Final
 
 from common.config.config import Config
@@ -8,16 +9,17 @@ from common.db.constant_db import ConstantDb
 from common.db.db_connect import DbConnection
 from common.ethereum.hash import EthBlockHash, EthAddress, EthHash32, EthTxHash
 from common.neon.account import NeonAccount
-from common.neon.block import NeonBlockHdrModel
+from common.neon.block import NeonBlockHdrModel, NeonBlockCuPriceInfo, NeonBlockBaseFeeInfo
 from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.transaction_decoder import SolNeonTxIxMetaModel, SolNeonAltTxIxModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.solana.signature import SolTxSigSlotInfo
 from .indexer_db import IndexerDbSlotRange
-from .neon_tx_db import BlockFeeGasData, NeonTxDb
+from .neon_block_fee_db import NeonBlockFeeDB
+from .neon_tx_db import NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
 from .solana_alt_tx_db import SolAltTxDb
-from .solana_block_db import PriorityFeePercentiles, SolBlockDb, SolSlotRange
+from .solana_block_db import SolBlockDb, SolSlotRange
 from .solana_neon_tx_db import SolNeonTxDb
 from .solana_tx_cost_db import SolTxCostDb
 from .stuck_alt_db import StuckNeonAltDb
@@ -35,6 +37,7 @@ class IndexerDbClient:
 
         self._constant_db = ConstantDb(db_conn)
         self._sol_block_db = SolBlockDb(db_conn)
+        self._neon_block_fee_db = NeonBlockFeeDB(db_conn)
         self._sol_tx_cost_db = SolTxCostDb(db_conn)
         self._neon_tx_db = NeonTxDb(db_conn)
         self._sol_neon_tx_db = SolNeonTxDb(db_conn)
@@ -46,6 +49,7 @@ class IndexerDbClient:
         self._db_list = (
             self._constant_db,
             self._sol_block_db,
+            self._neon_block_fee_db,
             self._sol_tx_cost_db,
             self._neon_tx_db,
             self._sol_neon_tx_db,
@@ -94,15 +98,17 @@ class IndexerDbClient:
         slot_range = await self._get_slot_range()
         return await self._sol_block_db.get_block_by_slot(None, slot_range.finalized_slot, slot_range)
 
-    async def get_historical_base_fees(self, chain_id: int, num_blocks: int, latest_slot: int) -> list[BlockFeeGasData]:
-        return await self._neon_tx_db.get_base_fee_list(None, chain_id, num_blocks, latest_slot)
+    async def get_block_base_fee_list(
+        self, chain_id: int, block_cnt: int, latest_slot: int
+    ) -> tuple[NeonBlockBaseFeeInfo, ...]:
+        return await self._neon_block_fee_db.get_block_base_fee_list(None, chain_id, block_cnt, latest_slot)
 
-    async def get_historical_priority_fees(self, num_blocks: int, latest_block: int) -> list[PriorityFeePercentiles]:
-        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks, latest_block)
-
-    async def get_recent_priority_fees(self, num_blocks: int) -> list[PriorityFeePercentiles]:
-        last_slot: int = await self.get_latest_slot()
-        return await self._sol_block_db.get_cu_price_percentile_list(None, num_blocks, last_slot)
+    async def get_block_cu_price_list(
+        self, block_cnt: int, latest_slot: int | None = None
+    ) -> tuple[NeonBlockCuPriceInfo, ...]:
+        if latest_slot is None:
+            latest_slot = await self.get_latest_slot()
+        return await self._sol_block_db.get_block_cu_price_list(None, block_cnt, latest_slot)
 
     async def _get_slot_range(self) -> SolSlotRange:
         slot_list = await self._constant_db.get_int_list(
@@ -114,12 +120,12 @@ class IndexerDbClient:
 
     async def get_event_list(
         self,
-        from_block: int | None,
-        to_block: int | None,
+        from_slot: int | None,
+        to_slot: int | None,
         address_list: tuple[EthAddress, ...],
         topic_list: tuple[tuple[EthHash32, ...], ...],
     ) -> tuple[NeonTxEventModel, ...]:
-        return await self._neon_tx_log_db.get_event_list(None, from_block, to_block, address_list, topic_list)
+        return await self._neon_tx_log_db.get_event_list(None, from_slot, to_slot, address_list, topic_list)
 
     async def get_tx_list_by_slot(self, slot: int) -> tuple[NeonTxMetaModel, ...]:
         return await self._neon_tx_db.get_tx_list_by_slot(None, slot)

@@ -15,12 +15,7 @@ from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import log_msg, logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
-from ..base.mp_api import (
-    MpGasPriceModel,
-    MpGasPriceTimestamped,
-    MpRecentGasPricesModel,
-    MpTokenGasPriceModel,
-)
+from ..base.mp_api import MpGasPriceModel, MpSlotGasPriceModel, MpTokenGasPriceModel
 
 _LOG = logging.getLogger(__name__)
 _PythClient = _pyth.PythClient
@@ -65,16 +60,15 @@ class MpGasPriceCalculator(MempoolComponent):
                 is_const_gas_price=True,
                 min_acceptable_gas_price=0,
                 min_executable_gas_price=0,
+                gas_price_list=list(),
             ),
             token_dict=dict(),
         )
 
         _1min: Final[int] = 60  # 60 seconds
 
-        self._min_exec_gas_price_dict: dict[int, deque[int]] = dict()
         self._recent_gas_price_cnt: Final[int] = int(_1min / self._update_sec * self._cfg.mp_gas_price_min_window)
-        # TODO: most likely, we can refactor and merge _min_exec_gas_price_dict and _recent_gas_prices.
-        self._recent_gas_prices: dict[int, deque[MpGasPriceTimestamped]] = dict()
+        self._recent_gas_price_dict: dict[int, deque[MpSlotGasPriceModel]] = dict()
 
     async def start(self) -> None:
         self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
@@ -99,9 +93,6 @@ class MpGasPriceCalculator(MempoolComponent):
 
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price
-
-    def get_recent_gas_prices_list(self, chain_id: int) -> MpRecentGasPricesModel:
-        return MpRecentGasPricesModel(token_gas_prices=list(self._recent_gas_prices.get(chain_id, deque())))
 
     async def _update_gas_price_loop(self) -> None:
         while True:
@@ -176,19 +167,16 @@ class MpGasPriceCalculator(MempoolComponent):
             # NATIVE token has 18 fractional digits
             net_price = int((base_price_usd * (10**9)) / token_price_usd)
             suggested_price = int(net_price * (1 + self._cfg.operator_fee))
-
-            min_price_deque = self._min_exec_gas_price_dict.setdefault(token.chain_id, deque())
-            min_price_deque.append(net_price)
-            if len(min_price_deque) > self._recent_gas_price_cnt:
-                min_price_deque.popleft()
-            min_price = min(min_price_deque)
+            min_price = net_price
 
         # Populate data regardless if const_gas_price or not.
-        token_gas_price_deque = self._recent_gas_prices.setdefault(token.chain_id, deque())
+        gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
         recent_slot: int = await self._sol_client.get_recent_slot()
-        token_gas_price_deque.append(MpGasPriceTimestamped(slot=recent_slot, token_gas_price=suggested_price))
-        if len(token_gas_price_deque) > self._recent_gas_price_cnt:
-            token_gas_price_deque.popleft()
+        gas_price_deque.append(MpSlotGasPriceModel(slot=recent_slot, gas_price=suggested_price, min_gas_price=min_price))
+        if len(gas_price_deque) > self._recent_gas_price_cnt:
+            gas_price_deque.popleft()
+
+        min_price = min(gas_price_deque, key=lambda x: x.min_gas_price).min_gas_price
 
         return MpTokenGasPriceModel(
             chain_id=token.chain_id,
@@ -200,6 +188,7 @@ class MpGasPriceCalculator(MempoolComponent):
             is_const_gas_price=is_const_price,
             min_acceptable_gas_price=self._cfg.min_gas_price or 0,
             min_executable_gas_price=min_price,
+            gas_price_list=list(gas_price_deque),
         )
 
     async def _open_pyth_connect(self) -> bool:
@@ -289,7 +278,7 @@ class MpGasPriceCalculator(MempoolComponent):
                 _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
 
     async def _get_price_account(self, token: str) -> _PythPriceAcct | None:
-        if not self._watch_session:
+        if (not self._watch_session) or (not self._price_acct_full_dict):
             return None
 
         if not (price_acct := self._price_acct_dict.get(token, None)):

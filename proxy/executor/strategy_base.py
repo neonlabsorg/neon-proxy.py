@@ -7,7 +7,7 @@ from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
-from common.neon.cu_price_data_model import CuPricePercentilesModel
+from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
@@ -22,7 +22,6 @@ from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
-from indexer.db.solana_block_db import PriorityFeePercentiles
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
 
@@ -254,13 +253,13 @@ class BaseTxStrategy(abc.ABC):
         # Solana currently does not really take into account writeable account list,
         # so the decent estimation level should be achieved by taking a weighted average from
         # the percentiles of compute unit prices across recent blocks.
-        est_num_blocks: int = self._ctx.cfg.cu_price_estimator_num_blocks
-        est_percentile: int = self._ctx.cfg.cu_price_estimator_percentile
-        cu_price_list: list[PriorityFeePercentiles] = await self._ctx.db.get_recent_priority_fees(est_num_blocks)
+        est_block_cnt = self._ctx.cfg.cu_price_estimator_block_cnt
+        est_percentile = self._ctx.cfg.cu_price_estimator_percentile
+        block_list = await self._ctx.db.get_block_cu_price_list(est_block_cnt)
 
         return int(
-            CuPricePercentilesModel.get_weighted_percentile(
-                est_percentile, len(cu_price_list), map(lambda v: v.cu_price_percentiles, cu_price_list)
+            CuPricePercentileModel.get_weighted_percentile(
+                est_percentile, len(block_list), map(lambda v: v.cu_price_list, block_list)
             )
         )
 
