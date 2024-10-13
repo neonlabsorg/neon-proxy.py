@@ -2,6 +2,9 @@ ARG NEON_EVM_COMMIT
 ARG DOCKERHUB_ORG_NAME
 
 FROM ${DOCKERHUB_ORG_NAME}/evm_loader:${NEON_EVM_COMMIT} AS spl
+FROM ${DOCKERHUB_ORG_NAME}/evm_loader:v1.15.3 AS evm1503
+FROM ${DOCKERHUB_ORG_NAME}/evm_loader:v1.15.1 AS evm1501
+FROM ${DOCKERHUB_ORG_NAME}/evm_loader:v1.13.5 AS evm1305
 
 FROM ubuntu:22.04
 
@@ -57,6 +60,11 @@ RUN chmod +x /spl/bin/create-test-accounts.sh
 
 # TODO: rename
 COPY --from=spl /opt/neon-api /spl/bin/neon-core-api
+
+# versioned versions
+COPY --from=evm1503 /opt/neon-api /spl/bin/neon-core-api-v1.15.3
+COPY --from=evm1501 /opt/neon-api /spl/bin/neon-core-api-v1.15.1
+COPY --from=evm1305 /opt/neon-api /spl/bin/neon-core-api-v1.13.5
 
 COPY test-operator-keypairs/id.json /root/.config/solana/
 
