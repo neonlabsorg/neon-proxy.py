@@ -91,9 +91,9 @@ class NeonTxExecutor(ExecutorComponent):
         await holder_validator.validate_stuck_tx()
 
         try:
-            await self._init_tx_sol_address(ctx)
+            await self._init_base_sol_tx(ctx)
             # the earlier check of the nonce
-            await self._validate_nonce(ctx, "")
+            await self._validate_nonce(ctx)
             # get the list of accounts for validation
             await self._emulate_neon_tx(ctx)
 
@@ -122,7 +122,7 @@ class NeonTxExecutor(ExecutorComponent):
         ctx.set_token_sol_address(token_sol_addr)
 
         # get solana address of the user
-        await self._init_tx_sol_address(ctx)
+        await self._init_base_sol_tx(ctx)
         await self._emulate_neon_tx(ctx)
 
         acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
@@ -167,7 +167,7 @@ class NeonTxExecutor(ExecutorComponent):
                     continue
 
                 if not ctx.is_stuck_tx:
-                    await self._validate_nonce(ctx, strategy.name)
+                    await self._validate_nonce(ctx)
 
                 # NeonTx is prepared for the execution
                 return await strategy.execute()
@@ -242,6 +242,7 @@ class NeonTxExecutor(ExecutorComponent):
             ctx.holder_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
+            use_tx_balance=ctx.is_started,
             emulator_block=ctx.holder_block,
         )
 
@@ -252,8 +253,8 @@ class NeonTxExecutor(ExecutorComponent):
         ro_addr_list = [acct.address for acct in acct_list if acct.executable]
         ctx.set_ro_address_list(ro_addr_list)
 
-    async def _validate_nonce(self, ctx: NeonExecTxCtx, name: str) -> None:
-        if ctx.good_sol_tx_cnt(name) > 0:
+    async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
+        if ctx.is_started:
             return
 
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
@@ -264,7 +265,7 @@ class NeonTxExecutor(ExecutorComponent):
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.state_tx_cnt
 
-    async def _init_tx_sol_address(self, ctx: NeonExecTxCtx) -> None:
+    async def _init_base_sol_tx(self, ctx: NeonExecTxCtx) -> None:
         addr_list = tuple([ctx.sender, ctx.receiver])
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
         base_tx_acct_set = NeonBaseTxAccountSet(

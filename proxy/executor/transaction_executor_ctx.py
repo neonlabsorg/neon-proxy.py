@@ -233,6 +233,10 @@ class NeonExecTxCtx:
         self._test_neon_prog.init_account_meta_list(acct_meta_list)
 
     @property
+    def is_started(self) -> bool:
+        return self._holder.is_active
+
+    @property
     def holder_block(self) -> CoreApiBlockModel:
         return self._holder.block
 

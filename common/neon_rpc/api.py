@@ -480,6 +480,13 @@ class CoreApiTxModel(BaseModel):
         contract_addr = calc_contract_address(self.to_address, self.from_address, self.nonce)
         return NeonAccount.from_raw(contract_addr, self.chain_id)
 
+    @cached_property
+    def cost(self) -> int:
+        if self.max_fee_per_gas:
+            cost = self.max_fee_per_gas * self.gas_limit
+        else:
+            cost = self.gas_price * self.gas_limit
+        return cost + self.value
 
 class CoreApiBlockModel(BaseModel):
     timestamp: int | None = Field(default=None, serialization_alias="time")

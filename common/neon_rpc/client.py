@@ -232,6 +232,7 @@ class CoreApiClient(HttpClient):
         tx: CoreApiTxModel,
         *,
         check_result: bool,
+        use_tx_balance: bool = False,
         preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         emulator_block = CoreApiBlockModel.default(),
@@ -247,9 +248,9 @@ class CoreApiClient(HttpClient):
             _LOG.debug("use predefined block: %d, %d", emulator_block.slot, emulator_block.timestamp)
 
         emul_neon_acct_dict = dict()
-        if tx.nonce is not None:
-            _LOG.debug("use predefined nonce %d for %s", tx.nonce, tx.sender)
-            emul_neon_acct_dict = {tx.from_address: EmulNeonAccountModel(nonce=tx.nonce)}
+        if (tx.nonce is not None) or use_tx_balance:
+            emul_balance = tx.cost + 1 if use_tx_balance else None
+            emul_neon_acct_dict[tx.from_address] = EmulNeonAccountModel(nonce=tx.nonce, balance=emul_balance)
 
         emul_trace_cfg = None
         if emul_neon_acct_dict or emulator_block:
