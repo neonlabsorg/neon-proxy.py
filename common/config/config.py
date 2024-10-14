@@ -101,7 +101,7 @@ class Config:
     rpc_worker_cnt_name: Final[str] = "RPC_WORKER_COUNT"
     # Neon Core API configuration
     sol_key_for_evm_cfg_name: Final[str] = "SOLANA_KEY_FOR_EVM_CONFIG"
-    neon_core_api_server_cnt_name: Final[str] = "NEON_CORE_API_SERVER_COUNT"
+    neon_core_api_server_cnt_name: Final[str] = "CORE_API_SERVER_COUNT"
     neon_core_api_ip_name = "CORE_API_IP"
     neon_core_api_port_name = "CORE_API_PORT"
     neon_core_api_server_ver_name = "CORE_API_VERSION"
