@@ -383,20 +383,20 @@ class NeonExecTxCtx:
     @cached_property
     def chain_id(self) -> int:
         if self.is_stuck_tx:
-            return self._holder.tx.chain_id
+            return self._holder.chain_id
         return self._tx_request.tx.chain_id
 
     @cached_property
     def sender(self) -> NeonAccount:
         if self.is_stuck_tx:
-            return self._holder.tx.sender
+            return self._holder.sender
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.sender, tx.chain_id)
 
     @cached_property
     def receiver(self) -> NeonAccount:
         if self.is_stuck_tx:
-            return self._holder.tx.receiver
+            return self._holder.receiver
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.receiver, tx.chain_id)
 

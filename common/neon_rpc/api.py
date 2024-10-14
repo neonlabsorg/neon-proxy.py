@@ -469,18 +469,6 @@ class CoreApiTxModel(BaseModel):
         )
 
     @cached_property
-    def sender(self) -> NeonAccount:
-        return NeonAccount.from_raw(self.from_address, self.chain_id)
-
-    @cached_property
-    def receiver(self) -> NeonAccount:
-        if not self.to_address.is_empty:
-            return NeonAccount.from_raw(self.to_address, self.chain_id)
-
-        contract_addr = calc_contract_address(self.to_address, self.from_address, self.nonce)
-        return NeonAccount.from_raw(contract_addr, self.chain_id)
-
-    @cached_property
     def cost(self) -> int:
         if self.max_fee_per_gas:
             cost = self.max_fee_per_gas * self.gas_limit
@@ -529,6 +517,7 @@ class HolderAccountModel(BaseModel):
 
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
+    chain_id: int | None = Field(default=None)
 
     @classmethod
     def new_empty(cls, address: SolPubKey) -> Self:
@@ -548,6 +537,24 @@ class HolderAccountModel(BaseModel):
         if HolderAccountStatus.from_raw(data.get("status", "")) == HolderAccountStatus.Active:
             data["chain_id"] = data.get("chain_id", None) or def_chain_id
         return cls.model_validate(data)
+
+    @cached_property
+    def sender(self) -> NeonAccount:
+        if self.tx is None:
+            return NeonAccount.default()
+
+        return NeonAccount.from_raw(self.tx.from_address, self.chain_id)
+
+    @cached_property
+    def receiver(self) -> NeonAccount:
+        if self.tx is None:
+            return NeonAccount.default()
+
+        elif not self.tx.to_address.is_empty:
+            return NeonAccount.from_raw(self.tx.to_address, self.chain_id)
+
+        contract_addr = calc_contract_address(self.tx.to_address, self.tx.from_address, self.tx.nonce)
+        return NeonAccount.from_raw(contract_addr, self.chain_id)
 
     @property
     def is_empty(self) -> bool:
@@ -606,7 +613,7 @@ class EmulSolAccountModel(BaseModel):
 
 class EmulNeonAccountModel(BaseModel):
     nonce: int | None = None
-    balance: int | None = None
+    balance: HexUIntField | None = None
 
 
 class EmulTraceCfgModel(BaseModel):
