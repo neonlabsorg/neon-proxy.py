@@ -237,12 +237,14 @@ class NeonTxExecutor(ExecutorComponent):
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
+        sender_balance = await self._get_sender_balance(ctx)
+
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
             ctx.holder_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
-            use_tx_balance=ctx.is_started,
+            sender_balance=sender_balance,
             emulator_block=ctx.holder_block,
         )
 
@@ -260,6 +262,13 @@ class NeonTxExecutor(ExecutorComponent):
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
         EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
         EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+
+    async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
+        if not ctx.is_started:
+            return None
+        acct = await self._core_api_client.get_neon_account(ctx.sender, None)
+        return acct.balance
+
 
     async def _get_state_tx_cnt(self, ctx: NeonExecTxCtx) -> int:
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
