@@ -124,11 +124,13 @@ class OpHolderFunc:
         obj = dict(
             address=holder.address.to_string(),
             owner=holder.owner.to_string(),
+            status=holder.status.value,
             size=holder.size,
             balance=balance / (10**9),
             transactionHash=holder.neon_tx_hash.to_string(),
             transactionType=holder.tx_type,
-            transactionBody=tx
+            transactionBody=tx,
+            accountKeyList=[k.to_string() for k in holder.account_key_list],
         )
         print(json.dumps(obj, indent=2))
 
