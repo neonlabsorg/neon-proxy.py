@@ -130,7 +130,10 @@ def specify_image_tags(git_sha,
         evm_tag = evm_tag
     else:
         evm_sha_tag = ""
-        evm_tag = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
+        if default_evm_tag != "latest":
+            evm_tag = default_evm_tag
+        else:
+            evm_tag = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
 
     # faucet_tag
     faucet_tag = proxy_tag if is_image_exist("neon-faucet", proxy_tag) else default_faucet_tag
