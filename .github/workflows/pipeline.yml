@@ -260,11 +260,7 @@ jobs:
     steps:
       - name: Determine Cost Report Generation
         run: |
-          if [[ "${{ needs.build-image.outputs.evm_tag }}" =~ ^[vt][0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "${{ needs.build-image.outputs.proxy_tag }}" =~ ^[vt][0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "GENERATE_COST_REPORT=true" >> $GITHUB_ENV
-          else
-            echo "GENERATE_COST_REPORT=false" >> $GITHUB_ENV
-          fi
+          echo "GENERATE_COST_REPORT=true" >> $GITHUB_ENV
       - name: Run docker container
         run: |
           image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
