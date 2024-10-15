@@ -145,6 +145,21 @@ class MpTokenGasPriceModel(BaseModel):
     min_acceptable_gas_price: int
     min_executable_gas_price: int
 
+    gas_price_list: list[MpSlotGasPriceModel]
+
+    def find_gas_price(self, slot: int) -> int | None:
+        if not self.gas_price_list:
+            return None
+        if self.gas_price_list[0].slot > slot:
+            return None
+        if slot >= self.gas_price_list[-1].slot:
+            return self.gas_price_list[-1].gas_price
+
+        idx: int = bisect_left(self.gas_price_list, slot, key=lambda v: v.slot)
+        if idx >= 0 and self.gas_price_list[idx].slot != slot:
+            idx -= 1
+        return self.gas_price_list[idx].gas_price
+
 
 class MpGasPriceModel(BaseModel):
     chain_token_price_usd: int
@@ -167,26 +182,10 @@ class MpGasPriceModel(BaseModel):
         return not self.token_dict
 
 
-class MpGasPriceTimestamped(BaseModel):
+class MpSlotGasPriceModel(BaseModel):
     slot: int
-    token_gas_price: int
-
-
-class MpRecentGasPricesModel(BaseModel):
-    token_gas_prices: list[MpGasPriceTimestamped]
-
-    def find_gas_price(self, block_slot: int) -> int | None:
-        if not self.token_gas_prices:
-            return None
-        if self.token_gas_prices[0].slot > block_slot:
-            return None
-        if block_slot >= self.token_gas_prices[-1].slot:
-            return self.token_gas_prices[-1].token_gas_price
-
-        idx: int = bisect_left(self.token_gas_prices, block_slot, key=lambda v: v.slot)
-        if idx >= 0 and self.token_gas_prices[idx].slot != block_slot:
-            idx -= 1
-        return self.token_gas_prices[idx].token_gas_price
+    gas_price: int
+    min_gas_price: int
 
 
 class MpRequest(BaseModel):

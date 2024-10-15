@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import ClassVar, Union
 
 import solders.account as _acct
-from pydantic import Field
+from pydantic import Field, AliasChoices
 from typing_extensions import Self
 
 from .pubkey import SolPubKey, SolPubKeyField
@@ -14,7 +14,7 @@ SolRpcAccountInfo = _acct.Account
 
 class SolAccountModel(BaseModel):
     address: SolPubKeyField = Field(default=SolPubKey.default())
-    lamports: int
+    balance: int = Field(validation_alias=AliasChoices("lamports", "balance"))
     data: Base64Field
     owner: SolPubKeyField
     executable: bool = Field(default=False)
@@ -27,7 +27,7 @@ class SolAccountModel(BaseModel):
         if not cls._default:
             cls._default = cls(
                 address=SolPubKey.default(),
-                lamports=0,
+                balance=0,
                 data=bytes(),
                 owner=SolPubKey.default(),
             )
@@ -42,7 +42,7 @@ class SolAccountModel(BaseModel):
         elif isinstance(raw, _acct.Account):
             return cls(
                 address=address,
-                lamports=raw.lamports,
+                balance=raw.lamports,
                 data=raw.data,
                 owner=raw.owner,
                 executable=raw.executable,

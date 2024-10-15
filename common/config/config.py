@@ -102,8 +102,11 @@ class Config:
     rpc_process_cnt_name: Final[str] = "RPC_PROCESS_COUNT"
     rpc_worker_cnt_name: Final[str] = "RPC_WORKER_COUNT"
     # Neon Core API configuration
-    neon_core_api_server_cnt_name: Final[str] = "NEON_CORE_API_SERVER_COUNT"
     sol_key_for_evm_cfg_name: Final[str] = "SOLANA_KEY_FOR_EVM_CONFIG"
+    neon_core_api_server_cnt_name: Final[str] = "CORE_API_SERVER_COUNT"
+    neon_core_api_ip_name = "CORE_API_IP"
+    neon_core_api_port_name = "CORE_API_PORT"
+    neon_core_api_server_ver_name = "CORE_API_VERSION"
     # Postgres DB settings
     pg_host_name: Final[str] = "POSTGRES_HOST"
     pg_db_name: Final[str] = "POSTGRES_DB"
@@ -142,8 +145,7 @@ class Config:
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
-    priority_fee_block_cnt_to_avg_name: Final[str] = "PRIORITY_FEE_NUM_BLOCKS_TO_AVERAGE"
-    cu_price_estimator_num_blocks_name: Final[str] = "CU_PRICE_ESTIMATOR_NUM_BLOCKS"
+    cu_price_estimator_block_cnt_name: Final[str] = "CU_PRICE_ESTIMATOR_BLOCK_COUNT"
     cu_price_estimator_percentile_name: Final[str] = "CU_PRICE_ESTIMATOR_PERCENTILE"
     # Operator resources
     holder_size_name: Final[str] = "HOLDER_SIZE"
@@ -547,17 +549,33 @@ class Config:
     ########################
     # Neon Core API settings
 
-    @property
+    @cached_property
     def neon_core_api_ip(self) -> str:
-        return self.base_service_ip
+        return os.environ.get(self.neon_core_api_ip_name, "127.0.0.1")
 
     @cached_property
     def neon_core_api_port(self) -> int:
-        return self.base_service_port + 4
+        port = self.base_service_port + 4
+        return self._env_num(self.neon_core_api_port_name, port, port)
+
+    @cached_property
+    def external_neon_core_api(self) -> bool:
+        return self.neon_core_api_ip_name in os.environ
 
     @cached_property
     def neon_core_api_server_cnt(self) -> int:
         return self._env_num(self.neon_core_api_server_cnt_name, 1, 1)
+
+    @cached_property
+    def neon_core_api_server_ver(self) -> str:
+        return os.environ.get(self.neon_core_api_server_ver_name, "")
+
+    @cached_property
+    def neon_core_api_server_bin(self) -> str:
+        cmd_bin = "neon-core-api"
+        if not (ver := self.neon_core_api_server_ver):
+            return cmd_bin
+        return cmd_bin + "-" + ver
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
@@ -724,12 +742,8 @@ class Config:
         return const_gas_price * (10**9)
 
     @cached_property
-    def priority_fee_block_cnt_to_avg(self) -> int:
-        return self._env_num(self.priority_fee_block_cnt_to_avg_name, 10, 1, 1000)
-
-    @cached_property
-    def cu_price_estimator_num_blocks(self) -> int:
-        return self._env_num(self.cu_price_estimator_num_blocks_name, 50, 1, 1000)
+    def cu_price_estimator_block_cnt(self) -> int:
+        return self._env_num(self.cu_price_estimator_block_cnt_name, 50, 1, 1000)
 
     @cached_property
     def cu_price_estimator_percentile(self) -> int:
@@ -912,8 +926,12 @@ class Config:
             self.mp_lost_alt_timeout_sec_name: self.mp_lost_alt_timeout_sec,
             self.mp_send_batch_tx_name: self.mp_send_batch_tx,
             # Neon Core API settings
-            self.neon_core_api_server_cnt_name: self.neon_core_api_server_cnt,
             self.sol_key_for_evm_cfg_name: self.sol_key_for_evm_cfg,
+            self.neon_core_api_server_cnt_name: self.neon_core_api_server_cnt,
+            self.neon_core_api_ip_name: self.neon_core_api_ip,
+            self.neon_core_api_port_name: self.neon_core_api_port,
+            self.neon_core_api_server_ver_name: self.neon_core_api_server_ver,
+            "EXTERNAL_NEON_CORE_API": self.external_neon_core_api,
             # Postgres DB settings
             self.pg_host_name: self.pg_host,
             self.pg_db_name: self.pg_db,
@@ -938,8 +956,7 @@ class Config:
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,
-            self.priority_fee_block_cnt_to_avg_name: self.priority_fee_block_cnt_to_avg,
-            self.cu_price_estimator_num_blocks_name: self.cu_price_estimator_num_blocks,
+            self.cu_price_estimator_block_cnt_name: self.cu_price_estimator_block_cnt,
             self.cu_price_estimator_percentile_name: self.cu_price_estimator_percentile,
             # Operator resources
             self.holder_size_name: self.holder_size,

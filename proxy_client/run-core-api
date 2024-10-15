@@ -1,0 +1,79 @@
+#!/bin/bash
+
+export RUST_LOG="debug"
+export COMMITMENT="recent"
+export TRACER_DB_TYPE="none"
+export NEON_DB_CLICKHOUSE_URLS=""
+export SOLANA_KEY_FOR_CONFIG="J4hWtdRER39G4iwTa1Xaw5HCAhbYrt2c5o57JyXWMjao"
+export SOLANA_TEST_ACCOUNTS_INDEX_MEMORY_LIMIT_MB="value"
+export SOLANA_RAYON_THREADS="1"
+export CORE_API_IP="127.0.0.1"
+export CORE_API_PORT="10100"
+export CORE_API_BIN="neon-core-api"
+export NEON_EVM=$EVM_LOADER
+
+function show_usage() {
+    cat 1>&2 <<EOF
+
+Use: ./run-core-api [OPTIONS]
+    -i,--ip <$CORE_API_IP>
+    -p,--port <$CORE_API_PORT>
+    -v,--version <v1.13.0,v1.15.0,...>
+    -u,--solana-url <$SOLANA_URL>
+    -e,--neon-evm <$NEON_EVM>
+    -k,--key <$SOLANA_KEY_FOR_CONFIG>
+EOF
+}
+
+while :; do
+    case $1 in
+        -i|--ip)
+            export CORE_API_IP=$2
+            shift
+            ;;
+        -p|--port)
+            export CORE_API_PORT=$2
+            shift
+            ;;
+        -v|--version)
+            export CORE_API_BIN="/spl/bin/neon-core-api-v${2}"
+            if ! test -f $CORE_API_BIN ; then
+                echo "$2 does't exist" 2>&1
+                echo "valid versions:" 2>&1
+                ls /spl/bin/neon-core-api-v* | cut -c 25-32 2>&1
+                exit 1
+            fi
+            shift
+            ;;
+        -u|--solana-url)
+            export SOLANA_URL=$2
+            shift
+            ;;
+        -k|--solana-key)
+            export SOLANA_KEY_FOR_CONFIG=$2
+            shift
+            ;;
+        -e|--neon-evm)
+            export NEON_EVM=$2
+            shift
+            ;;
+        -h|?|--help)
+            show_usage
+            exit 0
+            ;;
+        -?*)
+            echo "ERROR: Unknown option: $1" 1>&2
+            show_usage
+            exit 1
+            ;;
+        *)
+            break
+    esac
+    shift
+done
+
+export EVM_LOADER=${NEON_EVM}
+export NEON_API_LISTENER_ADDR=${CORE_API_IP}:${CORE_API_PORT}
+
+echo "Press Ctrl+C to stop neon-core-api -H ${NEON_API_LISTENER_ADDR}..." 1>&2
+$CORE_API_BIN -H ${NEON_API_LISTENER_ADDR}
