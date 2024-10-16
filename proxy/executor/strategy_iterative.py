@@ -136,7 +136,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed
             return ExecTxRespCode.Failed
-        if await (self._ctx._sol_client.get_slot(SolCommit.Confirmed) - self._holder_acct.last_used_slot) < self._ctx._cancel_timeout:
+        current_slot = await self._ctx._sol_client.get_slot(SolCommit.Confirmed)
+        if (current_slot  - self._holder_acct.last_used_slot) < self._ctx._cancel_timeout:
             return ExecTxRespCode.Failed
 
         # generate cancel tx with the default CU budget
