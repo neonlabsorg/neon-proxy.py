@@ -14,6 +14,14 @@ from ..utils.format import hex_to_bytes
 from rlp.sedes import Binary, CountableList, List as ListSedesClass
 
 
+def calc_contract_address(to_address: bytes | None, from_address: bytes, nonce: int) -> bytes | None:
+    if to_address:
+        return None
+
+    contract_addr = rlp.encode((from_address, nonce))
+    return keccak(contract_addr)[-20:]
+
+
 class EthNoChainLegacyTxPayload(rlp.Serializable):
     nonce: int
     gas_price: int
@@ -164,11 +172,7 @@ class EthLegacyTxPayload(rlp.Serializable):
 
     @cached_property
     def contract(self) -> bytes | None:
-        if self.to_address:
-            return None
-
-        contract_addr = rlp.encode((self.from_address, self.nonce))
-        return keccak(contract_addr)[-20:]
+        return calc_contract_address(self.to_address, self.from_address, self.nonce)
 
 
 class EthDynamicGasTxPayload(rlp.Serializable):
@@ -284,11 +288,7 @@ class EthDynamicGasTxPayload(rlp.Serializable):
 
     @cached_property
     def contract(self) -> bytes | None:
-        if self.to_address:
-            return None
-
-        contract_addr = rlp.encode((self.from_address, self.nonce))
-        return keccak(contract_addr)[-20:]
+        return calc_contract_address(self.to_address, self.from_address, self.nonce)
 
 
 class EthTx:

@@ -19,7 +19,6 @@ from common.solana_rpc.errors import (
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
-from .errors import StuckTxError
 from .holder_validator import HolderAccountValidator
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -29,29 +28,8 @@ from ..base.ex_api import ExecTxRespCode
 _LOG = logging.getLogger(__name__)
 
 
-class _HolderAccountValidator(HolderAccountValidator):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._is_stuck = False
-
-    def mark_stuck_tx(self) -> None:
-        self._is_stuck = True
-
-    async def is_finalized(self) -> bool:
-        await self.refresh()
-        if (not self.is_valid) and self._holder_acct.is_active:
-            # strange case, because the holder was tested on the start...
-            #  it is possible if the operator-key and the holder-id are defined on two different proxies
-            raise StuckTxError(self._holder_acct)
-
-        if self._is_stuck:
-            return (not self.is_valid) or self._holder_acct.is_finalized
-
-        return self.is_valid and self._holder_acct.is_finalized
-
-
 class _SolTxListSender(SolTxListSender):
-    def __init__(self, *args, holder_account_validator: _HolderAccountValidator) -> None:
+    def __init__(self, *args, holder_account_validator: HolderAccountValidator) -> None:
         super().__init__(*args)
         self._holder_acct_validator = holder_account_validator
 
@@ -81,18 +59,40 @@ class IterativeTxStrategy(BaseTxStrategy):
         )
 
     @cached_property
-    def _holder_acct_validator(self) -> _HolderAccountValidator:
-        return _HolderAccountValidator(self._ctx.core_api_client, self._ctx.holder_address, self._ctx.neon_tx_hash)
+    def _holder_acct_validator(self) -> HolderAccountValidator:
+        return HolderAccountValidator(self._ctx)
 
     @property
     def _holder_acct(self) -> HolderAccountModel:
         return self._holder_acct_validator.holder_account
 
+    async def prep_before_emulation(self) -> None:
+        await super().prep_before_emulation()
+        if (not self._ctx.has_holder_block) or (await self._holder_acct_validator.is_active()):
+            return
+        elif await self._recheck_tx_list(self.name):
+            return
+
+        _LOG.debug("just 1 iteration to fix the block number")
+        iter_cfg = await self._get_single_iter_list_cfg()
+        iter_cfg = dataclasses.replace(iter_cfg, ix_mode=NeonIxMode.BaseTx)
+        tx_list = tuple([self._build_tx(iter_cfg)])
+        await self._send_tx_list(tx_list)
+        await self._holder_acct_validator.refresh()
+
+    async def update_after_emulation(self) -> bool:
+        result = await super().update_after_emulation()
+        if (not result) or (not self._ctx.has_holder_block):
+            return result
+
+        if not await self._holder_acct_validator.is_active():
+            _LOG.debug("first iteration isn't completed")
+            return False
+
+        return True
+
     async def execute(self) -> ExecTxRespCode:
         assert self.is_valid
-
-        if self._ctx.is_stuck_tx:
-            self._holder_acct_validator.mark_stuck_tx()
 
         evm_step_cnt = -1
         fail_retry_cnt = 0
@@ -130,7 +130,6 @@ class IterativeTxStrategy(BaseTxStrategy):
                 pass
 
     async def cancel(self) -> ExecTxRespCode | None:
-        self._holder_acct_validator.mark_stuck_tx()
         if await self._holder_acct_validator.is_finalized():
             return ExecTxRespCode.Failed
         elif await self._recheck_tx_list(self._cancel_name):
@@ -177,9 +176,11 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         while True:
             try:
-                if not (iter_list_cfg := await self._get_single_iter_list_cfg()):
-                    if not (iter_list_cfg := await self._get_iter_list_cfg()):
-                        return False
+                if self._has_one_iter():
+                    _LOG.debug("just 1 iteration")
+                    iter_list_cfg = await self._get_single_iter_list_cfg()
+                elif not (iter_list_cfg := await self._get_iter_list_cfg()):
+                    return False
 
                 tx_list = iter_list_cfg.tx_list
                 if not tx_list:
@@ -254,7 +255,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             if self._ctx.cfg.mp_send_batch_tx:
                 # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
-                iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode)
+                iter_cnt = max(exec_iter_cnt + self._calc_wrap_iter_cnt(ix_mode), 1)
             else:
                 iter_cnt = 1
 
@@ -361,18 +362,16 @@ class IterativeTxStrategy(BaseTxStrategy):
             is_default=True,
         )
 
-    async def _get_single_iter_list_cfg(self) -> _SolIterListCfg | None:
-        if self._ctx.is_stuck_tx:
-            pass
-        elif self._def_cu_limit:
+    def _has_one_iter(self) -> bool:
+        if self._ctx.is_stuck_tx or self._def_cu_limit:
             pass
         elif self._calc_total_evm_step_cnt() > 1:
-            return None
+            return False
 
-        _LOG.debug("just 1 iteration")
+        return True
 
+    async def _get_single_iter_list_cfg(self) -> _SolIterListCfg:
         base_cfg = await self._init_sol_iter_list_cfg(iter_cnt=1)
-
         if not self._def_cu_limit:
             # generate the tx list to calculate the optimal CU budget
             tx_list = tuple([self._build_tx(base_cfg)])
@@ -423,18 +422,15 @@ class IterativeTxStrategy(BaseTxStrategy):
         return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)
 
     def _calc_wrap_iter_cnt(self, mode: NeonIxMode) -> int:
-        # if there are NO completed evm steps,
-        #   it means that we should execute the following iterations:
-        #     - begin iteration
-        #     - resize iterationS
-        #     - but if mode is NOT writeable, !don't! include 1 FINALIZATION iteration
-
         base_iter_cnt = self._ctx.wrap_iter_cnt
         if mode == NeonIxMode.Readable:
+            # Finalization should be in the Writable mode
             base_iter_cnt -= 1
 
-        iter_cnt = max(base_iter_cnt if (not self._holder_acct.evm_step_cnt) else 0, 0)
-        return iter_cnt
+        # skip already finalized Begin and Resize iterations
+        base_iter_cnt -= self._ctx.good_sol_tx_cnt(self.name)
+
+        return max(base_iter_cnt, 0)
 
     def _calc_ix_mode(self) -> NeonIxMode:
         if self._def_ix_mode:

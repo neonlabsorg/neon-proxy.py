@@ -69,7 +69,6 @@ class TestLayout(unittest.TestCase):
         self.assertEqual(result.status, HolderAccountStatus.Empty)
         self.assertEqual(result.size, 0)
         self.assertTrue(result.neon_tx_hash.is_empty)
-        self.assertEqual(result.chain_id, 0)
         self.assertEqual(result.evm_step_cnt, 0)
         self.assertEqual(result.account_key_list, [])
 
@@ -94,7 +93,6 @@ class TestLayout(unittest.TestCase):
         self.assertEqual(result.status, HolderAccountStatus.Active)
         self.assertEqual(result.size, 262144)
         self.assertEqual(result.neon_tx_hash, "0x10f9724bb40ed81d953baa7dfbe2a10f41d3591a075b405a49b2ef5b656a0e72")
-        self.assertEqual(result.chain_id, 111)
         self.assertEqual(result.evm_step_cnt, 501)
         self.assertEqual(result.account_key_list, [self._TestSolPubKey])
 
@@ -114,7 +112,6 @@ class TestLayout(unittest.TestCase):
         self.assertEqual(result.status, HolderAccountStatus.Finalized)
         self.assertEqual(result.size, 262144)
         self.assertEqual(result.neon_tx_hash, "0xbd4186a4a4a4bfbdec837dbfb6c92985e08b37a29c8e44c5e9ccb8dface2e504")
-        self.assertEqual(result.chain_id, 0)
         self.assertEqual(result.evm_step_cnt, 0)
         self.assertEqual(result.account_key_list, [])
 

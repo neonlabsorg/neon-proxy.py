@@ -54,6 +54,12 @@ class MpTxModel(BaseModel):
         return self.neon_tx.from_address
 
     @property
+    def receiver(self) -> EthAddress:
+        if self.neon_tx.to_address.is_empty:
+            return self.neon_tx.contract
+        return self.neon_tx.to_address
+
+    @property
     def nonce(self) -> int:
         return self.neon_tx.nonce
 
