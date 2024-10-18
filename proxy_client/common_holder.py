@@ -127,6 +127,7 @@ class OpHolderFunc:
             status=holder.status.value,
             size=holder.size,
             balance=balance / (10**9),
+            chainId=holder.chain_id,
             transactionHash=holder.neon_tx_hash.to_string(),
             transactionType=holder.tx_type,
             transactionBody=tx,
