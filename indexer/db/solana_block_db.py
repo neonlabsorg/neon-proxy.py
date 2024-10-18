@@ -299,11 +299,15 @@ class SolBlockDb(HistoryDbTable):
         return await self._block_from_value(ctx, None, slot_range, rec)
 
     async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+        for block in block_list:
+            _LOG.debug("SAVE BLOCK: %s", block.slot, block.neon_block_hdr.block_hash)
+
         rec_list = [_Record.from_block_hdr(block.neon_block_hdr) for block in block_list]
         await self._insert_row_list(ctx, rec_list)
 
     async def finalize_block_list(self, ctx: DbTxCtx, from_slot: int, to_slot: int, slot_list: tuple[int, ...]) -> None:
         by_slot_range = _BySlotRange(from_slot, to_slot, list(slot_list))
+        _LOG.debug("FINALIZE BLOCKS: %s", slot_list)
         await self._update_row(ctx, self._finalize_query, by_slot_range)
         await self._update_row(ctx, self._clean_query, by_slot_range)
 

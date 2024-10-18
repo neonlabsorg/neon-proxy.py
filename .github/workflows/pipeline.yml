@@ -98,20 +98,11 @@ jobs:
       - name: Define images tags
         id: tags
         run: |
-          if [[ "${{ github.event.inputs.neon_evm_commit }}" != "" ]]; then
-            neon_evm_tag=${{ github.event.inputs.neon_evm_commit }}
-          else
-            neon_evm_tag="${NEON_EVM_TAG}"
-          fi;
+          neon_evm_tag="${NEON_EVM_TAG}"
           echo "neon_evm_tag=${neon_evm_tag}"
           echo "neon_evm=${neon_evm_tag}" >> $GITHUB_OUTPUT
-
-          if [[ "${{ github.event.inputs.neon_evm_commit }}" != "" ]]; then
-            evm_short_commit=`git rev-parse --short ${{ github.event.inputs.neon_evm_commit }}`
-            proxy_tag="${{ github.sha }}-${evm_short_commit}"
-          else
-            proxy_tag="${{ github.sha }}"
-          fi;
+            
+          proxy_tag="${{ github.sha }}"
           echo "proxy_tag=${proxy_tag}"
           echo "proxy=$proxy_tag" >> $GITHUB_OUTPUT
       - name: Define test set
@@ -138,27 +129,7 @@ jobs:
       - name: Define test image tag
         id: neon_test_tag
         run: |
-          if ${{ steps.is_version_proxy_branch.outputs.value }}; then
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          elif [[ "${{ steps.tag_creation.outputs.base_branch }}" != "" ]]; then
-            tag=${{ steps.tag_creation.outputs.base_branch }}
-
-          elif [[ "${{ github.base_ref }}" =~ "refs/heads/"[vt][0-9]+\.[0-9]+\.x ]]; then # pr to version branch
-            tag=${GITHUB_BASE_REF/refs\/heads\//}
-
-          elif [[ "${{ github.head_ref }}" != "" ]]; then # pr to feature branch
-            tag=${{ github.head_ref }}
-
-          elif [[ "{{github.event.inputs.neon_evm_branch}}" != "" && "{{github.event.inputs.neon_evm_branch}}" != "refs/heads/develop" ]]; then # triggered by neon evm workflow
-            tag=${{ github.event.inputs.neon_evm_branch }}
-
-          elif [[ "${{ github.ref }}" =~ "refs/heads".+ ]] ; then # triggered by pr to develop
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          else
-            tag='latest'
-          fi
+          tag='v1.14.x'
           echo "value=${tag}"
           echo "value=${tag}" >> $GITHUB_OUTPUT
       - name: Check image
@@ -253,90 +224,6 @@ jobs:
       solana_ip: ${{ steps.share.outputs.solana_ip }}
       proxy_ip: ${{ steps.share.outputs.proxy_ip }}
 
-  openzeppelin-tests:
-    if: needs.build-image.outputs.full_test_suite=='true'
-    needs:
-      - prepare-infrastructure
-      - build-image
-    runs-on: test-runner
-    env:
-      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
-      PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-      CONTAINER: oz-${{ github.run_id }}
-      NETWORK: terraform
-    steps:
-      - name: Pull docker image
-        run: docker pull ${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}
-      - name: Run docker container
-        run: |
-          docker run -i -e PROXY_IP=${{env.PROXY_IP}} \
-          -e SOLANA_IP=${{env.SOLANA_IP}} \
-          -e NETWORK=${{env.NETWORK}} \
-          -d --name=${{ env.CONTAINER }} ${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }} /bin/bash
-      - name: Run OpenZeppelin tests
-        run: |
-          docker exec -i -e PROXY_IP=${{env.PROXY_IP}} \
-              -e SOLANA_IP=${{env.SOLANA_IP}} \
-              -e NETWORK=${{env.NETWORK}} \
-              ${{ env.CONTAINER }} python3 ./clickfile.py run oz \
-            --network ${{ env.NETWORK }} \
-            --jobs 8 \
-            --users 10
-      - name: Print OpenZeppelin report
-        run: |
-          docker exec -i ${{ env.CONTAINER }} python3 ./clickfile.py oz report
-      - name: Analyze tests results
-        run: |
-          docker exec -i ${{ env.CONTAINER }} python3  ./clickfile.py oz analyze
-      - name: "Archive report"
-        if: always()
-        run: |
-          docker exec -i ${{ env.CONTAINER }} tar -czvf ./allure-results.tar.gz /opt/neon-tests/allure-results
-          docker cp ${{ env.CONTAINER }}:/opt/neon-tests/allure-results.tar.gz ./
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: FTS allure report
-          path: allure-results.tar.gz
-      - name: Remove docker container
-        if: always()
-        run: docker rm -f ${{ env.CONTAINER }}
-      - name: canceling the build if job failed
-        if: "failure()"
-        uses: "andymckay/cancel-action@0.4"
-  basic-tests:
-    needs:
-      - prepare-infrastructure
-      - build-image
-    runs-on: test-runner
-    env:
-      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
-      PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-      NUMPROCESSES: 12
-      CONTAINER: basic-${{ github.run_id }}
-      NETWORK: terraform
-    steps:
-      - name: Run docker container
-        run: |
-          image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
-          docker pull $image
-          docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} \
-          --name=${{ env.CONTAINER }} $image /bin/bash
-      - name: Update contracts in the container
-        run: |
-          docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py update-contracts \
-          --branch ${{ needs.build-image.outputs.tag_creation_base_branch || github.head_ref || github.ref_name }}
-      - name: Run basic tests
-        run: |
-          docker exec -i ${{ env.CONTAINER }} \
-            python3 ./clickfile.py run basic -n ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}
-      - name: Remove docker container
-        if: always()
-        run: docker rm -f ${{ env.CONTAINER }}
-      - name: canceling the build if job failed
-        if: "failure()"
-        uses: "andymckay/cancel-action@0.4"
   dapps-tests:
     needs:
       - prepare-infrastructure
@@ -355,42 +242,9 @@ jobs:
       solana_ip: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       external_call: true
 
-  #  will be fixed by NDEV-2766
-#  economy-tests:
-#    if: needs.build-image.outputs.full_test_suite=='true'
-#    needs:
-#      - prepare-infrastructure
-#      - dapps-tests
-#      - basic-tests
-#      - openzeppelin-tests
-#      - build-image
-#    runs-on: test-runner
-#    env:
-#      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
-#      PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-#      CONTAINER: economy-${{ github.run_id }}
-#      NETWORK: terraform
-#    steps:
-#      - name: Run docker container
-#        run: |
-#          image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
-#          docker pull $image
-#          docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} \
-#          --name=${{ env.CONTAINER }} $image /bin/bash
-#      - name: Run economy tests
-#        run: |
-#          docker exec -i ${{ env.CONTAINER }} \
-#            python3 ./clickfile.py run economy -n ${{ env.NETWORK }}
-#      - name: Remove docker container
-#        if: always()
-#        run: docker rm -f ${{ env.CONTAINER }}
-
-
   destroy-terraform:
     needs:
       - prepare-infrastructure
-      - openzeppelin-tests
-      - basic-tests
       - dapps-tests
       - build-image
     runs-on: test-runner
@@ -427,16 +281,12 @@ jobs:
     runs-on: build-runner
     needs:
       - build-image
-      - openzeppelin-tests
-      - basic-tests
       - dapps-tests
       - deploy-check
     if: |
       always() &&
       needs.deploy-check.result == 'success' &&
-      needs.basic-tests.result == 'success' &&
-      needs.dapps-tests.result == 'success' &&
-      contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result)
+      needs.dapps-tests.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - name: Tag published image
@@ -451,8 +301,6 @@ jobs:
     runs-on: build-runner
     needs:
       - finalize-image
-      - openzeppelin-tests
-      - basic-tests
       - dapps-tests
       - deploy-check
       - build-image

@@ -241,6 +241,7 @@ class SolClient(HttpClient):
     async def get_slot_list(self, start_slot: int, stop_slot, commit=SolCommit.Confirmed) -> tuple[int, ...]:
         req = _SoldersGetSlotList(start_slot, stop_slot, commit.to_rpc_commit(), self._get_next_id())
         resp = await self._send_request(req, _SoldersGetSlotListResp)
+        _LOG.debug("SLOT LIST: %s", resp.value)
         return tuple(resp.value)
 
     async def get_slot(self, commit=SolCommit.Confirmed) -> int:
@@ -273,6 +274,13 @@ class SolClient(HttpClient):
         except SolRpcError as exc:
             _LOG.debug("error on get block %s: %s", slot, exc.message, extra=self._msg_filter)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)
+        _LOG.debug(
+            "BLOCK: %s %s %s",
+            slot,
+            resp.value.blockhash,
+            resp.value.parent_slot,
+            len(resp.value.transactions) if resp.value.transactions else 0,
+        )
         return SolRpcBlockInfo.from_raw(resp.value, slot=slot, commit=commit)
 
     async def get_blockhash(self, slot: int) -> SolBlockHash:
