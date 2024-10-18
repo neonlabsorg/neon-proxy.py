@@ -42,7 +42,10 @@ class OpBalanceHandler(BaseNPCmdHandler):
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
         self = cls(cfg)
-        self._root_parser = cmd_list_parser.add_parser(self.command)
+        self._root_parser = cmd_list_parser.add_parser(
+            self.command,
+            description="Commands on Operator balances"
+        )
         self._cmd_parser = self._root_parser.add_subparsers(
             title="command",
             dest="subcommand",

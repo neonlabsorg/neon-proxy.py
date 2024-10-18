@@ -12,6 +12,8 @@ from ..base.op_api import (
     OpSolTxListResp,
     OpDestroyHolderRequest,
     OpDestroyHolderResp,
+    OpUnblockHolderResp,
+    OpUnblockHolderRequest,
 )
 
 
@@ -35,6 +37,12 @@ class OpSolSignApi(OpResourceApi):
         with logging_context(**request.req_id):
             result = self._op_resource_mng.destroy_holder(request.owner, request.holder)
             return OpDestroyHolderResp(result=result)
+
+    @OpResourceApi.method(name="unblockHolder")
+    async def unblock_holder(self, request: OpUnblockHolderRequest) -> OpUnblockHolderResp:
+        with logging_context(**request.req_id):
+            result = self._op_resource_mng.unblock_holder(request.holder)
+            return OpUnblockHolderResp(result=result)
 
     @cached_property
     def _op_resource_mng(self) -> OpResourceMng:

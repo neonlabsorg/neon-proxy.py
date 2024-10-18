@@ -441,8 +441,8 @@ class CoreApiTxModel(BaseModel):
         serialization_alias="from",
     )
     nonce: int | None
-    to_address: EthAddressField | None = Field(
-        default=None,
+    to_address: EthAddressField = Field(
+        default=EthAddress.default(),
         validation_alias=AliasChoices("to", "to_address"),
         serialization_alias="to",
     )
@@ -476,7 +476,7 @@ class HolderAccountModel(BaseModel):
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
 
-    chain_id: int = Field(default=0)
+    chain_id: int | None = Field(default=0)
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
 
@@ -495,8 +495,10 @@ class HolderAccountModel(BaseModel):
         )
 
     @classmethod
-    def from_dict(cls, address: SolPubKey, data: dict) -> Self:  # noqa
+    def from_dict(cls, address: SolPubKey, def_chain_id: int, data: dict) -> Self:  # noqa
         data["address"] = address
+        if HolderAccountStatus.from_raw(data.get("status", "")) == HolderAccountStatus.Active:
+            data["chain_id"] = data.get("chain_id", None) or def_chain_id
         return cls.model_validate(data)
 
     @cached_property
@@ -538,7 +540,7 @@ class CoreApiBuildModel(BaseModel):
 
 
 class EmulSolAccountModel(BaseModel):
-    lamports: int
+    balance: int = Field(serialization_alias="lamports")
     data: CoreApiHexStrField
     owner: SolPubKeyField
     executable: bool
@@ -550,7 +552,7 @@ class EmulSolAccountModel(BaseModel):
             return None
 
         return cls(
-            lamports=raw.lamports,
+            balance=raw.balance,
             data=raw.data,
             owner=raw.owner,
             executable=raw.executable,

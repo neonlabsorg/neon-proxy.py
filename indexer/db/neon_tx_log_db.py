@@ -48,8 +48,8 @@ class NeonTxLogDb(HistoryDbTable):
     async def get_event_list(
         self,
         ctx: DbTxCtx,
-        from_block: int | None,
-        to_block: int | None,
+        from_slot: int | None,
+        to_slot: int | None,
         address_list: tuple[EthAddress, ...],
         topic_list: tuple[tuple[EthHash32, ...], ...],
     ) -> tuple[NeonTxEventModel, ...]:
@@ -57,13 +57,13 @@ class NeonTxLogDb(HistoryDbTable):
         query_list: list[DbSqlComposable] = [DbSql("1 = 1")]
         param_dict = dict()
 
-        if from_block is not None:
-            query_list.append(DbSql("a.block_slot >= {}").format(DbSqlParam("from_block")))
-            param_dict["from_block"] = from_block
+        if from_slot is not None:
+            query_list.append(DbSql("a.block_slot >= {}").format(DbSqlParam("from_slot")))
+            param_dict["from_slot"] = from_slot
 
-        if to_block is not None:
-            query_list.append(DbSql("a.block_slot <= {}").format(DbSqlParam("to_block")))
-            param_dict["to_block"] = to_block
+        if to_slot is not None:
+            query_list.append(DbSql("a.block_slot <= {}").format(DbSqlParam("to_slot")))
+            param_dict["to_slot"] = to_slot
 
         for topic_name, topic_value in zip(self._topic_column_list, topic_list):
             if topic_value:

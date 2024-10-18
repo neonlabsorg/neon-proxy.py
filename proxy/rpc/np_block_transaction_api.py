@@ -31,7 +31,6 @@ from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, Hex256UIntField, Hex8UIntField, Base58Field, HexUInt64Field
-from ..base.mp_api import MpRecentGasPricesModel
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxResp
@@ -475,34 +474,26 @@ class NpBlockTxApi(NeonProxyApi):
                 _LOG.debug("error on loading txs", exc_info=exc, extra=self._msg_filter)
 
         # BaseFeePerGas for the block response is taken either from the mempool recent gas prices (for the recent block)
+        #   - this case is used for requesting the current gas price by clients
         # or from the transactions inside that block (for the historical block).
-        base_fee_per_gas: int | None = None
-
+        #   - for the indexing purposes
         latest_slot: int = await self._db.get_latest_slot()
+        _, token_gas_price = await self._get_token_gas_price(ctx)
         if block.slot > latest_slot:
             # If block is pending, set baseFeePerGas to the current suggested token gas price.
-            _, token_gas_price = await self._get_token_gas_price(ctx)
-            base_fee_per_gas = token_gas_price.suggested_gas_price
+            base_fee = token_gas_price.suggested_gas_price
         else:
             # Try recent mempool gas prices.
-            mempool_basefee_gas_prices: MpRecentGasPricesModel = await self._server.get_recent_gas_prices_list(ctx)
-            base_fee_per_gas = mempool_basefee_gas_prices.find_gas_price(block.slot)
+            base_fee = token_gas_price.find_gas_price(block.slot)
 
-        if base_fee_per_gas is None:
-            # Recent gas prices from the mempool is lacking the data, we have to take it from the transaction list.
-            if all(not tx_meta.neon_tx.is_dynamic_gas_tx for tx_meta in tx_list):
-                # Take current token suggested gas price in case there are no Dynamic Gas transactions in the block.
-                _, token_gas_price = await self._get_token_gas_price(ctx)
-                base_fee_per_gas = token_gas_price.suggested_gas_price
-            else:
-                # Otherwise, set base_fee_per_gas as maximum from the transactions in the block.
-                base_fee_per_gas = 0
-                for tx_meta in tx_list:
-                    if tx_meta.neon_tx.is_dynamic_gas_tx:
-                        base_fee_per_gas = max(
-                            base_fee_per_gas, tx_meta.neon_tx.max_fee_per_gas - tx_meta.neon_tx.max_priority_fee_per_gas
-                        )
-        return _RpcBlockResp.from_raw(block, tx_list, full, base_fee_per_gas)
+        # Recent gas prices from the mempool is lacking the data, we have to take it from the transaction list.
+        if base_fee is None:
+            # Set base_fee as maximum from the block list before the block.
+            chain_id = self._get_chain_id(ctx)
+            block_list = await self._db.get_block_base_fee_list(chain_id, 128, latest_slot)
+            base_fee = max(block_list, key=lambda x: x.base_fee).base_fee if block_list else 0
+
+        return _RpcBlockResp.from_raw(block, tx_list, full, base_fee)
 
     @NeonProxyApi.method(name="eth_getBlockTransactionCountByNumber")
     async def get_tx_cnt_by_block_number(self, block_tag: RpcBlockRequest) -> HexUIntField:
