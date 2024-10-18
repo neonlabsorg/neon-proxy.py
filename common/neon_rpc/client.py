@@ -73,8 +73,14 @@ class CoreApiClient(HttpClient):
         self._stat_client = stat_client
         self._sol_client = sol_client
         self._evm_cfg = EvmConfigModel.default()
+        self._def_chain_id = 0
 
         self._raise_for_status = False
+
+    async def start(self) -> None:
+        await super().start()
+        evm_cfg = await self.get_evm_cfg()
+        self._def_chain_id = evm_cfg.default_chain_id
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         try:
@@ -144,7 +150,7 @@ class CoreApiClient(HttpClient):
                 extra=self._msg_filter,
             )
             return HolderAccountModel.new_empty(address)
-        return HolderAccountModel.from_dict(address, resp.value)
+        return HolderAccountModel.from_dict(address, self._def_chain_id, resp.value)
 
     async def get_neon_account_list(
         self,
