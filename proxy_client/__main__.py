@@ -20,13 +20,15 @@ class CmdExecutor(BaseCmdExecutor):
         self._handler_type_list.append(HolderHandler)
 
         self._parser.add_argument(
-            "--core-api-host",
+            "-i",
+            "--core-api-ip",
             required=False,
             type=str,
-            dest="core_api_host",
+            dest="core_api_ip",
             help="Host address of neon-core-api",
         )
         self._parser.add_argument(
+            "-p",
             "--core-api-port",
             required=False,
             type=int,
@@ -34,6 +36,7 @@ class CmdExecutor(BaseCmdExecutor):
             help="Port of neon-core-api",
         )
         self._parser.add_argument(
+            "-u",
             "--solana-url",
             type=str,
             dest="solana_url",
