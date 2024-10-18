@@ -170,6 +170,22 @@ class SolTx(abc.ABC):
         msg = self._solders_legacy_tx.message
         acct_key_list = msg.account_keys
         ix_list: list[SolTxIx] = list()
+
+        hdr = msg.header
+        rw_sig_acct_cnt = hdr.num_required_signatures - hdr.num_readonly_signed_accounts
+        unsig_acct_cnt = len(acct_key_list) - hdr.num_required_signatures
+        rw_unsig_acct_cnt = unsig_acct_cnt - hdr.num_readonly_unsigned_accounts
+
+        def _is_signer(_idx: int) -> bool:
+            return _idx < hdr.num_required_signatures
+
+        def _is_writable(_idx: int) -> bool:
+            if _idx >= hdr.num_required_signatures:
+                _idx -= hdr.num_required_signatures
+                return _idx < rw_unsig_acct_cnt
+
+            return _idx < rw_sig_acct_cnt
+
         for compiled_ix in msg.instructions:
             ix_data = compiled_ix.data
             prog_id = acct_key_list[compiled_ix.program_id_index]
@@ -177,7 +193,7 @@ class SolTx(abc.ABC):
             acct_meta_list: list[SolAccountMeta] = list()
             for idx in compiled_ix.accounts:
                 # replace signer with new one
-                acct_meta = SolAccountMeta(acct_key_list[idx], msg.is_signer(idx), msg.is_writable(idx))
+                acct_meta = SolAccountMeta(acct_key_list[idx], _is_signer(idx), _is_writable(idx))
                 acct_meta_list.append(acct_meta)
 
             ix_list.append(SolTxIx(prog_id, ix_data, acct_meta_list))
