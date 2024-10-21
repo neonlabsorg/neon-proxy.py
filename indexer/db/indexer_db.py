@@ -226,8 +226,6 @@ class IndexerDb:
             await self._set_earliest_slot(ctx, first_block.slot)
 
         await self._db_conn.run_tx(_tx)
-        for block in neon_block_queue:
-            block.mark_done()
 
     async def _drop_not_finalized_history(self) -> None:
         async def _db_tx(ctx: DbTxCtx) -> None:
@@ -246,6 +244,10 @@ class IndexerDb:
 
         # from this point the db-tx starts...
         await self._sol_block_db.set_block_list(ctx, new_block_list)
+
+        # mark all completed blocks as c
+        for block in new_block_list:
+            block.mark_done()
 
     async def _finalize_block_list(
         self, ctx: DbTxCtx, last_block: NeonIndexedBlockInfo, block_queue: tuple[NeonIndexedBlockInfo, ...]
