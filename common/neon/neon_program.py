@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import ClassVar, Final, Sequence
 
@@ -90,7 +91,33 @@ class NeonIxMode(IntEnum):
     Writable = 2
     FullWritable = 3
 
+    BaseTx = 4
+
     Default = Readable
+
+
+
+@dataclass(frozen=True)
+class NeonBaseTxAccountSet:
+    sender: SolPubKey
+    receiver: SolPubKey
+    receiver_contract: SolPubKey
+
+    _default: ClassVar[NeonBaseTxAccountSet | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not cls._default:
+            cls._default = cls(
+                sender=SolPubKey.default(),
+                receiver=SolPubKey.default(),
+                receiver_contract=SolPubKey.default(),
+            )
+        return cls._default
+
+    @property
+    def is_empty(self) -> bool:
+        return self.sender.is_empty
 
 
 class NeonProg:
@@ -120,10 +147,11 @@ class NeonProg:
         self._token_sol_addr = SolPubKey.default()
         self._holder_addr = SolPubKey.default()
         self._acct_meta_list: list[SolAccountMeta] = list()
+        self._addr_set: set[SolPubKey] = set()
         self._ro_addr_set: set[SolPubKey] = set()
         self._eth_rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
-        self._sender_sol_addr = SolPubKey.default()
+        self._base_tx_acct_set = NeonBaseTxAccountSet.default()
         self._treasury_pool_index_buf = bytes()
         self._treasury_pool_addr = SolPubKey.default()
 
@@ -179,17 +207,25 @@ class NeonProg:
         )
         return self
 
-    def init_sender_sol_address(self, value: SolPubKey) -> Self:
-        _LOG.debug("set sender solana address %s", value)
-        self._sender_sol_addr = value
+    def init_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> Self:
+        _LOG.debug(
+            "set sender solana address %s, receiver solana address %s, receiver contract address %s",
+            base_tx_account_set.sender,
+            base_tx_account_set.receiver,
+            base_tx_account_set.receiver_contract,
+        )
+        self._base_tx_acct_set = base_tx_account_set
         return self
 
     def init_account_meta_list(self, account_meta_list: Sequence[SolAccountMeta]) -> Self:
         self._acct_meta_list = list(account_meta_list)
+        self._addr_set = set(map(lambda x: SolPubKey.from_raw(x.pubkey), account_meta_list))
+        self._ro_addr_set.clear()
+
         self._get_ro_acct_meta_list.reset_cache(self)
         self._get_rw_acct_meta_list.reset_cache(self)
         self._get_rw_acct_key_list.reset_cache(self)
-        self._ro_addr_set.clear()
+        self._get_base_tx_acct_meta_list.reset_cache(self)
         return self
 
     def init_ro_address_list(self, address_list: Sequence[SolPubKey]) -> Self:
@@ -197,6 +233,7 @@ class NeonProg:
 
         self._get_ro_acct_meta_list.reset_cache(self)
         self._get_rw_acct_meta_list.reset_cache(self)
+        self._get_base_tx_acct_meta_list.reset_cache(self)
 
         for idx, acct in enumerate(self._acct_meta_list):
             if SolPubKey.from_raw(acct.pubkey) in self._ro_addr_set:
@@ -395,7 +432,7 @@ class NeonProg:
             SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
         ]
 
-        if self._sender_sol_addr.is_empty:
+        if self._base_tx_acct_set.is_empty:
             _LOG.debug("Cancel uses normal address list")
             acct_meta_list.extend(self._acct_meta_list)
         else:
@@ -440,6 +477,8 @@ class NeonProg:
             return self._make_holder_ix(ix_data, self._ro_acct_meta_list)
         elif mode == NeonIxMode.Writable:
             return self._make_holder_ix(ix_data, self._acct_meta_list)
+        elif mode == NeonIxMode.BaseTx:
+            return self._make_holder_ix(ix_data, self._base_tx_acct_meta_list)
 
         return self._make_holder_ix(ix_data, self._rw_acct_meta_list)
 
@@ -462,16 +501,42 @@ class NeonProg:
 
     @reset_cached_method
     def _get_ro_acct_meta_list(self) -> list[SolAccountMeta]:
+        if self._base_tx_acct_set.is_empty:
+            return list(
+                map(
+                    lambda x: SolAccountMeta(x.pubkey, x.is_signer, is_writable=True),
+                    self._acct_meta_list,
+                )
+            )
+
         return list(
             map(
                 lambda x: SolAccountMeta(
                     x.pubkey,
                     x.is_signer,
-                    is_writable=(self._sender_sol_addr == x.pubkey != self._sender_sol_addr.default()),
+                    is_writable=(self._base_tx_acct_set.sender == x.pubkey),
                 ),
                 self._acct_meta_list,
             )
         )
+
+    @property
+    def _base_tx_acct_meta_list(self) -> list[SolAccountMeta]:
+        if self._base_tx_acct_set.is_empty:
+            return self._ro_acct_meta_list
+        return self._get_base_tx_acct_meta_list()
+
+    @reset_cached_method
+    def _get_base_tx_acct_meta_list(self) -> list[SolAccountMeta]:
+        meta_list = [SolAccountMeta(self._base_tx_acct_set.sender, is_signer=False, is_writable=True)]
+        _LOG.debug("add sender: %s", self._base_tx_acct_set.sender)
+        if self._base_tx_acct_set.receiver in self._addr_set:
+            _LOG.debug("add receiver: %s", self._base_tx_acct_set.receiver)
+            meta_list.append(SolAccountMeta(self._base_tx_acct_set.receiver, is_signer=False, is_writable=False))
+        if (addr := self._base_tx_acct_set.receiver_contract) in self._addr_set:
+            _LOG.debug("add receiver contract: %s", addr)
+            meta_list.append(SolAccountMeta(addr, is_signer=False, is_writable=False))
+        return meta_list
 
     @property
     def _rw_acct_meta_list(self) -> list[SolAccountMeta]:

@@ -20,7 +20,7 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
         return tuple([self.name])
 
     async def build_tx_list(self) -> list[list[SolTx]]:
-        if self._ctx.is_stuck_tx or self._ctx.has_sol_tx(self.name):
+        if self._ctx.is_stuck_tx or (self._ctx.good_sol_tx_cnt(self.name) > 0):
             return list()
 
         cu_price = self._cu_price
@@ -46,5 +46,5 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
 
         return [tx_list]
 
-    async def update_after_emulate(self) -> None:
-        pass
+    async def update_after_emulation(self) -> bool:
+        return True

@@ -7,10 +7,8 @@ from typing import ClassVar
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
-from common.neon.account import NeonAccount
-from common.neon_rpc.api import CoreApiTxModel
+from common.neon.neon_program import NeonBaseTxAccountSet
 from common.solana.alt_program import SolAltAccountInfo
-from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
     SolCbExceededError,
@@ -89,17 +87,11 @@ class NeonTxExecutor(ExecutorComponent):
     ]
 
     async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
-        if (holder := await holder_validator.refresh()).is_active:
-            _LOG.debug(
-                "holder %s contains stuck NeonTx %s",
-                ctx.holder_address,
-                holder_validator.holder_account.neon_tx_hash,
-            )
-            raise StuckTxError(holder)
+        holder_validator = HolderAccountValidator(ctx)
+        await holder_validator.validate_stuck_tx()
 
         try:
-            await self._init_sender_sol_address(ctx, ctx.sender)
+            await self._init_base_sol_tx(ctx)
             # the earlier check of the nonce
             await self._validate_nonce(ctx)
             # get the list of accounts for validation
@@ -121,22 +113,16 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
 
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
-        if not (holder := await holder_validator.refresh()).is_active:
+        holder_validator = HolderAccountValidator(ctx)
+        if not await holder_validator.is_active():
             return ExecTxResp(code=ExecTxRespCode.Failed)
 
-        # update NeonProg settings from EVM config
-        evm_cfg = await self._server.get_evm_cfg()
-        ctx.init_neon_prog(evm_cfg)
-
         # request the token address (based on chain-id) for receiving payments from user
-        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, holder.chain_id)
+        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
         ctx.set_token_sol_address(token_sol_addr)
 
         # get solana address of the user
-        await self._init_sender_sol_address(ctx, holder.sender)
-
-        ctx.set_holder_account(holder)
+        await self._init_base_sol_tx(ctx)
         await self._emulate_neon_tx(ctx)
 
         acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
@@ -145,7 +131,7 @@ class NeonTxExecutor(ExecutorComponent):
                 ctx.add_alt_id(alt_acct.ident)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
-        return ExecTxResp(code=exit_code, chain_id=holder.chain_id)
+        return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
         for _Strategy in tx_strategy_list:
@@ -172,22 +158,19 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
 
             try:
-                has_changes = await strategy.prep_before_emulate()
+                await strategy.prep_before_emulation()
+                # we already have the emulator state, so we don't need to run additional emulate
                 if not ctx.is_stuck_tx:
-                    await self._validate_nonce(ctx)
                     await self._emulate_neon_tx(ctx)
 
-                if has_changes:
-                    await strategy.update_after_emulate()
-                    # Preparations made changes in the Solana state -> repeat the preparation and emulation
+                if not await strategy.update_after_emulation():
                     continue
 
+                if not ctx.is_stuck_tx:
+                    await self._validate_nonce(ctx)
+
                 # NeonTx is prepared for the execution
-                try:
-                    return await strategy.execute()
-                finally:
-                    if strategy.has_good_sol_tx_receipt:
-                        ctx.mark_good_sol_tx_receipt()
+                return await strategy.execute()
 
             except (EthNonceTooLowError, EthNonceTooHighError):
                 raise
@@ -250,29 +233,22 @@ class NeonTxExecutor(ExecutorComponent):
                 return None
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
-        # don't emulate if the slot is the same
-        slot = await self._sol_client.get_slot(SolCommit.Confirmed)
-        if slot == ctx.emulator_slot:
-            return
-
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
-        if ctx.is_stuck_tx:
-            core_tx = ctx.holder_tx
-        else:
-            core_tx = CoreApiTxModel.from_neon_tx(ctx.neon_tx, ctx.chain_id)
+        sender_balance = await self._get_sender_balance(ctx)
 
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            core_tx,
+            ctx.holder_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
+            sender_balance=sender_balance,
+            emulator_block=ctx.holder_block,
         )
 
-        slot = await self._sol_client.get_slot(SolCommit.Confirmed)
-        ctx.set_emulator_result(slot, emul_resp)
+        ctx.set_emulator_result(emul_resp)
 
         # get executable accounts
         acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)
@@ -280,17 +256,30 @@ class NeonTxExecutor(ExecutorComponent):
         ctx.set_ro_address_list(ro_addr_list)
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
-        if ctx.has_good_sol_tx_receipt:
+        if ctx.is_started:
             return
 
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
-        EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt)
-        EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt)
+        EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+        EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+
+    async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
+        if not ctx.is_started:
+            return None
+        acct = await self._core_api_client.get_neon_account(ctx.sender, None)
+        return acct.balance
+
 
     async def _get_state_tx_cnt(self, ctx: NeonExecTxCtx) -> int:
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.state_tx_cnt
 
-    async def _init_sender_sol_address(self, ctx: NeonExecTxCtx, sender: NeonAccount) -> None:
-        acct = await self._core_api_client.get_neon_account(sender, None)
-        ctx.set_sender_sol_address(acct.sol_address)
+    async def _init_base_sol_tx(self, ctx: NeonExecTxCtx) -> None:
+        addr_list = tuple([ctx.sender, ctx.receiver])
+        acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
+        base_tx_acct_set = NeonBaseTxAccountSet(
+            sender=acct_list[0].sol_address,
+            receiver=acct_list[1].sol_address,
+            receiver_contract=acct_list[1].contract_sol_address,
+        )
+        ctx.set_tx_sol_address(base_tx_acct_set)

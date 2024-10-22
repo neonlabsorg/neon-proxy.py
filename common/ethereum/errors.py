@@ -32,12 +32,12 @@ class EthNonceTooLowError(EthError):
         return self._state_tx_cnt
 
     @classmethod
-    def raise_if_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str = _empty_sender) -> None:
+    def raise_if_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress) -> None:
         if state_tx_cnt > tx_nonce:
             cls.raise_error(tx_nonce, state_tx_cnt, sender=sender)
 
     @classmethod
-    def raise_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress = _empty_sender) -> None:
+    def raise_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress) -> None:
         raise cls(tx_nonce, state_tx_cnt, sender=sender)
 
 
@@ -56,12 +56,12 @@ class EthNonceTooHighError(EthError):
         return self._state_tx_cnt
 
     @classmethod
-    def raise_if_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress = _empty_sender) -> None:
+    def raise_if_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress) -> None:
         if state_tx_cnt < tx_nonce:
             cls.raise_error(tx_nonce, state_tx_cnt, sender=sender)
 
     @classmethod
-    def raise_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress = _empty_sender) -> None:
+    def raise_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress) -> None:
         raise cls(tx_nonce, state_tx_cnt, sender=sender)
 
 

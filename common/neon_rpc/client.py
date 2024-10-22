@@ -8,27 +8,28 @@ from typing import Sequence, Final, TypeVar
 from .api import (
     CoreApiResp,
     CoreApiResultCode,
+    CoreApiTxModel,
+    CoreApiBlockModel,
+    CoreApiBuildModel,
     EvmConfigModel,
     BpfLoader2ExecModel,
     BpfLoader2ProgModel,
-    CoreApiBuildModel,
     HolderAccountModel,
-    NeonAccountModel,
     HolderAccountRequest,
+    NeonAccountStatus,
+    NeonAccountModel,
     NeonAccountListRequest,
-    EmulNeonCallResp,
-    EmulNeonCallRequest,
-    CoreApiTxModel,
-    EmulNeonCallExitCode,
     NeonStorageAtRequest,
     NeonContractRequest,
     NeonContractModel,
+    OpEarnAccountModel,
+    EmulNeonCallExitCode,
     EmulSolAccountModel,
     EmulSolTxListResp,
     EmulSolTxInfo,
     EmulSolTxListRequest,
-    OpEarnAccountModel,
-    NeonAccountStatus,
+    EmulNeonCallResp,
+    EmulNeonCallRequest,
     EmulTraceCfgModel,
     EmulNeonAccountModel,
 )
@@ -237,19 +238,29 @@ class CoreApiClient(HttpClient):
         tx: CoreApiTxModel,
         *,
         check_result: bool,
+        sender_balance: int | None = None,
         preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
+        emulator_block = CoreApiBlockModel.default(),
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:
         emul_sol_acct_dict = dict()
         if sol_account_dict:
             emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
 
-        if tx.nonce is not None:
-            emul_neon_acct_dict = {tx.from_address: EmulNeonAccountModel(nonce=tx.nonce)}
-            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict)
+        if emulator_block.is_empty:
+            emulator_block = None
         else:
-            emul_trace_cfg = None
+            _LOG.debug("use predefined block: %d, %d", emulator_block.slot, emulator_block.timestamp)
+
+        emul_neon_acct_dict = dict()
+        if (tx.nonce is not None) or (sender_balance is not None):
+            emul_balance = sender_balance + tx.cost if sender_balance is not None else None
+            emul_neon_acct_dict[tx.from_address] = EmulNeonAccountModel(nonce=tx.nonce, balance=emul_balance)
+
+        emul_trace_cfg = None
+        if emul_neon_acct_dict or emulator_block:
+            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict, block=emulator_block)
 
         req = EmulNeonCallRequest(
             tx=tx,
