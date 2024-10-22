@@ -8,6 +8,7 @@ from typing import Final, ClassVar, Sequence
 
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
 from common.neon_rpc.api import HolderAccountModel
+from common.solana.commit_level import SolCommit
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import (
@@ -48,7 +49,6 @@ class _HolderAccountValidator(HolderAccountValidator):
             return (not self.is_valid) or self._holder_acct.is_finalized
 
         return self.is_valid and self._holder_acct.is_finalized
-
 
 class _SolTxListSender(SolTxListSender):
     def __init__(self, *args, holder_account_validator: _HolderAccountValidator) -> None:
@@ -135,6 +135,9 @@ class IterativeTxStrategy(BaseTxStrategy):
             return ExecTxRespCode.Failed
         elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed
+            return ExecTxRespCode.Failed
+        current_slot = await self._ctx._sol_client.get_slot(SolCommit.Confirmed)
+        if (current_slot  - self._holder_acct.last_used_slot) < self._ctx._cancel_timeout:
             return ExecTxRespCode.Failed
 
         # generate cancel tx with the default CU budget
