@@ -80,7 +80,7 @@ class SolNotEmptyBlockFinder:
         return not is_empty
 
     async def _find_slot(self, ctx: _Ctx) -> int | None:
-        stop_slot = min(ctx.stop_slot, ctx.start_slot + 1024)
+        stop_slot = min(ctx.stop_slot, ctx.start_slot + 999)
         if slot_list := await self._sol_client.get_slot_list(ctx.start_slot, stop_slot, SolCommit.Finalized):
             return slot_list[0]
         return None
