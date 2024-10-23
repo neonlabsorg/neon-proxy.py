@@ -20,6 +20,7 @@ from ..config.config import Config
 from ..http.client import HttpClient, HttpClientRequest
 from ..http.utils import HttpURL
 from ..jsonrpc.errors import InternalJsonRpcError
+from ..neon.neon_program import NeonProg
 from ..solana.account import SolAccountModel
 from ..solana.alt_program import SolAltAccountInfo
 from ..solana.block import SolRpcBlockInfo
@@ -255,10 +256,11 @@ class SolClient(HttpClient):
         _LOG.debug("first available slot: %s", resp.value)
         return resp.value
 
-    async def get_block(self, slot: int, commit=SolCommit.Confirmed) -> SolRpcBlockInfo:
+    async def get_block(self, slot: int, commit=SolCommit.Confirmed, *, with_tx_list=False) -> SolRpcBlockInfo:
+        # First step - load block with transaction accounts
         cfg = _SoldersBlockCfg(
             _SoldersTxEnc.Base64,
-            transaction_details=_SoldersTxDet.Full,
+            transaction_details=_SoldersTxDet.Accounts if with_tx_list else _SoldersTxDet.None_,
             rewards=False,
             commitment=commit.to_rpc_commit(),
             max_supported_transaction_version=0,
@@ -268,12 +270,36 @@ class SolClient(HttpClient):
             resp = await self._send_request(req, _SoldersGetBlockResp)
             if resp.value:
                 if SolBlockHash.from_raw(resp.value.previous_blockhash).is_empty:
-                    _LOG.debug("error on get block %s: empty parentBlockhash", slot)
+                    _LOG.debug("fail on get block %s: empty parentBlockhash", slot)
                     return SolRpcBlockInfo.new_empty(slot, commit=commit)
         except SolRpcError as exc:
-            _LOG.debug("error on get block %s: %s", slot, exc.message, extra=self._msg_filter)
+            _LOG.debug("fail on get block %s: %s", slot, exc.message, extra=self._msg_filter)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)
-        return SolRpcBlockInfo.from_raw(resp.value, slot=slot, commit=commit)
+
+        if not with_tx_list:
+            return SolRpcBlockInfo.from_raw(resp.value, rpc_tx_list=list(), slot=slot, commit=commit)
+
+        # Second step - load transactions without vote program
+        tx_sig_list: list[SolTxSig] = list()
+        for tx_meta in resp.value.transactions:
+            if not tx_meta.transaction.signatures:
+                continue
+
+            for acct_meta in tx_meta.transaction.account_keys:
+                if SolPubKey.from_raw(acct_meta.pubkey) == NeonProg.ID:
+                    tx_sig_list.append(SolTxSig.from_raw(tx_meta.transaction.signatures[0]))
+                    break
+
+        if not tx_sig_list:
+            return SolRpcBlockInfo.from_raw(resp.value, rpc_tx_list=list(), slot=slot, commit=commit)
+
+        rpc_tx_meta_list = await self.get_tx_list(tx_sig_list, commit)
+        rpc_tx_list = [tx_meta.transaction for tx_meta in rpc_tx_meta_list if tx_meta]
+        if len(rpc_tx_list) != len(tx_sig_list):
+            _LOG.debug("fail on get transactions for block %s", slot)
+            return SolRpcBlockInfo.new_empty(slot, commit=commit)
+
+        return SolRpcBlockInfo.from_raw(resp.value, rpc_tx_list=rpc_tx_list, slot=slot, commit=commit)
 
     async def get_blockhash(self, slot: int) -> SolBlockHash:
         block = await self.get_block(slot)
