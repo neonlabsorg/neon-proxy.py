@@ -217,7 +217,7 @@ class IndexerDb:
                 await self._finalize_block_list(ctx, last_block, neon_block_queue)
                 await self._set_finalized_slot(ctx, last_block.slot)
             else:
-                await self._activate_block_list(ctx, last_block, neon_block_queue)
+                await self._activate_block_list(ctx, neon_block_queue)
 
             # doesn't look critical to modify the local cache variables on the last step of the db-tx
             #  if something bad happens, it is already happened
@@ -237,6 +237,10 @@ class IndexerDb:
         new_block_list = tuple([block for block in block_list if not block.is_done])
         if not new_block_list:
             return
+
+        last_block = new_block_list[-1]
+        if not last_block.is_finalized:
+            await self._stuck_neon_tx_db.set_obj_list(ctx, last_block)
 
         # it doesn't matter in which order the objects will be inserted
         #  they will be available only after activating the block's branch and the latest/finalized blocks
@@ -268,12 +272,7 @@ class IndexerDb:
         # the branch switching should be atomic
         await self._sol_block_db.finalize_block_list(ctx, *block_range)
 
-    async def _activate_block_list(
-        self, ctx: DbTxCtx, last_block: NeonIndexedBlockInfo, block_queue: tuple[NeonIndexedBlockInfo, ...]
-    ) -> None:
-        if not last_block.is_done:
-            await self._stuck_neon_tx_db.set_obj_list(ctx, last_block)
-
+    async def _activate_block_list(self, ctx: DbTxCtx, block_queue: tuple[NeonIndexedBlockInfo, ...]) -> None:
         slot_list = tuple([b.slot for b in block_queue if not b.is_finalized])
         if slot_list:
             await self._sol_block_db.activate_block_list(ctx, self._finalized_slot, slot_list)
