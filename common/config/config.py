@@ -8,14 +8,7 @@ from decimal import Decimal
 from typing import Final, Union
 from urllib.parse import urlparse
 
-from pythclient.solana import (
-    PYTHNET_HTTP_ENDPOINT,
-    PYTHNET_WS_ENDPOINT,
-    SOLANA_DEVNET_HTTP_ENDPOINT,
-    SOLANA_MAINNET_HTTP_ENDPOINT,
-    SOLANA_MAINNET_WS_ENDPOINT,
-    SOLANA_DEVNET_WS_ENDPOINT,
-)
+from pythclient.solana import SOLANA_MAINNET_HTTP_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT
 from strenum import StrEnum
 
 from .constants import (
@@ -26,9 +19,9 @@ from .constants import (
     SOL_PKT_SIZE,
     CHAIN_TOKEN_NAME,
 )
+from ..solana.cb_program import SolCbProg
 from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
-from ..solana.cb_program import SolCbProg
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import str_fmt_object
 
@@ -578,8 +571,7 @@ class Config:
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
         return self._env_sol_acct(
-            self.sol_key_for_evm_cfg_name,
-            SolPubKey.from_raw("J4hWtdRER39G4iwTa1Xaw5HCAhbYrt2c5o57JyXWMjao")
+            self.sol_key_for_evm_cfg_name, SolPubKey.from_raw("J4hWtdRER39G4iwTa1Xaw5HCAhbYrt2c5o57JyXWMjao")
         )
 
     ###########################
@@ -645,15 +637,10 @@ class Config:
         pyth_url_list = self._pyth_url_list
         if not pyth_url_list:
             _LOG.debug(
-                "%s is not defined, force to use the default value: "
-                "(PYTHNET_HTTP_ENDPOINT, SOLANA_MAINNET_HTTP_ENDPOINT, SOLANA_DEVNET_HTTP_ENDPOINT) + sol_url_list",
+                "%s is not defined, force to use the default value: " "sol_url_list + (SOLANA_MAINNET_HTTP_ENDPOINT)",
                 self.pyth_url_name,
             )
-            pyth_url_list = (
-                [PYTHNET_HTTP_ENDPOINT]
-                + list(self.sol_url_list)
-                + [SOLANA_MAINNET_HTTP_ENDPOINT, SOLANA_DEVNET_HTTP_ENDPOINT]
-            )
+            pyth_url_list = list(self.sol_url_list) + [SOLANA_MAINNET_HTTP_ENDPOINT]
         return tuple(pyth_url_list)
 
     @cached_property
@@ -664,14 +651,10 @@ class Config:
             if not pyth_url_list:
                 _LOG.debug(
                     "%s is not defined, force to use the default value: "
-                    "(PYTHNET_WS_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT, SOLANA_DEVNET_WS_ENDPOINT) + sol_ws_url_list",
+                    "sol_ws_url_list + (SOLANA_MAINNET_WS_ENDPOINT)",
                     self.pyth_ws_url_name,
                 )
-                pyth_ws_url_list = (
-                    [PYTHNET_WS_ENDPOINT]
-                    + list(self.sol_ws_url_list)
-                    + [SOLANA_MAINNET_WS_ENDPOINT, SOLANA_DEVNET_WS_ENDPOINT]
-                )
+                pyth_ws_url_list = list(self.sol_ws_url_list) + [SOLANA_MAINNET_WS_ENDPOINT]
             else:
                 _LOG.debug(
                     "%s is not defined, force to use the default value calculated from the %s",
