@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, Sequence
 
 import solders.transaction_status as _tx
 from typing_extensions import Self
@@ -43,7 +43,9 @@ class SolRpcBlockInfo:
         )
 
     @classmethod
-    def from_raw(cls, raw: _RawBlock, *, slot: int | None = None, commit=SolCommit.Processed) -> Self:
+    def from_raw(
+        cls, raw: _RawBlock, *, slot: int | None = None, rpc_tx_list: Sequence[SolRpcTxInfo], commit=SolCommit.Processed
+    ) -> Self:
         if raw is None:
             return cls.new_empty(slot, commit=commit)
         elif isinstance(raw, cls):
@@ -58,11 +60,13 @@ class SolRpcBlockInfo:
             assert slot is None, "The block slot is already passed in the raw parameter"
             return cls.new_empty(raw, commit=commit)
         elif isinstance(raw, _SoldersRpcBlockInfo):
-            return cls._from_rpc_block(slot, raw, commit)
+            return cls._from_rpc_block(slot, raw, rpc_tx_list, commit)
         raise ValueError(f"Wrong input type {type(raw).__name__}")
 
     @classmethod
-    def _from_rpc_block(cls, slot: int, rpc_block: _SoldersRpcBlockInfo, commit: SolCommit) -> Self:
+    def _from_rpc_block(
+        cls, slot: int, rpc_block: _SoldersRpcBlockInfo, rpc_tx_list: Sequence[SolRpcTxInfo], commit: SolCommit
+    ) -> Self:
         assert slot is not None, "The block slot should be defined"
         assert commit != SolCommit.Processed, "The commitment should be defined"
         return cls(
@@ -73,7 +77,7 @@ class SolRpcBlockInfo:
             block_height=rpc_block.block_height,
             parent_slot=rpc_block.parent_slot,
             parent_block_hash=SolBlockHash.from_raw(rpc_block.previous_blockhash),
-            tx_list=rpc_block.transactions,
+            tx_list=list(rpc_tx_list),
         )
 
     @property
