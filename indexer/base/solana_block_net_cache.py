@@ -99,7 +99,7 @@ class SolBlockNetCache:
             return slot_list
 
         block_list = await asyncio.gather(
-            *[self._sol_client.get_block(slot, ctx.sol_commit) for slot in empty_slot_list]
+            *[self._sol_client.get_block(slot, ctx.sol_commit, with_tx_list=True) for slot in empty_slot_list]
         )
         for block in block_list:
             idx = self._calc_idx(block.slot)
