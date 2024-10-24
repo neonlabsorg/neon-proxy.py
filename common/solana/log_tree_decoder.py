@@ -121,22 +121,13 @@ class SolTxLogTreeDecoder:
         while msg := ctx.next_msg():
             if msg.startswith(cls._prog_log):
                 pass
-            if msg.startswith(cls._prog_data):
+            elif msg.startswith(cls._prog_data):
+                if len(mag) < len(cls._prog_data):
+                    pass
                 msg_data64 = msg[len(cls._prog_data):]
-
-                if len(msg_data64 > 2):
+                if len(msg_data64) > 0:
                     msg_str = bas64.b64decode(msg_data64)
-                    data = msg_str.split(' ')
-
-                    if len(data) > 3:
-                        if data[1] == "ERROR":
-                            error_code = data[2]
-                            error_msg = data[3:]
-
-                        log.log_list.append(msg_str)
-                        log.log_list.append("Error code = %d", error_code)
-                        log.log_list.append("Error msg = %s", error_msg)
-
+                    log.log_list.append("Decoded error msg = %s", msg_str)
             elif cls._decode_invoke(log, msg, ctx):
                 continue
             elif _SolSuccessLogDecoder.decode(log, msg):
