@@ -122,8 +122,7 @@ class SolTxLogTreeDecoder:
             if msg.startswith(cls._prog_log):
                 pass
             elif msg.startswith(cls._prog_data):
-                text = "FOUND PROGRAM DATA, len =" + str(len(msg))
-                log.log_list.append(text)
+                log.log_list.append(msg)
             elif cls._decode_invoke(log, msg, ctx):
                 continue
             elif _SolSuccessLogDecoder.decode(log, msg):
