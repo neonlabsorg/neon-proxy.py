@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import base64
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Iterator, Final, ClassVar
@@ -118,8 +119,12 @@ class SolTxLogTreeDecoder:
     @classmethod
     def _decode(cls, log: _SolTxIxLogDraft, ctx: _SolLogDecoderCtx) -> None:
         while msg := ctx.next_msg():
-            if msg.startswith(cls._prog_log) or msg.startswith(cls._prog_data):
+            if msg.startswith(cls._prog_log):
                 pass
+            elif msg.startswith(cls._prog_data):
+                msg_bytes = msg.replace(cls._prog_data, '')
+                log.log_list.append(msg + str(len(msg)))
+                log.log_list.append(msg_bytes + str(len(msg_bytes)))
             elif cls._decode_invoke(log, msg, ctx):
                 continue
             elif _SolSuccessLogDecoder.decode(log, msg):
