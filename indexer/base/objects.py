@@ -606,6 +606,9 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
         neon_tx_event_list = self._get_sorted_tx_event_list()
         self._fill_tx_event_order_nums(neon_tx_event_list)
+        if self.is_corrupted:
+            return 0, 0
+
         self._hide_reverted_tx_events(neon_tx_event_list)
         self._add_tx_return_event(neon_tx_event_list)
         last_log_idx = self._fill_tx_event_block_info(start_log_idx, neon_tx_event_list)
@@ -644,8 +647,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         #    ]
         return list(itertools.chain.from_iterable(sorted_event_ll))
 
-    @staticmethod
-    def _fill_tx_event_order_nums(neon_tx_event_list: list[_NeonTxEventDraft]) -> None:
+    def _fill_tx_event_order_nums(self, neon_tx_event_list: list[_NeonTxEventDraft]) -> None:
         current_level, current_order, total_step_cnt = 0, 0, 0
         addr_stack: list[EthAddress] = list()
 
@@ -676,6 +678,11 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                 event_level, addr = current_level, event.address
                 addr_stack.append(addr)
             elif event.is_exit_event_type:
+                if not addr_stack:
+                    _LOG.debug("bad %s in %s", event.event_type.name, self.neon_tx_hash)
+                    self._has_truncated_log = True
+                    break
+
                 event_level, addr = current_level, addr_stack.pop()
                 current_level -= 1
             else:
@@ -1218,6 +1225,11 @@ class NeonIndexedBlockInfo:
                 continue
 
             log_idx, sum_gas_used = tx.complete_neon_tx_event_list(neon_block_hdr, tx_idx, log_idx, sum_gas_used)
+            if tx.is_corrupted:
+                _LOG.error("corrupted tx: %s", tx)
+                self._has_corrupted_tx = True
+                continue
+
             tx_idx += 1
 
     def _check_stuck_holders(self, cfg: Config) -> None:
