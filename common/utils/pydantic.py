@@ -25,6 +25,11 @@ class BaseModel(_PydanticBaseModel):
         ignored_types=(cached_property, cached_method, reset_cached_method),
     )
 
+    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
+        """The object is not mutable, so there is no point in creating a copy."""
+        memo[id(self)] = self
+        return self
+
     @classmethod
     def from_json(cls, json_data: str) -> Self:
         return cls.model_validate_json(json_data)
@@ -48,11 +53,6 @@ class BaseModel(_PydanticBaseModel):
 
     def __repr__(self) -> str:
         return self.to_string()
-
-    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> Self:
-        """The object is not mutable, so there is no point in creating a copy."""
-        memo[id(self)] = self
-        return self
 
 
 class RootModel(_PydanticRootModel):

@@ -20,6 +20,11 @@ class SolSigner:
     def __init__(self, keypair: SolKeyPair) -> None:
         self._keypair = keypair
 
+    def __deepcopy__(self, memo: dict) -> Self:
+        """The object is not mutable, so there is no point in creating a copy."""
+        memo[id(self)] = self
+        return self
+
     @classmethod
     def default(cls) -> SolSigner:
         if cls._default is None:
@@ -78,11 +83,6 @@ class SolSigner:
 
     def __hash__(self) -> int:
         return self._keypair.__hash__()
-
-    def __deepcopy__(self, memo: dict) -> Self:
-        """The object is not mutable, so there is no point in creating a copy."""
-        memo[id(self)] = self
-        return self
 
     def __eq__(self, other) -> bool:
         if other is self:

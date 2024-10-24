@@ -42,6 +42,11 @@ class NeonAccount:
         self._chain_id: Final[int] = chain_id
         self._private_key: Final[eth_keys.keys.PrivateKey | None] = private_key
 
+    def __deepcopy__(self, memo: dict) -> Self:
+        """The object is not mutable, so there is no point in creating a copy."""
+        memo[id(self)] = self
+        return self
+
     @classmethod
     def default(cls) -> Self:
         return cls(address=cls._empty_address_bytes, chain_id=0, private_key=None)
@@ -168,11 +173,6 @@ class NeonAccount:
     @cached_method
     def __hash__(self) -> int:
         return hash(tuple([self._address, self._chain_id]))
-
-    def __deepcopy__(self, memo: dict) -> Self:
-        """The object is not mutable, so there is no point in creating a copy."""
-        memo[id(self)] = self
-        return self
 
     def __eq__(self, other: _RawAccount) -> bool:
         if other is self:
