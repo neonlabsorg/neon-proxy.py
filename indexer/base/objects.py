@@ -16,7 +16,6 @@ from common.ethereum.bin_str import EthBinStrField, EthBinStr
 from common.ethereum.hash import EthTxHash, EthAddress, EthTxHashField, EthBlockHash, EthHash32
 from common.neon.block import NeonBlockHdrModel
 from common.neon.evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
-from common.neon.neon_program import NeonProg
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo, SolNeonAltTxIxModel
 from common.neon.transaction_model import NeonTxModel
@@ -25,7 +24,6 @@ from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.solana.signature import SolTxSig
 from common.solana.transaction_decoder import SolTxMetaInfo, SolTxCostModel
-from common.solana.transaction_meta import SolRpcTxInfo
 from common.utils.cached import cached_method, reset_cached_method, cached_property
 from common.utils.format import str_fmt_object
 from common.utils.pydantic import BaseModel
