@@ -17,6 +17,11 @@ _SoldersSig = _sig.Signature
 class SolTxSig(_SoldersSig):
     _default: ClassVar[SolTxSig | None] = None
 
+    def __deepcopy__(self, memo: dict) -> Self:
+        """The object is not mutable, so there is no point in creating a copy."""
+        memo[id(self)] = self
+        return self
+
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
@@ -59,11 +64,6 @@ class SolTxSig(_SoldersSig):
 
     def to_bytes(self) -> bytes:
         return self.__bytes__()
-
-    def __deepcopy__(self, memo: dict) -> Self:
-        """The object is not mutable, so there is no point in creating a copy."""
-        memo[id(self)] = self
-        return self
 
     def __repr__(self) -> str:
         return self.to_string()

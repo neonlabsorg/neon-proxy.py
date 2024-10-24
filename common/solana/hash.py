@@ -15,6 +15,11 @@ class SolBlockHash(_SoldersSolHash):
     _fake: ClassVar[SolBlockHash | None] = None
     _default: ClassVar[SolBlockHash | None] = None
 
+    def __deepcopy__(self, memo: dict) -> Self:
+        """The object is not mutable, so there is no point in creating a copy."""
+        memo[id(self)] = self
+        return self
+
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
@@ -75,11 +80,6 @@ class SolBlockHash(_SoldersSolHash):
     @cached_method
     def __hash__(self) -> int:
         return hash(self.to_bytes())
-
-    def __deepcopy__(self, memo: dict) -> Self:
-        """The object is not mutable, so there is no point in creating a copy."""
-        memo[id(self)] = self
-        return self
 
     def __eq__(self, other) -> bool:
         if other is self:

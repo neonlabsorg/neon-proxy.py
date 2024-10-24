@@ -21,6 +21,11 @@ class EthBinStr:
 
         self._data: Final[bytes] = data
 
+    def __deepcopy__(self, memo: dict) -> Self:
+        """The object is not mutable, so there is no point in creating a copy."""
+        memo[id(self)] = self
+        return self
+
     @classmethod
     def default(cls) -> Self:
         return cls(cls._empty_data)

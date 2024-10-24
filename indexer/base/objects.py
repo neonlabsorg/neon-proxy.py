@@ -130,6 +130,11 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
             self._addr = address
             self._neon_tx_hash = neon_tx_hash
 
+        def __deepcopy__(self, memo: dict) -> Self:
+            """The object is not mutable, so there is no point in creating a copy."""
+            memo[id(self)] = self
+            return self
+
         @classmethod
         def from_raw(cls, address: SolPubKey, neon_tx_hash: EthTxHash) -> Self:
             return cls(address, neon_tx_hash)
@@ -173,6 +178,10 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
         self._key = key
         self._data_size = data_size
         self._data = data
+
+    def __deepcopy__(self, memo: dict) -> Self:
+        memo[id(self)] = copy.copy(self)
+        return self
 
     @classmethod
     def from_raw(cls, key: Key) -> Self:
@@ -261,6 +270,10 @@ class _NeonTxEventDraft:
     neon_tx_idx: int = 0
     block_log_idx: int | None = None
     neon_tx_log_idx: int | None = None
+
+    def __deepcopy__(self, memo: dict) -> Self:
+        memo[id(self)] = copy.copy(self)
+        return self
 
     @classmethod
     def from_raw(cls, src: NeonTxEventModel) -> Self:
@@ -392,9 +405,25 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
         # default:
         self._is_done = False
+        self._is_cloned = False
         self._neon_tx_event_dict: dict[int, list[_NeonTxEventDraft]] = dict()
         self._neon_tx_ret: NeonTxLogReturnInfo | None = None
         self._clean_neon_tx_rcpt: NeonTxReceiptModel | None = None
+
+    def __deepcopy__(self, memo: dict) -> Self:
+        new_self = copy.copy(self)
+        new_self._is_cloned = True
+        memo[id(self)] = new_self
+        return self
+
+    def _complete_clone(self) -> None:
+        if not self._is_cloned:
+            return
+
+        self._is_cloned = False
+        self._neon_tx_rcpt = copy.copy(self._neon_tx_rcpt)
+        self._alt_addr_list = copy.copy(self._alt_addr_list)
+        self._neon_tx_event_dict = copy.deepcopy(self._neon_tx_event_dict)
 
     @classmethod
     def from_raw(cls, key: Key, neon_tx: NeonTxModel, holder_address: SolPubKey) -> Self:
@@ -494,6 +523,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         return self._neon_tx_rcpt.is_completed
 
     def add_alt_address(self, alt_address: SolPubKey) -> None:
+        self._complete_clone()
         self._alt_addr_list.append(alt_address)
 
     def mark_done(self, slot: int) -> None:
@@ -515,11 +545,12 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self.set_tx_return(sol_neon_ix, tx_ret)
 
     def set_tx_return(self, sol_neon_ix: SolNeonTxIxMetaInfo, tx_return: NeonTxLogReturnInfo) -> None:
-        rcpt = self._neon_tx_rcpt
-        if rcpt.is_completed:
+        if self._neon_tx_rcpt.is_completed:
             _LOG.debug("skip an surplus return: %s", tx_return)
             return
 
+        self._complete_clone()
+        rcpt = self._neon_tx_rcpt
         if tx_return.event_type == NeonTxEventModel.Type.Return:
             rcpt.is_completed = True
         elif tx_return.event_type == NeonTxEventModel.Type.Cancel:
@@ -563,6 +594,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         elif sol_neon_ix.is_log_truncated:
             self._has_truncated_log = True
 
+        self._complete_clone()
         self._neon_tx_event_dict.setdefault(total_gas_used, list()).extend(tx_event_list)
 
     def complete_neon_tx_event_list(
@@ -576,10 +608,11 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         assert not self.is_corrupted
 
         sum_gas_used += self._total_gas_used
-        rcpt = self._neon_tx_rcpt
         if not self._neon_tx_event_dict:
-            return len(rcpt.event_list), sum_gas_used
+            return len(self._neon_tx_rcpt.event_list), sum_gas_used
 
+        self._complete_clone()
+        rcpt = self._neon_tx_rcpt
         rcpt.slot = neon_block_hdr.slot
         rcpt.block_hash = neon_block_hdr.block_hash
         rcpt.neon_tx_idx = neon_tx_idx
