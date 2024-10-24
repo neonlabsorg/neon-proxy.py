@@ -122,7 +122,9 @@ class SolTxLogTreeDecoder:
             if msg.startswith(cls._prog_log):
                 pass
             elif msg.startswith(cls._prog_data):
-                pass
+                msg.decode()
+                decoded_msg = base64.b64decode(msg)
+                log.log_list.append(decoded_msg)
             elif cls._decode_invoke(log, msg, ctx):
                 continue
             elif _SolSuccessLogDecoder.decode(log, msg):
