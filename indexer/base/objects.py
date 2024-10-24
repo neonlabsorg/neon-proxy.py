@@ -1514,9 +1514,6 @@ class SolNeonDecoderCtx:
             self._stat.inc_sol_block_cnt()
             self._stat.add_sol_tx_meta_cnt(len(sol_block.tx_list))
             for sol_tx in sol_block.tx_list:
-                if not self._has_sol_neon_ix(sol_tx):
-                    continue
-
                 self._sol_tx_meta = SolTxMetaInfo.from_raw(sol_block.slot, sol_tx)
                 yield self._sol_tx_meta
         finally:
@@ -1541,31 +1538,3 @@ class SolNeonDecoderCtx:
     @property
     def neon_block_queue(self) -> tuple[NeonIndexedBlockInfo, ...]:
         return tuple(self._neon_block_queue)
-
-    # protected:
-
-    @staticmethod
-    def _has_sol_neon_ix(sol_tx: SolRpcTxInfo) -> bool:
-        """
-        The first variant is to get programs from the Legacy message.
-        But in the Versioned message there is no program_ids().
-
-        So use another way to check by read read-only part of accounts.
-        Programs can be only in the read-only part of the message:accountKeys
-        """
-        msg = sol_tx.transaction.message
-        # if hasattr(msg, "program_ids") and (NeonProg.ID in msg.program_ids()):
-        #     return True
-
-        if not (ro_key_cnt := msg.header.num_readonly_unsigned_accounts):
-            return False
-
-        acct_key_list = msg.account_keys
-        key_list_len = len(acct_key_list)
-        start_ro_pos = key_list_len - ro_key_cnt
-
-        for acct in acct_key_list[start_ro_pos:]:
-            if NeonProg.ID == SolPubKey.from_raw(acct):
-                return True
-
-        return False
