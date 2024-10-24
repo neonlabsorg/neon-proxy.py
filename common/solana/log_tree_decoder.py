@@ -122,9 +122,7 @@ class SolTxLogTreeDecoder:
             if msg.startswith(cls._prog_log):
                 pass
             elif msg.startswith(cls._prog_data):
-                decoded_msg = base64.b64decode(msg.mid(len(cls._prog_data-1, len(msg))))
-                if decoded_msg.contains("ERROR"):
-                    log.log_list.append("FOUND ERROR")
+                log.log_list.append("FOUND ERROR" + msg)
             elif cls._decode_invoke(log, msg, ctx):
                 continue
             elif _SolSuccessLogDecoder.decode(log, msg):
