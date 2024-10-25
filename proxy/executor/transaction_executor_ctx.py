@@ -226,6 +226,10 @@ class NeonExecTxCtx:
         # !don't! sort accounts, use sorted order from the holder
         raw_addr_list = self._holder.account_key_list
 
+        if self._sender_sol_address not in raw_addr_list:
+            _LOG.debug("holder doesn't contain sender address")
+            raw_addr_list.append(self._sender_sol_address)
+
         acct_meta_list = tuple(
             map(lambda x: SolAccountMeta(x, is_signer=False, is_writable=(x not in ro_addr_set)), raw_addr_list)
         )
