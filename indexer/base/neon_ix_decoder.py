@@ -68,15 +68,17 @@ class DummyIxDecoder:
 
 
 class BaseTxIxDecoder(DummyIxDecoder):
-    def _add_neon_indexed_tx(self) -> NeonIndexedTxInfo | None:
-        if not (neon_tx := self._decode_neon_tx()):
+    def _get_neon_indexed_tx(self) -> NeonIndexedTxInfo | None:
+        ix = self.state.sol_neon_ix
+        block = self.state.neon_block
+        if tx := block.find_neon_tx(ix):
+            return tx
+        elif not (neon_tx := self._decode_neon_tx()):
             return None
 
         if not (holder_addr := self._get_holder_address()):
             return None
 
-        ix = self.state.sol_neon_ix
-        block = self.state.neon_block
         return block.add_neon_tx(neon_tx, holder_addr, ix)
 
     def _decode_neon_tx(self) -> NeonTxModel | None:
@@ -177,7 +179,7 @@ class BaseTxIxDecoder(DummyIxDecoder):
 
 class BaseTxSimpleIxDecoder(BaseTxIxDecoder):
     def _decode_tx(self, msg: str) -> bool:
-        if not (tx := self._add_neon_indexed_tx()):
+        if not (tx := self._get_neon_indexed_tx()):
             return False
 
         if not self._decode_neon_tx_receipt(tx):
@@ -238,11 +240,6 @@ class BaseTxStepIxDecoder(BaseTxIxDecoder):
         if self._decode_neon_tx_receipt(tx):
             return self._decoding_done(tx, msg)
         return self._decoding_success(tx, msg)
-
-    def _get_neon_indexed_tx(self) -> NeonIndexedTxInfo | None:
-        ix = self.state.sol_neon_ix
-        block = self.state.neon_block
-        return block.find_neon_tx(ix) or self._add_neon_indexed_tx()
 
     def decode_failed_neon_tx_event_list(self) -> None:
         ix = self.state.sol_neon_ix
