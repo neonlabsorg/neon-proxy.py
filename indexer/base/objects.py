@@ -375,6 +375,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         total_gas_used: int
         total_priority_fee: int = 0
         has_truncated_log: bool
+        has_good_ix: bool = Field(default=False)
         neon_tx: NeonTxModel
         neon_tx_event_list: list[NeonTxEventModel]
         neon_tx_rcpt: NeonTxReceiptModel
@@ -391,6 +392,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         total_gas_used: int,
         total_priority_fee: int,
         has_truncated_log: bool,
+        has_good_ix: bool,
         alt_address_list: list[SolPubKey],
         **kwargs,
     ) -> None:
@@ -405,6 +407,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._total_gas_used = total_gas_used
         self._total_priority_fee = total_priority_fee
         self._has_truncated_log = has_truncated_log
+        self._has_good_ix = has_good_ix
         self._alt_addr_list = alt_address_list
 
         # default:
@@ -442,6 +445,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             total_gas_used=0,
             total_priority_fee=0,
             has_truncated_log=False,
+            has_good_ix=False,
             alt_address_list=list(),
         )
 
@@ -468,6 +472,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             total_gas_used=init.total_gas_used,
             total_priority_fee=init.total_priority_fee,
             has_truncated_log=init.has_truncated_log,
+            has_good_ix=init.has_good_ix,
             alt_address_list=init.alt_address_list,
             init=init,
         )
@@ -490,6 +495,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             total_gas_used=self._total_gas_used,
             total_priority_fee=self._total_priority_fee,
             has_truncated_log=self._has_truncated_log,
+            has_good_ix=self._has_good_ix,
             neon_tx=self._neon_tx,
             neon_tx_rcpt=self._neon_tx_rcpt.to_clean_copy(),
             neon_tx_event_list=tx_event_list,
@@ -533,6 +539,10 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     def is_corrupted(self) -> bool:
         """Return true if indexer didn't find all instructions for the tx"""
         return (self._neon_tx.gas_limit <= 0) or (self._gas_used != self._total_gas_used) or self._has_truncated_log
+
+    @property
+    def has_good_ix(self) -> bool:
+        return self._has_good_ix
 
     @property
     def is_completed(self) -> bool:
@@ -611,6 +621,8 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                 event.is_reverted, event.is_hidden, event.total_gas_used = event_hide_info
         elif sol_neon_ix.is_log_truncated:
             self._has_truncated_log = True
+        else:
+            self._has_good_ix = True
 
         self._complete_clone()
         self._neon_tx_event_dict.setdefault(total_gas_used, list()).extend(tx_event_list)
@@ -1108,7 +1120,10 @@ class NeonIndexedBlockInfo:
             return
 
         tx.mark_done(self.slot)
-        self._done_neon_tx_list.append(tx)
+        if tx.has_good_ix:
+            self._done_neon_tx_list.append(tx)
+        else:
+            self._del_neon_tx(tx)
 
     def done_alt(self, alt: NeonIndexedAltInfo) -> None:
         self._sol_alt_dict.pop(alt.key)
