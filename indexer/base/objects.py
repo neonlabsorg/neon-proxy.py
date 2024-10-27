@@ -178,8 +178,9 @@ class NeonIndexedHolderInfo(BaseNeonIndexedObjInfo):
         self._data = data
 
     def __deepcopy__(self, memo: dict) -> Self:
-        memo[id(self)] = copy.copy(self)
-        return self
+        new_self = copy.copy(self)
+        memo[id(self)] = new_self
+        return new_self
 
     @classmethod
     def from_raw(cls, key: Key) -> Self:
@@ -270,8 +271,9 @@ class _NeonTxEventDraft:
     neon_tx_log_idx: int | None = None
 
     def __deepcopy__(self, memo: dict) -> Self:
-        memo[id(self)] = copy.copy(self)
-        return self
+        new_self = copy.copy(self)
+        memo[id(self)] = new_self
+        return new_self
 
     @classmethod
     def from_raw(cls, src: NeonTxEventModel) -> Self:
@@ -416,7 +418,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         new_self = copy.copy(self)
         new_self._is_cloned = True
         memo[id(self)] = new_self
-        return self
+        return new_self
 
     def _complete_clone(self) -> None:
         if not self._is_cloned:
