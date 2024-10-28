@@ -1,45 +1,43 @@
 from __future__ import annotations
 
 import abc
-import dataclasses
 import logging
+from dataclasses import dataclass
 from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
-from common.neon.evm_log_decoder import NeonEvmLogDecoder
+from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
-from common.solana.cb_program import SolCbProg
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx, SolTxIx
-from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
+from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
+from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
-from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
 
 _LOG = logging.getLogger(__name__)
 
 
-class BaseTxPrepStage(ExecutorComponent, abc.ABC):
-    def __init__(self, server: ExecutorServerAbc, ctx: NeonExecTxCtx):
-        super().__init__(server)
+class BaseTxPrepStage(abc.ABC):
+    def __init__(self, ctx: NeonExecTxCtx):
         self._ctx = ctx
 
     @property
     def _cu_price(self) -> int:
-        return self._ctx.token.simple_cu_price
+        return self._ctx.cfg.simple_cu_price
 
     @abc.abstractmethod
-    def get_tx_name_list(self) -> Sequence[str]:
+    def get_tx_name_list(self) -> tuple[str, ...]:
         pass
 
     @abc.abstractmethod
@@ -47,34 +45,41 @@ class BaseTxPrepStage(ExecutorComponent, abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def update_after_emulation(self) -> bool:
+    async def update_after_emulate(self) -> None:
         pass
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class SolTxCfg:
-    name: str
-    ix_mode: NeonIxMode
+    name: str = ""
+    evm_step_cnt: int = 0
+    ix_mode: NeonIxMode = NeonIxMode.Unknown
 
-    cu_limit: int
-    cu_price: int
-    heap_size: int
+    cu_limit: int = 0
+    cu_price: int = 0
+    heap_size: int = 0
 
-    gas_limit: int
+    @classmethod
+    def default(cls) -> Self:
+        return cls()
 
-    def to_dict(self) -> dict:
-        return dataclasses.asdict(self)  # noqa
+    @classmethod
+    def fake(cls) -> Self:
+        return cls(
+            name="Fake",
+            evm_step_cnt=100,
+            ix_mode=NeonIxMode.Default,
+            cu_limit=100_000,
+            cu_price=10_000,
+            heap_size=100_000,
+        )
 
-    def update(self, **kwargs) -> Self:
-        return dataclasses.replace(self, **kwargs)
 
-
-class BaseTxStrategy(ExecutorComponent, abc.ABC):
+class BaseTxStrategy(abc.ABC):
     name: ClassVar[str] = "UNKNOWN STRATEGY"
     is_simple: ClassVar[bool] = True
 
-    def __init__(self, server: ExecutorServerAbc, ctx: NeonExecTxCtx) -> None:
-        super().__init__(server)
+    def __init__(self, ctx: NeonExecTxCtx) -> None:
         self._ctx = ctx
         self._validation_error_msg: str | None = None
         self._prep_stage_list: list[BaseTxPrepStage] = list()
@@ -100,7 +105,10 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             self._validation_error_msg = str(e)
             return False
 
-    async def prep_before_emulation(self) -> None:
+    def complete_init(self) -> None:
+        assert self.is_valid
+
+    async def prep_before_emulate(self) -> bool:
         assert self.is_valid
 
         # recheck already sent transactions
@@ -112,16 +120,21 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         # generate new transactions
         tx_list_list = await self._build_prep_tx_list()
 
+        has_list = False
         for tx_list in tx_list_list:
-            await self._send_tx_list(tx_list)
+            if await self._send_tx_list(tx_list):
+                has_list = True
+        return has_list
 
-    async def update_after_emulation(self) -> bool:
+    async def update_after_emulate(self) -> None:
         assert self.is_valid
 
-        result = True
         for stage in self._prep_stage_list:
-            result = await stage.update_after_emulation() and result
-        return result
+            await stage.update_after_emulate()
+
+    @property
+    def has_good_sol_tx_receipt(self) -> bool:
+        return self._sol_tx_list_sender.has_good_sol_tx_receipt
 
     @abc.abstractmethod
     async def execute(self) -> ExecTxRespCode:
@@ -132,20 +145,13 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         pass
 
     @cached_property
-    def _sol_tx_list_sender(self) -> SolTxListSender:
-        return SolTxListSender(
-            self._cfg,
-            self._stat_client,
-            self._ctx.sol_watch_session,
-            self._ctx.sol_tx_list_signer,
-        )
+    def _sol_tx_list_sender(self) -> NeonSolTxListSender:
+        watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
+        return NeonSolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
-            base_cfg = self._init_sol_tx_cfg()
-            ix = self._build_tx_ix(base_cfg)
-            tx = self._build_cu_tx(ix, base_cfg)
-            tx.validate(SolSigner.fake())  # <- there can be SolTxSizeError
+            self._build_tx(SolTxCfg.fake()).validate(SolSigner.fake())  # <- there will be SolTxSizeError
         return True
 
     def _validate_has_chain_id(self) -> bool:
@@ -169,7 +175,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return False
 
     def _validate_gas_price(self) -> bool:
-        if self._ctx.holder_tx.base_fee_per_gas:
+        if self._ctx.neon_tx.gas_price:
             return True
         self._validation_error_msg = "Fee less transaction"
         return False
@@ -210,11 +216,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         return tx_list_list
 
-    async def _recheck_tx_list(self, tx_name_list: Sequence[str] | str) -> bool:
+    async def _recheck_tx_list(self, tx_name_list: tuple[str, ...] | str) -> bool:
         tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
-        if not isinstance(tx_name_list, Sequence):
+        if isinstance(tx_name_list, str):
             tx_name_list = tuple([tx_name_list])
 
         if not (tx_list := self._ctx.pop_sol_tx_list(tx_name_list)):
@@ -225,12 +231,9 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         finally:
             self._store_sol_tx_list()
 
-    async def _send_tx_list(self, tx_list: Sequence[SolTx] | SolTx) -> bool:
+    async def _send_tx_list(self, tx_list: Sequence[SolTx]) -> bool:
         tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
-
-        if not isinstance(tx_list, Sequence):
-            tx_list = tuple([tx_list])
 
         try:
             return await tx_list_sender.send(tx_list)
@@ -239,177 +242,97 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
     def _store_sol_tx_list(self):
         tx_list_sender = self._sol_tx_list_sender
-        self._ctx.add_sol_tx_list(
-            [
-                (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
-                for tx_state in tx_list_sender.tx_state_list
-                # we shouldn't retry txs with the exceed Compute Budget error
-                if tx_state.status != tx_state.status.CbExceededError
-            ]
+        self._ctx.add_sol_tx_list([tx_state.tx for tx_state in tx_list_sender.tx_state_list])
+
+    @cached_property
+    def _cu_limit(self) -> int:
+        return self._ctx.cb_prog.MaxCuLimit
+
+    async def _estimate_cu_price(self) -> int:
+        # We estimate the cu_price from the recent blocks.
+        # Solana currently does not really take into account writeable account list,
+        # so the decent estimation level should be achieved by taking a weighted average from
+        # the percentiles of compute unit prices across recent blocks.
+        est_block_cnt = self._ctx.cfg.cu_price_estimator_block_cnt
+        est_percentile = self._ctx.cfg.cu_price_estimator_percentile
+        block_list = await self._ctx.db.get_block_cu_price_list(est_block_cnt)
+
+        return int(
+            CuPricePercentileModel.get_weighted_percentile(
+                est_percentile, len(block_list), map(lambda v: v.cu_price_list, block_list)
+            )
         )
 
-    # async def _estimate_cu_price(self) -> int:
-    #     # We estimate the cu_price from the recent blocks.
-    #     # Solana currently does not really take into account writeable account list,
-    #     # so the decent estimation level should be achieved by taking a weighted average from
-    #     # the percentiles of compute unit prices across recent blocks.
-    #     est_block_cnt = self._ctx.cfg.cu_price_estimator_block_cnt
-    #     est_percentile = self._ctx.cfg.cu_price_estimator_percentile
-    #     block_list = await self._ctx.db.get_block_cu_price_list(est_block_cnt)
-    #
-    #     return int(
-    #         CuPricePercentileModel.get_weighted_percentile(
-    #             est_percentile, len(block_list), map(lambda v: v.cu_price_list, block_list)
-    #         )
-    #     )
-
-    def _init_sol_tx_cfg(
+    async def _init_sol_tx_cfg(
         self,
         *,
         name: str = "",
-        ix_mode: NeonIxMode = NeonIxMode.Default,
-        cu_limit: int = SolCbProg.MaxCuLimit,
-        cu_price: int = SolCbProg.BaseCuPrice,
-        heap_size: int = SolCbProg.MaxHeapSize,
-        gas_limit: int = NeonProg.BaseGas,
+        evm_step_cnt: int = 0,
+        ix_mode: NeonIxMode = NeonIxMode.Unknown,
+        cu_limit: int = 0,
+        cu_price: int = 0,
+        heap_size: int = 0,
     ) -> SolTxCfg:
+        # TODO EIP1559 churn: remove atlas.
+        # if not cu_price:
+        #    cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+        cu_limit = cu_limit or self._cu_limit
+        if not cu_price:
+            # For legacy transactions: we estimate the cu_price from the recent blocks.
+            cu_price = await self._estimate_cu_price()
+            if self._ctx.tx_type == 2:
+                base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
+                assert base_fee_per_gas >= 0
+                # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
+                # For the general case, we take into account the gas fee parameters set in Neon tx.
+                if base_fee_per_gas != 0:
+                    cu_price = min(
+                        cu_price,
+                        int(self._ctx.max_priority_fee_per_gas * 1_000_000 * 5000.0 / (base_fee_per_gas * cu_limit)),
+                    )
+                # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
+                # and neon-evm does not digest it.
+                cu_price = max(1, cu_price)
+
         return SolTxCfg(
             name=name or self.name,
-            ix_mode=ix_mode,
+            evm_step_cnt=evm_step_cnt or self._ctx.evm_step_cnt_per_iter,
+            ix_mode=ix_mode or NeonIxMode.Default,
             cu_limit=cu_limit,
             cu_price=cu_price,
-            heap_size=heap_size,
-            gas_limit=gas_limit,
+            heap_size=heap_size or self._ctx.cb_prog.MaxHeapSize,
         )
 
-    async def _calc_cu_price(self, cu_limit: int, gas_limit: int) -> int:
-        token = self._ctx.token
+    def _build_cu_tx(self, ix: SolTxIx, tx_cfg: SolTxCfg) -> SolLegacyTx:
+        cb_prog = self._ctx.cb_prog
 
-        # calculate a required cu-price from the Solana statistics
-        req_cu_price = await self._cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
-
-        tx = self._ctx.holder_tx
-        assert tx.base_fee_per_gas >= 0
-
-        if tx.has_priority_fee:
-            priority_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
-            gas_limit = NeonProg.SignatureGas
-            _LOG.debug(
-                "use %s%% priority-fee for priority gas-price %d",
-                priority_fee,
-                tx.max_priority_fee_per_gas,
-            )
-        else:
-            # calculate a transaction cu-price based on the tx gas-price
-            priority_fee = max(tx.base_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
-            _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, tx.base_fee_per_gas)
-
-        if priority_fee > 0.0:
-            # see gas-price-calculator for details
-            tx_cu_price = int(priority_fee * gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
-        else:
-            tx_cu_price = 0
-
-        # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
-        # and neon-evm does not digest it.
-        cu_price = max(min(req_cu_price, tx_cu_price), 1)
-
-        _LOG.debug(
-            "use %s CU-price for %s CU-limit, %s Gas-limit, %s accounts",
-            cu_price,
-            cu_limit,
-            gas_limit,
-            len(self._ctx.rw_account_key_list),
-        )
-        return cu_price
-
-    @staticmethod
-    def _build_cu_tx(ix: SolTxIx, tx_cfg: SolTxCfg) -> SolLegacyTx:
         ix_list: list[SolTxIx] = list()
 
         if tx_cfg.cu_price:
-            ix_list.append(SolCbProg.make_cu_price_ix(tx_cfg.cu_price))
+            ix_list.append(cb_prog.make_cu_price_ix(tx_cfg.cu_price))
         if tx_cfg.cu_limit:
-            ix_list.append(SolCbProg.make_cu_limit_ix(tx_cfg.cu_limit))
+            ix_list.append(cb_prog.make_cu_limit_ix(tx_cfg.cu_limit))
         if tx_cfg.heap_size:
-            ix_list.append(SolCbProg.make_heap_size_ix(tx_cfg.heap_size))
+            ix_list.append(cb_prog.make_heap_size_ix(tx_cfg.heap_size))
 
         ix_list.append(ix)
 
         return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
 
-    async def _emulate_tx_list(
-        self, tx_list: Sequence[SolTx] | SolTx, *, mult_factor: int = 0
-    ) -> Sequence[EmulSolTxInfo] | EmulSolTxInfo:
-        if not isinstance(tx_list, Sequence):
-            is_single_tx: Final[bool] = True
-            tx_list = tuple([tx_list])
-        else:
-            is_single_tx: Final[bool] = False
-
-        blockhash, _ = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
+    async def _emulate_tx_list(self, tx_list: Sequence[SolTx], *, mult_factor: int = 0) -> tuple[EmulSolTxInfo, ...]:
+        blockhash, _ = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Finalized)
         for tx in tx_list:
             tx.set_recent_blockhash(blockhash)
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
 
-        acct_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
-        cu_limit = SolCbProg.MaxCuLimit * (mult_factor or len(tx_list))
+        account_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
+        cu_limit = self._cu_limit * (mult_factor or len(tx_list))
 
         try:
-            emul_tx_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, acct_cnt_limit, blockhash, tx_list)
-            return emul_tx_list[0] if is_single_tx else emul_tx_list
+            return await self._ctx.core_api_client.emulate_sol_tx_list(cu_limit, account_cnt_limit, blockhash, tx_list)
         except BaseException as exc:
             _LOG.warning("error on emulate solana tx list", exc_info=exc)
             raise SolCbExceededError()
-
-    @staticmethod
-    def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
-        fake_tx_ix = SolTxIxMetaInfo.default()
-        log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
-        if log.tx_ix_gas.is_empty:
-            gas_limit = NeonProg.BaseGas
-            _LOG.debug("no GAS information, use default %s", gas_limit)
-        else:
-            gas_limit = log.tx_ix_gas.gas_used
-            _LOG.debug("found GAS %s", gas_limit)
-        return gas_limit
-
-    async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
-        base_tx = self._build_cu_tx(ix, base_cfg)
-        emul_tx = await self._emulate_tx_list(base_tx)
-        used_cu_limit: Final[int] = emul_tx.meta.used_cu_limit
-
-        max_cu_limit: Final[int] = base_cfg.cu_limit
-        # let's decrease the available cu-limit on 5% percents, because Solana uses it for ComputeBudget calls
-        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)
-
-        if used_cu_limit > threshold_cu_limit:
-            _LOG.debug(
-                "%s: %d CUs is bigger than the upper limit %d",
-                hdr,
-                used_cu_limit,
-                threshold_cu_limit,
-            )
-            raise SolCbExceededError()
-
-        round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 100_000
-        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
-        _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
-
-        gas_limit = self._find_gas_limit(emul_tx)
-
-        for cu_limit in (round_cu_limit, max_cu_limit):
-            cu_price = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
-            optimal_cfg = base_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
-
-            optimal_tx = self._build_cu_tx(ix, optimal_cfg)
-            try:
-                return await self._send_tx_list(optimal_tx)
-            except SolCbExceededError:
-                if cu_limit == max_cu_limit:
-                    raise
-                _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
 
     @staticmethod
     def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:
@@ -421,7 +344,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @abc.abstractmethod
-    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
         pass
 
     @abc.abstractmethod

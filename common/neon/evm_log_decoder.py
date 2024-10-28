@@ -113,6 +113,7 @@ class NeonTxLogInfo:
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
+    tx_error_list: list[NeonTxErrorModel]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -184,6 +185,7 @@ class _NeonTxLogDraft:
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
+    tx_error_list: list[_NeonTxErrorModel]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -370,6 +372,32 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
 
         log.tx_ix_step = NeonTxIxStepInfo(step_cnt=step_cnt, total_step_cnt=total_step_cnt)
 
+
+class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "ERROR"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+
+        _LOG.debug("_NeonEvmErrorLogDecoder:  decode '%s", cls.name)
+        if len(data_list) < 3:
+            _LOG.error("failed to decode %s: should be at least 3 element in %s", cls.name, data_list)
+            return
+
+        bs = base64.b64decode(data_list[0]) #["ERROR", code, /*arg_count, args..., */ "message data abc"]
+        code = int.from_bytes(bs, "little")
+        _LOG.info("decode %s: found error with code %d", cls.name, code)
+
+        bs = base64.b64decode(data_list[1])
+        arg_amount = int.from_bytes(bs, "little")
+
+        expected_len = 3 + arg_amount
+        if len(data_list) != expected_len:
+            _LOG.error("failed to decode %s: should at %d elements in %s", cls.name, expected_len, data_list)
+            return
+
+        msg = base64.b64decode(data_list[len(data_list) - 1])
+        _LOG.info("decode %s: found error with message %s", cls.name, msg)
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
@@ -600,6 +628,7 @@ class NeonEvmLogDecoder:
         _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
         _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
+        _NeonEvmErrorLogDecoder.name: _NeonEvmErrorLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,
