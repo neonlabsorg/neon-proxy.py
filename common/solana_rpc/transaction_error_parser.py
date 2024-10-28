@@ -24,6 +24,7 @@ class SolTxErrorParser:
     _log_truncated_msg = "Log truncated"
     _require_resize_iter_msg = "Deployment of contract which needs more than 10kb of account space needs several"
     _cb_exceeded_msg = "exceeded CUs meter at BPF instruction"
+    _cb_exceeded_msg_v2 = "Computational budget exceeded"
     _out_of_memory_msg = "Program log: EVM Allocator out of memory"
     _memory_alloc_fail_msg = "Program log: Error: memory allocation failed, out of memory"
 
@@ -63,6 +64,8 @@ class SolTxErrorParser:
             if log_rec == self._log_truncated_msg:
                 return True
             elif log_rec.find(self._cb_exceeded_msg) != -1:
+                return True
+            elif log_rec.find(self._cb_exceeded_msg_v2) != -1:
                 return True
         return False
 
