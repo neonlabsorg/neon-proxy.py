@@ -16,7 +16,6 @@ class HolderAccountValidator:
         self._neon_tx_hash = neon_tx_hash
         self._holder_acct: HolderAccountModel | None = None
 
-    @ttl_cached_method(ttl_msec=50)
     async def refresh(self) -> HolderAccountModel:
         self._holder_acct = await self._core_api_client.get_holder_account(self._holder_address)
 
