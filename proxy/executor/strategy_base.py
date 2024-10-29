@@ -242,7 +242,14 @@ class BaseTxStrategy(abc.ABC):
 
     def _store_sol_tx_list(self):
         tx_list_sender = self._sol_tx_list_sender
-        self._ctx.add_sol_tx_list([tx_state.tx for tx_state in tx_list_sender.tx_state_list])
+        self._ctx.add_sol_tx_list(
+            [
+                tx_state.tx
+                for tx_state in tx_list_sender.tx_state_list
+                # we shouldn't retry txs with the exceed Compute Budget error
+                if tx_state.status != tx_state.status.CbExceededError
+            ]
+        )
 
     @cached_property
     def _cu_limit(self) -> int:
