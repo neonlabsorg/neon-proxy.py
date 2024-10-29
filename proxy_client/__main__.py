@@ -44,11 +44,11 @@ class CmdExecutor(BaseCmdExecutor):
         )
 
     async def _before_exec_handler(self, arg_space) -> None:
-        if arg_space.core_api_host:
-            os.environ[self._cfg.neon_core_api_ip_name] = arg_space.core_api_host
+        if arg_space.core_api_ip:
+            os.environ[self._cfg.neon_core_api_ip_name] = arg_space.core_api_ip
         if arg_space.core_api_port:
             os.environ[self._cfg.neon_core_api_port_name] = str(arg_space.core_api_port)
-        if arg_space.core_api_host or arg_space.core_api_port:
+        if arg_space.core_api_ip or arg_space.core_api_port:
             os.environ[self._cfg.neon_core_api_server_cnt_name] = str(1)
         if arg_space.solana_url:
             os.environ[self._cfg.sol_url_name] = arg_space.solana_url
