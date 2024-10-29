@@ -128,6 +128,7 @@ class OpHolderFunc:
             size=holder.size,
             balance=balance / (10**9),
             chainId=holder.chain_id,
+            evmSteps=holder.evm_step_cnt,
             transactionHash=holder.neon_tx_hash.to_string(),
             transactionType=holder.tx_type,
             transactionBody=tx,
