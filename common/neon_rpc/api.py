@@ -249,6 +249,7 @@ class EvmConfigModel(BaseModel):
     evm_step_cnt: DecIntField
     holder_msg_size: DecIntField
     gas_limit_multiplier_wo_chain_id: DecIntField
+    cancel_timeout: DecIntField
 
     evm_param_dict: dict[str, str] = Field(validation_alias=AliasChoices("config", "evm_param_dict"))
     token_list: list[TokenModel] = Field(validation_alias=AliasChoices("chains", "token_list"))
@@ -380,6 +381,7 @@ class EvmConfigModel(BaseModel):
             ("NEON_HOLDER_MSG_SIZE", "holder_msg_size", -1),
             ("NEON_ACCOUNT_SEED_VERSION", "account_seed_version", -1),
             ("NEON_GAS_LIMIT_MULTIPLIER_NO_CHAINID", "gas_limit_multiplier_wo_chain_id", -1),
+            ("NEON_CANCEL_TIMEOUT", "cancel_timeout", -1),
         )
 
         for src_key, dst_key, default in key_list:
@@ -479,6 +481,7 @@ class HolderAccountModel(BaseModel):
     chain_id: int | None = Field(default=0)
     evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
+    last_used_slot: int = Field(default=0, validation_alias="last_used_slot")
 
     tx_type: int = Field(default=0)
     max_fee_per_gas: HexUIntField = Field(default=0)
@@ -516,7 +519,6 @@ class HolderAccountModel(BaseModel):
     @property
     def is_finalized(self) -> bool:
         return self.status == HolderAccountStatus.Finalized
-
 
 class _CrateModel(BaseModel):
     name: str
