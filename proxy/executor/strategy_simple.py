@@ -7,7 +7,6 @@ from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
-from common.utils.cached import cached_property
 from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -52,44 +51,39 @@ class SimpleTxStrategy(BaseTxStrategy):
         _LOG.debug("canceling of a simple NeonTx...")
         return None
 
-    @cached_property
-    def _cu_limit(self) -> int:
-        return self._ctx.cfg.cu_limit
-
     async def _emulate_and_send_tx_list(self) -> bool:
-        tx_cfg = await self._init_sol_tx_cfg()
-        tx_list = tuple([self._build_tx(tx_cfg)])
+        base_cfg = self._init_sol_tx_cfg(cu_limit=self._ctx.cfg.cu_limit)
+        base_tx = self._build_tx(base_cfg)
 
-        emul_tx_list = await self._emulate_tx_list(tx_list)
-        used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
+        emul_tx = await self._emulate_tx_list(base_tx)
+        used_cu_limit: Final[int] = emul_tx.meta.used_cu_limit
 
         evm_step_cnt: Final[int] = self._ctx.total_evm_step_cnt
-        cu_limit: Final[int] = tx_cfg.cu_limit
+        max_cu_limit: Final[int] = base_cfg.cu_limit
         # let's decrease the available cu-limit on 5% percents, because Solana decrease it
-        max_cu_limit: Final[int] = int(cu_limit * 0.95)
+        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)
 
-        if used_cu_limit > max_cu_limit:
+        if used_cu_limit > threshold_cu_limit:
             _LOG.debug(
                 "simple: %d EVM steps, %d CUs is bigger than the upper limit %d",
                 evm_step_cnt,
                 used_cu_limit,
-                max_cu_limit,
+                threshold_cu_limit,
             )
             raise SolCbExceededError()
 
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 100_000
-        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, cu_limit)
-        _LOG.debug("simple: %d EVM steps, %d CU limit", evm_step_cnt, used_cu_limit)
+        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
+        _LOG.debug("simple: %d EVM steps, %d CUs (round to %s CUs)", evm_step_cnt, used_cu_limit, round_cu_limit)
 
-        # if it's impossible to decrease the CU limit, use the already signed list of txs
-        if round_cu_limit == cu_limit:
-            tx_list = tuple(map(lambda x: x.tx, emul_tx_list))
-        else:
-            tx_cfg = await self._init_sol_tx_cfg(cu_limit=round_cu_limit)
-            tx_list = tuple([self._build_tx(tx_cfg)])
+        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=round_cu_limit)
+        tx = self._build_tx(optimal_cfg)
+        return await self._send_tx_list(tx)
 
-        return await self._send_tx_list(tx_list)
+    async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int) -> SolTxCfg:
+        cu_price: int = await self._calc_cu_price(tx_cfg, cu_limit=cu_limit)
+        return tx_cfg.update(cu_limit=cu_price, cu_price=cu_price)
 
     def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), tx_cfg)
