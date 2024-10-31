@@ -1,6 +1,7 @@
 import math
 from collections import deque
 from dataclasses import dataclass
+from typing import ClassVar
 
 from eth_hash.auto import keccak
 from typing_extensions import Self
@@ -18,6 +19,8 @@ class OpHolderInfo:
     resource_id: int
     seed: str
     address: SolPubKey
+
+    default_prefix: ClassVar[bytes] = b"holder-"
 
     @classmethod
     def from_raw(cls, owner: SolPubKey, resource_id: int) -> Self:
