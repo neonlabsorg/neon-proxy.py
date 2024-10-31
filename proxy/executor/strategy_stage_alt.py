@@ -136,8 +136,7 @@ def alt_strategy(cls):
             # it isn't critical to pass a fake signer, because signer isn't included into ALT
             #  so the fake signer will be excluded from the ALT lists,
             #  and in the final version of tx it will be replaced with the real signer
-            with self._ctx.test_mode():
-                self._alt_stage.set_legacy_tx(self._build_legacy_tx(SolTxCfg.fake()))
+            self._alt_stage.set_legacy_tx(self._build_test_legacy_tx())
             return await cls.prep_before_emulate(self)
 
         async def _validate(self) -> bool:
@@ -153,8 +152,11 @@ def alt_strategy(cls):
             return True
 
         def _validate_tx_size(self) -> bool:
+            return self._alt_stage.validate_v0_tx_size(self._build_test_legacy_tx())
+
+        def _build_test_legacy_tx(self) -> SolLegacyTx:
             with self._ctx.test_mode():
-                return self._alt_stage.validate_v0_tx_size(self._build_legacy_tx(SolTxCfg.fake()))
+                return self._build_legacy_tx(self._init_sol_tx_cfg())
 
         def _build_legacy_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
             return cls._build_tx(self, tx_cfg)

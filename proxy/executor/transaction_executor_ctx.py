@@ -102,7 +102,7 @@ class NeonExecTxCtx:
         self._emulator_slot = 0
 
         self._skip_simple_strategy = False
-        self._test_mode = False
+        self._is_test_mode = False
 
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
@@ -269,30 +269,34 @@ class NeonExecTxCtx:
         def __str__(self) -> str:
             return self.to_string()
 
-    @cached_property
-    def cb_prog(self) -> SolCbProg:
-        return SolCbProg()
-
     def test_mode(self) -> _TestMode:
+        """ This mode is used when a signer is unknown, or it is better to say - the signed isn't important.
+        The signer is unknown on the testing stage,
+        when we just need to check the structure of a Solana tx wo/ sending the Solana tx to Solana.
+        """
         return self._TestMode(self)
+
+    @property
+    def is_test_mode(self) -> bool:
+        return self._is_test_mode
 
     class _TestMode:
         def __init__(self, ctx: NeonExecTxCtx) -> None:
             self._ctx = ctx
 
         def __enter__(self) -> Self:
-            self._ctx._test_mode = True
+            self._ctx._is_test_mode = True
             return self
 
         def __exit__(self, exc_type, exc_val, exc_tb) -> Self:
-            self._ctx._test_mode = False
+            self._ctx._is_test_mode = False
             if exc_val:
                 raise
             return self
 
     @property
     def neon_prog(self) -> NeonProg:
-        if self._test_mode:
+        if self._is_test_mode:
             return self._test_neon_prog
         return self._neon_prog
 
