@@ -2,8 +2,7 @@ from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.transaction_legacy import SolLegacyTx
-from .strategy_base import SolTxCfg
-from .strategy_iterative import IterativeTxStrategy
+from .strategy_iterative import IterativeTxStrategy, SolIterListCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_write_holder import WriteHolderTxPrepStage
 
@@ -24,7 +23,7 @@ class HolderTxStrategy(IterativeTxStrategy):
         )
         # fmt: on
 
-    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+    def _build_tx(self, tx_cfg: SolIterListCfg) -> SolLegacyTx:
         step_cnt = tx_cfg.evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
