@@ -209,7 +209,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
             return False
 
         eth_tx_rlp = resp.signed_tx.to_bytes()
-        ctx = str(req_id["timestamp"])
+        ctx = str(req_id["uuid"])
         tx = NeonTxModel.from_raw(eth_tx_rlp)
 
         value = value / (10 ** 18)
