@@ -15,10 +15,11 @@ class SolCuIxCode(IntEnum):
 
 class SolCbProg:
     ID: Final[SolPubKey] = SolPubKey.from_raw(_cb.ID)
-    MaxCuLimit: Final[int] = 1_400_000
     DefCuLimit: Final[int] = 200_000
+    MaxCuLimit: Final[int] = 1_400_000
+    DefHeapSize: Final[int] = 32 * 1024
     MaxHeapSize: Final[int] = 256 * 1024
-    BaseCuPrice: Final[int] = 10_000
+    BaseCuPrice: Final[int] = 10_500
 
     @classmethod
     def make_heap_size_ix(cls, size: int) -> SolTxIx:

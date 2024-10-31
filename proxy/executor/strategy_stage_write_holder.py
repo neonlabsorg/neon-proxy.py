@@ -2,6 +2,7 @@ from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon_rpc.api import HolderAccountStatus
+from common.solana.cb_program import SolCbProg
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from .strategy_base import BaseTxPrepStage
@@ -24,7 +25,6 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
             return list()
 
         cu_price = self._cu_price
-        cb_prog = self._ctx.cb_prog
         neon_prog = self._ctx.neon_prog
 
         tx_list: list[SolTx] = list()
@@ -37,8 +37,8 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
 
             ix_list = list()
             if cu_price:
-                ix_list.append(cb_prog.make_cu_price_ix(cu_price))
-            ix_list.append(cb_prog.make_cu_limit_ix(7_500))
+                ix_list.append(SolCbProg.make_cu_price_ix(cu_price))
+            ix_list.append(SolCbProg.make_cu_limit_ix(7_500))
             ix_list.append(neon_prog.make_write_ix(holder_msg_offset, holder_msg_part))
 
             tx_list.append(SolLegacyTx(name=self.name, ix_list=ix_list))
