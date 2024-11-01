@@ -84,6 +84,7 @@ class NeonProxyApp:
             sol_client=sol_client,
             exec_client=exec_client,
             op_client=op_client,
+            cu_price_client=cu_price_client,
             stat_client=self._stat_client,
             db=db,
         )

@@ -188,6 +188,7 @@ class Config:
     cu_price_level_name: Final[str] = "CU_PRICE_LEVEL"
     def_cu_price_name: Final[str] = "DEFAULT_CU_PRICE"
     def_simple_cu_price_name: Final[str] = "DEFAULT_SIMPLE_CU_PRICE"
+    dynamic_fee_cfg_url_name: Final[str] = "DYNAMIC_FEE_CFG_URL"
     atlas_fee_url_name: Final[str] = "ATLAS_PRIORITY_FEE_URL"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
@@ -448,6 +449,7 @@ class Config:
             list(self.sol_url_list)
             + list(self.pyth_url_list)
             + list(self.sol_ws_url_list)
+            + list(self.dynamic_fee_cfg_url_list)
             + list(self.atlas_fee_url_list)
             + list(self.pyth_ws_url_list)
             + list(self.ch_dsn_list)
@@ -750,6 +752,13 @@ class Config:
         return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, 1_000_000)
 
     @cached_property
+    def dynamic_fee_cfg_url_list(self) -> tuple[str, ...]:
+        dynamic_url_list = self._split_str(os.environ.get(self.dynamic_fee_cfg_url_name, ""))
+        if not dynamic_url_list:
+            _LOG.debug("%s is not defined", self.dynamic_fee_cfg_url_name)
+        return tuple(dynamic_url_list)
+
+    @cached_property
     def atlas_fee_url_list(self) -> tuple[str, ...]:
         atlas_url_list = self._split_str(os.environ.get(self.atlas_fee_url_name, ""))
         if not atlas_url_list:
@@ -998,6 +1007,7 @@ class Config:
             self.cu_price_level_name: self.cu_price_level,
             self.def_cu_price_name: self.def_cu_price,
             self.def_simple_cu_price_name: self.def_simple_cu_price,
+            self.dynamic_fee_cfg_url_name: self.dynamic_fee_cfg_url_list,
             self.atlas_fee_url_name: self.atlas_fee_url_list,
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,

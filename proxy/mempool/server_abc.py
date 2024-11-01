@@ -7,6 +7,7 @@ from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config
+from common.cu_price.client import CuPriceClient
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
@@ -40,6 +41,10 @@ class MempoolComponent(BaseIntlProxyComponent):
     def _stat_client(self) -> StatClient:
         return self._server._stat_client  # noqa
 
+    @cached_property
+    def _cu_price_client(self) -> CuPriceClient:
+        return self._server._cu_price_client  # noqa
+
 
 class MempoolApi(MempoolComponent, AppDataApi):
     def __init__(self, server: MempoolServerAbc) -> None:
@@ -55,12 +60,14 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
         sol_client: SolClient,
         exec_client: ExecutorClient,
         op_client: OpResourceClient,
+        cu_price_client: CuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._exec_client = exec_client
         self._op_client = op_client
+        self._cu_price_client = cu_price_client
         self._stat_client = stat_client
         self._db = db
 
@@ -92,6 +99,7 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
             super()._on_server_start(),
             self._db.start(),
             self._op_client.start(),
+            self._cu_price_client.start(),
             self._exec_client.start(),
             self._stat_client.start(),
         )
@@ -101,6 +109,7 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
             super()._on_server_stop(),
             self._db.stop(),
             self._exec_client.stop(),
+            self._cu_price_client.stop(),
             self._op_client.stop(),
             self._stat_client.stop(),
         )

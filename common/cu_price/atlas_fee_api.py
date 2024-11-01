@@ -28,13 +28,7 @@ class AtlasFeeTxEnc(StrEnum):
     Base58 = "Base58"
 
 
-class AtlasFeeLevelValidator:
-    @classmethod
-    def from_raw(cls, value: str | CuPriceLevel | None) -> CuPriceLevel:
-        return CuPriceLevel.from_raw(value)
-
-
-AtlasFeeLevelField = Annotated[CuPriceLevel, PlainValidator(AtlasFeeLevelValidator.from_raw)]
+AtlasFeeLevelField = Annotated[CuPriceLevel, PlainValidator(CuPriceLevel.from_raw)]
 
 
 class AtlasFeeCfg(BaseModel):
