@@ -72,7 +72,7 @@ class AltHandler(BaseNPCmdHandler):
 
     @cached_property
     def _cu_price(self) -> int:
-        return self._cfg.simple_cu_price or 10_000
+        return self._cfg.def_simple_cu_price
 
     async def _list_cmd(self, arg_space) -> int:
         req_id = self._gen_req_id()

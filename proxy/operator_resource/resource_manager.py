@@ -72,7 +72,7 @@ class OpResourceMng(OpResourceComponent):
 
     @cached_property
     def _cu_price(self) -> int:
-        return self._cfg.simple_cu_price or 10_000
+        return self._cfg.def_simple_cu_price
 
     async def start(self) -> None:
         self._refresh_signer_task = asyncio.create_task(self._refresh_signer_loop())

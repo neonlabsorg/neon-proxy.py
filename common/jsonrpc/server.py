@@ -156,7 +156,7 @@ async def _async_method_handler(
 ) -> JsonRpcResp:
     try:
         # convert input params from jsonrpc request to method params
-        kwargs = _params_to_kwargs(self, method, ctx, req.params)
+        kwargs = _params_to_kwargs(self, method, ctx, req.params or list())
 
         # run handler
         value = await method.handler(**kwargs)
@@ -179,7 +179,7 @@ def _sync_method_handler(
 ) -> JsonRpcResp:
     try:
         # convert input params from jsonrpc request to method input params
-        kwargs = _params_to_kwargs(self, method, ctx, req.params)
+        kwargs = _params_to_kwargs(self, method, ctx, req.params or list())
 
         # run handler
         value = method.handler(**kwargs)
