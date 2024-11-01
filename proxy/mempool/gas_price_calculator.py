@@ -47,8 +47,8 @@ class MpGasPriceCalculator(MempoolComponent):
         self._gas_price = MpGasPriceModel(
             chain_token_price_usd=0,
             operator_fee=int(self._cfg.operator_fee * 100_000),
-            cu_price=self._cfg.cu_price,
-            simple_cu_price=self._cfg.simple_cu_price,
+            cu_price=self._cfg.def_cu_price,
+            simple_cu_price=self._cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
             default_token=MpTokenGasPriceModel(
                 chain_id=0,
@@ -131,8 +131,8 @@ class MpGasPriceCalculator(MempoolComponent):
         return MpGasPriceModel(
             chain_token_price_usd=int(base_price_usd * self._token_usd_precision),
             operator_fee=int(self._cfg.operator_fee * 100_000),
-            cu_price=self._cfg.cu_price,
-            simple_cu_price=self._cfg.simple_cu_price,
+            cu_price=self._cfg.def_cu_price,
+            simple_cu_price=self._cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
             token_dict=token_dict,
             default_token=default_token,

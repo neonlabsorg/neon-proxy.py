@@ -5,11 +5,12 @@ import os
 import random
 import re
 from decimal import Decimal
-from typing import Final, Union
+from typing import Final, Union, ClassVar
 from urllib.parse import urlparse
 
 from pythclient.solana import SOLANA_MAINNET_HTTP_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT
 from strenum import StrEnum
+from typing_extensions import Self
 
 from .constants import (
     NEON_EVM_PROGRAM_ID,
@@ -59,6 +60,58 @@ class StartSlot:
                 pass
 
         raise ValueError(f"Wrong start slot value: {raw}")
+
+
+class CuPriceMode(StrEnum):
+    Atlas = "atlas"
+    Solana = "solana"
+    Default = "default"
+
+    @classmethod
+    def from_raw(cls, raw: str | CuPriceMode | None) -> Self:
+        try:
+            if not raw:
+                return cls.Default
+            elif isinstance(raw, cls):
+                return raw
+
+            return cls(raw.lower())
+        except ValueError:
+            _LOG.debug("Wrong CU price mode: %s", raw)
+            return cls.Default
+
+
+class CuPriceLevel(StrEnum):
+    Min = "Min"
+    Low = "Low"
+    Medium = "Medium"
+    High = "High"
+    VeryHigh = "VeryHigh"
+    UnsafeMax = "UnsafeMax"
+    Default = "Default"
+    Recommended = "Recommended"
+
+    @classmethod
+    def from_raw(cls, raw: str | CuPriceMode | None) -> Self:
+       return _CuPriceLevelValidator.from_raw(raw)
+
+class _CuPriceLevelValidator:
+    _level_dict: ClassVar[dict[str, str]] = {
+        v.lower(): v for v in CuPriceLevel
+    }
+
+    @classmethod
+    def from_raw(cls, raw: str | CuPriceLevel | None) -> Self:
+        try:
+            if not raw:
+                return CuPriceLevel.Default
+            if isinstance(raw, CuPriceLevel):
+                return raw
+
+            return CuPriceLevel(cls._level_dict[raw.lower()])
+        except (ValueError, KeyError):
+            _LOG.debug("Wrong CU price level %s", raw)
+            return CuPriceLevel.Default
 
 
 def _parse_sol_ws_url(sol_url: str) -> str:
@@ -131,10 +184,11 @@ class Config:
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
     operator_fee_name: Final[str] = "OPERATOR_FEE"
     cu_limit_name: Final[str] = "CU_LIMIT"
-    cu_price_name: Final[str] = "CU_PRIORITY_FEE"
-    simple_cu_price_name: Final[str] = "SIMPLE_CU_PRIORITY_FEE"
+    cu_price_mode_name: Final[str] = "CU_PRICE_MODE"
+    cu_price_level_name: Final[str] = "CU_PRICE_LEVEL"
+    def_cu_price_name: Final[str] = "DEFAULT_CU_PRICE"
+    def_simple_cu_price_name: Final[str] = "DEFAULT_SIMPLE_CU_PRICE"
     atlas_fee_url_name: Final[str] = "ATLAS_PRIORITY_FEE_URL"
-    atlas_fee_level_name: Final[str] = "ATLAS_PRIORITY_FEE_LEVEL"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
@@ -672,16 +726,28 @@ class Config:
 
     @cached_property
     def cu_limit(self) -> int:
-        cb_prog = SolCbProg()
-        return self._env_num(self.cu_limit_name, cb_prog.MaxCuLimit, cb_prog.DefCuLimit // 5, cb_prog.MaxCuLimit)
+        return self._env_num(self.cu_limit_name, SolCbProg.MaxCuLimit, SolCbProg.DefCuLimit // 5, SolCbProg.MaxCuLimit)
 
     @cached_property
-    def cu_price(self) -> int:
-        return self._env_num(self.cu_price_name, 0, 0, 1_000_000)
+    def cu_price_mode(self) -> CuPriceMode:
+        value = CuPriceMode.from_raw(os.environ.get(self.cu_price_mode_name, None))
+        if (value == CuPriceMode.Atlas) and (not self.atlas_fee_url_list):
+            _LOG.debug("%s is not defined, force to use the default CU price mode", self.atlas_fee_url_name)
+            return CuPriceMode.Default
+        return value
 
     @cached_property
-    def simple_cu_price(self) -> int:
-        return self._env_num(self.simple_cu_price_name, 0, 0, 1_000_000)
+    def cu_price_level(self) -> CuPriceLevel:
+        raw = os.environ.get(self.cu_price_level_name, None)
+        return CuPriceLevel.from_raw(raw)
+
+    @cached_property
+    def def_cu_price(self) -> int:
+        return self._env_num(self.def_cu_price_name, SolCbProg.BaseCuPrice, 1, 1_000_000)
+
+    @cached_property
+    def def_simple_cu_price(self) -> int:
+        return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, 1_000_000)
 
     @cached_property
     def atlas_fee_url_list(self) -> tuple[str, ...]:
@@ -689,10 +755,6 @@ class Config:
         if not atlas_url_list:
             _LOG.debug("%s is not defined", self.atlas_fee_url_name)
         return tuple(atlas_url_list)
-
-    @cached_property
-    def atlas_fee_level(self) -> str | None:
-        return os.environ.get(self.atlas_fee_level_name, None)
 
     @cached_property
     def min_gas_price(self) -> int | None:
@@ -932,10 +994,11 @@ class Config:
             self.pyth_ws_url_name: self.pyth_ws_url_list,
             self.operator_fee_name: self.operator_fee,
             self.cu_limit_name: self.cu_limit,
-            self.cu_price_name: self.cu_price,
-            self.simple_cu_price_name: self.simple_cu_price,
+            self.cu_price_mode_name: self.cu_price_mode,
+            self.cu_price_level_name: self.cu_price_level,
+            self.def_cu_price_name: self.def_cu_price,
+            self.def_simple_cu_price_name: self.def_simple_cu_price,
             self.atlas_fee_url_name: self.atlas_fee_url_list,
-            self.atlas_fee_level_name: self.atlas_fee_level,
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,

@@ -15,8 +15,8 @@ class JsonRpcRequest(BaseModel):
     jsonrpc: Literal["2.0"]
     id: HttpRequestIdField
     method: str
-    params: list = Field(default_factory=list)
-    skipCache: bool = True
+    params: list | None= Field(default_factory=list)
+    skipCache: bool = Field(default=True, exclude=True)
 
 
 JsonRpcListItem = TypeVar("JsonRpcListItem")
