@@ -6,7 +6,7 @@ from typing import Sequence, Final
 
 from typing_extensions import Self
 
-from common.atlas.fee_client import AtlasFeeClient
+from common.cu_price.client import CuPriceClient
 from common.config.config import Config
 from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
@@ -67,7 +67,7 @@ class NeonExecTxCtx:
         sol_client: SolClient,
         core_api_client: CoreApiClient,
         op_client: OpResourceClient,
-        fee_client: AtlasFeeClient,
+        cu_price_client: CuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
         tx_request: ExecTxRequest | ExecStuckTxRequest,
@@ -76,7 +76,7 @@ class NeonExecTxCtx:
         self._sol_client = sol_client
         self._core_api_client = core_api_client
         self._op_client = op_client
-        self._fee_client = fee_client
+        self._cu_price_client = cu_price_client
         self._stat_client = stat_client
         self._db = db
 
@@ -128,8 +128,8 @@ class NeonExecTxCtx:
         return self._core_api_client
 
     @property
-    def fee_client(self) -> AtlasFeeClient:
-        return self._fee_client
+    def cu_price_client(self) -> CuPriceClient:
+        return self._cu_price_client
 
     @property
     def stat_client(self) -> StatClient:
