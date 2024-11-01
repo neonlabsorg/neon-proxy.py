@@ -34,7 +34,7 @@ class BaseTxPrepStage(abc.ABC):
 
     @property
     def _cu_price(self) -> int:
-        return self._ctx.cfg.simple_cu_price
+        return self._ctx.cfg.def_simple_cu_price
 
     @abc.abstractmethod
     def get_tx_name_list(self) -> tuple[str, ...]:
@@ -262,7 +262,7 @@ class BaseTxStrategy(abc.ABC):
         )
 
     async def _calc_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int) -> int:
-        req_cu_price = await self._ctx.fee_client.get_cu_price(self._ctx.rw_account_key_list)
+        req_cu_price = await self._ctx.cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
 
         cu_price = req_cu_price * SolCbProg.MaxCuLimit // cu_limit
         _LOG.debug(

@@ -5,7 +5,7 @@ import asyncio
 from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
-from common.atlas.fee_client import AtlasFeeClient
+from common.cu_price.client import CuPriceClient
 from common.config.config import Config
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
@@ -28,15 +28,15 @@ class ExecutorComponent(BaseIntlProxyComponent):
         return self._server._op_client  # noqa
 
     @cached_property
-    def _fee_client(self) -> AtlasFeeClient:
-        return self._server._fee_client  # noqa
+    def _cu_price_client(self) -> CuPriceClient:
+        return self._server._cu_price_client  # noqa
 
     @cached_property
     def _stat_client(self) -> StatClient:
         return self._server._stat_client  # noqa
 
     async def get_evm_cfg(self) -> EvmConfigModel:
-        return self._server.get_evm_cfg()
+        return await self._server.get_evm_cfg()
 
 
 class ExecutorApi(ExecutorComponent, AppDataApi):
@@ -53,13 +53,13 @@ class ExecutorServerAbc(BaseIntlProxyServer):
         sol_client: SolClient,
         mp_client: MempoolClient,
         op_client: OpResourceClient,
-        fee_client: AtlasFeeClient,
+        cu_price_client: CuPriceClient,
         stat_client: StatClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._mp_client = mp_client
         self._op_client = op_client
-        self._fee_client = fee_client
+        self._cu_price_client = cu_price_client
         self._stat_client = stat_client
 
     @ttl_cached_method(ttl_sec=1)
@@ -74,7 +74,7 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             super()._on_server_start(),
             self._mp_client.start(),
             self._op_client.start(),
-            self._fee_client.start(),
+            self._cu_price_client.start(),
         )
 
     async def _on_server_stop(self) -> None:
@@ -82,5 +82,5 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             super()._on_server_stop(),
             self._mp_client.stop(),
             self._op_client.stop(),
-            self._fee_client.stop(),
+            self._cu_price_client.stop(),
         )

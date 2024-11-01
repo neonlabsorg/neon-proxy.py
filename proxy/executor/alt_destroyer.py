@@ -172,7 +172,7 @@ class SolAltDestroyer(ExecutorComponent):
         watch_session = SolWatchTxSession(self._cfg, self._sol_client)
 
         cb_prog = SolCbProg()
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cfg.simple_cu_price or 10_000)
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cfg.def_simple_cu_price)
         cu_limit_ix = cb_prog.make_cu_limit_ix(3_000)
 
         tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
