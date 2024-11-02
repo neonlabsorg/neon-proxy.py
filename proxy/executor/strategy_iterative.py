@@ -205,9 +205,11 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         while True:
             try:
-                if not (iter_list_cfg := await self._get_single_iter_list_cfg()):
-                    if not (iter_list_cfg := await self._get_iter_list_cfg()):
-                        return False
+                if self._has_one_iter():
+                    _LOG.debug("just 1 iteration")
+                    iter_list_cfg = await self._get_single_iter_list_cfg()
+                elif not (iter_list_cfg := await self._get_iter_list_cfg()):
+                    return False
 
                 tx_list = tuple(self._build_tx(iter_list_cfg) for _ in range(iter_list_cfg.iter_cnt))
                 return await self._send_tx_list(tx_list)
@@ -280,7 +282,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             if self._ctx.cfg.mp_send_batch_tx:
                 # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
-                iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt()
+                iter_cnt = max(exec_iter_cnt + self._calc_wrap_iter_cnt(), 1)
             else:
                 iter_cnt = 1
 
@@ -394,16 +396,15 @@ class IterativeTxStrategy(BaseTxStrategy):
         )
         return def_cfg
 
-    async def _get_single_iter_list_cfg(self) -> SolIterListCfg | None:
-        if self._ctx.is_stuck_tx:
-            pass
-        elif self._def_cu_limit:
+    def _has_one_iter(self) -> bool:
+        if self._ctx.is_stuck_tx or self._def_cu_limit:
             pass
         elif self._calc_total_evm_step_cnt() > 1:
-            return None
+            return False
 
-        _LOG.debug("just 1 iteration")
+        return True
 
+    async def _get_single_iter_list_cfg(self) -> SolIterListCfg | None:
         base_cfg = self._init_sol_tx_cfg()
         base_tx = self._build_tx(base_cfg)
 
@@ -453,19 +454,16 @@ class IterativeTxStrategy(BaseTxStrategy):
         return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)
 
     def _calc_wrap_iter_cnt(self) -> int:
-        # if there are NO completed evm steps,
-        #   it means that we should execute the following iterations:
-        #     - begin iteration
-        #     - resize iterationS
-        #     - but if mode is NOT writeable, !don't! include 1 FINALIZATION iteration
-
         ix_mode = self._calc_ix_mode()
         base_iter_cnt = self._ctx.wrap_iter_cnt
         if ix_mode == NeonIxMode.Readable:
+            # Finalization should be in the Writable mode
             base_iter_cnt -= 1
 
-        iter_cnt = max(base_iter_cnt if (not self._holder_acct.evm_step_cnt) else 0, 0)
-        return iter_cnt
+        # skip already finalized Begin and Resize iterations
+        base_iter_cnt -= self._ctx.good_sol_tx_cnt(self.name)
+
+        return max(base_iter_cnt, 0)
 
     def _calc_ix_mode(self) -> NeonIxMode:
         if self._ctx.is_test_mode:
