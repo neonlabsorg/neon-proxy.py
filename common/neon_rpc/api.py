@@ -468,10 +468,7 @@ class CoreApiTxModel(BaseModel):
 
     @cached_property
     def cost(self) -> int:
-        if self.max_fee_per_gas:
-            cost = self.max_fee_per_gas * self.gas_limit
-        else:
-            cost = self.gas_price * self.gas_limit
+        cost = self.gas_price * self.gas_limit
         return cost + self.value
 
 
