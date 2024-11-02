@@ -92,8 +92,7 @@ class NeonExecTxCtx:
 
         self._uniq_idx = itertools.count()
         self._alt_id_set: set[SolAltID] = set()
-        self._sol_tx_list_dict: dict[str, list[SolTx]] = dict()
-        self._has_completed_receipt = False
+        self._sol_tx_list_dict: dict[str, list[tuple[SolTx, bool]]] = dict()
 
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
         self._ro_addr_list: tuple[SolPubKey, ...] = tuple()
@@ -241,6 +240,10 @@ class NeonExecTxCtx:
     @property
     def emulator_slot(self) -> int:
         return self._emulator_slot
+
+    @property
+    def is_started(self) -> bool:
+        return self._holder.is_active
 
     @property
     def ro_address_list(self) -> tuple[SolPubKey, ...]:
@@ -479,23 +482,24 @@ class NeonExecTxCtx:
     def add_alt_id(self, alt_id: SolAltID) -> None:
         self._alt_id_set.add(alt_id)
 
-    @property
-    def has_good_sol_tx_receipt(self) -> bool:
-        return self._has_completed_receipt
+    def good_sol_tx_cnt(self, name: str) -> int:
+        cnt = 0
+        if tx_list := self._sol_tx_list_dict.get(name, None):
+            for _, is_success in tx_list:
+                if is_success:
+                    cnt += 1
+        return cnt
 
     def mark_good_sol_tx_receipt(self) -> None:
         self._has_completed_receipt = True
-
-    def has_sol_tx(self, name: str) -> bool:
-        return name in self._sol_tx_list_dict
 
     def pop_sol_tx_list(self, tx_name_list: tuple[str, ...]) -> tuple[SolTx, ...]:
         tx_list: list[SolTx] = list()
         for tx_name in tx_name_list:
             if tx_sublist := self._sol_tx_list_dict.pop(tx_name, None):
-                tx_list.extend(tx_sublist)
+                tx_list.extend([tx for tx, _ in tx_sublist])
         return tuple(tx_list)
 
-    def add_sol_tx_list(self, tx_list: Sequence[SolTx]) -> None:
-        for tx in tx_list:
-            self._sol_tx_list_dict.setdefault(tx.name, list()).append(tx)
+    def add_sol_tx_list(self, tx_list: Sequence[tuple[SolTx, bool]]) -> None:
+        for tx, is_success in tx_list:
+            self._sol_tx_list_dict.setdefault(tx.name, list()).append((tx, is_success))

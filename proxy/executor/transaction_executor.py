@@ -168,22 +168,18 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
 
             try:
-                has_changes = await strategy.prep_before_emulate()
+                has_changes = await strategy.prep_before_emulation()
                 if not ctx.is_stuck_tx:
                     await self._validate_nonce(ctx)
                     await self._emulate_neon_tx(ctx)
 
                 if has_changes:
-                    await strategy.update_after_emulate()
+                    await strategy.update_after_emulation()
                     # Preparations made changes in the Solana state -> repeat the preparation and emulation
                     continue
 
                 # NeonTx is prepared for the execution
-                try:
-                    return await strategy.execute()
-                finally:
-                    if strategy.has_good_sol_tx_receipt:
-                        ctx.mark_good_sol_tx_receipt()
+                return await strategy.execute()
 
             except (EthNonceTooLowError, EthNonceTooHighError):
                 raise
@@ -279,7 +275,7 @@ class NeonTxExecutor(ExecutorComponent):
         ctx.set_ro_address_list(ro_addr_list)
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
-        if ctx.has_good_sol_tx_receipt:
+        if ctx.is_started:
             return
 
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
@@ -287,6 +283,8 @@ class NeonTxExecutor(ExecutorComponent):
         EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
 
     async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
+        if not ctx.is_started:
+            return None
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.balance
 

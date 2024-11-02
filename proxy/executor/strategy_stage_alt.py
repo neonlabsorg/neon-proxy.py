@@ -50,7 +50,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         self._last_alt = actual_alt
         return alt_tx_set.tx_list_list
 
-    async def update_after_emulate(self) -> None:
+    async def update_after_emulation(self) -> None:
         last_alt = self._last_alt
         await self._alt_builder.update_alt(self._alt_list)
         if not self._tx_has_valid_size(self._legacy_tx):
@@ -132,12 +132,12 @@ def alt_strategy(cls):
             self._alt_stage = AltTxPrepStage(*args, **kwargs)
             self._prep_stage_list.append(self._alt_stage)
 
-        async def prep_before_emulate(self) -> bool:
+        async def prep_before_emulation(self) -> bool:
             # it isn't critical to pass a fake signer, because signer isn't included into ALT
             #  so the fake signer will be excluded from the ALT lists,
             #  and in the final version of tx it will be replaced with the real signer
             self._alt_stage.set_legacy_tx(self._build_test_legacy_tx())
-            return await cls.prep_before_emulate(self)
+            return await cls.prep_before_emulation(self)
 
         async def _validate(self) -> bool:
             return self._validate_account_list_len() and await cls._validate(self)
