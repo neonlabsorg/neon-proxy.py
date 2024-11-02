@@ -11,6 +11,7 @@ from typing_extensions import Self
 from ..config.constants import DEFAULT_TOKEN_NAME
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress
+from ..ethereum.transaction import calc_contract_address
 from ..neon.account import NeonAccount, NeonAccountField
 from ..neon.transaction_model import NeonTxModel
 from ..solana.account import SolAccountModel
@@ -503,7 +504,21 @@ class HolderAccountModel(BaseModel):
 
     @cached_property
     def sender(self) -> NeonAccount:
+        if self.tx is None:
+            return NeonAccount.default()
+
         return NeonAccount.from_raw(self.tx.from_address, self.chain_id)
+
+    @cached_property
+    def receiver(self) -> NeonAccount:
+        if self.tx is None:
+            return NeonAccount.default()
+
+        elif not self.tx.to_address.is_empty:
+            return NeonAccount.from_raw(self.tx.to_address, self.chain_id)
+
+        contract_addr = calc_contract_address(self.tx.to_address, self.tx.from_address, self.tx.nonce)
+        return NeonAccount.from_raw(contract_addr, self.chain_id)
 
     @property
     def is_empty(self) -> bool:
