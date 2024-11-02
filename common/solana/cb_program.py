@@ -20,6 +20,7 @@ class SolCbProg:
     DefHeapSize: Final[int] = 32 * 1024
     MaxHeapSize: Final[int] = 256 * 1024
     BaseCuPrice: Final[int] = 10_500
+    MicroLamport: Final[int] = (10 ** 6)
 
     @classmethod
     def make_heap_size_ix(cls, size: int) -> SolTxIx:

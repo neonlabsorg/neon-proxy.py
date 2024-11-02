@@ -129,10 +129,6 @@ class NeonTxExecutor(ExecutorComponent):
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
-        # request the token address (based on chain-id) for receiving payments from user
-        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, holder.chain_id)
-        ctx.set_token_sol_address(token_sol_addr)
-
         # get solana address of the user
         await self._init_sender_sol_address(ctx, holder.sender)
 

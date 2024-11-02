@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Final, ClassVar
 
-from common.neon.neon_program import NeonEvmIxCode
+from common.neon.neon_program import NeonEvmIxCode, NeonProg
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
@@ -81,9 +81,9 @@ class SimpleTxStrategy(BaseTxStrategy):
         tx = self._build_tx(optimal_cfg)
         return await self._send_tx_list(tx)
 
-    async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int) -> SolTxCfg:
-        cu_price: int = await self._calc_cu_price(tx_cfg, cu_limit=cu_limit)
-        return tx_cfg.update(cu_limit=cu_price, cu_price=cu_price)
+    async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int, gas_limit: int = NeonProg.BaseGas) -> SolTxCfg:
+        cu_price: int = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
+        return tx_cfg.update(cu_limit=cu_price, cu_price=cu_price, gas_limit=gas_limit)
 
     def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), tx_cfg)

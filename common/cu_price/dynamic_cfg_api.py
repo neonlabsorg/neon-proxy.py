@@ -23,6 +23,7 @@ CuPriceModeField = Annotated[CuPriceMode, PlainValidator(CuPriceMode.from_raw)]
 
 class PriorityFeeCfgResp(BaseModel):
     operator_fee: Decimal = Field(validation_alias="operatorFee")
+    priority_fee: Decimal = Field(validation_alias="priorityFee")
 
     const_gas_price: int | None = Field(validation_alias="constGasPrice")
     min_gas_price: int | None = Field(validation_alias="minGasPrice")

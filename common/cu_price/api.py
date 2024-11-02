@@ -9,6 +9,7 @@ from ..solana.pubkey import SolPubKey
 @dataclasses.dataclass(frozen=True)
 class PriorityFeeCfg:
     operator_fee: Decimal
+    priority_fee: Decimal
 
     const_gas_price: int | None
     min_gas_price: int | None
