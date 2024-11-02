@@ -2,7 +2,7 @@ import asyncio
 
 from common.config.config import Config
 from common.ethereum.hash import EthTxHash
-from common.neon_rpc.api import HolderAccountStatus
+from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
@@ -49,15 +49,19 @@ class StuckObjectValidator:
         neon_block.fail_neon_tx_list(failed_tx_list)
 
     async def _validate_tx(self, tx: NeonIndexedTxInfo, failed_tx_list: list) -> None:
-        if not await self._is_valid_holder(tx.holder_address, tx.neon_tx_hash):
+        holder = await self._core_api_client.get_holder_account(tx.holder_address)
+        if not await self._is_valid_holder(holder, tx.holder_address, tx.neon_tx_hash):
             failed_tx_list.append(tx)
+        else:
+            tx.set_chain_id(holder.chain_id)
 
     async def _validate_holder(self, holder: NeonIndexedHolderInfo, failed_holder_list: list) -> None:
-        if not await self._is_valid_holder(holder.address, holder.neon_tx_hash):
+        if not await self._is_valid_holder(None, holder.address, holder.neon_tx_hash):
             failed_holder_list.append(holder)
 
-    async def _is_valid_holder(self, address: SolPubKey, neon_tx_hash: EthTxHash) -> bool:
-        holder = await self._core_api_client.get_holder_account(address)
+    async def _is_valid_holder(self, holder: HolderAccountModel | None, address: SolPubKey, neon_tx_hash: EthTxHash) -> bool:
+        if not holder:
+            holder = await self._core_api_client.get_holder_account(address)
         if holder.is_empty:
             return False
         return (holder.neon_tx_hash, holder.status) == (neon_tx_hash, HolderAccountStatus.Active)
