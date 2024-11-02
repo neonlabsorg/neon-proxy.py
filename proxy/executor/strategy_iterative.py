@@ -22,7 +22,6 @@ from common.solana_rpc.errors import (
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
-from .errors import StuckTxError
 from .holder_validator import HolderAccountValidator
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -45,29 +44,8 @@ class SolIterListCfg(SolTxCfg):
         return dataclasses.replace(self, iter_cnt=0)
 
 
-class _HolderAccountValidator(HolderAccountValidator):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._is_stuck = False
-
-    def mark_stuck_tx(self) -> None:
-        self._is_stuck = True
-
-    async def is_finalized(self) -> bool:
-        await self.refresh()
-        if (not self.is_valid) and self._holder_acct.is_active:
-            # strange case, because the holder was tested on the start...
-            #  it is possible if the operator-key and the holder-id are defined on two different proxies
-            raise StuckTxError(self._holder_acct)
-
-        if self._is_stuck:
-            return (not self.is_valid) or self._holder_acct.is_finalized
-
-        return self.is_valid and self._holder_acct.is_finalized
-
-
 class _SolTxListSender(SolTxListSender):
-    def __init__(self, *args, holder_account_validator: _HolderAccountValidator) -> None:
+    def __init__(self, *args, holder_account_validator: HolderAccountValidator) -> None:
         super().__init__(*args)
         self._holder_acct_validator = holder_account_validator
 
@@ -97,8 +75,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         )
 
     @cached_property
-    def _holder_acct_validator(self) -> _HolderAccountValidator:
-        return _HolderAccountValidator(self._ctx.core_api_client, self._ctx.holder_address, self._ctx.neon_tx_hash)
+    def _holder_acct_validator(self) -> HolderAccountValidator:
+        return HolderAccountValidator(self._ctx)
 
     @property
     def _holder_acct(self) -> HolderAccountModel:
@@ -106,9 +84,6 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     async def execute(self) -> ExecTxRespCode:
         assert self.is_valid
-
-        if self._ctx.is_stuck_tx:
-            self._holder_acct_validator.mark_stuck_tx()
 
         evm_step_cnt = -1
         fail_retry_cnt = 0
@@ -146,7 +121,6 @@ class IterativeTxStrategy(BaseTxStrategy):
                 pass
 
     async def cancel(self) -> ExecTxRespCode | None:
-        self._holder_acct_validator.mark_stuck_tx()
         if await self._holder_acct_validator.is_finalized():
             return ExecTxRespCode.Failed
         elif await self._recheck_tx_list(self._cancel_name):
@@ -425,7 +399,6 @@ class IterativeTxStrategy(BaseTxStrategy):
         iter_cnt: int = 1,
         **kwargs,
     ) -> SolIterListCfg:
-        kwargs.pop("ix_mode", None)
         ix_mode = self._calc_ix_mode()
 
         cu_limit = kwargs.pop("cu_limit", self._def_cu_limit)
