@@ -467,10 +467,7 @@ class CoreApiTxModel(BaseModel):
 
     @cached_property
     def cost(self) -> int:
-        if self.max_fee_per_gas:
-            cost = self.max_fee_per_gas * self.gas_limit
-        else:
-            cost = self.gas_price * self.gas_limit
+        cost = self.gas_price * self.gas_limit
         return cost + self.value
 
 
@@ -576,7 +573,7 @@ class EmulNeonAccountModel(BaseModel):
 
 
 class EmulTraceCfgModel(BaseModel):
-    neon_account_dict: dict[EthAddressField, EmulNeonAccountModel] = Field(serialization_alias="stateOverrides")
+    neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="stateOverrides")
 
 
 class EmulNeonCallRequest(BaseModel):

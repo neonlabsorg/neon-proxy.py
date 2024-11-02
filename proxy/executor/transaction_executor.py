@@ -255,6 +255,8 @@ class NeonTxExecutor(ExecutorComponent):
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
+        sender_balance = await self._get_sender_balance(ctx)
+
         if ctx.is_stuck_tx:
             core_tx = ctx.holder_tx
         else:
@@ -265,6 +267,7 @@ class NeonTxExecutor(ExecutorComponent):
             core_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
+            sender_balance=sender_balance,
         )
 
         slot = await self._sol_client.get_slot(SolCommit.Confirmed)
@@ -282,6 +285,10 @@ class NeonTxExecutor(ExecutorComponent):
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
         EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
         EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+
+    async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
+        acct = await self._core_api_client.get_neon_account(ctx.sender, None)
+        return acct.balance
 
     async def _get_state_tx_cnt(self, ctx: NeonExecTxCtx) -> int:
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
