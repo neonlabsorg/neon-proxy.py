@@ -237,6 +237,7 @@ class CoreApiClient(HttpClient):
         tx: CoreApiTxModel,
         *,
         check_result: bool,
+        sender_balance: int | None = None,
         preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         block: NeonBlockHdrModel | None = None,
@@ -245,11 +246,14 @@ class CoreApiClient(HttpClient):
         if sol_account_dict:
             emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
 
-        if tx.nonce is not None:
-            emul_neon_acct_dict = {tx.from_address: EmulNeonAccountModel(nonce=tx.nonce)}
+        emul_neon_acct_dict = dict()
+        if (tx.nonce is not None) or (sender_balance is not None):
+            emul_balance = sender_balance + tx.cost if sender_balance is not None else None
+            emul_neon_acct_dict[tx.from_address] = EmulNeonAccountModel(nonce=tx.nonce, balance=emul_balance)
+
+        emul_trace_cfg = None
+        if emul_neon_acct_dict:
             emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict)
-        else:
-            emul_trace_cfg = None
 
         req = EmulNeonCallRequest(
             tx=tx,
