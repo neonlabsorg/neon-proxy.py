@@ -456,7 +456,7 @@ class CoreApiTxModel(BaseModel):
     def from_neon_tx(cls, tx: NeonTxModel, chain_id: int) -> Self:
         return cls(
             from_address=tx.from_address,
-            nonce=None,
+            nonce=tx.nonce,
             to_address=tx.to_address,
             value=tx.value,
             data=tx.call_data.to_bytes(),
@@ -464,6 +464,14 @@ class CoreApiTxModel(BaseModel):
             gas_price=tx.gas_price,
             chain_id=chain_id,
         )
+
+    @cached_property
+    def cost(self) -> int:
+        if self.max_fee_per_gas:
+            cost = self.max_fee_per_gas * self.gas_limit
+        else:
+            cost = self.gas_price * self.gas_limit
+        return cost + self.value
 
 
 class HolderAccountModel(BaseModel):
@@ -529,23 +537,15 @@ class HolderAccountModel(BaseModel):
 
 
 class _CrateModel(BaseModel):
-    name: str
     version: str
 
 
 class _VersionModel(BaseModel):
     commit_id: str
-    dirty: bool
-    branch: Any
-    tags: Any
 
 
 class CoreApiBuildModel(BaseModel):
-    timestamp: str
-    profile: str
-    optimization_level: str
     crate_info: _CrateModel
-    compiler: Any
     version_control: _VersionModel
 
 
@@ -572,11 +572,11 @@ class EmulSolAccountModel(BaseModel):
 
 class EmulNeonAccountModel(BaseModel):
     nonce: int | None = None
-    balance: int | None = None
+    balance: HexUIntField | None = None
 
 
 class EmulTraceCfgModel(BaseModel):
-    neon_account_dict: dict[EthAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
+    neon_account_dict: dict[EthAddressField, EmulNeonAccountModel] = Field(serialization_alias="stateOverrides")
 
 
 class EmulNeonCallRequest(BaseModel):
