@@ -151,7 +151,7 @@ class NeonTxModel(BaseModel):
     @classmethod
     def _from_eth_tx(cls, tx: EthTx) -> Self:
         params = dict(
-            tx_type=tx.type,
+            tx_type=tx.tx_type,
             tx_chain_id=tx.chain_id,
             neon_tx_hash=tx.neon_tx_hash,
             from_address=tx.from_address,
@@ -174,7 +174,7 @@ class NeonTxModel(BaseModel):
     @cached_method
     def _to_eth_tx(self) -> EthTx:
         ctr = dict(
-            type=self.tx_type,
+            tx_type=self.tx_type,
             chain_id=self.chain_id,
             nonce=self.nonce,
             gas_price=self.gas_price_legacy,
