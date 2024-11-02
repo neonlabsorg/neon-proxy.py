@@ -280,8 +280,8 @@ class NeonTxExecutor(ExecutorComponent):
             return
 
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
-        EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt)
-        EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt)
+        EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+        EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
 
     async def _get_state_tx_cnt(self, ctx: NeonExecTxCtx) -> int:
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
