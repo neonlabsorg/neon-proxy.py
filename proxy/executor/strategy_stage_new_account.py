@@ -28,7 +28,7 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
 
         return [[SolLegacyTx(self.name, tuple([ix]))]]
 
-    async def update_after_emulate(self) -> None:
+    async def update_after_emulation(self) -> None:
         if not await self._is_account_exist():
             raise SolNoMoreRetriesError()
 

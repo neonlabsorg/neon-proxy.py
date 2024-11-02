@@ -46,7 +46,7 @@ class BaseTxPrepStage(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def update_after_emulate(self) -> None:
+    async def update_after_emulation(self) -> None:
         pass
 
 
@@ -98,10 +98,7 @@ class BaseTxStrategy(abc.ABC):
             self._validation_error_msg = str(e)
             return False
 
-    def complete_init(self) -> None:
-        assert self.is_valid
-
-    async def prep_before_emulate(self) -> bool:
+    async def prep_before_emulation(self) -> bool:
         assert self.is_valid
 
         # recheck already sent transactions
@@ -119,11 +116,11 @@ class BaseTxStrategy(abc.ABC):
                 has_list = True
         return has_list
 
-    async def update_after_emulate(self) -> None:
+    async def update_after_emulation(self) -> None:
         assert self.is_valid
 
         for stage in self._prep_stage_list:
-            await stage.update_after_emulate()
+            await stage.update_after_emulation()
 
     @property
     def has_good_sol_tx_receipt(self) -> bool:
@@ -240,7 +237,7 @@ class BaseTxStrategy(abc.ABC):
         tx_list_sender = self._sol_tx_list_sender
         self._ctx.add_sol_tx_list(
             [
-                tx_state.tx
+                (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
                 for tx_state in tx_list_sender.tx_state_list
                 # we shouldn't retry txs with the exceed Compute Budget error
                 if tx_state.status != tx_state.status.CbExceededError
