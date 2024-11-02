@@ -143,8 +143,24 @@ class SolTxIxMetaInfo:
     is_success: bool
 
     # protected:
-    _rpc_tx_ix: SolRpcTxIxInfo
+    _rpc_tx_ix: SolRpcTxIxInfo | None
     _tx_acct_key_list: tuple[SolPubKey, ...]
+
+    _default: typing.ClassVar[SolTxIxMetaInfo | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not cls._default:
+            cls._default = cls(
+                sol_tx_sig=SolTxSig.default(),
+                slot=1,
+                sol_ix_idx=1,
+                sol_inner_ix_idx=None,
+                is_success=True,
+                _rpc_tx_ix=None,
+                _tx_acct_key_list=tuple(),
+            )
+        return cls._default
 
     @classmethod
     def from_raw(cls, tx: SolTxMetaInfo, idx: int, inner_idx: int | None, tx_ix: SolRpcTxIxInfo) -> Self:
