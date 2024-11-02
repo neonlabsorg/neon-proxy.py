@@ -370,6 +370,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     class InitData(BaseNeonIndexedObjInfo.InitData):
         neon_tx_hash: EthTxHashField
         holder_address: SolPubKeyField
+        chain_id: int = Field(default=0)
         operator: SolPubKeyField
         gas_used: int
         total_gas_used: int
@@ -384,6 +385,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     def __init__(
         self,
         key: Key,
+        chain_id: int,
         neon_tx: NeonTxModel,
         holder_address: SolPubKey,
         operator: SolPubKey,
@@ -399,6 +401,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         super().__init__(**kwargs)
 
         self._key = key
+        self._chain_id = chain_id
         self._neon_tx = neon_tx
         self._neon_tx_rcpt = _NeonTxReceiptDraft.from_raw(neon_tx_rcpt)
         self._holder_addr = holder_address
@@ -436,6 +439,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     def from_raw(cls, key: Key, neon_tx: NeonTxModel, holder_address: SolPubKey) -> Self:
         return cls(
             key=key,
+            chain_id=0,
             neon_tx=neon_tx,
             holder_address=holder_address,
             # default:
@@ -464,6 +468,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
         self = cls(
             key=init.neon_tx_hash,
+            chain_id=init.chain_id,
             neon_tx=init.neon_tx,
             holder_address=init.holder_address,
             operator=init.operator,
@@ -489,6 +494,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             last_slot=self._last_slot,
             is_stuck=self._is_stuck,
             neon_tx_hash=self._key,
+            chain_id=self.chain_id,
             holder_address=self._holder_addr,
             operator=self._operator,
             gas_used=self._gas_used,
@@ -509,6 +515,10 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     @property
     def neon_tx_hash(self) -> EthTxHash:
         return self._key
+
+    @property
+    def chain_id(self) -> int:
+        return self._chain_id or self._neon_tx.chain_id or 0
 
     @property
     def key(self) -> NeonIndexedTxInfo.Key:
@@ -547,6 +557,9 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     @property
     def is_completed(self) -> bool:
         return self._neon_tx_rcpt.is_completed
+
+    def set_chain_id(self, chain_id: int) -> None:
+        self._chain_id = chain_id
 
     def add_alt_address(self, alt_address: SolPubKey) -> None:
         self._complete_clone()
