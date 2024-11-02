@@ -7,7 +7,7 @@ from typing import ClassVar
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
-from common.neon.account import NeonAccount
+from common.neon.neon_program import NeonBaseTxAccountSet
 from common.neon_rpc.api import CoreApiTxModel
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
@@ -99,7 +99,7 @@ class NeonTxExecutor(ExecutorComponent):
             raise StuckTxError(holder)
 
         try:
-            await self._init_sender_sol_address(ctx, ctx.sender)
+            await self._init_base_sol_tx(ctx)
             # the earlier check of the nonce
             await self._validate_nonce(ctx)
             # get the list of accounts for validation
@@ -129,8 +129,8 @@ class NeonTxExecutor(ExecutorComponent):
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
 
-        # get solana address of the user
-        await self._init_sender_sol_address(ctx, holder.sender)
+        # get solana address of the sender and receiver
+        await self._init_base_sol_tx(ctx)
 
         ctx.set_holder_account(holder)
         await self._emulate_neon_tx(ctx)
@@ -287,6 +287,12 @@ class NeonTxExecutor(ExecutorComponent):
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.state_tx_cnt
 
-    async def _init_sender_sol_address(self, ctx: NeonExecTxCtx, sender: NeonAccount) -> None:
-        acct = await self._core_api_client.get_neon_account(sender, None)
-        ctx.set_sender_sol_address(acct.sol_address)
+    async def _init_base_sol_tx(self, ctx: NeonExecTxCtx) -> None:
+        addr_list = tuple([ctx.sender, ctx.receiver])
+        acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
+        base_tx_acct_set = NeonBaseTxAccountSet(
+            sender=acct_list[0].sol_address,
+            receiver=acct_list[1].sol_address,
+            receiver_contract=acct_list[1].contract_sol_address,
+        )
+        ctx.set_tx_sol_address(base_tx_acct_set)

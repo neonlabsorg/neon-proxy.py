@@ -10,7 +10,7 @@ from common.cu_price.client import CuPriceClient
 from common.config.config import Config
 from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
-from common.neon.neon_program import NeonProg
+from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
 from common.neon_rpc.client import CoreApiClient
@@ -95,8 +95,8 @@ class NeonExecTxCtx:
         self._sol_tx_list_dict: dict[str, list[SolTx]] = dict()
         self._has_completed_receipt = False
 
-        self._sender_sol_address: SolPubKey = SolPubKey.default()
-        self._ro_addr_list: tuple[SolPubKey] = tuple()
+        self._base_tx_acct_set = NeonBaseTxAccountSet.default()
+        self._ro_addr_list: tuple[SolPubKey, ...] = tuple()
         self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
         self._emulator_resp: EmulNeonCallResp | None = None
         self._emulator_slot = 0
@@ -166,8 +166,8 @@ class NeonExecTxCtx:
     def mark_skip_simple_strategy(self) -> None:
         self._skip_simple_strategy = True
 
-    def set_sender_sol_address(self, sol_address: SolPubKey) -> None:
-        self._sender_sol_address = sol_address
+    def set_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> None:
+        self._base_tx_acct_set = base_tx_account_set
 
     def set_emulator_result(self, slot: int, resp: EmulNeonCallResp) -> None:
         _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
@@ -319,7 +319,7 @@ class NeonExecTxCtx:
         else:
             eth_rlp_tx = bytes()
         prog.init_neon_tx(self.neon_tx_hash, eth_rlp_tx)
-        prog.init_sender_sol_address(self._sender_sol_address)
+        prog.init_tx_sol_address(self._base_tx_acct_set)
 
         return prog
 
@@ -398,10 +398,17 @@ class NeonExecTxCtx:
     @cached_property
     def sender(self) -> NeonAccount:
         if self.is_stuck_tx:
-            assert self._holder
-            return NeonAccount.from_raw(self._holder.sender, self._holder.chain_id)
+            return self._holder.sender
+
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.sender, tx.chain_id)
+
+    @cached_property
+    def receiver(self) -> NeonAccount:
+        if self.is_stuck_tx:
+            return self._holder.receiver
+        tx = self._tx_request.tx
+        return NeonAccount.from_raw(tx.receiver, tx.chain_id)
 
     def next_uniq_idx(self) -> int:
         return next(self._uniq_idx)
