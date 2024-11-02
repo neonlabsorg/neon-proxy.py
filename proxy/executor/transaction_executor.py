@@ -8,7 +8,6 @@ from typing import ClassVar
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.neon_program import NeonBaseTxAccountSet
-from common.neon_rpc.api import CoreApiTxModel
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
@@ -89,14 +88,8 @@ class NeonTxExecutor(ExecutorComponent):
     ]
 
     async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
-        if (holder := await holder_validator.refresh()).is_active:
-            _LOG.debug(
-                "holder %s contains stuck NeonTx %s",
-                ctx.holder_address,
-                holder_validator.holder_account.neon_tx_hash,
-            )
-            raise StuckTxError(holder)
+        holder_validator = HolderAccountValidator(ctx)
+        await holder_validator.validate_stuck_tx()
 
         try:
             await self._init_base_sol_tx(ctx)
@@ -121,18 +114,13 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
 
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(self._core_api_client, ctx.holder_address, ctx.neon_tx_hash)
-        if not (holder := await holder_validator.refresh()).is_active:
+        holder_validator = HolderAccountValidator(ctx)
+        if not await holder_validator.is_active():
             return ExecTxResp(code=ExecTxRespCode.Failed)
-
-        # update NeonProg settings from EVM config
-        evm_cfg = await self._server.get_evm_cfg()
-        ctx.init_neon_prog(evm_cfg)
 
         # get solana address of the sender and receiver
         await self._init_base_sol_tx(ctx)
 
-        ctx.set_holder_account(holder)
         await self._emulate_neon_tx(ctx)
 
         acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
@@ -141,7 +129,7 @@ class NeonTxExecutor(ExecutorComponent):
                 ctx.add_alt_id(alt_acct.ident)
 
         exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
-        return ExecTxResp(code=exit_code, chain_id=holder.chain_id)
+        return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
         for _Strategy in tx_strategy_list:
@@ -170,13 +158,15 @@ class NeonTxExecutor(ExecutorComponent):
             try:
                 has_changes = await strategy.prep_before_emulation()
                 if not ctx.is_stuck_tx:
-                    await self._validate_nonce(ctx)
                     await self._emulate_neon_tx(ctx)
 
                 if has_changes:
                     await strategy.update_after_emulation()
                     # Preparations made changes in the Solana state -> repeat the preparation and emulation
                     continue
+
+
+                await self._validate_nonce(ctx)
 
                 # NeonTx is prepared for the execution
                 return await strategy.execute()
@@ -253,14 +243,9 @@ class NeonTxExecutor(ExecutorComponent):
 
         sender_balance = await self._get_sender_balance(ctx)
 
-        if ctx.is_stuck_tx:
-            core_tx = ctx.holder_tx
-        else:
-            core_tx = CoreApiTxModel.from_neon_tx(ctx.neon_tx, ctx.chain_id)
-
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            core_tx,
+            ctx.holder_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
             sender_balance=sender_balance,
@@ -285,6 +270,7 @@ class NeonTxExecutor(ExecutorComponent):
     async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
         if not ctx.is_started:
             return None
+
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.balance
 
