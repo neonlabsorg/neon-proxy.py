@@ -314,9 +314,9 @@ class _NeonEvmGasLogDecoder(_NeonEvmLogDecoder):
     def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
         """GAS <32 bytes le iteration gas> <32 bytes le total gas>"""
         if not log.tx_ix_gas.is_empty:
-            _LOG.error("%s is already exist!", cls.name)
-            return
-        elif len(data_list) != 2:
+            _LOG.warning("%s is already exist!", cls.name)
+
+        if len(data_list) != 2:
             _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
             return
 

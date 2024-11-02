@@ -77,13 +77,15 @@ class SimpleTxStrategy(BaseTxStrategy):
         round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
         _LOG.debug("simple: %d EVM steps, %d CUs (round to %s CUs)", evm_step_cnt, used_cu_limit, round_cu_limit)
 
-        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=round_cu_limit)
+        gas_limit = self._find_gas_limit(emul_tx)
+
+        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=round_cu_limit, gas_limit=gas_limit)
         tx = self._build_tx(optimal_cfg)
         return await self._send_tx_list(tx)
 
-    async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int, gas_limit: int = NeonProg.BaseGas) -> SolTxCfg:
+    async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int, gas_limit: int) -> SolTxCfg:
         cu_price: int = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
-        return tx_cfg.update(cu_limit=cu_price, cu_price=cu_price, gas_limit=gas_limit)
+        return tx_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
 
     def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), tx_cfg)

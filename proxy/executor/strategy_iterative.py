@@ -330,7 +330,8 @@ class IterativeTxStrategy(BaseTxStrategy):
             used_cu_limit = emul_tx_list.meta.used_cu_limit
         else:
             iter_cnt = max(next((idx for idx, x in enumerate(emul_tx_list) if x.meta.error), len(emul_tx_list)), 1)
-            used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list[:iter_cnt]))
+            emul_tx_list = emul_tx_list[:iter_cnt]
+            used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
 
         _LOG.debug(
             "%s: %d EVM steps, %d CUs, %d executed iterations, %d success iterations",
@@ -349,12 +350,25 @@ class IterativeTxStrategy(BaseTxStrategy):
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
 
+        if not isinstance(emul_tx_list, Sequence):
+            gas_limit = self._find_gas_limit(emul_tx_list)
+        else:
+            gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
+
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 100_000
         round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
-        _LOG.debug("%s: %d EVM steps, %d CUs, %d iterations", hdr, evm_step_cnt, round_cu_limit, iter_cnt)
+        _LOG.debug(
+            "%s: %d EVM steps, %d CUs, %d GAS, %d iterations",
+            hdr,
+            evm_step_cnt,
+            round_cu_limit,
+            gas_limit,
+            iter_cnt,
+        )
 
-        return await self._update_cu_price(base_cfg.update(iter_cnt=iter_cnt), cu_limit=round_cu_limit)
+        optimal_cfg = base_cfg.update(iter_cnt=iter_cnt)
+        return await self._update_cu_price(optimal_cfg, cu_limit=round_cu_limit, gas_limit=gas_limit)
 
     async def _get_def_iter_list_cfg(self) -> SolIterListCfg:
         cu_limit: Final[int] = SolCbProg.MaxCuLimit // 2
@@ -429,7 +443,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         base_cfg: SolIterListCfg,
         *,
         cu_limit: int,
-        gas_limit=NeonProg.BaseGas,
+        gas_limit: int = NeonProg.BaseGas,
     ) -> SolIterListCfg:
         cu_limit = self._def_cu_limit or cu_limit
         cu_price = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
