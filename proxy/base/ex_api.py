@@ -4,23 +4,42 @@ from enum import IntEnum
 from typing import Annotated
 
 from pydantic import PlainValidator, PlainSerializer
+from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHashField
 from common.solana.alt_program import SolAltID
 from common.utils.pydantic import BaseModel
-from .mp_api import MpTxModel, MpStuckTxModel
+from .mp_api import MpTxModel, MpStuckTxModel, MpTokenGasPriceModel, MpGasPriceModel
 from .op_api import OpResourceModel
 
 EXECUTOR_ENDPOINT = "/api/v1/executor/"
 
 
+class ExecTokenModel(BaseModel):
+    chain_id: int
+    simple_cu_price: int
+    profitable_gas_price: int
+    pct_gas_price: int
+
+    @classmethod
+    def from_raw(cls, gas_price: MpGasPriceModel, token: MpTokenGasPriceModel) -> Self:
+        return cls(
+            chain_id=token.chain_id,
+            simple_cu_price=gas_price.simple_cu_price,
+            profitable_gas_price=token.profitable_gas_price,
+            pct_gas_price=token.pct_gas_price,
+        )
+
+
 class ExecTxRequest(BaseModel):
     tx: MpTxModel
+    token: ExecTokenModel
     resource: OpResourceModel
 
 
 class ExecStuckTxRequest(BaseModel):
     stuck_tx: MpStuckTxModel
+    token: ExecTokenModel
     resource: OpResourceModel
 
 

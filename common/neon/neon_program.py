@@ -94,6 +94,7 @@ class NeonProg:
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1014
     _evm_version: ClassVar[str] = "v1.14.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
+    BaseGas: Final[int] = 10_000  # 5'000 for signature, + 5'000 to treasury
 
     # 1. holder
     # 2. payer

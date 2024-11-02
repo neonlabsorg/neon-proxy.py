@@ -37,7 +37,7 @@ class NeonTxExecApi(ExecutorApi):
 
                     # reset token_address, because the tx can be in another chain-id space
                     resource = tx_request.resource.model_copy(update=dict(token_sol_address=SolPubKey.default()))
-                    stuck_tx = MpStuckTxModel.from_raw(exc.neon_tx_hash, exc.address)
+                    stuck_tx = MpStuckTxModel.from_raw(exc.neon_tx_hash, exc.chain_id, exc.address)
                     req = ExecStuckTxRequest(stuck_tx=stuck_tx, resource=resource)
                     await self.complete_stuck_neon_tx(req)
 
