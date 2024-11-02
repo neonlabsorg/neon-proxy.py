@@ -12,7 +12,9 @@ import pythclient.utils as _pyth_utils
 
 from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, CHAIN_TOKEN_NAME
 from common.cu_price.api import PriorityFeeCfg
+from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, TokenModel
+from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import log_msg, logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
@@ -28,6 +30,7 @@ _PythPriceType = _pyth_acct.PythPriceType
 
 class MpGasPriceCalculator(MempoolComponent):
     _token_usd_precision: Final[int] = 100_000
+    _fee_precision: Final[int] = 100_000
     _update_sec: Final[int] = int(16 * ONE_BLOCK_SEC)
 
     def __init__(self, server: MempoolServerAbc) -> None:
@@ -47,7 +50,8 @@ class MpGasPriceCalculator(MempoolComponent):
 
         self._gas_price = MpGasPriceModel(
             chain_token_price_usd=0,
-            operator_fee=int(self._cfg.operator_fee * 100_000),
+            operator_fee=int(self._cfg.operator_fee * self._fee_precision),
+            priority_fee=int(self._cfg.priority_fee * self._fee_precision),
             cu_price=self._cfg.def_cu_price,
             simple_cu_price=self._cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
@@ -57,8 +61,10 @@ class MpGasPriceCalculator(MempoolComponent):
                 token_mint=SolPubKey.default(),
                 token_price_usd=0,
                 is_default_token=True,
-                suggested_gas_price=0,
                 is_const_gas_price=True,
+                suggested_gas_price=0,
+                profitable_gas_price=0,
+                pct_gas_price=1,
                 min_acceptable_gas_price=0,
                 min_executable_gas_price=0,
                 gas_price_list=list(),
@@ -130,10 +136,22 @@ class MpGasPriceCalculator(MempoolComponent):
 
         assert default_token is not None, "DEFAULT TOKEN NOT FOUND!"
 
+        # Logic is simple:
+        #   - User pays for gas-usage
+        #   - Each gas-unit for gas-price
+        #   - Gas-price = Base-Gas-Price + (Operator-Fee * Base-Gas-Price) + (Priority-Fee * Base-GasPrice)
+        #   --- Base-Gas-Price -> covers SOLs
+        #   --- Base-Gas-Price * Operator-Fee -> brings profit to the Operator
+        #   --- Base-Gas-Price * Priority-Fee -> coverts SOLs for Solana Priority Fee (CUs price)
+        #   - It means, that Gas-Usage * Base-Gas-Price * Priority-Fee - is the cost of Solana Priority Fee in NEONs
+        #   - It means, that Gas-Usage * Priority-Fee - is the cost of Solana Priority Fee in SOLs
+        cu_price = int(fee_cfg.priority_fee * NeonProg.BaseGas * SolCbProg.MicroLamport / SolCbProg.MaxCuLimit)
+
         return MpGasPriceModel(
             chain_token_price_usd=int(base_price_usd * self._token_usd_precision),
-            operator_fee=int(fee_cfg.operator_fee * 100_000),
-            cu_price=fee_cfg.def_cu_price,
+            operator_fee=int(fee_cfg.operator_fee * self._fee_precision),
+            priority_fee=int(fee_cfg.priority_fee * self._fee_precision),
+            cu_price=cu_price,
             simple_cu_price=fee_cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
             token_dict=token_dict,
@@ -148,19 +166,16 @@ class MpGasPriceCalculator(MempoolComponent):
         price_acct: _PythPriceAcct | None,
     ) -> MpTokenGasPriceModel | None:
         is_const_price = False
-        suggested_price = 0
-        min_price = 0
+        net_price = 0
         token_price_usd = price_acct.aggregate_price_info.price if price_acct else 0.0
 
         if fee_cfg.const_gas_price is not None:
             is_const_price = True
-            suggested_price = fee_cfg.const_gas_price
-            min_price = fee_cfg.const_gas_price
+            net_price = fee_cfg.const_gas_price
         elif fee_cfg.min_gas_price:
             if not self._cfg.pyth_url_list:
                 is_const_price = True
-                suggested_price = fee_cfg.min_gas_price
-                min_price = fee_cfg.min_gas_price
+                net_price = fee_cfg.min_gas_price
 
         if not is_const_price:
             if (token_price_usd <= 0.0) or (base_price_usd <= 0.0):
@@ -169,16 +184,18 @@ class MpGasPriceCalculator(MempoolComponent):
             # SOL token has 9 fractional digits
             # NATIVE token has 18 fractional digits
             net_price = int((base_price_usd * (10**9)) / token_price_usd)
-            suggested_price = int(net_price * (1 + fee_cfg.operator_fee))
-            min_price = net_price
 
         # Populate data regardless if const_gas_price or not.
+        profitable_price = int(net_price * (1 + fee_cfg.operator_fee))
+        suggested_price = int(net_price * (1 + fee_cfg.priority_fee + fee_cfg.operator_fee))
+
         gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
         recent_slot: int = await self._sol_client.get_recent_slot()
-        gas_price_deque.append(MpSlotGasPriceModel(slot=recent_slot, gas_price=suggested_price, min_gas_price=min_price))
+        gas_price_deque.append(
+            MpSlotGasPriceModel(slot=recent_slot, gas_price=suggested_price, min_gas_price=profitable_price)
+        )
         if len(gas_price_deque) > self._recent_gas_price_cnt:
             gas_price_deque.popleft()
-
         min_price = min(gas_price_deque, key=lambda x: x.min_gas_price).min_gas_price
 
         return MpTokenGasPriceModel(
@@ -187,8 +204,10 @@ class MpGasPriceCalculator(MempoolComponent):
             token_mint=token.mint,
             token_price_usd=int(token_price_usd * self._token_usd_precision),
             is_default_token=token.is_default,
-            suggested_gas_price=suggested_price,
             is_const_gas_price=is_const_price,
+            suggested_gas_price=suggested_price,
+            profitable_gas_price=profitable_price,
+            pct_gas_price=max(net_price // 100, 1),
             min_acceptable_gas_price=fee_cfg.min_gas_price or 0,
             min_executable_gas_price=min_price,
             gas_price_list=list(gas_price_deque),

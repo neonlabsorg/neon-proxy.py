@@ -8,7 +8,7 @@ from typing import Final, ClassVar, Sequence
 
 from typing_extensions import Self
 
-from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
+from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon_rpc.api import HolderAccountModel
 from common.solana.cb_program import SolCbProg
 from common.solana.transaction import SolTx
@@ -424,10 +424,16 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return SolIterListCfg(**tx_cfg.to_dict(), evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
 
-    async def _update_cu_price(self, base_cfg: SolIterListCfg, *, cu_limit: int) -> SolIterListCfg:
+    async def _update_cu_price(
+        self,
+        base_cfg: SolIterListCfg,
+        *,
+        cu_limit: int,
+        gas_limit=NeonProg.BaseGas,
+    ) -> SolIterListCfg:
         cu_limit = self._def_cu_limit or cu_limit
-        cu_price = await self._calc_cu_price(base_cfg, cu_limit=cu_limit)
-        return base_cfg.update(cu_limit=cu_limit, cu_price=cu_price)
+        cu_price = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
+        return base_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
 
     def _calc_total_evm_step_cnt(self) -> int:
         return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)

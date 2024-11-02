@@ -34,7 +34,7 @@ class BaseTxPrepStage(abc.ABC):
 
     @property
     def _cu_price(self) -> int:
-        return self._ctx.cfg.def_simple_cu_price
+        return self._ctx.token.simple_cu_price
 
     @abc.abstractmethod
     def get_tx_name_list(self) -> tuple[str, ...]:
@@ -57,6 +57,8 @@ class SolTxCfg:
     cu_limit: int
     cu_price: int
     heap_size: int
+
+    gas_limit: int
 
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)  # noqa
@@ -267,6 +269,7 @@ class BaseTxStrategy(abc.ABC):
         cu_limit: int = SolCbProg.MaxCuLimit,
         cu_price: int = SolCbProg.BaseCuPrice,
         heap_size: int = SolCbProg.MaxHeapSize,
+        gas_limit: int = NeonProg.BaseGas,
     ) -> SolTxCfg:
         return SolTxCfg(
             name=name or self.name,
@@ -274,9 +277,13 @@ class BaseTxStrategy(abc.ABC):
             cu_limit=cu_limit,
             cu_price=cu_price,
             heap_size=heap_size,
+            gas_limit=gas_limit,
         )
 
-    async def _calc_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int) -> int:
+    async def _calc_cu_price(self, cu_limit: int, gas_limit: int) -> int:
+        token = self._ctx.token
+
+        # calculate a required cu-price from the Solana statistics
         req_cu_price = await self._ctx.cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
         cu_price = 0
 
@@ -292,16 +299,29 @@ class BaseTxStrategy(abc.ABC):
                 )
 
         if not cu_price:
+            # calculate a transaction cu-price based on the tx gas-price
+            gas_price = (self._ctx.holder_tx if self._ctx.is_stuck_tx else self._ctx.neon_tx).gas_price
+            priority_fee = (gas_price - token.profitable_gas_price) / token.pct_gas_price
+            _LOG.debug("use %s priority-fee for %s gas-price", priority_fee, gas_price)
+
+            if priority_fee > 0.0:
+                # see gas-price-calculator for details
+                tx_cu_price = int(priority_fee * gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
+            else:
+                tx_cu_price = 0
+
             # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
             # and neon-evm does not digest it.
-            cu_price = max(req_cu_price * SolCbProg.MaxCuLimit // cu_limit, 1)
+            cu_price = max(min(req_cu_price, tx_cu_price), 1)
 
         _LOG.debug(
-            "use %s CU-price for %s CU-limit, %s accounts",
+            "use %s CU-price for %s CU-limit, %s Gas-limit, %s accounts",
             cu_price,
             cu_limit,
+            gas_limit,
             len(self._ctx.rw_account_key_list),
         )
+
         return cu_price
 
     @staticmethod

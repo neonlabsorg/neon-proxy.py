@@ -18,11 +18,16 @@ class StuckTxError(Exception):
     def __init__(self, holder: HolderAccountModel) -> None:
         super().__init__()
         self._neon_tx_hash = holder.neon_tx_hash
+        self._chain_id = holder.chain_id
         self._address = holder.address
 
     @property
     def neon_tx_hash(self) -> EthTxHash:
         return self._neon_tx_hash
+
+    @property
+    def chain_id(self) -> int:
+        return self._chain_id
 
     @property
     def address(self) -> SolPubKey:

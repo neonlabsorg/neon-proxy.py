@@ -87,6 +87,7 @@ class MpTxModel(BaseModel):
 
 class MpStuckTxModel(BaseModel):
     neon_tx_hash: EthTxHashField
+    chain_id: int
     holder_address: SolPubKeyField
     alt_address_list: list[SolPubKeyField]
 
@@ -96,15 +97,17 @@ class MpStuckTxModel(BaseModel):
     def from_db(cls, data: dict) -> Self:
         return cls(
             neon_tx_hash=data["neon_tx_hash"],
+            chain_id=data.get("chain_id", 0),
             holder_address=data["holder_address"],
             alt_address_list=data.get("alt_address_list", list()),
             start_time_nsec=time.monotonic_ns(),
         )
 
     @classmethod
-    def from_raw(cls, neon_tx_hash: EthTxHash, holder_address: SolPubKeyField) -> Self:
+    def from_raw(cls, neon_tx_hash: EthTxHash, chain_id: int, holder_address: SolPubKeyField) -> Self:
         return cls(
             neon_tx_hash=neon_tx_hash,
+            chain_id=chain_id,
             holder_address=holder_address,
             alt_address_list=list(),
             start_time_nsec=time.monotonic_ns(),
@@ -141,6 +144,8 @@ class MpTokenGasPriceModel(BaseModel):
     is_default_token: bool
 
     suggested_gas_price: int
+    profitable_gas_price: int
+    pct_gas_price: int
     is_const_gas_price: bool
     min_acceptable_gas_price: int
     min_executable_gas_price: int
@@ -165,6 +170,7 @@ class MpGasPriceModel(BaseModel):
     chain_token_price_usd: int
 
     operator_fee: int
+    priority_fee: int
     cu_price: int
     simple_cu_price: int
 
