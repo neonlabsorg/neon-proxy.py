@@ -7,6 +7,7 @@ from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
+from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
@@ -15,7 +16,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx, SolTxIx
-from common.solana.transaction_decoder import SolTxMetaInfo
+from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
@@ -283,7 +284,6 @@ class BaseTxStrategy(abc.ABC):
             tx_cu_price = 0
 
         cu_price = max(min(req_cu_price, tx_cu_price), 1)
-
         _LOG.debug(
             "use %s CU-price for %s CU-limit, %s Gas-limit, %s accounts",
             cu_price,
@@ -291,7 +291,6 @@ class BaseTxStrategy(abc.ABC):
             gas_limit,
             len(self._ctx.rw_account_key_list),
         )
-
         return cu_price
 
     @staticmethod
@@ -334,6 +333,18 @@ class BaseTxStrategy(abc.ABC):
         except BaseException as exc:
             _LOG.warning("error on emulate solana tx list", exc_info=exc)
             raise SolCbExceededError()
+
+    @staticmethod
+    def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
+        fake_tx_ix = SolTxIxMetaInfo.default()
+        log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
+        if log.tx_ix_gas.is_empty:
+            gas_limit = NeonProg.BaseGas
+            _LOG.debug("no GAS information, use default %s", gas_limit)
+        else:
+            gas_limit = log.tx_ix_gas.gas_used
+            _LOG.debug("found GAS %s", gas_limit)
+        return gas_limit
 
     @staticmethod
     def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:
