@@ -21,6 +21,7 @@ class SolCbProg:
     DefCuLimit: Final[int] = SOLANA_DEFAULT_CU_LIMIT
     MaxHeapSize: Final[int] = SOLANA_MAX_HEAP_SIZE
     BaseCuPrice: Final[int] = 10_500
+    MicroLamport: Final[int] = (10 ** 6)
 
     @classmethod
     def make_heap_size_ix(cls, size: int) -> SolTxIx:

@@ -27,7 +27,7 @@ from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.utils.cached import cached_property, cached_method, reset_cached_method
 from indexer.db.indexer_db_client import IndexerDbClient
 from .transaction_list_signer import OpTxListSigner
-from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest
+from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest, ExecTokenModel
 from ..base.op_client import OpResourceClient
 from ..stat.client import StatClient
 
@@ -323,11 +323,6 @@ class NeonExecTxCtx:
 
         return prog
 
-    def set_token_sol_address(self, token_address: SolPubKey) -> None:
-        assert not token_address.is_empty
-        assert self._token_sol_addr.is_empty
-        self._token_sol_addr = token_address
-
     @cached_property
     def is_stuck_tx(self) -> bool:
         return isinstance(self._tx_request, ExecStuckTxRequest)
@@ -335,6 +330,10 @@ class NeonExecTxCtx:
     @cached_property
     def payer(self) -> SolPubKey:
         return self._tx_request.resource.owner
+
+    @cached_property
+    def token(self) -> ExecTokenModel:
+        return self._tx_request.token
 
     @property
     def holder_address(self) -> SolPubKey:

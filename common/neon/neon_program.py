@@ -99,6 +99,7 @@ class NeonProg:
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1015
     _evm_version: ClassVar[str] = "v1.15.0"
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
+    BaseGas: Final[int] = 10_000  # 5'000 for signature, + 5'000 to treasury
 
     # The notation is as follows:
     #   The first, without +, goes required accounts for the Neon instruction.

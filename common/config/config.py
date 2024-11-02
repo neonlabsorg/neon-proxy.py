@@ -183,6 +183,7 @@ class Config:
     pyth_url_name: Final[str] = "PYTH_URL"
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
     operator_fee_name: Final[str] = "OPERATOR_FEE"
+    priority_fee_name: Final[str] = "PRIORITY_FEE"
     cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_mode_name: Final[str] = "CU_PRICE_MODE"
     cu_price_level_name: Final[str] = "CU_PRICE_LEVEL"
@@ -724,7 +725,11 @@ class Config:
 
     @cached_property
     def operator_fee(self) -> Decimal:
-        return self._env_num(self.operator_fee_name, Decimal("0.1"), Decimal("0.0"), Decimal("100.0"))
+        return self._env_num(self.operator_fee_name, Decimal("0.25"), Decimal("0.0"), Decimal("100.0"))
+
+    @cached_property
+    def priority_fee(self) -> Decimal:
+        return self._env_num(self.priority_fee_name, Decimal("0.75"), Decimal("0.0"), Decimal("100.0"))
 
     @cached_property
     def cu_limit(self) -> int:
@@ -745,11 +750,11 @@ class Config:
 
     @cached_property
     def def_cu_price(self) -> int:
-        return self._env_num(self.def_cu_price_name, SolCbProg.BaseCuPrice, 1, 1_000_000)
+        return self._env_num(self.def_cu_price_name, SolCbProg.BaseCuPrice, 1, (10 ** 9))
 
     @cached_property
     def def_simple_cu_price(self) -> int:
-        return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, 1_000_000)
+        return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, (10 ** 9))
 
     @cached_property
     def dynamic_fee_cfg_url_list(self) -> tuple[str, ...]:
@@ -1002,6 +1007,7 @@ class Config:
             self.pyth_url_name: self.pyth_url_list,
             self.pyth_ws_url_name: self.pyth_ws_url_list,
             self.operator_fee_name: self.operator_fee,
+            self.priority_fee_name: self.priority_fee,
             self.cu_limit_name: self.cu_limit,
             self.cu_price_mode_name: self.cu_price_mode,
             self.cu_price_level_name: self.cu_price_level,
