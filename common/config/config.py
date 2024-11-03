@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 
 from pythclient.solana import (
     PYTHNET_HTTP_ENDPOINT,
-    PYTHNET_WS_ENDPOINT,
     SOLANA_MAINNET_HTTP_ENDPOINT,
+    PYTHNET_WS_ENDPOINT,
     SOLANA_MAINNET_WS_ENDPOINT,
 )
 from strenum import StrEnum
@@ -98,12 +98,11 @@ class CuPriceLevel(StrEnum):
 
     @classmethod
     def from_raw(cls, raw: str | CuPriceMode | None) -> Self:
-       return _CuPriceLevelValidator.from_raw(raw)
+        return _CuPriceLevelValidator.from_raw(raw)
+
 
 class _CuPriceLevelValidator:
-    _level_dict: ClassVar[dict[str, str]] = {
-        v.lower(): v for v in CuPriceLevel
-    }
+    _level_dict: ClassVar[dict[str, str]] = {v.lower(): v for v in CuPriceLevel}
 
     @classmethod
     def from_raw(cls, raw: str | CuPriceLevel | None) -> Self:
@@ -703,14 +702,10 @@ class Config:
         if not pyth_url_list:
             _LOG.debug(
                 "%s is not defined, force to use the default value: "
-                "(PYTHNET_HTTP_ENDPOINT, SOLANA_MAINNET_HTTP_ENDPOINT) + sol_url_list",
+                "sol_url_list + (PYTHNET_HTTP_ENDPOINT, SOLANA_MAINNET_HTTP_ENDPOINT)",
                 self.pyth_url_name,
             )
-            pyth_url_list = (
-                [PYTHNET_HTTP_ENDPOINT]
-                + list(self.sol_url_list)
-                + [SOLANA_MAINNET_HTTP_ENDPOINT]
-            )
+            pyth_url_list = list(self.sol_url_list) + [PYTHNET_HTTP_ENDPOINT, SOLANA_MAINNET_HTTP_ENDPOINT]
         return tuple(pyth_url_list)
 
     @cached_property
@@ -721,14 +716,10 @@ class Config:
             if not pyth_url_list:
                 _LOG.debug(
                     "%s is not defined, force to use the default value: "
-                    "(PYTHNET_WS_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT) + sol_ws_url_list",
+                    "sol_ws_url_list + (PYTHNET_WS_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT)",
                     self.pyth_ws_url_name,
                 )
-                pyth_ws_url_list = (
-                    [PYTHNET_WS_ENDPOINT]
-                    + list(self.sol_ws_url_list)
-                    + [SOLANA_MAINNET_WS_ENDPOINT]
-                )
+                pyth_ws_url_list = list(self.sol_ws_url_list) + [PYTHNET_WS_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT]
             else:
                 _LOG.debug(
                     "%s is not defined, force to use the default value calculated from the %s",
@@ -765,11 +756,11 @@ class Config:
 
     @cached_property
     def def_cu_price(self) -> int:
-        return self._env_num(self.def_cu_price_name, SolCbProg.BaseCuPrice, 1, (10 ** 9))
+        return self._env_num(self.def_cu_price_name, SolCbProg.BaseCuPrice, 1, (10**9))
 
     @cached_property
     def def_simple_cu_price(self) -> int:
-        return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, (10 ** 9))
+        return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, (10**9))
 
     @cached_property
     def dynamic_fee_cfg_url_list(self) -> tuple[str, ...]:
