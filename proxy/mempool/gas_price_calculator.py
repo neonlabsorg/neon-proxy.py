@@ -293,7 +293,7 @@ class MpGasPriceCalculator(MempoolComponent):
                 _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
 
     async def _get_price_account(self, token: str) -> _PythPriceAcct | None:
-        if not self._watch_session:
+        if (not self._watch_session) or (not self._price_acct_full_dict):
             return None
 
         if not (price_acct := self._price_acct_dict.get(token, None)):
