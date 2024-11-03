@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import itertools
 import logging
+import multiprocessing as mp
 import os
 import re
 import subprocess
 import time
-import multiprocessing as mp
 from typing import Any, Final
 
 from .log_level import get_core_api_log_level
 from ..config.config import Config
 from ..config.utils import LogMsgFilter
 from ..neon.neon_program import NeonProg
+from ..solana.commit_level import SolCommit
 from ..utils.json_logger import log_msg
 
 _LOG = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class _Server:
             RUST_LOG=log_level,
             SOLANA_URL=self._solana_url,
             NEON_API_LISTENER_ADDR=self._host,
-            COMMITMENT="recent",
+            COMMITMENT=SolCommit.Processed,
             EVM_LOADER=str(NeonProg.ID),
             NEON_DB_CLICKHOUSE_URLS=";".join(self._cfg.ch_dsn_list),
             TRACER_DB_TYPE="clickhouse" if len(self._cfg.ch_dsn_list) > 0 else "none",
