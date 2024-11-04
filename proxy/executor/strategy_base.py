@@ -46,7 +46,7 @@ class BaseTxPrepStage(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def update_after_emulation(self) -> None:
+    async def update_after_emulation(self) -> bool:
         pass
 
 
@@ -98,7 +98,7 @@ class BaseTxStrategy(abc.ABC):
             self._validation_error_msg = str(e)
             return False
 
-    async def prep_before_emulation(self) -> bool:
+    async def prep_before_emulation(self) -> None:
         assert self.is_valid
 
         # recheck already sent transactions
@@ -110,17 +110,16 @@ class BaseTxStrategy(abc.ABC):
         # generate new transactions
         tx_list_list = await self._build_prep_tx_list()
 
-        has_list = False
         for tx_list in tx_list_list:
-            if await self._send_tx_list(tx_list):
-                has_list = True
-        return has_list
+            await self._send_tx_list(tx_list)
 
-    async def update_after_emulation(self) -> None:
+    async def update_after_emulation(self) -> bool:
         assert self.is_valid
 
+        result = True
         for stage in self._prep_stage_list:
-            await stage.update_after_emulation()
+            result = await stage.update_after_emulation() and result
+        return result
 
     @property
     def has_good_sol_tx_receipt(self) -> bool:
@@ -187,6 +186,13 @@ class BaseTxStrategy(abc.ABC):
         if len(self._ctx.neon_prog.holder_msg) < self._base_sol_pkt_size:
             return True
         self._validation_error_msg = f"NeonTx has size {neon_tx_size} > {self._base_sol_pkt_size}"
+        return False
+
+    def _validate_no_holder_block(self) -> bool:
+        if not self._ctx.has_holder_block:
+            return True
+
+        self._validation_error_msg = "emulator uses block"
         return False
 
     @cached_property

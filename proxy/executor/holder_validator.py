@@ -1,6 +1,7 @@
 import logging
 
 from common.neon_rpc.api import HolderAccountModel
+from common.utils.cached import ttl_cached_method
 from .errors import StuckTxError
 from .transaction_executor_ctx import NeonExecTxCtx
 
@@ -12,6 +13,7 @@ class HolderAccountValidator:
         self._ctx = ctx
         self._holder_acct: HolderAccountModel | None = None
 
+    @ttl_cached_method(ttl_msec=10)
     async def refresh(self) -> None:
         self._holder_acct = await self._ctx.core_api_client.get_holder_account(self._ctx.holder_address)
 

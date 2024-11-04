@@ -152,7 +152,6 @@ class NeonProg:
         self._eth_rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
-        self._sender_sol_addr = SolPubKey.default()
         self._treasury_pool_index_buf = bytes()
         self._treasury_pool_addr = SolPubKey.default()
 
