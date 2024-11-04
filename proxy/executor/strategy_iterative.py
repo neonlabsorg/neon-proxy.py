@@ -82,6 +82,31 @@ class IterativeTxStrategy(BaseTxStrategy):
     def _holder_acct(self) -> HolderAccountModel:
         return self._holder_acct_validator.holder_account
 
+    async def prep_before_emulation(self) -> None:
+        await super().prep_before_emulation()
+        if (not self._ctx.has_holder_block) or (await self._holder_acct_validator.is_active()):
+            return
+        elif await self._recheck_tx_list(self.name):
+            return
+
+        _LOG.debug("just 1 iteration to fix the block number")
+        iter_cfg = await self._get_single_iter_list_cfg()
+        iter_cfg = iter_cfg.update(ix_mode=NeonIxMode.BaseTx)
+        tx_list = self._build_tx(iter_cfg)
+        await self._send_tx_list(tx_list)
+        await self._holder_acct_validator.refresh()
+
+    async def update_after_emulation(self) -> bool:
+        result = await super().update_after_emulation()
+        if (not result) or (not self._ctx.has_holder_block):
+            return result
+
+        if not await self._holder_acct_validator.is_active():
+            _LOG.debug("first iteration isn't completed")
+            return False
+
+        return True
+
     async def execute(self) -> ExecTxRespCode:
         assert self.is_valid
 

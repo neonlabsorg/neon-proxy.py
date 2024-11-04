@@ -9,7 +9,6 @@ from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.neon_program import NeonBaseTxAccountSet
 from common.solana.alt_program import SolAltAccountInfo
-from common.solana.commit_level import SolCommit
 from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
     SolCbExceededError,
@@ -156,15 +155,12 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
 
             try:
-                has_changes = await strategy.prep_before_emulation()
+                await strategy.prep_before_emulation()
                 if not ctx.is_stuck_tx:
                     await self._emulate_neon_tx(ctx)
 
-                if has_changes:
-                    await strategy.update_after_emulation()
-                    # Preparations made changes in the Solana state -> repeat the preparation and emulation
+                if not await strategy.update_after_emulation():
                     continue
-
 
                 await self._validate_nonce(ctx)
 
@@ -232,11 +228,6 @@ class NeonTxExecutor(ExecutorComponent):
                 return None
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
-        # don't emulate if the slot is the same
-        slot = await self._sol_client.get_slot(SolCommit.Confirmed)
-        if slot == ctx.emulator_slot:
-            return
-
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
         ctx.init_neon_prog(evm_cfg)
@@ -249,10 +240,10 @@ class NeonTxExecutor(ExecutorComponent):
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
             sender_balance=sender_balance,
+            emulator_block=ctx.holder_block,
         )
 
-        slot = await self._sol_client.get_slot(SolCommit.Confirmed)
-        ctx.set_emulator_result(slot, emul_resp)
+        ctx.set_emulator_result(emul_resp)
 
         # get executable accounts
         acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)

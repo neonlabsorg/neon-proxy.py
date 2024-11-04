@@ -12,7 +12,7 @@ from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
+from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel, CoreApiBlockModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.cb_program import SolCbProg
@@ -94,7 +94,6 @@ class NeonExecTxCtx:
         self._ro_addr_list: tuple[SolPubKey, ...] = tuple()
         self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
         self._emul_resp: EmulNeonCallResp | None = None
-        self._emul_slot = 0
 
         self._skip_simple_strategy = False
         self._is_test_mode = False
@@ -167,10 +166,9 @@ class NeonExecTxCtx:
     def set_holder_account(self, holder: HolderAccountModel) -> None:
         self._holder = holder
 
-    def set_emulator_result(self, slot: int, resp: EmulNeonCallResp) -> None:
+    def set_emulator_result(self, resp: EmulNeonCallResp) -> None:
         _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
 
-        self._emul_slot = slot
         self._emul_resp = resp
         self._update_acct_meta_list()
 
@@ -183,20 +181,13 @@ class NeonExecTxCtx:
     def _update_acct_meta_list(self) -> None:
         # Get metas from the emulator
         acct_meta_dict: dict[SolPubKey, SolAccountMeta] = {
-            SolPubKey.from_raw(m.pubkey): m
-            for m in self._emul_resp.sol_account_meta_list
+            SolPubKey.from_raw(m.pubkey): m for m in self._emul_resp.sol_account_meta_list
         }
 
         # Keep metas from the holder in writable mode
         for key in self._holder.account_key_list:
             if key not in acct_meta_dict:
                 acct_meta_dict[key] = SolAccountMeta(pubkey=key, is_signer=False, is_writable=True)
-
-        # Remove metas not-exist in holder
-        if self._holder.account_key_list:
-            for key in list(acct_meta_dict.keys()):
-                if key not in self._holder.account_key_list:
-                    acct_meta_dict.pop(key, None)
 
         acct_meta_list = tuple(sorted(acct_meta_dict.values(), key=lambda m: bytes(m.pubkey)))
         if acct_meta_list == self._acct_meta_list:
@@ -230,8 +221,8 @@ class NeonExecTxCtx:
         self._test_neon_prog.init_account_meta_list(acct_meta_list)
 
     @property
-    def emulator_slot(self) -> int:
-        return self._emul_slot
+    def holder_block(self) -> CoreApiBlockModel:
+        return self._holder.block
 
     @property
     def is_started(self) -> bool:
@@ -265,7 +256,7 @@ class NeonExecTxCtx:
             return self.to_string()
 
     def test_mode(self) -> _TestMode:
-        """ This mode is used when a signer is unknown, or it is better to say - the signed isn't important.
+        """This mode is used when a signer is unknown, or it is better to say - the signed isn't important.
         The signer is unknown on the testing stage,
         when we just need to check the structure of a Solana tx wo/ sending the Solana tx to Solana.
         """
@@ -346,14 +337,14 @@ class NeonExecTxCtx:
     def max_fee_per_gas(self) -> int:
         assert self.tx_type == 2
         if self.is_stuck_tx:
-            return self._holder.max_fee_per_gas
+            return self._holder.tx.max_fee_per_gas
         return self.neon_tx.max_fee_per_gas
 
     @cached_property
     def max_priority_fee_per_gas(self) -> int:
         assert self.tx_type == 2
         if self.is_stuck_tx:
-            return self._holder.max_priority_fee_per_gas
+            return self._holder.tx.max_priority_fee_per_gas
         return self.neon_tx.max_priority_fee_per_gas
 
     @cached_property
@@ -455,6 +446,11 @@ class NeonExecTxCtx:
             return False
 
         return self._emul_resp.external_sol_call
+
+    @property
+    def has_holder_block(self) -> bool:
+        assert self._emul_resp
+        return self._emul_resp.is_block_used
 
     @property
     def alt_id_list(self) -> tuple[SolAltID, ...]:

@@ -31,6 +31,7 @@ from .api import (
     NeonAccountStatus,
     EmulTraceCfgModel,
     EmulNeonAccountModel,
+    CoreApiBlockModel,
 )
 from ..config.config import Config
 from ..ethereum.commit_level import EthCommit
@@ -240,11 +241,17 @@ class CoreApiClient(HttpClient):
         sender_balance: int | None = None,
         preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
+        emulator_block = CoreApiBlockModel.default(),
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:
         emul_sol_acct_dict = dict()
         if sol_account_dict:
             emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
+
+        if emulator_block.is_empty:
+            emulator_block = None
+        else:
+            _LOG.debug("use predefined block: %d, %d", emulator_block.slot, emulator_block.timestamp)
 
         emul_neon_acct_dict = dict()
         if (tx.nonce is not None) or (sender_balance is not None):
@@ -252,8 +259,8 @@ class CoreApiClient(HttpClient):
             emul_neon_acct_dict[tx.from_address] = EmulNeonAccountModel(nonce=tx.nonce, balance=emul_balance)
 
         emul_trace_cfg = None
-        if emul_neon_acct_dict:
-            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict)
+        if emul_neon_acct_dict or emulator_block:
+            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict, block=emulator_block)
 
         req = EmulNeonCallRequest(
             tx=tx,
