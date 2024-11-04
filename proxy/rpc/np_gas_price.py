@@ -14,6 +14,7 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.account import NeonAccount
 from common.neon.block import NeonBlockCuPriceInfo, NeonBlockBaseFeeInfo
 from common.neon.cu_price_data_model import CuPricePercentileModel
+from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
 from proxy.rpc.api import RpcBlockRequest
@@ -195,7 +196,7 @@ class NpGasPriceApi(NeonProxyApi):
         # Convert it into ethereum world by multiplying by suggested_gas_price
         # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        return int(token_gas_price.suggested_gas_price * median_cu_price / 1_000_000)
+        return int(token_gas_price.suggested_gas_price * median_cu_price / SolCbProg.MicroLamport)
 
     @NeonProxyApi.method(name="eth_feeHistory")
     async def get_fee_history(
@@ -359,7 +360,7 @@ class NpGasPriceApi(NeonProxyApi):
             math.ceil(
                 CuPricePercentileModel.from_raw(priority_fee_percentile_list).get_percentile(p)
                 * current_gas_price
-                / 1_000_000
+                / SolCbProg.MicroLamport
             )
             for p in percentile_list
         ]
