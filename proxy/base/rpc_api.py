@@ -46,7 +46,7 @@ class RpcEthTxRequest(BaseJsonRpcModel):
     gas: HexUIntField = Field(default=2**64)
     gasPrice: HexUIntField = Field(default=2**64)
     maxFeePerGas: HexUIntField = Field(default=2**64)
-    maxPriorityFeePerGas: HexUIntField = Field(default=2**64)
+    maxPriorityFeePerGas: HexUIntField = Field(default=0)
 
     accessList: list[RpcAccessItemModel] = Field(default_factory=list)
     chainId: HexUIntField = Field(default=0)
