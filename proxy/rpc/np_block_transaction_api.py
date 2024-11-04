@@ -481,7 +481,7 @@ class NpBlockTxApi(NeonProxyApi):
         _, token_gas_price = await self._get_token_gas_price(ctx)
         if block.slot > latest_slot:
             # If block is pending, set baseFeePerGas to the current suggested token gas price.
-            base_fee = token_gas_price.suggested_gas_price
+            base_fee = token_gas_price.profitable_gas_price
         else:
             # Try recent mempool gas prices.
             base_fee = token_gas_price.find_gas_price(block.slot)
