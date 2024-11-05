@@ -188,13 +188,6 @@ class BaseTxStrategy(abc.ABC):
         self._validation_error_msg = f"NeonTx has size {neon_tx_size} > {self._base_sol_pkt_size}"
         return False
 
-    def _validate_no_holder_block(self) -> bool:
-        if not self._ctx.has_holder_block:
-            return True
-
-        self._validation_error_msg = "emulator uses block"
-        return False
-
     @cached_property
     def _base_sol_pkt_size(self) -> int:
         return SolTx.PktSize - NeonProg.BaseAccountCnt * SolPubKey.KeySize
