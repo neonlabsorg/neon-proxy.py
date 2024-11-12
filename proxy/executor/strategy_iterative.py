@@ -401,10 +401,7 @@ class IterativeTxStrategy(BaseTxStrategy):
     ) -> SolIterListCfg:
         ix_mode = self._calc_ix_mode()
 
-        cu_limit = kwargs.pop("cu_limit", self._def_cu_limit)
-        if self._def_cu_limit:
-            cu_limit = self._def_cu_limit
-
+        cu_limit = kwargs.pop("cu_limit", self._def_cu_limit) or SolCbProg.MaxCuLimit
         tx_cfg = super()._init_sol_tx_cfg(ix_mode=ix_mode, cu_limit=cu_limit, **kwargs)
 
         evm_step_cnt = max(evm_step_cnt, self._ctx.evm_step_cnt_per_iter)
