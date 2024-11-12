@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import ClassVar
 
 from common.ethereum.hash import EthAddressField
@@ -15,6 +16,8 @@ from .neon_ix_decoder import (
     TxStepFromAccountNoChainIdIxDecoder,
     CancelWithHashIxDecoder,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class OldTxExecFromDataIxDecoderV1013(TxExecFromDataIxDecoder):
@@ -76,13 +79,15 @@ class OldCreateAccountIxDecoderV1004(DummyIxDecoder):
         ix = self.state.sol_neon_ix
         ix_data = ix.neon_ix_data
         if len(ix_data) < 21:
-            return self._decoding_skip("not enough data to get NeonAccount %s", len(ix_data))
+            _LOG.warning("%s: not enough data to get NeonAccount %d", self._skip_hdr, len(ix_data))
+            return False
 
         acct = self._NeonAccountModel(
             neon_address=ix_data[1:21],
             sol_address=ix.get_account_key(2),
         )
-        return self._decoding_success(acct, "create NeonAccount")
+        _LOG.debug("%s: create NeonAccount - %s", self._success_hdr, acct)
+        return True
 
 
 class OldDepositIxDecoderV1004(DummyIxDecoder):
@@ -90,7 +95,8 @@ class OldDepositIxDecoderV1004(DummyIxDecoder):
     is_deprecated: ClassVar[bool] = True
 
     def execute(self) -> bool:
-        return self._decoding_success(None, "deposit NEONs")
+        _LOG.debug("%s: deposit NEONs", self._success_hdr)
+        return True
 
 
 def get_neon_ix_decoder_deprecated_list() -> list[type[DummyIxDecoder]]:
