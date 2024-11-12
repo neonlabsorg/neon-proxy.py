@@ -52,10 +52,10 @@ class NeonExecTxCtx:
         # Some popular addresses
         SolPubKey.from_raw("1nc1nerator11111111111111111111111111111111"),
         SolPubKey.from_raw("p1exdMJcjVao65QdewkaZRUnU6VPSXhus9n2GzWfh98"),   # metaplex
-        SolPubKey.from_raw("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),  # USDC
-        SolPubKey.from_raw("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),  # USDT
-        SolPubKey.from_raw("So11111111111111111111111111111111111111112"),   # wSOL
-        SolPubKey.from_raw("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),  # wETH
+        # SolPubKey.from_raw("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),  # USDC
+        # SolPubKey.from_raw("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),  # USDT
+        # SolPubKey.from_raw("So11111111111111111111111111111111111111112"),   # wSOL
+        # SolPubKey.from_raw("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),  # wETH
     ])
 
     def __init__(
