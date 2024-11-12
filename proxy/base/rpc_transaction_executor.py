@@ -86,7 +86,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         self._prevalidate_sender_eoa(neon_contract)
         self._prevalidate_tx_size(neon_tx)
         self._prevalidate_tx_gas_limit(neon_tx, tx_gas_limit)
-        await self._prevalidate_tx_gas_price(ctx, token_price, neon_tx)
+        await self._prevalidate_tx_gas_price(ctx, token_price, neon_tx, tx_gas_limit)
         self._prevalidate_underpriced_tx_wo_chain_id(global_price, neon_tx)
         self._prevalidate_sender_balance(neon_tx, neon_acct, tx_gas_limit)
         self._validate_nonce(neon_tx, neon_acct.state_tx_cnt)
@@ -128,30 +128,31 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
 
         if tx_gas_limit > self._max_u64:
             raise EthError(message="gas uint64 overflow")
-        if (tx_gas_limit * neon_tx.gas_price) > self._max_u256:
-            raise EthError(message="max fee per gas higher than 2^256-1")
+        if neon_tx.calc_cost(gas_limit=tx_gas_limit) > self._max_u256:
+            raise EthError(message="transaction cost uint256 overflow")
 
     async def _prevalidate_tx_gas_price(
         self,
         ctx: HttpRequestCtx,
         token_price: MpTokenGasPriceModel,
         neon_tx: NeonTxModel,
+        tx_gas_limit: int,
     ) -> None:
         # Operator can set minimum gas price to accept txs into mempool
         min_gas_price = token_price.min_acceptable_gas_price
-        if neon_tx.gas_price >= min_gas_price:
+        if neon_tx.base_fee_per_gas >= min_gas_price:
             return
 
         # Fee-less transaction
-        if not neon_tx.gas_price:
+        if not neon_tx.base_fee_per_gas:
             has_fee_less_permit = await self._has_fee_less_tx_permit(
-                ctx, neon_tx.from_address, neon_tx.to_address, neon_tx.nonce, neon_tx.gas_limit
+                ctx, neon_tx.from_address, neon_tx.to_address, neon_tx.nonce, tx_gas_limit
             )
             if has_fee_less_permit:
                 return
 
         if neon_tx.has_chain_id:
-            raise EthError(f"transaction underpriced: have {neon_tx.gas_price} want {min_gas_price}")
+            raise EthError(f"transaction underpriced: have {neon_tx.base_fee_per_gas} want {min_gas_price}")
 
     @staticmethod
     def _prevalidate_underpriced_tx_wo_chain_id(global_price: MpGasPriceModel, neon_tx: NeonTxModel) -> None:
@@ -165,7 +166,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
     @staticmethod
     def _prevalidate_sender_balance(neon_tx: NeonTxModel, neon_account: NeonAccountModel, tx_gas_limit: int):
         user_balance = neon_account.balance
-        required_balance = neon_tx.gas_price * tx_gas_limit + neon_tx.value
+        required_balance = neon_tx.calc_cost(gas_limit=tx_gas_limit)
 
         if required_balance <= user_balance:
             return

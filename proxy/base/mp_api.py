@@ -66,8 +66,8 @@ class MpTxModel(BaseModel):
     @property
     def gas_price(self) -> int:
         # this property is used for sorting, and can be changed by the mempool logic
-        # TODO EIP1559: should we rely upon max_priority_fee_per_gas?
-        return self.order_gas_price or self.neon_tx.gas_price
+        #   Operator is guaranteed to receive payment from the base fee per price
+        return self.order_gas_price or self.neon_tx.base_fee_per_gas
 
     @property
     def process_time_nsec(self) -> int:
@@ -197,7 +197,6 @@ class MpGasPriceModel(BaseModel):
 class MpSlotGasPriceModel(BaseModel):
     slot: int
     gas_price: int
-    min_gas_price: int
 
 
 class MpRequest(BaseModel):

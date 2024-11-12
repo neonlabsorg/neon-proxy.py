@@ -319,6 +319,7 @@ class _SenderTxPool:
             pending_pos += 1
         return pending_pos
 
+    @property
     def tx_list(self) -> list[MpTxModel]:
         return list(reversed(self._tx_nonce_queue))
 
@@ -427,19 +428,26 @@ class MpTxSchedule:
     def add_tx(self, tx: MpTxModel, state_tx_cnt: int) -> MpTxResp:
         _LOG.debug(log_msg("add tx {Tx} to mempool {ChainID} with {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info()))
 
+        def _is_higher_gas_price(_hdr: str, _old_tx: MpTxModel | None) -> MpTxResp | None:
+            if not _old_tx:
+                return None
+            elif _old_tx.gas_price >= tx.gas_price:
+                _msg = log_msg(
+                    _hdr + " tx {OldTx} has higher gas-price than {GasPrice}",
+                    OldTx=_old_tx,
+                    GasPrice=tx.gas_price,
+                )
+                _LOG.debug(_msg)
+                return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
+            return None
+
         old_tx = self._tx_dict.get_tx(tx.sender, tx.nonce)
         if old_tx:
             if old_tx.neon_tx_hash == tx.neon_tx_hash:
                 _LOG.debug(log_msg("tx {Tx} is already scheduled", Tx=tx))
                 return MpTxResp(code=MpTxRespCode.AlreadyKnown, state_tx_cnt=None)
-            elif old_tx.gas_price >= tx.gas_price:
-                msg = log_msg(
-                    "old tx {OldTx} has higher gas-price than {GasPrice}",
-                    OldTx=old_tx,
-                    GasPrice=tx.gas_price,
-                )
-                _LOG.debug(msg)
-                return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
+            elif resp := _is_higher_gas_price("old", old_tx):
+                return resp
 
         pool = self._get_or_create_sender_pool(tx.sender)
 
@@ -448,27 +456,15 @@ class MpTxSchedule:
 
         if self.tx_cnt >= self._capacity_high_watermark:
             gapped_tx = self._tx_dict.peek_gapped_lower_tx()
-            if _is_new_tx_gapped := (pool.pending_tx_cnt or state_tx_cnt) < tx.nonce:
+            if (pool.pending_tx_cnt or state_tx_cnt) < tx.nonce:
                 if not gapped_tx:
                     return MpTxResp(code=MpTxRespCode.NonceTooHigh, state_tx_cnt=state_tx_cnt)
-                elif tx.gas_price < gapped_tx.gas_price:
-                    msg = log_msg(
-                        "lowermost gapped tx {LowerTx} has higher gas-price than {GasPrice}",
-                        LowerTx=gapped_tx,
-                        GasPrice=tx.gas_price,
-                    )
-                    _LOG.debug(msg)
-                    return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
+                elif resp := _is_higher_gas_price("lowermost gapped", gapped_tx):
+                    return resp
             elif (self.tx_cnt >= self._capacity) and (not gapped_tx):
                 pending_tx = self._tx_dict.peek_pending_lower_tx()
-                if pending_tx and (tx.gas_price < pending_tx.gas_price):
-                    msg = log_msg(
-                        "lowermost pending tx {LowerTx} has higher gas-price than {GasPrice}",
-                        LowerTx=pending_tx,
-                        GasPrice=tx.gas_price,
-                    )
-                    _LOG.debug(msg)
-                    return MpTxResp(code=MpTxRespCode.Underprice, state_tx_cnt=None)
+                if resp := _is_higher_gas_price("lowermost pending", pending_tx):
+                    return resp
 
         if pool.is_processing:
             top_tx = pool.top_tx
@@ -564,7 +560,7 @@ class MpTxSchedule:
         queued_list: list[NeonTxModel] = list()
 
         for tx_pool in self._sender_pool_dict.values():
-            tx_list = list(map(lambda tx: tx.neon_tx, tx_pool.tx_list()))
+            tx_list = list(map(lambda tx: tx.neon_tx, tx_pool.tx_list))
             pending_stop_pos = tx_pool.pending_stop_pos
             pending_list.extend(tx_list[:pending_stop_pos])
             queued_list.extend(tx_list[pending_stop_pos:])

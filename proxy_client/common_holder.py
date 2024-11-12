@@ -118,6 +118,8 @@ class OpHolderFunc:
                 input=holder.tx.data.to_string(),
                 gasLimit=holder.tx.gas_limit,
                 gasPrice=holder.tx.gas_price,
+                maxFeePerGas=holder.tx.max_fee_per_gas,
+                maxPriorityFeePerGas=holder.tx.max_priority_fee_per_gas,
                 chainId=holder.tx.chain_id,
             )
 

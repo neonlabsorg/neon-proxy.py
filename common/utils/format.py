@@ -11,7 +11,7 @@ _LOG_OBJECT_INFO_LIMIT = int(os.environ.get("LOG_OBJECT_INFO_LIMIT", str(2**64))
 # fmt: on
 
 
-def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_keys=None) -> str:
+def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_key_list=None) -> str:
     def _decode_name(value) -> str:
         return type(value).__name__
 
@@ -85,7 +85,7 @@ def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_keys=None) ->
                 key = str(key)
             if skip_underscore_prefix and key.startswith("_"):
                 continue
-            if skip_keys is not None and key in skip_keys:
+            if skip_key_list is not None and key in skip_key_list:
                 continue
 
             has_value, value = _decode_value(value)
@@ -183,3 +183,27 @@ def has_hex_start(value: str) -> bool:
 
 def hex_to_int(value: str) -> int:
     return int(value, 16)
+
+
+# Allows: 0x | 0X | 10 | 0xa | 0Xa | 0xA | 0XA | A
+def hex_to_uint(value: str | int) -> int | None:
+    if isinstance(value, str):
+        if (len(value) == 2) and has_hex_start(value):
+            return 0
+        result = hex_to_int(value)
+    elif isinstance(value, int):
+        result = value
+    else:
+        raise ValueError(f"Wrong input type: {type(value).__name__}")
+
+    if result < 0:
+        raise ValueError("Input can't be a negative number")
+    return result
+
+
+def if_none(src, not_none):
+    return not_none if src is None else src
+
+
+def if_value(src, value, default):
+    return default if src == value else src

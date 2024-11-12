@@ -268,7 +268,7 @@ class _Record:
             tx_idx=neon_rcpt.neon_tx_idx,
             neon_sig=neon_tx.neon_tx_hash.to_string(),
             tx_type=neon_tx.tx_type,
-            chain_id=neon_tx.tx_chain_id,
+            chain_id=neon_tx.chain_id,
             from_addr=neon_tx.from_address.to_string(),
             nonce=hex(neon_tx.nonce),
             to_addr=neon_tx.to_address.to_string(None),
@@ -310,13 +310,13 @@ class _RecordWithBlock(_Record):
 
         params = dict(
             tx_type=self.tx_type,
-            tx_chain_id=None if not self.chain_id else self.chain_id,
+            chain_id=None if not self.chain_id else self.chain_id,
             neon_tx_hash=self.neon_sig,
             from_address=self.from_addr,
             to_address=self.to_addr,
             contract=self.contract,
             nonce=self.nonce,
-            gas_price_legacy=self.gas_price,
+            gas_price=self.gas_price,
             max_fee_per_gas=self.max_fee_per_gas,
             max_priority_fee_per_gas=self.max_priority_fee_per_gas,
             gas_limit=self.gas_limit,
@@ -327,7 +327,7 @@ class _RecordWithBlock(_Record):
             s=self.s,
         )
         # TODO EIP1559: introduce blob field which stores rlp and construct via from_raw(rlp).
-        neon_tx = NeonTxModel.from_dict(params)
+        neon_tx = NeonTxModel.from_raw(params)
 
         neon_tx_rcpt = NeonTxReceiptModel(
             slot=self.block_slot,

@@ -146,7 +146,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 pass
 
     async def cancel(self) -> ExecTxRespCode | None:
-        if await self._holder_acct_validator.is_finalized():
+        if not await self._holder_acct_validator.is_active():
             return ExecTxRespCode.Failed
         elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed

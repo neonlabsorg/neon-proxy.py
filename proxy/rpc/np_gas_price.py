@@ -193,10 +193,10 @@ class NpGasPriceApi(NeonProxyApi):
             pp, len(block_list), map(lambda v: v.cu_price_list, block_list)
         )
 
-        # Convert it into ethereum world by multiplying by suggested_gas_price
+        # Convert it into ethereum world by multiplying by profitable_gas_price
         # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        return int(token_gas_price.suggested_gas_price * median_cu_price / SolCbProg.MicroLamport)
+        return int(token_gas_price.profitable_gas_price * median_cu_price / SolCbProg.MicroLamport)
 
     @NeonProxyApi.method(name="eth_feeHistory")
     async def get_fee_history(
@@ -215,7 +215,7 @@ class NpGasPriceApi(NeonProxyApi):
         # Fetch the current gas price - it's needed to convert priority_fee prices to gas tokens
         # and to return base_fee_per_gas for the upcoming block.
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        current_gas_price: int = token_gas_price.suggested_gas_price
+        current_gas_price: int = token_gas_price.profitable_gas_price
 
         if block_cnt == 0:
             return _RpcFeeHistoryResp.from_raw([current_gas_price], [], 0, [])
@@ -263,9 +263,7 @@ class NpGasPriceApi(NeonProxyApi):
         if mp_base_fee_list:
             # Construct entries into base_fee_data_list from in-memory mempool-based recent token gas prices.
             for base_fee in reversed(mp_base_fee_list):
-                block_base_fee_list.append(
-                    NeonBlockBaseFeeInfo(slot=base_fee.slot, base_fee=base_fee.gas_price)
-                )
+                block_base_fee_list.append(NeonBlockBaseFeeInfo(slot=base_fee.slot, base_fee=base_fee.gas_price))
                 if base_fee.slot <= earliest_slot:
                     # We filled in enough data, no need to proceed.
                     break

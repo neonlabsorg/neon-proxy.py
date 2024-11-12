@@ -47,14 +47,7 @@ class NeonBlockFeeDB(HistoryDbTable):
         for block in block_list:
             chain_fee_dict: dict[int, int] = dict()
             for tx in block.iter_done_neon_tx():
-                if not tx.neon_tx.is_dynamic_gas_tx:
-                    tx_base_fee = tx.neon_tx.gas_price_legacy
-                elif tx.neon_tx.max_fee_per_gas == tx.neon_tx.max_priority_fee_per_gas:
-                    tx_base_fee = tx.neon_tx.max_fee_per_gas
-                else:
-                    tx_base_fee = tx.neon_tx.max_fee_per_gas - tx.neon_tx.max_priority_fee_per_gas
-
-                if not tx_base_fee:
+                if not (tx_base_fee := tx.neon_tx.base_fee_per_gas):
                     continue
 
                 chain_id = tx.neon_tx.chain_id or self._def_chain_id

@@ -216,7 +216,7 @@ class HolderHandler(BaseNPCmdHandler):
         core_api_client: CoreApiClient = await self._get_core_api_client()
         evm_cfg = await core_api_client.get_evm_cfg()
 
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         neon_prog = NeonProg(op_res.owner)
         # fmt: off
         neon_prog.init_neon_tx(

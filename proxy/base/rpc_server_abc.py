@@ -155,7 +155,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         # forwarding request to mempool allows to limit the number of requests to Solana to maximum 1 time per second
         # for details, see the mempool_server::get_evm_cfg() implementation
         evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         return evm_cfg
 
     async def on_request_list(self, ctx: HttpRequestCtx, request: JsonRpcListRequest) -> None:
@@ -254,7 +254,6 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         super().stop()
 
     async def _validate_chain_id(self, ctx: HttpRequestCtx) -> int:
-        NeonProg.validate_protocol()
         if chain_id := ctx.get_property_value("chain_id", None):
             return chain_id
         return await self._set_chain_id(ctx)
@@ -273,6 +272,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
             await self._refresh_token_dict()
             raise HttpRouteError()
 
+        NeonProg.validate_protocol()
         ctx.set_property_value("chain_id", chain_id)
         return chain_id
 

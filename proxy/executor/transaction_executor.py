@@ -255,8 +255,8 @@ class NeonTxExecutor(ExecutorComponent):
             return
 
         state_tx_cnt = await self._get_state_tx_cnt(ctx)
-        EthNonceTooHighError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
-        EthNonceTooLowError.raise_if_error(ctx.neon_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+        EthNonceTooHighError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+        EthNonceTooLowError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
 
     async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
         if not ctx.is_started:

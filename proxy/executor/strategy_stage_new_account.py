@@ -40,7 +40,7 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
         # valid only for less-fee transactions
         neon_acct = await self._get_neon_account()
         if not neon_acct.balance:
-            if self._ctx.neon_tx.gas_price:
+            if self._ctx.holder_tx.base_fee_per_gas:
                 raise EthError("insufficient funds")
             return False
         return True

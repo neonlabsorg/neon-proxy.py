@@ -16,7 +16,7 @@ class GasLessUsageDb(HistoryDbTable):
             _Record.from_tx(tx)
             for block in block_list
             for tx in block.iter_done_neon_tx()
-            if tx.neon_tx.gas_price == 0
+            if tx.neon_tx.base_fee_per_gas == 0
         ]
         await self._insert_row_list(ctx, rec_list)
 
