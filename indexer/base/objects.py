@@ -822,7 +822,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         return block_log_idx
 
 
-class NeonIndexedAltInfo:
+class SolIndexedAltInfo:
     Key = SolPubKey
 
     class InitData(BaseModel):
@@ -969,7 +969,7 @@ class NeonIndexedBlockInfo:
         self._stuck_neon_tx_list: list[NeonIndexedTxInfo] = list()
         self._failed_neon_tx_set: set[NeonIndexedTxInfo.Key] = set()
 
-        self._sol_alt_dict: dict[NeonIndexedAltInfo.Key, NeonIndexedAltInfo] = dict()
+        self._sol_alt_dict: dict[SolIndexedAltInfo.Key, SolIndexedAltInfo] = dict()
 
         self._sol_neon_ix_list: list[SolNeonTxIxMetaInfo] = list()
         self._sol_alt_ix_list: list[SolNeonAltTxIxModel] = list()
@@ -1021,7 +1021,7 @@ class NeonIndexedBlockInfo:
             new_block._stuck_neon_tx_list.append(tx)
 
         for src in alt_list:
-            alt = NeonIndexedAltInfo.from_dict(src)
+            alt = SolIndexedAltInfo.from_dict(src)
             new_block._sol_alt_dict[alt.key] = alt
 
         return new_block
@@ -1138,10 +1138,10 @@ class NeonIndexedBlockInfo:
         else:
             self._del_neon_tx(tx)
 
-    def done_alt(self, alt: NeonIndexedAltInfo) -> None:
+    def done_alt(self, alt: SolIndexedAltInfo) -> None:
         self._sol_alt_dict.pop(alt.key)
 
-    def add_alt_ix(self, alt: NeonIndexedAltInfo, alt_ix: SolNeonAltTxIxModel) -> None:
+    def add_alt_ix(self, alt: SolIndexedAltInfo, alt_ix: SolNeonAltTxIxModel) -> None:
         self._sol_tx_cost_list.append(alt_ix.sol_tx_cost)
         self._sol_alt_ix_list.append(alt_ix)
         alt.set_last_ix_slot(alt_ix.slot, alt_ix.sol_tx_cost.sol_signer)
@@ -1217,7 +1217,7 @@ class NeonIndexedBlockInfo:
             return iter(())
         return iter(self._done_neon_tx_list)
 
-    def iter_alt(self) -> Iterator[NeonIndexedAltInfo]:
+    def iter_alt(self) -> Iterator[SolIndexedAltInfo]:
         return iter(self._sol_alt_dict.values())
 
     def complete_block(self) -> None:
@@ -1262,7 +1262,7 @@ class NeonIndexedBlockInfo:
         for alt_addr in sol_neon_ix.iter_alt_address():
             if alt_addr in self._sol_alt_dict:
                 continue
-            alt = NeonIndexedAltInfo.from_raw(alt_addr, tx.neon_tx_hash, sol_neon_ix.slot)
+            alt = SolIndexedAltInfo.from_raw(alt_addr, tx.neon_tx_hash, sol_neon_ix.slot)
             tx.add_alt_address(alt_addr)
             self._sol_alt_dict[alt_addr] = alt
 

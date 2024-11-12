@@ -13,7 +13,7 @@ from common.solana.signature import SolTxSig
 from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
 from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property
-from ..base.objects import NeonIndexedBlockInfo, NeonIndexedAltInfo
+from ..base.objects import NeonIndexedBlockInfo, SolIndexedAltInfo
 
 _LOG = logging.getLogger(__name__)
 
@@ -38,11 +38,11 @@ class SolAltTxIxCollector:
             return
         await asyncio.gather(*[self._check_alt(_Ctx(neon_block, alt)) for alt in alt_list])
 
-    def _filter_alt_list(self, neon_block: NeonIndexedBlockInfo) -> list[NeonIndexedAltInfo]:
+    def _filter_alt_list(self, neon_block: NeonIndexedBlockInfo) -> list[SolIndexedAltInfo]:
         self._fail_check_slot = neon_block.slot - self.check_depth
         self._next_check_slot = next_check_slot = neon_block.slot + self._block_step_cnt
 
-        alt_list: list[NeonIndexedAltInfo] = list()
+        alt_list: list[SolIndexedAltInfo] = list()
         for alt in neon_block.iter_alt():
             if alt.next_check_slot > neon_block.slot:
                 continue
@@ -107,4 +107,4 @@ class SolAltTxIxCollector:
 @dataclass(frozen=True)
 class _Ctx:
     neon_block: NeonIndexedBlockInfo
-    alt: NeonIndexedAltInfo
+    alt: SolIndexedAltInfo
