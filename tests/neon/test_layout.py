@@ -20,7 +20,7 @@ class TestLayout(unittest.TestCase):
 
     def test_neon_account_model(self):
         json_data = {
-            "status": "legacy",
+            "status": "Legacy",
             "solana_address": self._TestSolPubKey.to_string(),
             "contract_solana_address": None,
             "trx_count": 10,
@@ -69,7 +69,7 @@ class TestLayout(unittest.TestCase):
         self.assertEqual(result.status, HolderAccountStatus.Empty)
         self.assertEqual(result.size, 0)
         self.assertTrue(result.neon_tx_hash.is_empty)
-        self.assertEqual(result.chain_id, 0)
+        self.assertEqual(result.chain_id, 111)
         self.assertEqual(result.evm_step_cnt, 0)
         self.assertEqual(result.account_key_list, [])
 
@@ -114,7 +114,7 @@ class TestLayout(unittest.TestCase):
         self.assertEqual(result.status, HolderAccountStatus.Finalized)
         self.assertEqual(result.size, 262144)
         self.assertEqual(result.neon_tx_hash, "0xbd4186a4a4a4bfbdec837dbfb6c92985e08b37a29c8e44c5e9ccb8dface2e504")
-        self.assertEqual(result.chain_id, 0)
+        self.assertEqual(result.chain_id, 111)
         self.assertEqual(result.evm_step_cnt, 0)
         self.assertEqual(result.account_key_list, [])
 

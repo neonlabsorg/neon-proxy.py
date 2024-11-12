@@ -16,7 +16,7 @@ from common.ethereum.hash import (
 )
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
-from common.neon.transaction_model import NeonTxModel
+from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import CoreApiTxModel
 from common.utils.pydantic import HexUIntField
 
@@ -76,7 +76,11 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             value=self.value,
             data=self.data.to_bytes(),
             gas_limit=self.gas,
-            gas_price=self.gasPrice if self.txType == 0 else self.maxFeePerGas - self.maxPriorityFeePerGas,
+            gas_price=(
+                self.maxFeePerGas - self.maxPriorityFeePerGas
+                if NeonTxType.is_dynamic_gas_tx(self.txType)
+                else self.gasPrice
+            ),
             chain_id=chain_id,
         )
 
@@ -134,9 +138,7 @@ class RpcEthTxResp(BaseJsonRpcModel):
             blockhash = None
             slot = None
             tx_idx = None
-            # if tx model is passed (instead of tx meta model with full receipt), then the best we can return is
-            # "theoretical" gas price: max_fee_per_gas for Dynamic Gas tx and usual gas_price for legacy.
-            gas_price = tx.gas_price
+            gas_price = tx.gas_price if tx.is_legacy_tx else tx.max_fee_per_gas
 
         return cls(
             blockHash=blockhash,

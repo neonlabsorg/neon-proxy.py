@@ -14,7 +14,7 @@ from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
 from ..solana.pubkey import SolPubKey
 from ..solana.sys_program import SolSysProg
-from ..utils.cached import reset_cached_method
+from ..utils.cached import reset_cached_method, cached_property
 
 _LOG = logging.getLogger(__name__)
 
@@ -119,13 +119,40 @@ class NeonBaseTxAccountSet:
         return self.sender.is_empty
 
 
+@dataclass(frozen=True)
+class NeonProgCfg:
+    treasury_pool_cnt: int
+    treasury_pool_seed: bytes
+    treasury_payment: int
+    evm_version: str
+
+    @cached_property
+    def protocol_version(self) -> NeonEvmProtocol:
+        try:
+            ver_part_list = self.evm_version.split(".")
+            if len(ver_part_list) != 3:
+                _LOG.error("wrong format of NeonEVM version %s", self.evm_version)
+                return NeonEvmProtocol.Unknown
+
+            major, minor, build = ver_part_list
+            protocol = major + str(minor).rjust(3, "0")
+            return NeonEvmProtocol(int(protocol))
+
+        except (BaseException,):
+            _LOG.error("wrong format of NeonEVM version %s", self.evm_version)
+            return NeonEvmProtocol.Unknown
+
+
 class NeonProg:
     _treasury_pool_cnt: ClassVar[int | None] = None
     _treasury_pool_seed: ClassVar[bytes | None] = None
-    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.v1015
-    _evm_version: ClassVar[str] = "v1.15.0"
+    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.Unknown
+    _evm_version: ClassVar[str] = "0.0.0"
+
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
-    BaseGas: Final[int] = 10_000  # 5'000 for signature, + 5'000 to treasury
+    SignatureGas: Final[int] = 5_000
+    TreasuryGas: ClassVar[int] = 0
+    BaseGas: ClassVar[int] = SignatureGas + 0
 
     # The notation is as follows:
     #   The first, without +, goes required accounts for the Neon instruction.
@@ -156,27 +183,14 @@ class NeonProg:
         self._treasury_pool_addr = SolPubKey.default()
 
     @classmethod
-    def init_prog(cls, treasury_pool_cnt: int, treasury_pool_seed: bytes, evm_version: str) -> None:
-        def _ver_to_proto() -> NeonEvmProtocol:
-            try:
-                ver_part_list = evm_version.split(".")
-                if len(ver_part_list) != 3:
-                    _LOG.error("wrong format of NeonEVM version %s", evm_version)
-                    return NeonEvmProtocol.Unknown
+    def init_prog(cls, cfg: NeonProgCfg) -> None:
+        cls._treasury_pool_cnt = cfg.treasury_pool_cnt
+        cls._treasury_pool_seed = cfg.treasury_pool_seed
+        cls._evm_version = cfg.evm_version
+        cls._protocol_version = cfg.protocol_version
 
-                major, minor, build = ver_part_list
-                protocol = major + str(minor).rjust(3, "0")
-                return NeonEvmProtocol(int(protocol))
-            except (BaseException,):
-                _LOG.error("wrong format of NeonEVM version %s", evm_version)
-                return NeonEvmProtocol.Unknown
-
-        assert isinstance(treasury_pool_cnt, int)
-        assert isinstance(treasury_pool_seed, bytes)
-        cls._treasury_pool_cnt = treasury_pool_cnt
-        cls._treasury_pool_seed = treasury_pool_seed
-        cls._evm_version = evm_version
-        cls._protocol_version = _ver_to_proto()
+        cls.TreasuryGas = cfg.treasury_payment
+        cls.BaseGas = cls.SignatureGas + cfg.treasury_payment
 
     @classmethod
     def validate_protocol(cls) -> None:

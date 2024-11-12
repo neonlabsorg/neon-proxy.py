@@ -11,8 +11,9 @@ from typing_extensions import Self
 from ..config.constants import DEFAULT_TOKEN_NAME
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress
-from ..ethereum.transaction import calc_contract_address
+from ..ethereum.transaction import EthTx
 from ..neon.account import NeonAccount, NeonAccountField
+from ..neon.neon_program import NeonProgCfg
 from ..neon.transaction_model import NeonTxModel
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
@@ -21,7 +22,7 @@ from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex
 from ..utils.json_logger import get_ctx
-from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel
+from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel, DecUIntField
 
 _LOG = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ CoreApiResultField = Annotated[CoreApiResultCode, PlainValidator(CoreApiResultCo
 class CoreApiResp(BaseModel):
     result: CoreApiResultField
     error: str = None
-    error_code: int | None = None
+    error_code: DecIntField | None = None
 
     value: dict | list[dict] | str | list[int] | None = None
     logs: list[dict] = Field(default_factory=list)
@@ -67,7 +68,7 @@ class CoreApiResp(BaseModel):
 
 class _AccountModel(BaseModel):
     address: EthZeroAddressField
-    chain_id: int
+    chain_id: DecUIntField
 
     @classmethod
     def from_raw(cls, raw: _AccountModel | NeonAccount) -> Self:
@@ -77,18 +78,18 @@ class _AccountModel(BaseModel):
 
 
 class NeonAccountListRequest(BaseModel):
-    account_list: tuple[_AccountModel, ...] = Field(serialization_alias="account")
-    slot: int | None
+    account_list: list[_AccountModel] = Field(serialization_alias="account")
+    slot: DecUIntField | None
 
     @classmethod
     def from_raw(cls, account_list: Sequence[NeonAccount], slot: int | None) -> Self:
-        return cls(account_list=tuple([_AccountModel.from_raw(a) for a in account_list]), slot=slot, id=get_ctx())
+        return cls(account_list=[_AccountModel.from_raw(a) for a in account_list], slot=slot, id=get_ctx())
 
 
 class NeonAccountStatus(StrEnum):
-    Ok = "ok"
-    Legacy = "legacy"
-    Empty = "empty"
+    Ok = "Ok"
+    Legacy = "Legacy"
+    Empty = "Empty"
 
     @classmethod
     def from_raw(cls, value: str | NeonAccountStatus) -> Self:
@@ -96,7 +97,6 @@ class NeonAccountStatus(StrEnum):
             return value
 
         try:
-            value = value.lower()
             return cls(value)
         except (BaseException,):
             _LOG.error("unknown neon account status %s from core-api", value.upper())
@@ -109,8 +109,9 @@ NeonAccountStatusField = Annotated[NeonAccountStatus, PlainValidator(NeonAccount
 
 class NeonAccountModel(BaseModel):
     account: NeonAccountField
+    user_sol_address: SolPubKeyField = Field(SolPubKey.default(), validation_alias="user_pubkey")
     status: NeonAccountStatusField
-    state_tx_cnt: int = Field(validation_alias="trx_count")
+    state_tx_cnt: DecUIntField = Field(validation_alias="trx_count")
     balance: HexUIntField
     sol_address: SolPubKeyField = Field(validation_alias="solana_address")
     contract_sol_address: SolPubKeyField = Field(validation_alias="contract_solana_address")
@@ -148,7 +149,7 @@ class NeonAccountModel(BaseModel):
 
 class NeonContractRequest(BaseModel):
     contract: EthZeroAddressField
-    slot: int | None
+    slot: DecUIntField | None
 
 
 class NeonContractModel(BaseModel):
@@ -182,7 +183,7 @@ class NeonContractModel(BaseModel):
 class NeonStorageAtRequest(BaseModel):
     contract: EthZeroAddressField
     index: HexUIntField
-    slot: int | None
+    slot: DecUIntField | None
 
 
 class OpEarnAccountModel(BaseModel):
@@ -190,7 +191,7 @@ class OpEarnAccountModel(BaseModel):
     operator_key: SolPubKeyField
     neon_account: NeonAccountField
     token_sol_address: SolPubKeyField
-    balance: int
+    balance: DecUIntField
 
     @property
     def chain_id(self) -> int:
@@ -242,10 +243,11 @@ class TokenModel(BaseModel):
 
 
 class EvmConfigModel(BaseModel):
-    deployed_slot: int
+    deployed_slot: DecIntField
 
     treasury_pool_cnt: DecIntField
     treasury_pool_seed: BytesField
+    treasury_payment: DecIntField
     account_seed_version: DecIntField
     evm_step_cnt: DecIntField
     holder_msg_size: DecIntField
@@ -337,7 +339,7 @@ class EvmConfigModel(BaseModel):
         return {token.chain_id: token for token in self._normalized_token_list}
 
     @cached_property
-    def _normalized_token_list(self) -> tuple[TokenModel, ...]:
+    def _normalized_token_list(self) -> Sequence[TokenModel]:
         if self._default_chain_id:
             return tuple(self.token_list)
 
@@ -370,6 +372,15 @@ class EvmConfigModel(BaseModel):
     def default_token_name(self) -> str:
         return DEFAULT_TOKEN_NAME
 
+    @cached_property
+    def neon_prog_cfg(self) -> NeonProgCfg:
+        return NeonProgCfg(
+            treasury_pool_cnt=self.treasury_pool_cnt,
+            treasury_pool_seed=self.treasury_pool_seed,
+            treasury_payment=self.treasury_payment,
+            evm_version=self.version,
+        )
+
     @classmethod
     def _option_convertor(cls, src_dict: dict[str, Any], dst_dict: dict[str, Any]) -> None:
         key_list = (
@@ -377,6 +388,7 @@ class EvmConfigModel(BaseModel):
             ("NEON_REVISION", "revision", "unknown"),
             ("NEON_TREASURY_POOL_COUNT", "treasury_pool_cnt", -1),
             ("NEON_TREASURY_POOL_SEED", "treasury_pool_seed", bytes()),
+            ("NEON_PAYMENT_TO_TREASURE", "treasury_payment", -1),
             ("NEON_EVM_STEPS_MIN", "evm_step_cnt", -1),
             ("NEON_HOLDER_MSG_SIZE", "holder_msg_size", -1),
             ("NEON_ACCOUNT_SEED_VERSION", "account_seed_version", -1),
@@ -397,19 +409,18 @@ class HolderAccountRequest(BaseModel):
 
 
 class HolderAccountStatus(StrEnum):
-    Empty = "empty"
-    Error = "error"
-    Holder = "holder"
-    Active = "active"
-    Finalized = "finalized"
+    Empty = "Empty"
+    Error = "Error"
+    Holder = "Holder"
+    Active = "Active"
+    Finalized = "Finalized"
 
     @classmethod
     def from_raw(cls, value: str | HolderAccountStatus) -> Self:
-        if isinstance(value, HolderAccountStatus):
+        if isinstance(value, cls):
             return value
 
         try:
-            value = value.lower()
             return cls(value)
         except (BaseException,):
             _LOG.error("unknown holder status %s from core-api", value)
@@ -441,7 +452,7 @@ class CoreApiTxModel(BaseModel):
         validation_alias=AliasChoices("from", "from_address"),
         serialization_alias="from",
     )
-    nonce: int | None
+    nonce: DecUIntField | None
     to_address: EthAddressField = Field(
         default=EthAddress.default(),
         validation_alias=AliasChoices("to", "to_address"),
@@ -454,7 +465,7 @@ class CoreApiTxModel(BaseModel):
     max_fee_per_gas: HexUIntField = Field(default=0)
     max_priority_fee_per_gas: HexUIntField = Field(default=0)
 
-    chain_id: int | None = None
+    chain_id: DecUIntField | None = None
 
     @classmethod
     def from_neon_tx(cls, tx: NeonTxModel, chain_id: int) -> Self:
@@ -465,21 +476,28 @@ class CoreApiTxModel(BaseModel):
             value=tx.value,
             data=tx.call_data.to_bytes(),
             gas_limit=tx.gas_limit,
-            gas_price=tx.gas_price,
+            gas_price=tx.gas_price or 0,
+            max_fee_per_gas=tx.max_fee_per_gas or 0,
+            max_priority_fee_per_gas=tx.max_priority_fee_per_gas or 0,
             chain_id=chain_id,
         )
 
     @cached_property
     def cost(self) -> int:
-        if self.max_fee_per_gas:
-            cost = self.max_fee_per_gas * self.gas_limit
-        else:
-            cost = self.gas_price * self.gas_limit
-        return cost + self.value
+        return EthTx.calc_cost(self)
+
+    @cached_property
+    def has_priority_fee(self) -> bool:
+        return EthTx.has_priority_fee(self)
+
+    @cached_property
+    def base_fee_per_gas(self) -> int:
+        return EthTx.calc_base_fee_per_gas(self)
+
 
 class CoreApiBlockModel(BaseModel):
-    timestamp: int | None = Field(default=None, serialization_alias="time")
-    slot: int | None = Field(default=None, serialization_alias="number")
+    timestamp: DecUIntField | None = Field(default=None, serialization_alias="time")
+    slot: DecUIntField | None = Field(default=None, serialization_alias="number")
 
     _default: ClassVar[CoreApiBlockModel | None] = None
 
@@ -508,16 +526,16 @@ class HolderAccountModel(BaseModel):
     address: SolPubKeyField
 
     status: HolderAccountStatusField
-    size: int = Field(default=0, validation_alias="len")
+    size: DecUIntField = Field(default=0, validation_alias="len")
     owner: SolPubKeyField = Field(default=SolPubKey.default())
 
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
-    tx_type: int = Field(default=0)
+    tx_type: DecUIntField = Field(default=0)
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
     block: CoreApiBlockModel
 
-    chain_id: int | None = Field(default=0)
-    evm_step_cnt: int = Field(default=0, validation_alias="steps_executed")
+    chain_id: DecUIntField | None = Field(default=0)
+    evm_step_cnt: DecUIntField = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
 
     @classmethod
@@ -535,8 +553,7 @@ class HolderAccountModel(BaseModel):
     def from_dict(cls, address: SolPubKey, def_chain_id: int, data: dict) -> Self:  # noqa
         data["address"] = address
         data["block"] = CoreApiBlockModel.from_raw(data.pop("block_params", None))
-        if HolderAccountStatus.from_raw(data.get("status", "")) == HolderAccountStatus.Active:
-            data["chain_id"] = data.get("chain_id", None) or def_chain_id
+        data["chain_id"] = data.get("chain_id", def_chain_id)
         return cls.model_validate(data)
 
     @cached_property
@@ -554,7 +571,7 @@ class HolderAccountModel(BaseModel):
         elif not self.tx.to_address.is_empty:
             return NeonAccount.from_raw(self.tx.to_address, self.chain_id)
 
-        contract_addr = calc_contract_address(self.tx.to_address, self.tx.from_address, self.tx.nonce)
+        contract_addr = EthTx.calc_contract_address(self.tx)
         return NeonAccount.from_raw(contract_addr, self.chain_id)
 
     @property
@@ -584,11 +601,11 @@ class CoreApiBuildModel(BaseModel):
 
 
 class EmulSolAccountModel(BaseModel):
-    balance: int = Field(serialization_alias="lamports")
+    balance: DecUIntField = Field(serialization_alias="lamports")
     data: CoreApiHexStrField
     owner: SolPubKeyField
     executable: bool
-    rent_epoch: int
+    rent_epoch: DecUIntField
 
     @classmethod
     def from_raw(cls, raw: SolAccountModel | None) -> Self | None:
@@ -605,7 +622,7 @@ class EmulSolAccountModel(BaseModel):
 
 
 class EmulNeonAccountModel(BaseModel):
-    nonce: int | None = None
+    nonce: DecUIntField | None = None
     balance: HexUIntField | None = None
 
 
@@ -616,14 +633,14 @@ class EmulTraceCfgModel(BaseModel):
 
 class EmulNeonCallRequest(BaseModel):
     tx: CoreApiTxModel
-    evm_step_limit: int = Field(serialization_alias="step_limit")
+    evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
     trace_cfg: EmulTraceCfgModel | None = Field(serialization_alias="trace_config")
     preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
     sol_account_dict: dict[SolPubKeyField, EmulSolAccountModel | None] | None = Field(
         serialization_alias="solana_overrides"
     )
-    slot: int | None
+    slot: DecUIntField | None
     provide_account_info: str | None = None
 
 
@@ -663,32 +680,32 @@ class EmulNeonCallResp(BaseModel):
     external_sol_call: bool = Field(validation_alias="external_solana_call")
     revert_before_sol_call: bool = Field(validation_alias="reverts_before_solana_calls")
     revert_after_sol_call: bool = Field(validation_alias="reverts_after_solana_calls")
-    is_block_used: bool = Field(validation_alias="is_timestamp_number_used")
+    is_block_used: bool = Field(False, validation_alias="is_timestamp_number_used")
 
     result: EthBinStrField
-    evm_step_cnt: int = Field(validation_alias="steps_executed")
-    used_gas: int
-    iter_cnt: int = Field(alias="iterations")
+    evm_step_cnt: DecUIntField = Field(validation_alias="steps_executed")
+    used_gas: DecUIntField
+    iter_cnt: DecUIntField = Field(alias="iterations")
 
     raw_meta_list: list[EmulAccountMetaModel] = Field(validation_alias="solana_accounts", default_factory=list)
 
     @cached_property
-    def sol_account_meta_list(self) -> tuple[SolAccountMeta, ...]:
+    def sol_account_meta_list(self) -> Sequence[SolAccountMeta]:
         return tuple([a.to_sol_account_meta() for a in self.raw_meta_list])
 
 
 class EmulSolTxListRequest(BaseModel):
-    cu_limit: int = Field(serialization_alias="compute_units")
-    account_cnt_limit: int = Field(serialization_alias="account_limit")
+    cu_limit: DecUIntField = Field(serialization_alias="compute_units")
+    account_cnt_limit: DecUIntField = Field(serialization_alias="account_limit")
     verify: bool
     blockhash: CoreApiHexStrField
-    tx_list: tuple[CoreApiHexStrField, ...] = Field(serialization_alias="transactions")
+    tx_list: list[CoreApiHexStrField] = Field(serialization_alias="transactions")
 
 
 class EmulSolTxMetaModel(BaseModel):
     error: dict | None
     log_list: list[str] = Field(default_factory=list, validation_alias="logs")
-    used_cu_limit: int = Field(validation_alias="executed_units")
+    used_cu_limit: DecUIntField = Field(validation_alias="executed_units")
 
 
 class EmulSolTxListResp(BaseModel):

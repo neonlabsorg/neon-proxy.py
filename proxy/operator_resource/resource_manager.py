@@ -67,10 +67,6 @@ class OpResourceMng(OpResourceComponent):
         self._activate_signer_task: asyncio.Task | None = None
 
     @cached_property
-    def _sol_watch_tx_session(self) -> SolWatchTxSession:
-        return SolWatchTxSession(self._cfg, self._sol_client)
-
-    @cached_property
     def _cu_price(self) -> int:
         return self._cfg.def_simple_cu_price
 
@@ -228,7 +224,7 @@ class OpResourceMng(OpResourceComponent):
 
     async def withdraw(self, chain_list: list[int]) -> None:
         cb_prog = SolCbProg()
-        for op_signer in self._active_signer_dict.values():
+        for op_signer in list(self._active_signer_dict.values()):
             ix_list: list[SolTxIx] = list()
             for chain_id, token_sol_addr in op_signer.token_sol_address_dict.items():
                 if chain_id not in chain_list:
@@ -737,7 +733,8 @@ class OpResourceMng(OpResourceComponent):
 
     async def _send_tx_list(self, signer: SolSigner, tx_list: Sequence[SolTx]) -> bool:
         tx_signer = OpTxListSigner(signer=signer)
-        tx_sender = SolTxListSender(self._cfg, self._stat_client, self._sol_watch_tx_session, tx_signer)
+        sol_watch = SolWatchTxSession(self._cfg, self._sol_client)
+        tx_sender = SolTxListSender(self._cfg, self._stat_client, sol_watch, tx_signer)
         try:
             return await tx_sender.send(tx_list)
         except BaseException as exc:

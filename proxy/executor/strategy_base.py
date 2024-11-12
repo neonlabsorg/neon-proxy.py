@@ -164,7 +164,7 @@ class BaseTxStrategy(abc.ABC):
         return False
 
     def _validate_gas_price(self) -> bool:
-        if self._ctx.neon_tx.gas_price:
+        if self._ctx.holder_tx.base_fee_per_gas:
             return True
         self._validation_error_msg = "Fee less transaction"
         return False
@@ -282,28 +282,22 @@ class BaseTxStrategy(abc.ABC):
 
         # calculate a required cu-price from the Solana statistics
         req_cu_price = await self._ctx.cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
-        priority_fee = 0.0
 
-        if self._ctx.tx_type == 2:
-            base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
-            assert base_fee_per_gas >= 0
+        tx = self._ctx.holder_tx
+        assert tx.base_fee_per_gas >= 0
 
-            # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
-            # For the general case, we take into account the gas fee parameters set in NeonTx.
-            if base_fee_per_gas != 0:
-                priority_fee = self._ctx.max_priority_fee_per_gas * 100 / base_fee_per_gas
-                gas_limit = NeonProg.BaseGas / 2
-                _LOG.debug(
-                    "use %s%% priority-fee for priority gas-price %d",
-                    priority_fee,
-                    self._ctx.max_priority_fee_per_gas,
-                )
-
-        if priority_fee <= 0.0:
+        if tx.has_priority_fee:
+            priority_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
+            gas_limit = NeonProg.SignatureGas
+            _LOG.debug(
+                "use %s%% priority-fee for priority gas-price %d",
+                priority_fee,
+                tx.max_priority_fee_per_gas,
+            )
+        else:
             # calculate a transaction cu-price based on the tx gas-price
-            gas_price = (self._ctx.holder_tx if self._ctx.is_stuck_tx else self._ctx.neon_tx).gas_price
-            priority_fee = (gas_price - token.profitable_gas_price) / token.pct_gas_price
-            _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, gas_price)
+            priority_fee = max(tx.base_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
+            _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, tx.base_fee_per_gas)
 
         if priority_fee > 0.0:
             # see gas-price-calculator for details

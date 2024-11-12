@@ -14,7 +14,7 @@ from pydantic import (
 from typing_extensions import Self
 
 from .cached import cached_method, cached_property, reset_cached_method
-from .format import has_hex_start, hex_to_int, str_fmt_object
+from .format import hex_to_uint, str_fmt_object
 
 
 class BaseModel(_PydanticBaseModel):
@@ -76,25 +76,9 @@ class RootModel(_PydanticRootModel):
         return self.model_dump(mode="json")
 
 
-# Allows: 0x | 0X | 10 | 0xa | 0Xa | 0xA | 0XA | A
-def _hex_to_uint(value: str | int) -> int | None:
-    if isinstance(value, str):
-        if (len(value) == 2) and has_hex_start(value):
-            return 0
-        result = hex_to_int(value)
-    elif isinstance(value, int):
-        result = value
-    else:
-        raise ValueError(f"Wrong input type: {type(value).__name__}")
-
-    if result < 0:
-        raise ValueError("Input can't be a negative number")
-    return result
-
-
 def _hex_to_n_uint(value: str | int, size: int) -> int | None:
-    result = _hex_to_uint(value)
-    if result and (result > (2 ** size - 1)):
+    result = hex_to_uint(value)
+    if result and (result > (2 ** size)):
         raise ValueError(f"hex number > {size} bits")
     return result
 
@@ -129,15 +113,15 @@ def _uint256_to_hex(value: int | None) -> str | None:
     return _uint_n_to_hex(value, 256)
 
 
-HexUIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint_to_hex)]
-Hex8UIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint8_to_hex)]
+HexUIntField = Annotated[int, PlainValidator(hex_to_uint), PlainSerializer(_uint_to_hex)]
+Hex8UIntField = Annotated[int, PlainValidator(hex_to_uint), PlainSerializer(_uint8_to_hex)]
 HexUInt64Field = Annotated[int, PlainValidator(_hex_to_uint64), PlainSerializer(_uint_to_hex)]
-Hex256UIntField = Annotated[int, PlainValidator(_hex_to_uint), PlainSerializer(_uint256_to_hex)]
-UIntFromHexField = Annotated[int, PlainValidator(_hex_to_uint)]
+Hex256UIntField = Annotated[int, PlainValidator(hex_to_uint), PlainSerializer(_uint256_to_hex)]
+UIntFromHexField = Annotated[int, PlainValidator(hex_to_uint)]
 
 
-# Allows: None | "1" | 1
-def _dec_to_int(value: str | int | None) -> int | None:
+# Allows: None | "1" | 1 | "-1" | -1
+def _dec_to_int(value: str | int | None) -> int:
     if not value:
         return 0
     elif isinstance(value, int):
@@ -147,7 +131,16 @@ def _dec_to_int(value: str | int | None) -> int | None:
     raise ValueError(f"Wrong input type: {type(value).__name__}")
 
 
+# Allows: None | "1" | 1
+def _dec_to_uint(value: str | int | None) -> int:
+    result = _dec_to_int(value)
+    if result < 0:
+        raise ValueError("Input can't be a negative number")
+    return result
+
+
 DecIntField = Annotated[int, PlainValidator(_dec_to_int)]
+DecUIntField = Annotated[int, PlainValidator(_dec_to_uint)]
 
 
 # Allows: None | "hello" | b"hello"

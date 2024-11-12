@@ -10,8 +10,8 @@ from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
 from typing_extensions import Self
 
-from ..ethereum.hash import EthAddress
 from .transaction_model import NeonTxModel
+from ..ethereum.hash import EthAddress
 from ..utils.cached import cached_method, cached_property
 from ..utils.format import bytes_to_hex, hex_to_bytes, hex_to_int
 
@@ -159,8 +159,26 @@ class NeonAccount:
         return self.private_key.sign_msg(data)
 
     def sign_tx(self, tx: NeonTxModel) -> bytes:
-        tx_dict = tx.to_eth_dict()
+        raw_tx_dict = tx.to_eth_dict()
+
+        # chain_id => chainId
+        # max_priority_fee_per_gas => maxPriorityFeePerGas
+        # type => type
+        tx_dict = {
+            "".join([s.capitalize() if idx > 0 else s for idx, s in enumerate(k.split("_"))]): v
+            for k, v in raw_tx_dict.items()
+            if k not in ("r", "s", "v")
+        }
         tx_dict["chainId"] = self._chain_id
+
+        replace_list = [
+            ("gasLimit", "gas"),
+            ("toAddress", "to"),
+            ("callData", "data"),
+        ]
+        for old_key, new_key in replace_list:
+            tx_dict[new_key] = tx_dict.pop(old_key, None)  # noqa
+
         signed_tx = eth_account.Account.sign_transaction(tx_dict, self.private_key)
         return bytes(signed_tx.raw_transaction)
 

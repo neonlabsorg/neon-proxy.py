@@ -192,11 +192,11 @@ class MpGasPriceCalculator(MempoolComponent):
         gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
         recent_slot: int = await self._sol_client.get_recent_slot()
         gas_price_deque.append(
-            MpSlotGasPriceModel(slot=recent_slot, gas_price=suggested_price, min_gas_price=profitable_price)
+            MpSlotGasPriceModel(slot=recent_slot, gas_price=profitable_price)
         )
         if len(gas_price_deque) > self._recent_gas_price_cnt:
             gas_price_deque.popleft()
-        min_price = min(gas_price_deque, key=lambda x: x.min_gas_price).min_gas_price
+        min_price = min(gas_price_deque, key=lambda x: x.gas_price).gas_price
 
         return MpTokenGasPriceModel(
             chain_id=token.chain_id,

@@ -6,12 +6,11 @@ from typing import Sequence, Final
 
 from typing_extensions import Self
 
-from common.cu_price.client import CuPriceClient
 from common.config.config import Config
+from common.cu_price.client import CuPriceClient
 from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
-from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel, CoreApiBlockModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.alt_program import SolAltID, SolAltProg
@@ -100,7 +99,7 @@ class NeonExecTxCtx:
 
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         return self
 
     @cached_property
@@ -179,10 +178,20 @@ class NeonExecTxCtx:
         self._calc_resize_iter_cnt.reset_cache(self)
 
     def _update_acct_meta_list(self) -> None:
-        # Get metas from the emulator
-        acct_meta_dict: dict[SolPubKey, SolAccountMeta] = {
-            SolPubKey.from_raw(m.pubkey): m for m in self._emul_resp.sol_account_meta_list
-        }
+        acct_meta_dict: dict[SolPubKey, SolAccountMeta]
+        if not self._emul_resp.sol_account_meta_list:
+            _LOG.warning("emulator result doesn't contain a account list")
+            s = self._base_tx_acct_set
+            acct_meta_dict = {
+                s.sender: SolAccountMeta(s.sender, is_signer=False, is_writable=True),
+                s.receiver: SolAccountMeta(s.sender, is_signer=False, is_writable=False),
+                s.receiver_contract: SolAccountMeta(s.sender, is_signer=False, is_writable=True),
+            }
+        else:
+            # Get metas from the emulator
+            acct_meta_dict = {
+                SolPubKey.from_raw(m.pubkey): m for m in self._emul_resp.sol_account_meta_list
+            }
 
         # Keep metas from the holder in writable mode
         for key in self._holder.account_key_list:
@@ -328,35 +337,10 @@ class NeonExecTxCtx:
         return self._tx_request.resource.holder_address
 
     @cached_property
-    def tx_type(self) -> int:
-        if self.is_stuck_tx:
-            return self._holder.tx_type
-        return self.neon_tx.tx_type
-
-    @cached_property
-    def max_fee_per_gas(self) -> int:
-        assert self.tx_type == 2
-        if self.is_stuck_tx:
-            return self._holder.tx.max_fee_per_gas
-        return self.neon_tx.max_fee_per_gas
-
-    @cached_property
-    def max_priority_fee_per_gas(self) -> int:
-        assert self.tx_type == 2
-        if self.is_stuck_tx:
-            return self._holder.tx.max_priority_fee_per_gas
-        return self.neon_tx.max_priority_fee_per_gas
-
-    @cached_property
-    def neon_tx(self) -> NeonTxModel:
-        assert not self.is_stuck_tx
-        return self._tx_request.tx.neon_tx
-
-    @cached_property
     def holder_tx(self) -> CoreApiTxModel:
         if self.is_stuck_tx:
             return self._holder.tx
-        return CoreApiTxModel.from_neon_tx(self.neon_tx, self.chain_id)
+        return CoreApiTxModel.from_neon_tx(self._tx_request.tx.neon_tx, self.chain_id)
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:
@@ -390,6 +374,7 @@ class NeonExecTxCtx:
     def receiver(self) -> NeonAccount:
         if self.is_stuck_tx:
             return self._holder.receiver
+
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.receiver, tx.chain_id)
 
@@ -415,7 +400,6 @@ class NeonExecTxCtx:
     @reset_cached_method
     def _calc_total_iter_cnt(self) -> int:
         assert not self.is_stuck_tx
-
         return max(self._emul_resp.iter_cnt, 1)
 
     @property
