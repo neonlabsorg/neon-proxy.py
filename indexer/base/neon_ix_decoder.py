@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from common.ethereum.hash import EthTxHash, EthAddressField
 from common.neon.account import NeonAccount
@@ -17,6 +17,10 @@ _LOG = logging.getLogger(__name__)
 class DummyIxDecoder:
     ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.Unknown
     is_deprecated: ClassVar[bool] = True
+
+    _skip_hdr: Final[str] = "decoding skip"
+    _success_hdr: Final[str] = "decoding success"
+    _done_hdr: Final[str] = "decoding done"
 
     def __init__(self, state: SolNeonDecoderCtx):
         self._state = state
@@ -35,7 +39,8 @@ class DummyIxDecoder:
     def execute(self) -> bool:
         """By default, skip the instruction without parsing."""
         ix = self.state.sol_neon_ix
-        return self._decoding_skip("no logic to decode the instruction %s", ix.neon_ix_data.hex()[:8])
+        _LOG.warning("%s: no logic to decode the instruction %s", self._skip_hdr, ix.neon_ix_data.hex()[:8])
+        return False
 
     def decode_failed_neon_tx_event_list(self) -> None:
         pass
@@ -44,27 +49,14 @@ class DummyIxDecoder:
     def state(self) -> SolNeonDecoderCtx:
         return self._state
 
-    @staticmethod
-    def _decoding_success(obj, msg: str, *args) -> bool:
-        """The instruction has been successfully parsed."""
-        _LOG.debug("decoding success: " + msg + " - %s", *args, obj)
-        return True
-
-    def _decoding_done(self, obj: BaseNeonIndexedObjInfo, msg: str, *args) -> bool:
+    def _decoding_done(self, obj: BaseNeonIndexedObjInfo) -> bool:
         """Assembling of the object has been successfully finished."""
         block = self.state.neon_block
         if isinstance(obj, NeonIndexedTxInfo):
             block.done_neon_tx(obj)
         elif isinstance(obj, NeonIndexedHolderInfo):
             block.done_neon_holder(obj)
-        _LOG.debug("decoding done: " + msg + " - %s", *args, obj)
         return True
-
-    @staticmethod
-    def _decoding_skip(reason: str, *args) -> bool:
-        """Skip decoding of the instruction."""
-        _LOG.warning("decoding skip: " + reason, *args)
-        return False
 
 
 class BaseTxIxDecoder(DummyIxDecoder):
@@ -87,7 +79,11 @@ class BaseTxIxDecoder(DummyIxDecoder):
     def _get_holder_address(self) -> SolPubKey | None:
         ix = self.state.sol_neon_ix
         if ix.account_key_cnt < 1:
-            self._decoding_skip("no enough SolTxIx.Accounts(len=%s) to get NeonHolder.Account", ix.account_key_cnt)
+            _LOG.warning(
+                "%s: no enough SolTxIx.Accounts(len=%d) to get NeonHolder.Account",
+                self._skip_hdr,
+                ix.account_key_cnt,
+            )
             return None
 
         return ix.get_account_key(0)
@@ -96,7 +92,7 @@ class BaseTxIxDecoder(DummyIxDecoder):
         self, data_name: str, eth_tx_rlp: bytes, start_rlp_pos: int = 0
     ) -> NeonTxModel | None:
         if len(eth_tx_rlp) < start_rlp_pos:
-            self._decoding_skip("no enough %s(len=%s) to decode NeonTx", data_name, len(eth_tx_rlp))
+            _LOG.warning("%s: no enough %s(len=%d) to decode NeonTx", self._skip_hdr, data_name, len(eth_tx_rlp))
             return None
 
         if start_rlp_pos > 0:
@@ -105,11 +101,16 @@ class BaseTxIxDecoder(DummyIxDecoder):
         ix = self.state.sol_neon_ix
         neon_tx = NeonTxModel.from_raw(eth_tx_rlp)
         if not neon_tx.is_valid:
-            self._decoding_skip("%s.RLP.Error: '%s'", data_name, neon_tx.error)
+            _LOG.warning("%s: %s.RLP.Error: '%s'", self._skip_hdr, data_name, neon_tx.error)
             return None
         elif neon_tx.neon_tx_hash != ix.neon_tx_hash:
             # failed decoding ...
-            self._decoding_skip("NeonTx.Hash '%s' != SolTxIx.Log.Hash '%s'", neon_tx.neon_tx_hash, ix.neon_tx_hash)
+            _LOG.warning(
+                "%s: NeonTx.Hash '%s' != SolTxIx.Log.Hash '%s'",
+                self._skip_hdr,
+                neon_tx.neon_tx_hash,
+                ix.neon_tx_hash,
+            )
             return None
         return neon_tx
 
@@ -118,23 +119,29 @@ class BaseTxIxDecoder(DummyIxDecoder):
             return None
         elif holder.neon_tx_hash != neon_tx.neon_tx_hash:
             # failed decoding ...
-            self._decoding_skip("NeonTx.Hash '%s' != NeonHolder.Hash '%s'", neon_tx.neon_tx_hash, holder.neon_tx_hash)
+            _LOG.warning(
+                "%s: NeonTx.Hash '%s' != NeonHolder.Hash '%s'",
+                self._skip_hdr,
+                neon_tx.neon_tx_hash,
+                holder.neon_tx_hash,
+            )
             return None
 
-        self._decoding_done(holder, "init NeonTx - %s from NeonHolder.Data", neon_tx)
+        _LOG.debug("%s: init NeonTx - %s - from NeonHolder.Data - %s", self._done_hdr, neon_tx, holder)
+        self._decoding_done(holder)
         return neon_tx
 
     def _get_neon_tx_hash_from_ix_data(self, offset: int, min_len: int) -> EthTxHash | None:
         ix = self.state.sol_neon_ix
 
         if len(ix.neon_ix_data) < min_len:
-            self._decoding_skip("no enough SolTxIx.Data(len=%s) to get NeonTx.Hash", len(ix.neon_ix_data))
+            _LOG.warning("%s: no enough SolTxIx.Data(len=%s) to get NeonTx.Hash", self._skip_hdr, len(ix.neon_ix_data))
             return None
 
         raw_tx_hash = ix.neon_ix_data[offset : (offset + 32)]  # noqa
         neon_tx_hash = EthTxHash.from_raw(raw_tx_hash)
         if ix.neon_tx_hash != neon_tx_hash:
-            self._decoding_skip("NeonTx.Hash '%s' != SolTxIx.Log.Hash '%s'", neon_tx_hash, ix.neon_tx_hash)
+            _LOG.warning("%s: NeonTx.Hash '%s' != SolTxIx.Log.Hash '%s'", self._skip_hdr, neon_tx_hash, ix.neon_tx_hash)
             return None
 
         return neon_tx_hash
@@ -186,8 +193,8 @@ class BaseTxSimpleIxDecoder(BaseTxIxDecoder):
             ix = self.state.sol_neon_ix
             tx.set_tx_lost_return(ix)
 
-        self._decoding_done(tx, msg)
-        return True
+        _LOG.debug("%s: %s - %s", self._done_hdr, msg, tx)
+        return self._decoding_done(tx)
 
 
 class TxExecFromDataIxDecoder(BaseTxSimpleIxDecoder):
@@ -238,8 +245,11 @@ class BaseTxStepIxDecoder(BaseTxIxDecoder):
             return False
 
         if self._decode_neon_tx_receipt(tx):
-            return self._decoding_done(tx, msg)
-        return self._decoding_success(tx, msg)
+            _LOG.debug("%s: %s - %s", self._done_hdr, msg, tx)
+            return self._decoding_done(tx)
+
+        _LOG.debug("%s: %s - %s", self._success_hdr, msg, tx)
+        return True
 
     def decode_failed_neon_tx_event_list(self) -> None:
         ix = self.state.sol_neon_ix
@@ -250,8 +260,8 @@ class BaseTxStepIxDecoder(BaseTxIxDecoder):
         tx.extend_neon_tx_event_list(ix)
         if ix.is_already_finalized and (not tx.is_completed):
             tx.set_tx_lost_return(ix)
-            _LOG.warning("set lost result")
-            self._decoding_done(tx, "complete by lost result")
+            _LOG.warning("%s: complete by lost result - %s", self._done_hdr, tx)
+            self._decoding_done(tx)
 
     def _on_tx_return_event(self, tx: NeonIndexedTxInfo) -> None:
         self._decode_neon_tx_from_holder_account(tx)
@@ -312,13 +322,16 @@ class CancelWithHashIxDecoder(BaseTxStepIxDecoder):
             return False
 
         if not (tx := self._get_neon_indexed_tx()):
-            return self._decoding_skip("cannot find NeonTx '%s'", neon_tx_hash)
+            _LOG.warning("%s: cannot find NeonTx '%s'", self._skip_hdr, neon_tx_hash)
+            return False
 
         if tx.is_completed:
-            return self._decoding_skip("NeonTx %s is already has NeonReceipt", neon_tx_hash)
+            _LOG.warning("%s: NeonTx %s is already has NeonReceipt", self._skip_hdr, neon_tx_hash)
+            return False
 
         self._decode_neon_tx_receipt(tx)
-        return self._decoding_done(tx, "cancel NeonTx")
+        _LOG.debug("%s: cancel NeonTx - %s", self._done_hdr, tx)
+        return self._decoding_done(tx)
 
     def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
         ix = self.state.sol_neon_ix
@@ -351,13 +364,14 @@ class WriteHolderAccountIx(BaseTxIxDecoder):
 
         tx: NeonIndexedTxInfo | None = block.find_neon_tx(ix)
         if (tx is not None) and tx.neon_tx.is_valid:
-            return self._decoding_success(tx, "add surplus NeonTx.Data.Chunk to NeonTx")
+            _LOG.debug("%s: add surplus NeonTx.Data.Chunk to NeonTx - %s", self._success_hdr, tx)
+            return True
 
         holder: NeonIndexedHolderInfo = block.find_or_add_neon_tx_holder(holder_addr, ix)
 
         # Write the received chunk into the holder account buffer
         holder.add_data_chunk(chunk)
-        self._decoding_success(holder, "add NeonTx.Data.Chunk %s", chunk)
+        _LOG.debug("%s: add NeonTx.Data.Chunk %s - %s", self._success_hdr, chunk, holder)
 
         if tx is None:
             return True
@@ -389,7 +403,8 @@ class CreateBalanceIxDecoder(DummyIxDecoder):
         ix = self.state.sol_neon_ix
         ix_data = ix.neon_ix_data
         if len(ix_data) < 29:
-            return self._decoding_skip("not enough data to get NeonAccount.NeonAddress.ChainId %s", len(ix_data))
+            _LOG.warning("%s: not enough data to get NeonAccount.NeonAddress.ChainId %d", self._skip_hdr, len(ix_data))
+            return False
 
         acct = self._NeonAccountModel(
             neon_address=ix_data[1:21],
@@ -397,8 +412,8 @@ class CreateBalanceIxDecoder(DummyIxDecoder):
             sol_address=ix.get_account_key(2),
             contract_sol_address=ix.get_account_key(3),
         )
-
-        return self._decoding_success(acct, "create NeonAccount")
+        _LOG.debug("%s: create NeonAccount - %s", self._success_hdr, acct)
+        return True
 
 
 class CollectTreasureIxDecoder(DummyIxDecoder):
@@ -406,7 +421,8 @@ class CollectTreasureIxDecoder(DummyIxDecoder):
     is_deprecated: ClassVar[bool] = False
 
     def execute(self) -> bool:
-        return self._decoding_success(None, "collect NeonTreasury")
+        _LOG.debug("%s: collect NeonTreasury", self._success_hdr)
+        return True
 
 
 class BaseHolderAccountIx(BaseTxIxDecoder):
@@ -416,7 +432,8 @@ class BaseHolderAccountIx(BaseTxIxDecoder):
 
         block = self.state.neon_block
         block.destroy_neon_holder(holder_addr)
-        return self._decoding_success(holder_addr, name)
+        _LOG.debug("%s: %s - %s", self._success_hdr, name, holder_addr)
+        return True
 
 
 class CreateHolderAccountIx(BaseHolderAccountIx):
@@ -440,7 +457,8 @@ class DepositIxDecoder(DummyIxDecoder):
     is_deprecated: ClassVar[bool] = False
 
     def execute(self) -> bool:
-        return self._decoding_success(None, "deposit NEONs")
+        _LOG.debug("%s: deposit NEONs", self._success_hdr)
+        return True
 
 
 class CreateOperatorBalanceIxDecoder(DummyIxDecoder):
@@ -456,10 +474,12 @@ class CreateOperatorBalanceIxDecoder(DummyIxDecoder):
         # 20 bytes: ETH address
         # 8 bytes: chain-id
         if len(ix_data) < 28:
-            return self._decoding_skip("not enough data to get Operator.NeonAddress.ChainId %s", len(ix_data))
+            _LOG.warning("%s: not enough data to get Operator.NeonAddress.ChainId %d", self._skip_hdr, len(ix_data))
+            return False
 
         neon_acct = NeonAccount.from_raw(ix_data[:20], int.from_bytes(ix_data[20:8], "little"))
-        return self._decoding_success(neon_acct, "create Operator Balance")
+        _LOG.debug("%s: create Operator Balance: %s", self._success_hdr, neon_acct)
+        return True
 
 
 class DeleteOperatorBalanceIxDecoder(DummyIxDecoder):
@@ -468,7 +488,8 @@ class DeleteOperatorBalanceIxDecoder(DummyIxDecoder):
 
     def execute(self) -> bool:
         """Just for information in the Indexer logs."""
-        return self._decoding_success(None, "delete Operator Balance")
+        _LOG.debug("%s: delete Operator Balance", self._success_hdr)
+        return True
 
 
 class WithdrawOperatorBalanceIxDecoder(DummyIxDecoder):
@@ -477,7 +498,8 @@ class WithdrawOperatorBalanceIxDecoder(DummyIxDecoder):
 
     def execute(self) -> bool:
         """Just for information in the Indexer logs."""
-        return self._decoding_success(None, "withdraw Operator Balance")
+        _LOG.debug("%s: withdraw Operator Balance", self._success_hdr)
+        return True
 
 
 def get_neon_ix_decoder_list() -> list[type[DummyIxDecoder]]:
