@@ -156,7 +156,7 @@ class CoreApiClient(HttpClient):
         self,
         account_list: Sequence[NeonAccount],
         block: NeonBlockHdrModel | None,
-    ) -> tuple[NeonAccountModel, ...]:
+    ) -> Sequence[NeonAccountModel]:
         req = NeonAccountListRequest.from_raw(account_list, self._get_slot(block))
         resp: CoreApiResp = await self._send_request("balance", req)
         if resp.error:
@@ -238,7 +238,7 @@ class CoreApiClient(HttpClient):
         *,
         check_result: bool,
         sender_balance: int | None = None,
-        preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
+        preload_sol_address_list: Sequence[SolPubKey] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:
@@ -249,6 +249,8 @@ class CoreApiClient(HttpClient):
         emul_neon_acct_dict = dict()
         if (tx.nonce is not None) or (sender_balance is not None):
             emul_balance = sender_balance + tx.cost if sender_balance is not None else None
+            if emul_balance:
+                _LOG.debug("use predefined balance: %s", emul_balance)
             emul_neon_acct_dict[tx.from_address] = EmulNeonAccountModel(nonce=tx.nonce, balance=emul_balance)
 
         emul_trace_cfg = None
@@ -275,13 +277,13 @@ class CoreApiClient(HttpClient):
         account_cnt_limit: int,
         blockhash: SolBlockHash,
         tx_list: Sequence[SolTx],
-    ) -> tuple[EmulSolTxInfo, ...]:
+    ) -> Sequence[EmulSolTxInfo]:
         req = EmulSolTxListRequest(
             cu_limit=cu_limit,
             account_cnt_limit=account_cnt_limit,
             verify=False,
             blockhash=blockhash.to_bytes(),
-            tx_list=tuple(map(lambda tx: tx.to_bytes(), tx_list)),
+            tx_list=list(map(lambda tx: tx.to_bytes(), tx_list)),
         )
 
         resp: EmulSolTxListResp = await self._send_request("simulate_solana", req, EmulSolTxListResp)

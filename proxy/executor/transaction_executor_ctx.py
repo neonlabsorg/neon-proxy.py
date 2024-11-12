@@ -90,7 +90,7 @@ class NeonExecTxCtx:
 
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
-        NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         return self
 
     def set_token_sol_address(self, token_sol_address: SolPubKey) -> None:
@@ -253,7 +253,7 @@ class NeonExecTxCtx:
             return self.to_string()
 
     def test_mode(self) -> _TestMode:
-        """ This mode is used when a signer is unknown, or it is better to say - the signed isn't important.
+        """This mode is used when a signer is unknown, or it is better to say - the signed isn't important.
         The signer is unknown on the testing stage,
         when we just need to check the structure of a Solana tx wo/ sending the Solana tx to Solana.
         """
@@ -367,6 +367,7 @@ class NeonExecTxCtx:
     def receiver(self) -> NeonAccount:
         if self.is_stuck_tx:
             return self._holder.receiver
+
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.receiver, tx.chain_id)
 
@@ -392,7 +393,6 @@ class NeonExecTxCtx:
     @reset_cached_method
     def _calc_total_iter_cnt(self) -> int:
         assert not self.is_stuck_tx
-
         return max(self._emul_resp.iter_cnt, 1)
 
     @property

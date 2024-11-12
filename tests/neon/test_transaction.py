@@ -63,6 +63,7 @@ class TestNeonTx(unittest.TestCase):
             "contract": None,
             "from_address": "0x8d900bfA2353548a4631bE870f99939575551B60",
             "error": None,
+            "rlp_tx": self.raw_tx.lower(),
         }
         for key, value in neon_tx_info.to_dict().items():
             if value is None:
@@ -73,6 +74,7 @@ class TestNeonTx(unittest.TestCase):
         neon_tx_str = (
             "NeonTxModel("
             "tx_type=0, "
+            "chain_id=1, " 
             "neon_tx_hash=0x14a298c1eea89f42285948b7d51eeac2876ca7406c9784b9b90dd3591d156d64, "
             "from_address=0x8d900bfA2353548a4631bE870f99939575551B60, "
             "to_address=0x7917bC33EeA648809c285607579c9919FB864F8F, "
@@ -84,8 +86,7 @@ class TestNeonTx(unittest.TestCase):
             "call_data=0x, "
             "v=37, "
             "r=2928110023290089484253548116616605334358013891920862960710110507440823852614, "
-            "s=47804268715460771705062403734867221257027780543816644424145154262186536340073, "
-            "chain_id=1)"
+            "s=47804268715460771705062403734867221257027780543816644424145154262186536340073)"
         )
         self.assertEqual(neon_tx_info.to_string(), neon_tx_str)
 

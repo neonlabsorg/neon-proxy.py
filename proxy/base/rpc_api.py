@@ -6,8 +6,14 @@ from pydantic import AliasChoices, Field
 from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField, EthBinStr
-from common.ethereum.hash import EthAddressField, EthHash32Field, EthAddress, EthTxHash, EthBlockHashField, \
-    EthTxHashField
+from common.ethereum.hash import (
+    EthAddressField,
+    EthHash32Field,
+    EthAddress,
+    EthTxHash,
+    EthBlockHashField,
+    EthTxHashField,
+)
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel

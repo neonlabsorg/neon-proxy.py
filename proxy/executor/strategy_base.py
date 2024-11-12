@@ -269,8 +269,10 @@ class BaseTxStrategy(abc.ABC):
         # calculate a required cu-price from the Solana statistics
         req_cu_price = await self._ctx.cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
 
+        tx = self._ctx.holder_tx
+
         # calculate a transaction cu-price based on the tx gas-price
-        gas_price = (self._ctx.holder_tx if self._ctx.is_stuck_tx else self._ctx.neon_tx).gas_price
+        gas_price = tx.gas_price
         priority_fee = (gas_price - token.profitable_gas_price) / token.pct_gas_price
         _LOG.debug("use %s priority-fee for %s gas-price", priority_fee, gas_price)
 
