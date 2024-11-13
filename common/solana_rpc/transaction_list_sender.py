@@ -419,11 +419,6 @@ class SolTxListSender:
         for tx, tx_receipt in zip(tx_list, tx_receipt_list):
             self._add_tx_receipt(tx, now, tx_receipt, SolTxSendState.Status.NoReceiptError)
 
-    @dataclasses.dataclass(frozen=True)
-    class _DecodeResult:
-        tx_status: SolTxSendState.Status
-        error: BaseException | None
-
     def _add_tx_receipt(
         self,
         tx: SolTx,
@@ -432,7 +427,7 @@ class SolTxListSender:
         no_receipt_status: SolTxSendState.Status,
     ):
         if not tx_receipt:
-            res = self._DecodeResult(no_receipt_status, None)
+            res = self.DecodeResult(no_receipt_status, None)
         else:
             res = self._decode_tx_status(tx, now, tx_receipt)
 
