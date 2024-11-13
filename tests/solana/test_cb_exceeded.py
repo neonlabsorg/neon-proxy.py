@@ -6,6 +6,7 @@ from common.solana.signature import SolTxSig
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 from common.solana_rpc.transaction_list_sender import SolTxListSender
+from common.solana_rpc.neon_sol_tx_list_sender import NeonSolTxListSender
 from common.solana_rpc.transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from common.utils.cached import cached_property
 
@@ -439,7 +440,7 @@ class TestCbExceeded(unittest.TestCase):
             def commit_sol_tx_fail(self, data: SolTxFailData) -> None: pass
 
 
-        tx_sender = SolTxListSender(_Cfg(), _SolTxStatClient(), None, None)
+        tx_sender = NeonSolTxListSender(_Cfg(), _SolTxStatClient(), None, None)
         status = tx_sender._decode_tx_status(self._get_tx(), 0, self._test_meta_tx)
         self.assertEqual(status.tx_status, status.tx_status.CbExceededError)
 
