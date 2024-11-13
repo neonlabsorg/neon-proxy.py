@@ -180,6 +180,7 @@ class NeonTxIxStepInfo:
     def is_empty(self) -> bool:
         return self.step_cnt == 0
 
+@dataclass
 class SolTxIdx:
     sol_tx_sig: SolTxSig
     sol_ix_idx: int
