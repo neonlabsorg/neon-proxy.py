@@ -103,6 +103,12 @@ class NeonTxEventModel(BaseModel):
         bloom = BloomFilter.from_iterable(iter_list)
         return int(bloom)
 
+@dataclass
+class NeonTxErrorModel:
+    code: int
+    data: bytearray
+    message: str
+
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
@@ -174,6 +180,10 @@ class NeonTxIxStepInfo:
     def is_empty(self) -> bool:
         return self.step_cnt == 0
 
+class SolTxIdx:
+    sol_tx_sig: SolTxSig
+    sol_ix_idx: int
+    sol_inner_ix_idx: int | None
 
 @dataclass
 class _NeonTxLogDraft:
@@ -185,7 +195,7 @@ class _NeonTxLogDraft:
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
-    tx_error_list: list[_NeonTxErrorModel]
+    tx_error_list: list[NeonTxErrorModel]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -193,6 +203,25 @@ class _NeonTxLogDraft:
     def from_raw(cls, sol_tx_ix: SolTxIxMetaInfo) -> Self:
         return cls(
             sol_tx_ix=sol_tx_ix,
+            neon_tx_hash=EthTxHash.default(),
+            tx_ix_miner=EthAddress.default(),
+            tx_ix_step=NeonTxIxStepInfo.default(),
+            tx_ix_gas=NeonTxIxLogGasInfo.default(),
+            tx_ix_priority_fee=NeonTxIxPriorityFeeInfo.default(),
+            tx_return=NeonTxLogReturnInfo.default(),
+            tx_event_list=list(),
+            is_truncated=False,
+            is_already_finalized=False,
+        )
+
+    @classmethod
+    def from_raw(cls, sol_tx_idx: SolTxIdx) -> Self:
+        return cls(
+            sol_tx_ix=SolTxIxMetaInfo(
+                sol_tx_sig=sol_tx_idx.sol_tx_sig,
+                sol_ix_idx=sol_tx_idx.sol_ix_idx,
+                sol_inner_ix_idx=sol_tx_idx.ol_inner_ix_idx
+            ),
             neon_tx_hash=EthTxHash.default(),
             tx_ix_miner=EthAddress.default(),
             tx_ix_step=NeonTxIxStepInfo.default(),
@@ -380,7 +409,7 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
     def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
 
         _LOG.debug("_NeonEvmErrorLogDecoder:  decode '%s", cls.name)
-        if len(data_list) < 3:
+        if len(data_list) != 3:
             _LOG.error("failed to decode %s: should be at least 3 element in %s", cls.name, data_list)
             return
 
@@ -611,7 +640,6 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
         )
         log.tx_event_list.append(event)
 
-
 class NeonEvmLogDecoder:
     _re_data: Final[re.Pattern] = re.compile(r"^Program data: (.+)$")
     _log_truncated_msg: Final[str] = "Log truncated"
@@ -650,10 +678,10 @@ class NeonEvmLogDecoder:
         mnemonic = str(base64.b64decode(data_list[0]), "utf-8")
         return mnemonic, data_list[1:]
 
-    def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
+    def decode(self, sol_tx_idx: SolTxIdx, log_iter: Sequence[str]) -> NeonTxLogInfo:
         """Extracts Neon transaction events from Solana transaction receipt"""
 
-        log = _NeonTxLogDraft.from_raw(sol_tx_ix)
+        log = _NeonTxLogDraft.from_raw(sol_tx_idx)
         for msg in log_iter:
             if msg == self._log_truncated_msg:
                 log.is_truncated = True

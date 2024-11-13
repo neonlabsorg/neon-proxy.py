@@ -1,3 +1,4 @@
+from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 
 class NeonTxErrorParser(SolTxErrorParser):
@@ -57,12 +58,18 @@ class NeonTxErrorParser(SolTxErrorParser):
         log_list: list[str] = list()
         log_state = SolTxLogTreeDecoder.decode(self._tx.message, rpc_meta, self._tx.account_key_list)
         # TODO: add EvmLogDecoder, add parsing, error, and return that transaction is finalized
-        fake_tx_ix = SolTxIxMetaInfo.default()
+
+        sol_tx_idx = SolTxIdx (sol_tx_sig=SolTxSig.default(),
+                               sol_ix_idx = 1,
+                               sol_inner_ix_idx = None)
+
+        log_decoder: EvmLogDecoder
         for log_info in log_state.log_list:
             if log_info.prog_id == NeonProg.ID:
                 log_list.extend(log_info.log_msg_list())
             for inner_log_info in log_info.inner_log_list:
-                EvmLogDecoder().decode(fake_tx_ix, inner_log_info)
+                NeonEvmLogDecoder.decode(sol_tx_idx, )
+                log_decoder.decode(fake_tx_ix, inner_log_info)
                 if inner_log_info.prog_id == NeonProg.ID:
                     log_list.extend(inner_log_info.log_msg_list())
         return tuple(log_list)
