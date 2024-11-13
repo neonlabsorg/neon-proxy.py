@@ -418,14 +418,10 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         _LOG.info("decode %s: found error with code %d", cls.name, code)
 
         bs = base64.b64decode(data_list[1])
-        arg_amount = int.from_bytes(bs, "little")
+        data = bytearray.from_bytes(bs)
+        _LOG.info("decode %s: found error with data %s", cls.name, data)
 
-        expected_len = 3 + arg_amount
-        if len(data_list) != expected_len:
-            _LOG.error("failed to decode %s: should at %d elements in %s", cls.name, expected_len, data_list)
-            return
-
-        msg = base64.b64decode(data_list[len(data_list) - 1])
+        msg = base64.b64decode(data_list[2])
         _LOG.info("decode %s: found error with message %s", cls.name, msg)
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
