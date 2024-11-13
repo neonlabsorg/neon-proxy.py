@@ -4,7 +4,7 @@ variable "server_type" {
 
 variable "location" {
   type    = string
-  default = "nbg1"
+  default = "fsn1"
 }
 
 variable "run_number" {
