@@ -2,14 +2,14 @@ import logging
 
 from .api import PriorityFeeCfg
 from .dynamic_cfg_api import PriorityFeeCfgResp
+from ..http.client import HttpClient
 from ..http.utils import HttpURL
-from ..jsonrpc.client import JsonRpcClient
 from ..utils.cached import ttl_cached_method
 
 _LOG = logging.getLogger(__name__)
 
 
-class DynamicFeeCfgClient(JsonRpcClient):
+class DynamicFeeCfgClient(HttpClient):
     def __init__(self, *args, **kwargs) -> None:
         # solders doesn't have implementation for priority fee
         super().__init__(*args, **kwargs)
@@ -38,7 +38,8 @@ class DynamicFeeCfgClient(JsonRpcClient):
             return self._base_cfg
 
         try:
-            resp = await self._get_cfg()
+            resp_json = await self._send_raw_data_request(data="")
+            resp = PriorityFeeCfgResp.from_json(resp_json)
             cfg = PriorityFeeCfg(
                 operator_fee=resp.operator_fee,
                 priority_fee=resp.priority_fee,
@@ -59,6 +60,3 @@ class DynamicFeeCfgClient(JsonRpcClient):
             _LOG.warning("fail to get priority fee config", exc_info=exc, extra=self._msg_filter)
 
         return self._base_cfg
-
-    @JsonRpcClient.method(name="getPriorityFeeCfg")
-    async def _get_cfg(self) -> PriorityFeeCfgResp: ...
