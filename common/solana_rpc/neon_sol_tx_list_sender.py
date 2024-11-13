@@ -7,7 +7,14 @@ from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
 from common.neon.neon_tx_error_parser import NeonTxErrorParser
-
+from common.solana_rpc.errors import (
+    SolUnknownReceiptError,
+    SolBlockhashNotFound,
+    SolNeonRequireResizeIterError,
+    SolCbExceededError,
+    SolNoMoreRetriesError,
+    SolOutOfMemoryError,
+)
 
 _LOG = logging.getLogger(__name__)
 

@@ -1,9 +1,29 @@
+import re
+from common.utils.cached import cached_method, cached_property
 from common.solana.transaction_decoder import SolTxMetaInfo
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
+from common.solana.transaction_meta import (
+    SolRpcTxSlotInfo,
+    SolRpcTxIxErrorInfo,
+    SolRpcTxIxFieldErrorCode,
+    SolRpcTxErrorInfo,
+    SolRpcTxFieldErrorCode,
+    SolRpcSendTxErrorInfo,
+    SolRpcNodeUnhealthyErrorInfo,
+    SolRpcTxReceiptInfo,
+    SolRpcInvalidParamErrorInfo,
+)
+from common.solana.log_tree_decoder import SolTxLogTreeDecoder
+from common.neon.evm_log_decoder import SolTxIdx
+from common.neon.evm_log_decoder import NeonEvmLogDecoder
+from common.solana.signature import SolTxSig
+from ..neon.neon_program import NeonProg
 
 class NeonTxErrorParser(SolTxErrorParser):
     code: int
     message: str
+
+    _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
 
     @cached_method
     def check_if_require_resize_iter(self) -> bool:
