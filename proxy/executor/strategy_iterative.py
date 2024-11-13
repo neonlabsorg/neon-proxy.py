@@ -309,11 +309,17 @@ class IterativeTxStrategy(BaseTxStrategy):
             emul_tx_list = emul_tx_list[:iter_cnt]
             used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
 
+        if not isinstance(emul_tx_list, Sequence):
+            gas_limit = self._find_gas_limit(emul_tx_list)
+        else:
+            gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
+
         _LOG.debug(
             "%s: %d EVM steps, %d CUs, %s GAS, %d executed iterations, %d success iterations",
             hdr,
             evm_step_cnt,
             used_cu_limit,
+            gas_limit,
             base_cfg.iter_cnt,
             iter_cnt,
         )
@@ -325,11 +331,6 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
-
-        if not isinstance(emul_tx_list, Sequence):
-            gas_limit = self._find_gas_limit(emul_tx_list)
-        else:
-            gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
 
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 100_000
