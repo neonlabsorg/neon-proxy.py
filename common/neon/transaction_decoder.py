@@ -108,7 +108,7 @@ class SolNeonTxIxMetaInfo:
 
     @classmethod
     def from_raw(cls, sol_tx: SolTxMetaInfo, sol_tx_ix: SolTxIxMetaInfo, sol_log: SolTxIxLogInfo) -> Self:
-        neon_log = NeonEvmLogDecoder().decode(sol_tx_ix, sol_log.log_msg_list())
+        neon_log = NeonEvmLogDecoder().decode_old(sol_tx_ix, sol_log.log_msg_list())
         ix_code, ix_data = cls._decode_ix_data(sol_tx_ix)
 
         return cls(
