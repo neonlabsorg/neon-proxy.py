@@ -432,6 +432,9 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         msg = base64.b64decode(data_list[2])
         _LOG.info("decode %s: found error with message %s", cls.name, msg)
 
+        error = NeonTxErrorModel(code, data, msg)
+        log.tx_error_list.append(error)
+
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
 
