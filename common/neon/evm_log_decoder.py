@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Final, Sequence, Annotated
-
+from enum import IntEnum
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
 from typing_extensions import Self
@@ -104,8 +104,74 @@ class NeonTxEventModel(BaseModel):
         return int(bloom)
 
 @dataclass
-class NeonTxErrorModel:
-    code: int
+class NeonTxErrorLogInfo:
+    class ErrorCode(IntEnum):
+        Custom = 0
+        ProgramError = 1
+        PubkeyError = 2
+        RlpError = 3
+        Secp256k1Error = 4
+        BincodeError = 5
+        BorshError = 6
+        FromHexError = 7
+        TryFromIntError = 8
+        TryFromSliceError = 9
+        Utf8Error = 10
+        AccountMissing = 11
+        AccountBlocked = 12
+        AccountCreatedByAnotherTransaction = 13
+        AccountInvalidTag = 14
+        AccountInvalidOwner = 15
+        AccountInvalidKey = 16
+        AccountInvalidData = 17
+        AccountNotWritable = 18
+        AccountNotSigner = 19
+        AccountNotRentExempt = 20
+        AccountAlreadyInitialized = 21
+        AccountLegacy = 22
+        UnauthorizedOperator = 23
+        StorageAccountUninitialized = 24
+        StorageAccountFinalized = 25
+        UnknownPrecompileMethodSelector = 26
+        InsufficientBalance = 27
+        InvalidTransferToken = 28
+        OutOfGas = 29
+        OutOfPriorityFee = 30
+        GasReceiverInvalidChainId = 31
+        StackOverflow = 32
+        StackUnderflow = 33
+        PushOutOfBounds = 34
+        MemoryAccessOutOfLimits = 35
+        ReturnDataCopyOverflow = 36
+        StaticModeViolation = 37
+        InvalidJump = 38
+        InvalidOpcode = 39
+        UnknownOpcode = 40
+        NonceOverflow = 41
+        InvalidTransactionNonce = 42
+        InvalidChainId = 43
+        DeployToExistingAccount = 44
+        EVMObjectFormatNotSupported = 45
+        ContractCodeSizeLimit = 46
+        SenderHasDeployedCode = 47
+        IntegerOverflow = 48
+        OutOfBounds = 49
+        HolderInvalidOwner = 50
+        HolderInsufficientSize = 51
+        HolderInvalidHash = 52
+        AccountSpaceAllocationFailure = 53
+        InvalidAccountForCall = 54
+        UnavalableExternalSolanaCall = 55
+        RecursiveCall = 56
+        ExternalCallFailed = 57
+        OperatorBalanceInvalidOwner = 58
+        OperatorBalanceMissing = 59
+        OperatorBalanceInvalidChainId = 60
+        OperatorBalanceInvalidAddress = 61
+        PriorityFeeNotSpecified = 62
+        PriorityFeeParsingError = 63
+        PriorityFeeError = 64
+    code: ErrorCode
     data: bytearray
     message: str
 
@@ -119,7 +185,7 @@ class NeonTxLogInfo:
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
-    tx_error_list: list[NeonTxErrorModel]
+    tx_error_list: list[NeonTxErrorLogInfo]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -196,7 +262,7 @@ class _NeonTxLogDraft:
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
-    tx_error_list: list[NeonTxErrorModel]
+    tx_error_list: list[NeonTxErrorLogInfo]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -432,7 +498,7 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         msg = base64.b64decode(data_list[2])
         _LOG.info("decode %s: found error with message %s", cls.name, msg)
 
-        error = NeonTxErrorModel(code, data, msg)
+        error = NeonTxErrorLogInfo(code, data, msg)
         log.tx_error_list.append(error)
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
