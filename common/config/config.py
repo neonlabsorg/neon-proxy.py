@@ -8,12 +8,6 @@ from decimal import Decimal
 from typing import Final, Union, ClassVar, Sequence
 from urllib.parse import urlparse
 
-from pythclient.solana import (
-    PYTHNET_HTTP_ENDPOINT,
-    SOLANA_MAINNET_HTTP_ENDPOINT,
-    PYTHNET_WS_ENDPOINT,
-    SOLANA_MAINNET_WS_ENDPOINT,
-)
 from strenum import StrEnum
 from typing_extensions import Self
 
@@ -701,10 +695,10 @@ class Config:
         if not pyth_url_list:
             _LOG.debug(
                 "%s is not defined, force to use the default value: "
-                "sol_url_list + (PYTHNET_HTTP_ENDPOINT, SOLANA_MAINNET_HTTP_ENDPOINT)",
+                "sol_url_list + (SOLANA_MAINNET_HTTP_ENDPOINT)",
                 self.pyth_url_name,
             )
-            pyth_url_list = list(self.sol_url_list) + [PYTHNET_HTTP_ENDPOINT, SOLANA_MAINNET_HTTP_ENDPOINT]
+            pyth_url_list = list(self.sol_url_list) + ["https://api.mainnet.solana.com"]
         return tuple(pyth_url_list)
 
     @cached_property
@@ -715,10 +709,10 @@ class Config:
             if not pyth_url_list:
                 _LOG.debug(
                     "%s is not defined, force to use the default value: "
-                    "sol_ws_url_list + (PYTHNET_WS_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT)",
+                    "sol_ws_url_list + (SOLANA_MAINNET_WS_ENDPOINT)",
                     self.pyth_ws_url_name,
                 )
-                pyth_ws_url_list = list(self.sol_ws_url_list) + [PYTHNET_WS_ENDPOINT, SOLANA_MAINNET_WS_ENDPOINT]
+                pyth_ws_url_list = list(self.sol_ws_url_list) + ["wss://api.mainnet-beta.solana.com"]
             else:
                 _LOG.debug(
                     "%s is not defined, force to use the default value calculated from the %s",
