@@ -90,6 +90,11 @@ class SolTxListSender:
         SolTxSendState.Status.InvalidIxDataError,
     )
 
+    @dataclasses.dataclass(frozen=True)
+    class _DecodeResult:
+        tx_status: SolTxSendState.Status
+        error: BaseException | None
+
     def __init__(
         self,
         cfg: Config,
@@ -427,7 +432,7 @@ class SolTxListSender:
         no_receipt_status: SolTxSendState.Status,
     ):
         if not tx_receipt:
-            res = self.DecodeResult(no_receipt_status, None)
+            res = self._DecodeResult(no_receipt_status, None)
         else:
             res = self._decode_tx_status(tx, now, tx_receipt)
 

@@ -20,10 +20,7 @@ _LOG = logging.getLogger(__name__)
 
 class NeonSolTxListSender(SolTxListSender):
 
-    @dataclasses.dataclass(frozen=True)
-    class _DecodeResult:
-        tx_status: SolTxSendState.Status
-        error: BaseException | None
+    _DecodeResult = SolTxListSender._DecodeResult
 
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         status = SolTxSendState.Status
