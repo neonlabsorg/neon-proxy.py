@@ -6,26 +6,20 @@ import logging
 from collections import deque
 from typing import Final
 
-import pythclient.pythaccounts as _pyth_acct
-import pythclient.pythclient as _pyth
-import pythclient.utils as _pyth_utils
-
 from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, CHAIN_TOKEN_NAME
 from common.cu_price.api import PriorityFeeCfg
+from common.cu_price.pyth_price_account import PythPriceAccount
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.solana.cb_program import SolCbProg
+from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
+from common.solana_rpc.ws_client import SolWatchAccountSession
 from common.utils.json_logger import log_msg, logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
 from ..base.mp_api import MpGasPriceModel, MpSlotGasPriceModel, MpTokenGasPriceModel
 
 _LOG = logging.getLogger(__name__)
-_PythClient = _pyth.PythClient
-_PythWatchSession = _pyth.WatchSession
-_PythProdAcct = _pyth_acct.PythProductAccount
-_PythPriceAcct = _pyth_acct.PythPriceAccount
-_PythPriceType = _pyth_acct.PythPriceType
 
 
 class MpGasPriceCalculator(MempoolComponent):
@@ -36,17 +30,19 @@ class MpGasPriceCalculator(MempoolComponent):
     def __init__(self, server: MempoolServerAbc) -> None:
         super().__init__(server)
 
-        self._pyth_client: _PythClient | None = None
-        self._watch_session: _PythWatchSession | None = None
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, commit=SolCommit.Confirmed)
+
         self._stop_event = asyncio.Event()
         self._update_pyth_acct_task: asyncio.Task | None = None
         self._update_gas_price_task: asyncio.Task | None = None
 
-        self._base_price_acct: _PythPriceAcct | None = None
-        self._price_acct_dict: [str, _PythPriceAcct] = dict()
-        self._product_list: list[_PythProdAcct] = list()
-        self._price_acct_full_dict: dict[str, _PythPriceAcct] = dict()
-        self._price_acct_failed_set: set[str] = set()
+        self._price_acct_dict: dict[str, PythPriceAccount] = dict(
+            SOL=PythPriceAccount.new_empty("SOL", SolPubKey.from_raw("7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE")),
+            NEON=PythPriceAccount.new_empty("NEON", SolPubKey.from_raw("F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo")),
+            ETH=PythPriceAccount.new_empty("ETH", SolPubKey.from_raw("42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC")),
+            USDC=PythPriceAccount.new_empty("USDC", SolPubKey.from_raw("Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX")),
+            USDT=PythPriceAccount.new_empty("USDT", SolPubKey.from_raw("HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM")),
+        )
 
         self._gas_price = MpGasPriceModel(
             chain_token_price_usd=0,
@@ -78,6 +74,7 @@ class MpGasPriceCalculator(MempoolComponent):
         self._recent_gas_price_dict: dict[int, deque[MpSlotGasPriceModel]] = dict()
 
     async def start(self) -> None:
+        await self._watch_session.connect()
         self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
         self._update_gas_price_task = asyncio.create_task(self._update_gas_price_loop())
 
@@ -89,14 +86,7 @@ class MpGasPriceCalculator(MempoolComponent):
             await self._update_gas_price_task
 
         if self._watch_session:
-            await asyncio.gather(
-                self._watch_session.unsubscribe(price_acct) for price_acct in self._price_acct_dict.values()
-            )
-
-            await asyncio.gather(
-                self._watch_session.disconnect(),
-                self._pyth_client.close(),
-            )
+            await self._watch_session.disconnect()
 
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price
@@ -119,7 +109,8 @@ class MpGasPriceCalculator(MempoolComponent):
                     _LOG.error("error on update gas-price", exc_info=exc)
 
     async def _get_gas_price(self, evm_cfg: EvmConfigModel, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
-        base_price_usd = self._base_price_acct.aggregate_price_info.price if self._base_price_acct else 0.0
+        base_price_acct = await self._get_price_account(CHAIN_TOKEN_NAME)
+        base_price_usd = base_price_acct.price
 
         token_dict: dict[str, MpTokenGasPriceModel] = dict()
         default_token: MpTokenGasPriceModel | None = None
@@ -163,11 +154,11 @@ class MpGasPriceCalculator(MempoolComponent):
         fee_cfg: PriorityFeeCfg,
         token: TokenModel,
         base_price_usd: float,
-        price_acct: _PythPriceAcct | None,
+        price_acct: PythPriceAccount,
     ) -> MpTokenGasPriceModel | None:
         is_const_price = False
         net_price = 0
-        token_price_usd = price_acct.aggregate_price_info.price if price_acct else 0.0
+        token_price_usd = price_acct.price
 
         if fee_cfg.const_gas_price is not None:
             is_const_price = True
@@ -213,102 +204,29 @@ class MpGasPriceCalculator(MempoolComponent):
             gas_price_list=list(gas_price_deque),
         )
 
-    async def _open_pyth_connect(self) -> bool:
-        if not self._cfg.pyth_url_list:
-            return True
-
-        pyth_url_idx = 0
-        product_list: list[_PythProdAcct] = list()
-        while not product_list:
-            if pyth_url_idx >= min(len(self._cfg.pyth_url_list), len(self._cfg.pyth_ws_url_list)):
-                _LOG.error("no available Pyth urls, disable gas-price calculations")
-                break
-
-            pyth_url = self._cfg.pyth_url_list[pyth_url_idx]
-            pyth_ws_url = self._cfg.pyth_ws_url_list[pyth_url_idx]
-            pyth_url_idx += 1
-            _LOG.info("Try Pyth URL %s, WS URL %s", pyth_url, pyth_ws_url, extra=self._msg_filter)
-
-            try:
-                for network in ("pythnet", "mainnet", "devnet", "testnet"):
-                    mapping_acct = _pyth_utils.get_key(network, "mapping")
-                    program_key = _pyth_utils.get_key(network, "program")
-
-                    pyth_client = _PythClient(
-                        solana_endpoint=pyth_url,
-                        solana_ws_endpoint=pyth_ws_url,
-                        first_mapping_account_key=mapping_acct,
-                        program_key=program_key,
-                        aiohttp_client_session=self._sol_client.session,  # use the same session with solana client
-                    )
-                    if product_list := await pyth_client.get_products():
-                        self._pyth_client = pyth_client
-                        self._product_list = product_list
-
-                        self._watch_session = self._pyth_client.create_watch_session()
-                        await self._watch_session.connect()
-
-                        return True
-                else:
-                    continue
-
-            except BaseException as exc:
-                _LOG.warning("error on connect to pyth network", exc_info=exc, extra=self._msg_filter)
-                continue
-
-        return False
-
-    async def _update_token_dict(self) -> None:
-        _LOG.info("start update token list")
-        price_acct_dict: dict[str, _PythPriceAcct] = dict()
-        for product in self._product_list:
-            token = product.attrs.get("base", None)
-            currency = product.attrs.get("quote_currency", None)
-            asset_type = product.attrs.get("asset_type", None)
-            if token and (currency, asset_type) == ("USD", "Crypto"):
-                price_list = await product.get_prices()
-                for price in price_list.values():
-                    if price.price_type == _PythPriceType.PRICE:
-                        price_acct_dict[token] = price
-
-        self._price_acct_full_dict = price_acct_dict
-        _LOG.info("token list is updated")
-
     async def _update_pyth_acct_loop(self) -> None:
         stop_task = asyncio.create_task(self._stop_event.wait())
         while not self._stop_event.is_set():
             try:
-                if not self._pyth_client:
-                    with logging_context(ctx="mp-gas-price-connect"):
-                        await self._open_pyth_connect()
-
-                if self._pyth_client:
-                    with logging_context(ctx="mp-gas-price-update-token-list"):
-                        if not self._price_acct_full_dict:
-                            await self._update_token_dict()
-                        if not self._base_price_acct:
-                            self._base_price_acct = await self._get_price_account(CHAIN_TOKEN_NAME)
-                        if not self._base_price_acct:
-                            continue
-
                 if self._watch_session:
-                    update_task = asyncio.create_task(self._watch_session.next_update())
+                    update_task = asyncio.create_task(self._watch_session.update())
                     await asyncio.wait({update_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
                 else:
                     await asyncio.wait({stop_task}, timeout=1.0)
             except BaseException as exc:
                 _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
 
-    async def _get_price_account(self, token: str) -> _PythPriceAcct | None:
-        if (not self._watch_session) or (not self._price_acct_full_dict):
-            return None
+    async def _get_price_account(self, token: str) -> PythPriceAccount:
+        if not self._watch_session:
+            return PythPriceAccount.default()
 
         if not (price_acct := self._price_acct_dict.get(token, None)):
-            if price_acct := self._price_acct_full_dict.get(token, None):
-                self._price_acct_dict[token] = price_acct
-                await self._watch_session.subscribe(price_acct)
-            elif token not in self._price_acct_failed_set:
-                self._price_acct_failed_set.add(token)
-                _LOG.error(log_msg("Pyth doesn't have information about the token: {Token}", Token=token))
+            _LOG.error(log_msg("Pyth doesn't have information about the token: {Token}", Token=token))
+            return PythPriceAccount.default()
 
+        elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
+            await self._watch_session.subscribe_account(price_acct.address)
+            raw_acct = self._watch_session.get_account(price_acct.address)
+
+        price_acct.update_data(raw_acct)
         return price_acct
