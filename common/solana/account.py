@@ -34,6 +34,15 @@ class SolAccountModel(BaseModel):
         return cls._default
 
     @classmethod
+    def new_empty(cls, address: SolPubKeyField) -> SolAccountModel:
+        return cls(
+            address=address,
+            balance=0,
+            data=bytes(),
+            owner=SolPubKey.default(),
+        )
+
+    @classmethod
     def from_raw(cls, address: SolPubKey, raw: _RawAccount) -> Self:
         if raw is None:
             return cls.default()

@@ -63,15 +63,16 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_SSL: disable
-    volumes:
-      - ./db/scheme.sql:/var/lib/postgresql/init_scripts/neon-db.sql
+#    volumes:
+#      - ./db/scheme.sql:/var/lib/postgresql/init_scripts/neon-db.sql
     entrypoint: "/bin/bash -c"
-    command:
-      - |
-        echo "Started..."
-        export DATABASE_URL="postgresql://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT";
-        psql $$DATABASE_URL/$$POSTGRES_DB?sslmode=$$POSTGRES_SSL -a -f /var/lib/postgresql/init_scripts/neon-db.sql;
-        echo "Finished."
+    command: db/run-dbcreation.sh
+#    command:
+#      - |
+#        echo "Started..."
+#        export DATABASE_URL="postgresql://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT";
+#        psql $$DATABASE_URL/$$POSTGRES_DB?sslmode=$$POSTGRES_SSL -a -f /var/lib/postgresql/init_scripts/neon-db.sql;
+#        echo "Finished."
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,8 +94,8 @@ services:
       interval: 3s
       timeout: 3s
       retries: 10
-    volumes:
-      - ./indexer_db:/var/lib/postgresql/data
+#    volumes:
+#      - ./indexer_db:/var/lib/postgresql/data
     expose:
       - "5432"
     ports:
