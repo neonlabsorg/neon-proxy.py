@@ -426,7 +426,7 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         _LOG.info("decode %s: found error with code %d", cls.name, code)
 
         bs = base64.b64decode(data_list[1])
-        data = bytearray.from_bytes(bs)
+        data = bytearray(bs)
         _LOG.info("decode %s: found error with data %s", cls.name, data)
 
         msg = base64.b64decode(data_list[2])
