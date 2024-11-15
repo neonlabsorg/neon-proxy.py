@@ -1,6 +1,5 @@
-
+import dataclasses
 import logging
-from dataclasses import dataclass
 
 from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.solana_rpc.transaction_list_sender import SolTxSendState
@@ -66,8 +65,8 @@ class NeonSolTxListSender(SolTxListSender):
             return self._DecodeResult(status.OutOfGasError, EthOutOfGasError(gas_limit, required_gas_limit))
 
         elif nonce_error := neon_tx_error_parser.get_nonce_error(): # struct which I decode from evm_log_decoder
-            # state_tx_cnt, tx_nonce = nonce_error
-            if nonce_error.tx_nonce < nonce_error.state_tx_cnt:
+            state_tx_cnt, tx_nonce = nonce_error
+            if tx_nonce < state_tx_cnt:
                 # sender is unknown - should be replaced on upper stack level
                 return self._DecodeResult(status.BadNonceError, EthNonceTooLowError(tx_nonce, state_tx_cnt))
             else:
