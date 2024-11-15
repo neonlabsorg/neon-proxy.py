@@ -489,14 +489,15 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
 
         bs = base64.b64decode(data_list[0]) #["ERROR", code, /*arg_count, args..., */ "message data abc"]
         code = int.from_bytes(bs, "little")
-        _LOG.info("decode %s: found error with code %d", cls.name, code)
+        _LOG.debug("decode %s: found error with code %d", cls.name, code)
 
         bs = base64.b64decode(data_list[1])
         data = bytearray(bs)
-        _LOG.info("decode %s: found error with data %s", cls.name, data)
+        _LOG.debug("decode %s: found error with data %s", cls.name, data)
 
+        base64.b64decode()
         msg = base64.b64decode(data_list[2])
-        _LOG.info("decode %s: found error with message %s", cls.name, msg)
+        _LOG.debug("decode %s: found error with message %s", cls.name, msg)
 
         error = NeonTxErrorLogInfo(code, data, msg)
         log.tx_error_list.append(error)
