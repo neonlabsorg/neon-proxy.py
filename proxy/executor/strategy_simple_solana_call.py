@@ -23,6 +23,8 @@ class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
     def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
         return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_solana_call_ix(), tx_cfg)
 
+    def _overwrite_cu_limit(self) -> int:
+        return 1_400_000
 
 @alt_strategy
 class AltSimpleTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
