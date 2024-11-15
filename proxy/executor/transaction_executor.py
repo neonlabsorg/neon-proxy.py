@@ -21,7 +21,6 @@ from common.solana_rpc.errors import (
     SolOutOfMemoryError,
 )
 from .errors import BadResourceError, StuckTxError, WrongStrategyError
-from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
@@ -88,8 +87,7 @@ class NeonTxExecutor(ExecutorComponent):
     ]
 
     async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(ctx)
-        await holder_validator.validate_stuck_tx()
+        await ctx.holder_validator.validate_stuck_tx()
 
         try:
             await self._init_base_sol_tx(ctx)
@@ -114,9 +112,12 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
 
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(ctx)
-        if not await holder_validator.is_active():
+        if not await ctx.holder_validator.is_active():
             return ExecTxResp(code=ExecTxRespCode.Failed)
+
+        # request the token address (based on chain-id) for receiving payments from user
+        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.sol_payer, ctx.chain_id)
+        ctx.set_token_sol_address(token_sol_addr)
 
         # get solana address of the sender and receiver
         await self._init_base_sol_tx(ctx)
@@ -137,7 +138,7 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("skip simple strategy %s", _Strategy.name)
                 continue
 
-            strategy = _Strategy(ctx)
+            strategy = _Strategy(self._server, ctx)
             if not await strategy.validate():
                 _LOG.debug("skip strategy %s: %s", strategy.name, strategy.validation_error_msg)
                 continue
