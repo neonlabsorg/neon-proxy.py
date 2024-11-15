@@ -7,7 +7,6 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Annotated
-import dataclasses_struct as dcs
 from typing import Final, Sequence, Annotated
 from enum import IntEnum
 from eth_bloom import BloomFilter
@@ -174,14 +173,42 @@ class NeonTxErrorLogInfo:
         PriorityFeeParsingError = 63
         PriorityFeeError = 64
     code: ErrorCode
-    data: bytearray
+    # data: bytearray
     message: str
 
-@dcs.dataclass()
-class NeonInvalidTagError:
-    code: dcs.U32
-    address: Annotated[bytes, 20]
-    expected: dcs.U8
+    @classmethod
+    def from_raw(cls, code: int, message: str):
+        code = code
+        message = message
+
+    def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonTxErrorLogInfo:
+        return NeonTxErrorLogInfo(
+            code=self.code,
+            message=self.message,
+        )
+
+
+@dataclass
+class NeonInvalidTagError(NeonTxErrorLogInfo):
+
+    code: int
+    address: str  # [bytes, 20]
+    expected: int
+
+    @classmethod
+    def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
+        super().from_raw(code, msg)
+        code = int.from_bytes(data[0:4])
+        address = data[4:24]
+        expected = int.from_bytes(log_rec.data[24:25])
+
+    def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonInvalidTagError:
+        return NeonInvalidTagError(
+            code=self.code,
+            message=self.message,
+            address = self.address,
+            expected = self.expected,
+        )
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
@@ -505,13 +532,15 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         msg = base64.b64decode(data_list[2])
         _LOG.debug("decode %s: found error with message %s", cls.name, msg)
 
-        if code == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey:
+        if code == NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag:
             _LOG.debug("decode %s: fcode == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey", cls.name, msg)
-            e = NeonInvalidTagError.from_packed(data)
+            e =  NeonInvalidTagError.from_raw(code, data, msg)
             _LOG.debug("decode %s: AccountInvalidKey.address =", cls.name, e.address)
+        else:
+            _LOG.debug("decode %s: code != NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey %d", cls.name, NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag)
+            e = NeonTxErrorLogInfo(code, msg)
 
-        error = NeonTxErrorLogInfo(code, data, msg)
-        log.tx_error_list.append(error)
+        log.tx_error_list.append(e)
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
