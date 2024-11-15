@@ -118,6 +118,10 @@ class NeonTxExecutor(ExecutorComponent):
         if not await holder_validator.is_active():
             return ExecTxResp(code=ExecTxRespCode.Failed)
 
+        # request the token address (based on chain-id) for receiving payments from user
+        token_sol_addr = await self._op_client.get_token_sol_address(ctx.req_id, ctx.payer, ctx.chain_id)
+        ctx.set_token_sol_address(token_sol_addr)
+
         # get solana address of the sender and receiver
         await self._init_base_sol_tx(ctx)
 

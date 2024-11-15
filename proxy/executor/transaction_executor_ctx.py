@@ -93,6 +93,9 @@ class NeonExecTxCtx:
         NeonProg.init_prog(evm_cfg.treasury_pool_cnt, evm_cfg.treasury_pool_seed, evm_cfg.version)
         return self
 
+    def set_token_sol_address(self, token_sol_address: SolPubKey) -> None:
+        self._token_sol_addr = token_sol_address
+
     @cached_property
     def req_id(self) -> dict:
         if isinstance(self._tx_request, ExecTxRequest):
