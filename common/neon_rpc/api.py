@@ -451,6 +451,9 @@ class CoreApiTxModel(BaseModel):
     data: CoreApiHexStrField
     gas_limit: HexUIntField | None
     gas_price: HexUIntField | None
+    max_fee_per_gas: HexUIntField = Field(default=0)
+    max_priority_fee_per_gas: HexUIntField = Field(default=0)
+
     chain_id: int | None = None
 
     @classmethod
@@ -463,6 +466,8 @@ class CoreApiTxModel(BaseModel):
             data=tx.call_data.to_bytes(),
             gas_limit=tx.gas_limit,
             gas_price=tx.gas_price,
+            max_fee_per_gas=tx.max_fee_per_gas or 0,
+            max_priority_fee_per_gas=tx.max_priority_fee_per_gas or 0,
             chain_id=chain_id,
         )
 
@@ -487,8 +492,6 @@ class HolderAccountModel(BaseModel):
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
 
     tx_type: int = Field(default=0)
-    max_fee_per_gas: HexUIntField = Field(default=0)
-    max_priority_fee_per_gas: HexUIntField = Field(default=0)
 
     @classmethod
     def new_empty(cls, address: SolPubKey) -> Self:
@@ -578,7 +581,7 @@ class EmulNeonAccountModel(BaseModel):
 
 
 class EmulTraceCfgModel(BaseModel):
-    neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="state_overrides")
+    neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="stateOverrides")
 
 
 class EmulNeonCallRequest(BaseModel):

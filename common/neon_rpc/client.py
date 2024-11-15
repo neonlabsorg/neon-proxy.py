@@ -238,7 +238,7 @@ class CoreApiClient(HttpClient):
         *,
         check_result: bool,
         sender_balance: int | None = None,
-        preload_sol_address_list: tuple[SolPubKey, ...] = tuple(),
+        preload_sol_address_list: Sequence[SolPubKey] = tuple(),
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:

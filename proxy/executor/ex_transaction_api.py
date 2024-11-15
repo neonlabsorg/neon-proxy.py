@@ -24,7 +24,7 @@ class NeonTxExecApi(ExecutorApi):
     @BaseProxyApi.method(name="executeNeonTransaction")
     async def exec_neon_tx(self, tx_request: ExecTxRequest) -> ExecTxResp:
         tx = tx_request.tx
-        ctx = self._new_neon_exec_ctx(tx_request)  # all created ALTs should be destroyed
+        ctx = NeonExecTxCtx(self._server, tx_request)
         with logging_context(**ctx.req_id):
             while True:  # for the case when holder has a stuck NeonTx
                 try:
@@ -50,7 +50,7 @@ class NeonTxExecApi(ExecutorApi):
 
     @BaseProxyApi.method(name="completeStuckNeonTransaction")
     async def complete_stuck_neon_tx(self, tx_request: ExecStuckTxRequest) -> ExecTxResp:
-        ctx = self._new_neon_exec_ctx(tx_request)
+        ctx = NeonExecTxCtx(self._server, tx_request)
         with logging_context(**ctx.req_id):
             try:
                 return await self._neon_tx_executor.complete_stuck_neon_tx(ctx)
@@ -72,15 +72,3 @@ class NeonTxExecApi(ExecutorApi):
     @cached_property
     def _sol_alt_destroyer(self) -> SolAltDestroyer:
         return self._server._sol_alt_destroyer  # noqa
-
-    def _new_neon_exec_ctx(self, tx_request: ExecTxRequest | ExecStuckTxRequest) -> NeonExecTxCtx:
-        return NeonExecTxCtx(
-            self._cfg,
-            self._sol_client,
-            self._core_api_client,
-            self._op_client,
-            self._cu_price_client,
-            self._stat_client,
-            self._db,
-            tx_request,
-        )

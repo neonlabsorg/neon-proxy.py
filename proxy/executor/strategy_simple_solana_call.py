@@ -1,7 +1,7 @@
 from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
-from common.solana.transaction_legacy import SolLegacyTx
+from common.solana.instruction import SolTxIx
 from .strategy_base import SolTxCfg
 from .strategy_simple import SimpleTxStrategy
 from .strategy_stage_alt import alt_strategy
@@ -20,11 +20,9 @@ class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
             and self._validate_neon_tx_size()
         )
 
-    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_solana_call_ix(), tx_cfg)
+    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+        return self._ctx.neon_prog.make_tx_exec_from_data_solana_call_ix()
 
-    def _overwrite_cu_limit(self) -> int:
-        return 1_400_000
 
 @alt_strategy
 class AltSimpleTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):

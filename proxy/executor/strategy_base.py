@@ -21,16 +21,17 @@ from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
-from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
+from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_executor_ctx import NeonExecTxCtx
 from ..base.ex_api import ExecTxRespCode
 
 _LOG = logging.getLogger(__name__)
 
 
-class BaseTxPrepStage(abc.ABC):
-    def __init__(self, ctx: NeonExecTxCtx):
+class BaseTxPrepStage(ExecutorComponent, abc.ABC):
+    def __init__(self, server: ExecutorServerAbc, ctx: NeonExecTxCtx):
+        super().__init__(server)
         self._ctx = ctx
 
     @property
@@ -38,7 +39,7 @@ class BaseTxPrepStage(abc.ABC):
         return self._ctx.token.simple_cu_price
 
     @abc.abstractmethod
-    def get_tx_name_list(self) -> tuple[str, ...]:
+    def get_tx_name_list(self) -> Sequence[str]:
         pass
 
     @abc.abstractmethod
@@ -68,11 +69,13 @@ class SolTxCfg:
         return dataclasses.replace(self, **kwargs)
 
 
-class BaseTxStrategy(abc.ABC):
+class BaseTxStrategy(ExecutorComponent, abc.ABC):
     name: ClassVar[str] = "UNKNOWN STRATEGY"
     is_simple: ClassVar[bool] = True
+    is_holder: ClassVar[bool] = False
 
-    def __init__(self, ctx: NeonExecTxCtx) -> None:
+    def __init__(self, server: ExecutorServerAbc, ctx: NeonExecTxCtx) -> None:
+        super().__init__(server)
         self._ctx = ctx
         self._validation_error_msg: str | None = None
         self._prep_stage_list: list[BaseTxPrepStage] = list()
@@ -122,10 +125,6 @@ class BaseTxStrategy(abc.ABC):
         for stage in self._prep_stage_list:
             await stage.update_after_emulation()
 
-    @property
-    def has_good_sol_tx_receipt(self) -> bool:
-        return self._sol_tx_list_sender.has_good_sol_tx_receipt
-
     @abc.abstractmethod
     async def execute(self) -> ExecTxRespCode:
         pass
@@ -136,12 +135,19 @@ class BaseTxStrategy(abc.ABC):
 
     @cached_property
     def _sol_tx_list_sender(self) -> SolTxListSender:
-        watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
-        return SolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
+        return SolTxListSender(
+            self._cfg,
+            self._stat_client,
+            self._ctx.sol_watch_session,
+            self._ctx.sol_tx_list_signer,
+        )
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
-            self._build_tx(self._init_sol_tx_cfg()).validate(SolSigner.fake())  # <- there can be SolTxSizeError
+            base_cfg = self._init_sol_tx_cfg()
+            ix = self._build_tx_ix(base_cfg)
+            tx = self._build_cu_tx(ix, base_cfg)
+            tx.validate(SolSigner.fake())  # <- there can be SolTxSizeError
         return True
 
     def _validate_has_chain_id(self) -> bool:
@@ -165,7 +171,8 @@ class BaseTxStrategy(abc.ABC):
         return False
 
     def _validate_gas_price(self) -> bool:
-        if self._ctx.neon_tx.gas_price:
+        base_fee_per_gas = self._ctx.holder_tx.gas_price or self._ctx.holder_tx.max_fee_per_gas or 0
+        if base_fee_per_gas > 0:
             return True
         self._validation_error_msg = "Fee less transaction"
         return False
@@ -282,29 +289,42 @@ class BaseTxStrategy(abc.ABC):
         token = self._ctx.token
 
         # calculate a required cu-price from the Solana statistics
-        req_cu_price = await self._ctx.cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
-        priority_fee = 0.0
+        req_cu_price = await self._cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
 
-        if self._ctx.tx_type == 2:
-            base_fee_per_gas = self._ctx.max_fee_per_gas - self._ctx.max_priority_fee_per_gas
-            assert base_fee_per_gas >= 0
+        tx = self._ctx.holder_tx
+
+        def _base_fee_per_gas() -> int:
+            gas_price = tx.gas_price or 0
+            max_fee_per_gas = tx.max_fee_per_gas or 0
+            max_priority_fee_per_gas = tx.max_priority_fee_per_gas or 0
+
+            if not max_fee_per_gas:
+                return gas_price
+
+            if (base_fee_per_gas := max_fee_per_gas - max_priority_fee_per_gas) >= 0:
+                return base_fee_per_gas
+            return max_fee_per_gas
+
+        def _has_priority_fee() -> bool:
+            max_fee_per_gas = tx.max_fee_per_gas or 0
+            max_priority_fee_per_gas = tx.max_priority_fee_per_gas or 0
 
             # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
             # For the general case, we take into account the gas fee parameters set in NeonTx.
-            if base_fee_per_gas != 0:
-                priority_fee = self._ctx.max_priority_fee_per_gas * 100 / base_fee_per_gas
-                gas_limit = NeonProg.BaseGas / 2
-                _LOG.debug(
-                    "use %s%% priority-fee for priority gas-price %d",
-                    priority_fee,
-                    self._ctx.max_priority_fee_per_gas,
-                )
+            return (max_fee_per_gas - max_priority_fee_per_gas) > 0
 
-        if priority_fee <= 0.0:
+        if _has_priority_fee():
+            priority_fee = tx.max_priority_fee_per_gas * 100 / _base_fee_per_gas()
+            gas_limit = NeonProg.SignatureGas
+            _LOG.debug(
+                "use %s%% priority-fee for priority gas-price %d",
+                priority_fee,
+                tx.max_priority_fee_per_gas,
+            )
+        else:
             # calculate a transaction cu-price based on the tx gas-price
-            gas_price = (self._ctx.holder_tx if self._ctx.is_stuck_tx else self._ctx.neon_tx).gas_price
-            priority_fee = (gas_price - token.profitable_gas_price) / token.pct_gas_price
-            _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, gas_price)
+            priority_fee = max(_base_fee_per_gas() - token.profitable_gas_price, 0) / token.pct_gas_price
+            _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, _base_fee_per_gas())
 
         if priority_fee > 0.0:
             # see gas-price-calculator for details
@@ -349,7 +369,7 @@ class BaseTxStrategy(abc.ABC):
         else:
             is_single_tx: Final[bool] = False
 
-        blockhash, _ = await self._ctx.sol_client.get_recent_blockhash(SolCommit.Finalized)
+        blockhash, _ = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
         for tx in tx_list:
             tx.set_recent_blockhash(blockhash)
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
@@ -358,9 +378,7 @@ class BaseTxStrategy(abc.ABC):
         cu_limit = SolCbProg.MaxCuLimit * (mult_factor or len(tx_list))
 
         try:
-            emul_tx_list = await self._ctx.core_api_client.emulate_sol_tx_list(
-                cu_limit, acct_cnt_limit, blockhash, tx_list
-            )
+            emul_tx_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, acct_cnt_limit, blockhash, tx_list)
             return emul_tx_list[0] if is_single_tx else emul_tx_list
         except BaseException as exc:
             _LOG.warning("error on emulate solana tx list", exc_info=exc)
@@ -378,6 +396,43 @@ class BaseTxStrategy(abc.ABC):
             _LOG.debug("found GAS %s", gas_limit)
         return gas_limit
 
+    async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
+        base_tx = self._build_cu_tx(ix, base_cfg)
+        emul_tx = await self._emulate_tx_list(base_tx)
+        used_cu_limit: Final[int] = emul_tx.meta.used_cu_limit
+
+        max_cu_limit: Final[int] = base_cfg.cu_limit
+        # let's decrease the available cu-limit on 5% percents, because Solana uses it for ComputeBudget calls
+        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)
+
+        if used_cu_limit > threshold_cu_limit:
+            _LOG.debug(
+                "%s: %d CUs is bigger than the upper limit %d",
+                hdr,
+                used_cu_limit,
+                threshold_cu_limit,
+            )
+            raise SolCbExceededError()
+
+        round_coeff: Final[int] = 10_000
+        inc_coeff: Final[int] = 100_000
+        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
+        _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
+
+        gas_limit = self._find_gas_limit(emul_tx)
+
+        for cu_limit in (round_cu_limit, max_cu_limit):
+            cu_price = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
+            optimal_cfg = base_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
+
+            optimal_tx = self._build_cu_tx(ix, optimal_cfg)
+            try:
+                return await self._send_tx_list(optimal_tx)
+            except SolCbExceededError:
+                if cu_limit == max_cu_limit:
+                    raise
+                _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
+
     @staticmethod
     def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:
         if not isinstance(tx_send_state.receipt, SolRpcTxSlotInfo):
@@ -388,7 +443,7 @@ class BaseTxStrategy(abc.ABC):
         return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @abc.abstractmethod
-    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
+    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
         pass
 
     @abc.abstractmethod

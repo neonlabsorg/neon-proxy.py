@@ -8,6 +8,7 @@ from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHashField
 from common.solana.alt_program import SolAltID
+from common.utils.cached import cached_property
 from common.utils.pydantic import BaseModel
 from .mp_api import MpTxModel, MpStuckTxModel, MpTokenGasPriceModel, MpGasPriceModel
 from .op_api import OpResourceModel
@@ -36,11 +37,19 @@ class ExecTxRequest(BaseModel):
     token: ExecTokenModel
     resource: OpResourceModel
 
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(tx=self.tx.tx_id)
+
 
 class ExecStuckTxRequest(BaseModel):
     stuck_tx: MpStuckTxModel
     token: ExecTokenModel
     resource: OpResourceModel
+
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(tx=self.stuck_tx.tx_id, is_stuck=True)
 
 
 class ExecTxRespCode(IntEnum):
