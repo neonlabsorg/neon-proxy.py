@@ -79,9 +79,12 @@ class SimpleTxStrategy(BaseTxStrategy):
 
         gas_limit = self._find_gas_limit(emul_tx)
 
-        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=round_cu_limit, gas_limit=gas_limit)
+        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=self._overwrite_cu_limit() or round_cu_limit, gas_limit=gas_limit)
         tx = self._build_tx(optimal_cfg)
         return await self._send_tx_list(tx)
+    
+    def _overwrite_cu_limit(self) -> int:
+        return None
 
     async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int, gas_limit: int) -> SolTxCfg:
         cu_price: int = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
