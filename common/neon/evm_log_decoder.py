@@ -6,6 +6,8 @@ import enum
 import logging
 import re
 from dataclasses import dataclass
+from typing import Annotated
+import dataclasses_struct as dcs
 from typing import Final, Sequence, Annotated
 from enum import IntEnum
 from eth_bloom import BloomFilter
@@ -175,6 +177,11 @@ class NeonTxErrorLogInfo:
     data: bytearray
     message: str
 
+@dcs.dataclass()
+class NeonInvalidTagError:
+    code: dcs.U32
+    address: Annotated[bytes, 20]
+    expected: dcs.U8
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
@@ -489,14 +496,19 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
 
         bs = base64.b64decode(data_list[0]) #["ERROR", code, /*arg_count, args..., */ "message data abc"]
         code = int.from_bytes(bs, "little")
-        _LOG.info("decode %s: found error with code %d", cls.name, code)
+        _LOG.debug("decode %s: found error with code %d", cls.name, code)
 
         bs = base64.b64decode(data_list[1])
         data = bytearray(bs)
-        _LOG.info("decode %s: found error with data %s", cls.name, data)
+        _LOG.debug("decode %s: found error with data %s", cls.name, data)
 
         msg = base64.b64decode(data_list[2])
-        _LOG.info("decode %s: found error with message %s", cls.name, msg)
+        _LOG.debug("decode %s: found error with message %s", cls.name, msg)
+
+        if code == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey:
+            _LOG.debug("decode %s: fcode == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey", cls.name, msg)
+            e = NeonInvalidTagError.from_packed(data)
+            _LOG.debug("decode %s: AccountInvalidKey.address =", cls.name, e.address)
 
         error = NeonTxErrorLogInfo(code, data, msg)
         log.tx_error_list.append(error)
