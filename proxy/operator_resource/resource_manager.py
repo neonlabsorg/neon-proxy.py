@@ -121,6 +121,7 @@ class OpResourceMng(OpResourceComponent):
             owner_token_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
 
             op_signer.used_holder_dict[op_holder.address] = op_holder
+            self._send_op_resource_holder_stat(op_signer)
 
             op_resource = OpResourceModel(
                 owner=op_signer.owner,

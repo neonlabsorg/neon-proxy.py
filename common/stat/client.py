@@ -6,6 +6,7 @@ import logging
 from typing import Final, Callable
 
 from ..config.config import Config
+from ..config.constants import ONE_BLOCK_SEC
 from ..utils.json_logger import logging_context
 from ..utils.pydantic import BaseModel
 
@@ -32,7 +33,7 @@ class BaseStatClient:
             self._send_queue.put_nowait((call, data))
 
     async def _send_loop(self) -> None:
-        sleep_sec: Final[float] = 0.3
+        sleep_sec: Final[float] = ONE_BLOCK_SEC / 4
         with logging_context(ctx="stat-client"):
             while True:
                 with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
@@ -46,10 +47,5 @@ class BaseStatClient:
                     _LOG.warning("error on send data", exc_info=exc)
 
     async def _send_data(self) -> None:
-        req_list = list()
-        while not self._send_queue.empty():
-            call, data = self._send_queue.get_nowait()
-            req_list.append(call(data))
-
-        if req_list:
-            await asyncio.gather(*req_list)
+        call, data = await self._send_queue.get()
+        await call(data)
