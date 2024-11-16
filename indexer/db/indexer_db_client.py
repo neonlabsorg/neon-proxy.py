@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+
+from typing import Sequence
 from typing_extensions import Final
 
 from common.config.config import Config
@@ -104,14 +106,14 @@ class IndexerDbClient:
 
     async def get_event_list(
         self,
-        from_block: int | None,
-        to_block: int | None,
-        address_list: tuple[EthAddress, ...],
-        topic_list: tuple[tuple[EthHash32, ...], ...],
-    ) -> tuple[NeonTxEventModel, ...]:
-        return await self._neon_tx_log_db.get_event_list(None, from_block, to_block, address_list, topic_list)
+        from_slot: int | None,
+        to_slot: int | None,
+        address_list: Sequence[EthAddress],
+        topic_list: Sequence[Sequence[EthHash32]],
+    ) -> Sequence[NeonTxEventModel]:
+        return await self._neon_tx_log_db.get_event_list(None, from_slot, to_slot, address_list, topic_list)
 
-    async def get_tx_list_by_slot(self, slot: int) -> tuple[NeonTxMetaModel, ...]:
+    async def get_tx_list_by_slot(self, slot: int) -> Sequence[NeonTxMetaModel]:
         return await self._neon_tx_db.get_tx_list_by_slot(None, slot)
 
     async def get_tx_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> NeonTxMetaModel | None:
@@ -128,20 +130,20 @@ class IndexerDbClient:
     async def get_tx_by_slot_tx_idx(self, slot: int, tx_idx: int) -> NeonTxMetaModel | None:
         return await self._neon_tx_db.get_tx_by_slot_tx_idx(None, slot, tx_idx)
 
-    async def get_sol_tx_sig_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolTxSigSlotInfo, ...]:
+    async def get_sol_tx_sig_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> Sequence[SolTxSigSlotInfo]:
         return await self._sol_neon_tx_db.get_sol_tx_sig_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_alt_sig_list_by_neon_sig(self, neon_tx_hash: EthTxHash) -> tuple[SolTxSigSlotInfo, ...]:
+    async def get_alt_sig_list_by_neon_sig(self, neon_tx_hash: EthTxHash) -> Sequence[SolTxSigSlotInfo]:
         return await self._sol_alt_tx_db.get_alt_sig_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_sol_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolNeonTxIxMetaModel, ...]:
+    async def get_sol_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> Sequence[SolNeonTxIxMetaModel]:
         return await self._sol_neon_tx_db.get_sol_ix_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_alt_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> tuple[SolNeonAltTxIxModel, ...]:
+    async def get_alt_ix_list_by_neon_tx_hash(self, neon_tx_hash: EthTxHash) -> Sequence[SolNeonAltTxIxModel]:
         return await self._sol_alt_tx_db.get_alt_ix_list_by_neon_tx_hash(None, neon_tx_hash)
 
-    async def get_stuck_neon_tx_list(self) -> tuple[int | None, tuple[dict, ...]]:
+    async def get_stuck_neon_tx_list(self) -> tuple[int | None, Sequence[dict]]:
         return await self._stuck_neon_tx_db.get_obj_list(None, False)
 
-    async def get_stuck_neon_alt_list(self) -> tuple[int | None, tuple[dict, ...]]:
+    async def get_stuck_neon_alt_list(self) -> tuple[int | None, Sequence[dict]]:
         return await self._stuck_neon_alt_db.get_obj_list(None, True)

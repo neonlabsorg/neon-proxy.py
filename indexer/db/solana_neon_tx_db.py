@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 from typing_extensions import Self
 
@@ -73,7 +74,7 @@ class SolNeonTxDb(HistoryDbTable):
 
         self._select_sig_list_query, self._select_query = await self._db.sql_to_query(select_sig_list_sql, select_sql)
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [_Record.from_sol_neon_ix(ix) for block in block_list for ix in block.iter_sol_neon_ix()]
         await self._insert_row_list(ctx, rec_list)
 
@@ -81,7 +82,7 @@ class SolNeonTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[SolTxSigSlotInfo, ...]:
+    ) -> Sequence[SolTxSigSlotInfo]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_sig_list_query,
@@ -103,7 +104,7 @@ class SolNeonTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[SolNeonTxIxMetaModel, ...]:
+    ) -> Sequence[SolNeonTxIxMetaModel]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_query,

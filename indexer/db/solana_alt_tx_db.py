@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from typing import Sequence
 from typing_extensions import Self
 
 from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQueryBody
@@ -75,7 +76,7 @@ class SolAltTxDb(HistoryDbTable):
 
         self._select_query, self._select_sig_query = await self._db.sql_to_query(select_sql, select_sig_sql)
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [_Record.from_alt_model(sol_alt) for block in block_list for sol_alt in block.iter_sol_alt_ix()]
         await self._insert_row_list(ctx, rec_list)
 
@@ -83,7 +84,7 @@ class SolAltTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[SolNeonAltTxIxModel, ...]:
+    ) -> Sequence[SolNeonAltTxIxModel]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_query,
@@ -96,7 +97,7 @@ class SolAltTxDb(HistoryDbTable):
         self,
         ctx: DbTxCtx,
         neon_tx_hash: EthTxHash,
-    ) -> tuple[SolTxSigSlotInfo, ...]:
+    ) -> Sequence[SolTxSigSlotInfo]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_sig_query,

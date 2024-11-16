@@ -4,7 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Iterator, Final, ClassVar
+from typing import Iterator, Final, ClassVar, Sequence
 
 from typing_extensions import Self
 
@@ -48,8 +48,8 @@ class SolTxIxLogInfo:
 
     error: str | None
 
-    log_list: tuple[str | SolTxIxLogInfo, ...]
-    inner_log_list: tuple[SolTxIxLogInfo, ...]
+    log_list: Sequence[str | SolTxIxLogInfo]
+    inner_log_list: Sequence[SolTxIxLogInfo]
 
     # private:
     _default: ClassVar[SolTxIxLogInfo | None] = None
@@ -89,13 +89,13 @@ class SolTxIxLogInfo:
     def __repr__(self) -> str:
         return self.to_string()
 
-    def log_msg_list(self) -> tuple[str, ...]:
+    def log_msg_list(self) -> Sequence[str]:
         return tuple(filter(lambda log_rec: isinstance(log_rec, str), self.log_list))
 
 
 @dataclass(frozen=True)
 class SolTxLogTreeInfo:
-    log_list: tuple[SolTxIxLogInfo, ...]
+    log_list: Sequence[SolTxIxLogInfo]
 
 
 class SolTxLogTreeDecoder:
@@ -107,7 +107,7 @@ class SolTxLogTreeDecoder:
         cls,
         rpc_message: SolTxMessageInfo,
         rpc_meta: SolRpcSendTxErrorInfo | SolRpcTxMetaInfo,
-        account_key_list: tuple[SolPubKey, ...],
+        account_key_list: Sequence[SolPubKey],
     ) -> SolTxLogTreeInfo:
         ctx = _SolLogDecoderCtx.from_raw(rpc_message, rpc_meta, account_key_list)
         root_log = _SolTxIxLogDraft.default()
@@ -167,7 +167,7 @@ class _SolLogDecoderCtx:
         cls,
         rpc_message: SolTxMessageInfo,
         rpc_meta: SolRpcSendTxErrorInfo | SolRpcTxMetaInfo,
-        account_key_list: tuple[SolPubKey, ...],
+        account_key_list: Sequence[SolPubKey],
     ) -> Self:
         inner_ix_list = getattr(rpc_meta, "inner_instructions", tuple())
         inner_ix_list_iter = iter(inner_ix_list) if inner_ix_list else None
@@ -198,7 +198,7 @@ class _SolLogDecoderCtx:
         return self._acct_list[ix.program_id_index], getattr(ix, "stack_height", base_level)
 
     # protected:
-    _acct_list: tuple[SolPubKey, ...]
+    _acct_list: Sequence[SolPubKey]
     _msg_iter: Iterator[str] | None
     _ix_iter: Iterator[tuple[int, SolRpcTxIxInfo]] | None
     _inner_ix_list_iter: Iterator[SolRpcTxInnerIxList] | None

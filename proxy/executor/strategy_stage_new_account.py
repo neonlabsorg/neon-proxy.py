@@ -1,5 +1,5 @@
 import logging
-from typing import ClassVar
+from typing import ClassVar, Sequence
 
 from common.ethereum.errors import EthError
 from common.neon.neon_program import NeonEvmIxCode
@@ -15,7 +15,7 @@ _LOG = logging.getLogger(__name__)
 class NewAccountTxPrepStage(BaseTxPrepStage):
     name: ClassVar[str] = NeonEvmIxCode.CreateAccountBalance.name
 
-    def get_tx_name_list(self) -> tuple[str, ...]:
+    def get_tx_name_list(self) -> Sequence[str]:
         return tuple([self.name])
 
     async def build_tx_list(self) -> list[list[SolTx]]:

@@ -75,7 +75,7 @@ class SolAltInfo:
         return self._owner
 
     @property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
+    def account_key_list(self) -> Sequence[SolPubKey]:
         return tuple(self._acct_key_list)
 
     @property

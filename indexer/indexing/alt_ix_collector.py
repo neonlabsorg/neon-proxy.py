@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Sequence
 
 from common.config.config import Config
 from common.neon.transaction_decoder import SolNeonAltTxIxModel
@@ -74,7 +74,7 @@ class SolAltTxIxCollector:
 
         return is_done
 
-    async def _get_tx_sig_list(self, ctx: _Ctx) -> tuple[SolTxSig, ...]:
+    async def _get_tx_sig_list(self, ctx: _Ctx) -> Sequence[SolTxSig]:
         last_slot = ctx.alt.last_sol_ix_slot
         rpc_tx_sig_list = await self._sol_client.get_tx_sig_list(ctx.alt.address, 1000, SolCommit.Finalized)
         return tuple([SolTxSig.from_raw(rpc_sig.signature) for rpc_sig in rpc_tx_sig_list if rpc_sig.slot > last_slot])

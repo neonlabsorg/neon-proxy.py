@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from typing import Sequence
 from typing_extensions import Self
 
 from common.db.db_connect import DbConnection, DbTxCtx
@@ -12,7 +13,7 @@ class SolTxCostDb(HistoryDbTable):
     def __init__(self, db: DbConnection):
         super().__init__(db, "solana_transaction_costs", _Record, ("sol_sig", "block_slot"))
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [_Record.from_sol_cost(sol_cost) for block in block_list for sol_cost in block.iter_sol_tx_cost()]
         await self._insert_row_list(ctx, rec_list)
 

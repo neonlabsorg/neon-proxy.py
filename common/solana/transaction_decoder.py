@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import typing
 from dataclasses import dataclass
+from typing import Sequence
 
 import base58
 from typing_extensions import Self
@@ -55,11 +56,11 @@ class SolTxMetaInfo:
         return self._rpc_meta.err is None
 
     @cached_property
-    def sol_ix_list(self) -> tuple[SolTxIxMetaInfo, ...]:
+    def sol_ix_list(self) -> Sequence[SolTxIxMetaInfo]:
         raw_ix_list = self._rpc_message.instructions
         return tuple([SolTxIxMetaInfo.from_raw(self, idx, None, ix) for idx, ix in enumerate(raw_ix_list)])
 
-    def sol_inner_ix_list(self, tx_ix: SolTxIxMetaInfo) -> tuple[SolTxIxMetaInfo, ...]:
+    def sol_inner_ix_list(self, tx_ix: SolTxIxMetaInfo) -> Sequence[SolTxIxMetaInfo]:
         inner_ix_list = self._inner_ix_list
         if tx_ix.sol_ix_idx >= len(inner_ix_list):
             _LOG.error("%s: cannot find an inner ix %s", self.to_string(), tx_ix.sol_ix_idx)
@@ -82,7 +83,7 @@ class SolTxMetaInfo:
         return ix_log.inner_log_list[tx_ix.sol_inner_ix_idx]
 
     @cached_property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
+    def account_key_list(self) -> Sequence[SolPubKey]:
         key_list = list(map(lambda a: SolPubKey.from_raw(a), self._rpc_message.account_keys))
         loaded_addr_list = self._rpc_meta.loaded_addresses
         if loaded_addr_list is not None:
@@ -91,7 +92,7 @@ class SolTxMetaInfo:
         return tuple(key_list)
 
     @cached_property
-    def alt_address_list(self) -> tuple[SolPubKey, ...]:
+    def alt_address_list(self) -> Sequence[SolPubKey]:
         alt_list = getattr(self._rpc_message, "address_table_lookups", tuple())
         return tuple(map(lambda a: SolPubKey.from_raw(a.account_key), alt_list))
 
@@ -114,12 +115,12 @@ class SolTxMetaInfo:
     # protected:
 
     @cached_property
-    def _inner_ix_list(self) -> tuple[tuple[SolTxIxMetaInfo, ...], ...]:
+    def _inner_ix_list(self) -> Sequence[Sequence[SolTxIxMetaInfo]]:
         raw_inner_ix_list = self._rpc_meta.inner_instructions
         if raw_inner_ix_list is None:
             return tuple()
 
-        inner_ix_list: list[tuple[SolTxIxMetaInfo, ...]] = [tuple() for _ in self.sol_ix_list]
+        inner_ix_list: list[Sequence[SolTxIxMetaInfo]] = [tuple() for _ in self.sol_ix_list]
         for raw_inner_ix in raw_inner_ix_list:
             idx = raw_inner_ix.index
             raw_ix_list = raw_inner_ix.instructions
@@ -144,7 +145,7 @@ class SolTxIxMetaInfo:
 
     # protected:
     _rpc_tx_ix: SolRpcTxIxInfo | None
-    _tx_acct_key_list: tuple[SolPubKey, ...]
+    _tx_acct_key_list: Sequence[SolPubKey]
 
     _default: typing.ClassVar[SolTxIxMetaInfo | None] = None
 
@@ -209,7 +210,7 @@ class SolTxIxMetaInfo:
         return self._tx_acct_key_list[self._rpc_tx_ix.program_id_index]
 
     @cached_property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
+    def account_key_list(self) -> Sequence[SolPubKey]:
         return tuple([self._tx_acct_key_list[idx] for idx in self._rpc_tx_ix.accounts])
 
 

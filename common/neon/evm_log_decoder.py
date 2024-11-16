@@ -258,14 +258,14 @@ class _NeonTxEventDraft:
 class _NeonEvmLogDecoder(abc.ABC):
     @classmethod
     @abc.abstractmethod
-    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: tuple[str, ...]) -> None: ...
+    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None: ...
 
 
 class _NeonEvmReturnLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RETURN"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """Unpacks base64-encoded return data"""
         if not log.tx_return.is_empty:
             _LOG.error("%s is already exist!", cls.name)
@@ -293,7 +293,7 @@ class _NeonEvmGasLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "GAS"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """GAS <32 bytes le iteration gas> <32 bytes le total gas>"""
         if not log.tx_ix_gas.is_empty:
             _LOG.warning("%s is already exist!", cls.name)
@@ -315,7 +315,7 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "STEPS"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks number of evm steps:
         STEP <32-bytes-le - the number of iteration EVM steps> <32-bytes-le - the total number of EVM steps>
@@ -340,7 +340,7 @@ class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks Neon reset of all processed EVM steps:
         RESET
@@ -359,7 +359,7 @@ class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "INVALID_REVISION"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks Neon event about changed account:
         INVALID_REVISION Solana-address
@@ -387,7 +387,7 @@ class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "HASH"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks Neon transaction hash:
         HASH neon_tx_hash
@@ -411,7 +411,7 @@ class _NeonEvmMinerDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "MINER"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks address of the miner of the instruction:
         MINER address
@@ -432,7 +432,7 @@ class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "LOG"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks base64-encoded event data:
         LOG0 address [0] data
@@ -476,7 +476,7 @@ class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
     }
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks base64-encoded event data:
         ENTER CALL <20 bytes contract address>
@@ -517,7 +517,7 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
     }
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
         """
         Unpacks base64-encoded event data:
         EXIT STOP
@@ -564,6 +564,7 @@ class NeonEvmLogDecoder:
         _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,
         _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
+        _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,

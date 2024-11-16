@@ -1,5 +1,7 @@
 import json
 
+from typing import Sequence
+
 from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg, SolAltAccountInfo
 from common.solana.commit_level import SolCommit
@@ -58,7 +60,7 @@ class SolAltFunc:
         print(json.dumps(obj, indent=2))
 
     @staticmethod
-    async def get_alt_list(sol_client: SolClient, owner: SolPubKey) -> tuple[SolAccountModel, ...]:
+    async def get_alt_list(sol_client: SolClient, owner: SolPubKey) -> Sequence[SolAccountModel]:
         return await sol_client.get_prog_account_list(
             prg_key=SolAltProg.ID,
             offset=0,

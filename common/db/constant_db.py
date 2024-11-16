@@ -60,7 +60,7 @@ class ConstantDb(BaseDbTable):
             full_list_sql,
         )
 
-    async def get_key_list(self, ctx: DbTxCtx) -> tuple[str, ...]:
+    async def get_key_list(self, ctx: DbTxCtx) -> Sequence[str]:
         rec_list: list[_Record] = await self._fetch_all(ctx, self._key_list_query, None)
         return tuple([rec.key for rec in rec_list])
 
@@ -69,7 +69,7 @@ class ConstantDb(BaseDbTable):
             return default
         return int(rec.value, 10)
 
-    async def get_int_list(self, ctx, key_list: Sequence[str], default: int) -> tuple[int, ...]:
+    async def get_int_list(self, ctx, key_list: Sequence[str], default: int) -> Sequence[int]:
         value_dict: dict[str, int] = {key: default for key in key_list}
         rec_list = await self._fetch_all(ctx, self._get_query, _ByKey(list(key_list)))
         for rec in rec_list:

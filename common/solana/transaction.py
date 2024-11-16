@@ -68,7 +68,7 @@ class SolTx(abc.ABC):
         self._build_legacy_tx(recent_blockhash=value, ix_list=self._decode_ix_list())
 
     @property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
+    def account_key_list(self) -> Sequence[SolPubKey]:
         return self._get_account_key_list()
 
     @property
@@ -142,7 +142,7 @@ class SolTx(abc.ABC):
         return SolBlockHash.from_raw(block_hash)
 
     @reset_cached_method
-    def _get_account_key_list(self) -> tuple[SolPubKey, ...]:
+    def _get_account_key_list(self) -> Sequence[SolPubKey]:
         return tuple([SolPubKey.from_raw(key) for key in self._solders_legacy_tx.message.account_keys])
 
     def _build_legacy_tx(self, recent_blockhash: SolBlockHash | None, ix_list: Sequence[SolTxIx]) -> None:

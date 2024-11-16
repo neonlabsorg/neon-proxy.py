@@ -18,8 +18,8 @@ from common.utils.cached import cached_property
 from common.utils.pydantic import HexUIntField, RootModel
 from .api import RpcBlockRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyApi
-from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
 from ..base.rpc_api import RpcEthTxRequest
+from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
 
 
 class _RpcEthAccountModel(BaseJsonRpcModel):
@@ -68,7 +68,7 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
     numEvmSteps: int
     gasUsed: int
     numIterations: int
-    solanaAccounts: tuple[_RpcSolanaAccountModel, ...]
+    solanaAccounts: list[_RpcSolanaAccountModel]
 
     @classmethod
     def from_raw(cls, raw: _RpcEmulatorResp | EmulNeonCallResp | None) -> Self | None:
@@ -86,7 +86,7 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
                 numEvmSteps=raw.evm_step_cnt,
                 gasUsed=raw.used_gas,
                 numIterations=raw.iter_cnt,
-                solanaAccounts=tuple([_RpcSolanaAccountModel.from_raw(a) for a in raw.raw_meta_list]),
+                solanaAccounts=[_RpcSolanaAccountModel.from_raw(a) for a in raw.raw_meta_list],
             )
 
         raise ValueError(f"Wrong input type: {type(raw).__name__}")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import pickle
 from dataclasses import dataclass
+from typing import Sequence
 
 from pydantic import Field
 from typing_extensions import Self
@@ -108,7 +109,7 @@ class NeonTxDb(HistoryDbTable):
             select_by_index_sql,
         )
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [_Record.from_tx(tx.neon_tx, tx.neon_tx_rcpt) for b in block_list for tx in b.iter_done_neon_tx()]
         await self._insert_row_list(ctx, rec_list)
 
@@ -141,7 +142,7 @@ class NeonTxDb(HistoryDbTable):
         )
         return _RecordWithBlock.to_meta(rec)
 
-    async def get_tx_list_by_slot(self, ctx: DbTxCtx, slot: int) -> tuple[NeonTxMetaModel, ...]:
+    async def get_tx_list_by_slot(self, ctx: DbTxCtx, slot: int) -> Sequence[NeonTxMetaModel]:
         rec_list = await self._fetch_all(
             ctx,
             self._select_by_block_query,

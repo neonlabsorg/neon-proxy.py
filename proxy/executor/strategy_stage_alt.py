@@ -26,7 +26,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         self._alt_dict: dict[SolPubKey, SolAltInfo] = dict()
         self._alt_builder = SolAltTxBuilder(self._ctx.sol_client, self._ctx.payer, self._cu_price)
 
-    def get_tx_name_list(self) -> tuple[str, ...]:
+    def get_tx_name_list(self) -> Sequence[str]:
         return self._alt_builder.tx_name_list
 
     def set_legacy_tx(self, legacy_tx: SolLegacyTx) -> None:

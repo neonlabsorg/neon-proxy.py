@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Generator
+from typing import Generator, Sequence
 
 from common.config.config import Config
 from common.solana.block import SolRpcBlockInfo
@@ -61,7 +61,7 @@ class SolBlockNetCache:
         if head_block:
             yield head_block
 
-    def _build_block_queue(self, ctx: SolNeonDecoderCtx, root_slot: int, slot: int) -> tuple[SolRpcBlockInfo, ...]:
+    def _build_block_queue(self, ctx: SolNeonDecoderCtx, root_slot: int, slot: int) -> Sequence[SolRpcBlockInfo]:
         child_slot = 0
         block_queue: list[SolRpcBlockInfo] = list()
         while slot >= root_slot:
@@ -89,7 +89,7 @@ class SolBlockNetCache:
             raise SolHistoryError(msg)
         raise SolFailedHistoryError(slot, msg)
 
-    async def _cache_block_list(self, ctx: SolNeonDecoderCtx, base_slot: int) -> tuple[int, ...]:
+    async def _cache_block_list(self, ctx: SolNeonDecoderCtx, base_slot: int) -> Sequence[int]:
         slot_list = await self._get_slot_list(ctx, base_slot)
         self._extend_cache_with_empty_blocks(ctx, base_slot, slot_list)
 
@@ -109,7 +109,7 @@ class SolBlockNetCache:
         return slot_list
 
     def _extend_cache_with_empty_blocks(
-        self, ctx: SolNeonDecoderCtx, base_slot: int, slot_list: tuple[int, ...]
+        self, ctx: SolNeonDecoderCtx, base_slot: int, slot_list: Sequence[int]
     ) -> None:
         assert slot_list[0] >= base_slot
 
@@ -137,7 +137,7 @@ class SolBlockNetCache:
     def _calc_idx(self, slot: int) -> int:
         return slot - self._start_slot
 
-    async def _get_slot_list(self, ctx: SolNeonDecoderCtx, base_slot: int) -> tuple[int, ...]:
+    async def _get_slot_list(self, ctx: SolNeonDecoderCtx, base_slot: int) -> Sequence[int]:
         stop_slot = self._calc_stop_slot(ctx, base_slot)
         if len(slot_list := await self._sol_client.get_slot_list(base_slot, stop_slot, ctx.sol_commit)) < 2:
             self._raise_error(ctx, base_slot, f"No slots after the slot {base_slot}")
