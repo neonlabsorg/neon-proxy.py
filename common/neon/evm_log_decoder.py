@@ -564,7 +564,6 @@ class NeonEvmLogDecoder:
         _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,
         _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
-        _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,

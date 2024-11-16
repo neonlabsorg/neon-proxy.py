@@ -339,14 +339,7 @@ class _RpcBlockResp(BaseJsonRpcModel):
     _sha3uncle_hash: Final[EthHash32Field] = "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
 
     @classmethod
-    def from_raw(
-        cls,
-        block: NeonBlockHdrModel,
-        tx_list: Sequence[NeonTxMetaModel],
-        full: bool,
-        base_fee_per_gas: int,
-    ) -> Self:
-    def from_raw(cls, block: NeonBlockHdrModel, tx_list: tuple[NeonTxMetaModel, ...], full: bool) -> Self:
+    def from_raw(cls, block: NeonBlockHdrModel, tx_list: Sequence[NeonTxMetaModel], full: bool) -> Self:
         is_pending = block.commit == EthCommit.Pending
 
         total_gas_used = 0

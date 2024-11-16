@@ -288,7 +288,7 @@ class _Record:
     def _encode_event_list(neon_rcpt: NeonTxReceiptModel) -> bytes | None:
         if not neon_rcpt.event_list:
             return None
-        return bytes(_NeonTxEventModelList(list(neon_rcpt.event_list)).to_json(), "utf-8")
+        return bytes(_NeonTxEventModelList(root=neon_rcpt.event_list).to_json(), "utf-8")
 
 
 @dataclass(frozen=True)

@@ -4,15 +4,13 @@ import dataclasses
 import itertools
 import logging
 from dataclasses import dataclass
-from typing import Final, ClassVar, Sequence
+from typing import Final, ClassVar
 
 from typing_extensions import Self
 
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
-from common.neon_rpc.api import HolderAccountModel
 from common.solana.cb_program import SolCbProg
-from common.solana.transaction import SolTx
-from common.solana.transaction_legacy import SolLegacyTx
+from common.solana.instruction import SolTxIx
 from common.solana_rpc.errors import (
     SolNoMoreRetriesError,
     SolCbExceededError,
@@ -20,7 +18,6 @@ from common.solana_rpc.errors import (
     SolUnknownReceiptError,
 )
 from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
-from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from .holder_validator import HolderAccountValidator
 from .strategy_base import BaseTxStrategy, SolTxCfg
@@ -45,12 +42,12 @@ class SolIterListCfg(SolTxCfg):
 
 
 class _SolTxListSender(SolTxListSender):
-    def __init__(self, *args, holder_account_validator: HolderAccountValidator) -> None:
+    def __init__(self, *args, holder: HolderAccountValidator) -> None:
         super().__init__(*args)
-        self._holder_acct_validator = holder_account_validator
+        self._holder_validator = holder
 
     async def _is_done(self) -> bool:
-        return await self._holder_acct_validator.is_finalized()
+        return await self._holder_validator.is_finalized()
 
 
 class IterativeTxStrategy(BaseTxStrategy):
@@ -67,20 +64,12 @@ class IterativeTxStrategy(BaseTxStrategy):
     @cached_property
     def _sol_tx_list_sender(self) -> _SolTxListSender:
         return _SolTxListSender(
-            self._ctx.cfg,
-            self._ctx.stat_client,
-            SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client),
+            self._cfg,
+            self._stat_client,
+            self._ctx.sol_watch_session,
             self._ctx.sol_tx_list_signer,
-            holder_account_validator=self._holder_acct_validator,
+            holder=self._ctx.holder_validator,
         )
-
-    @cached_property
-    def _holder_acct_validator(self) -> HolderAccountValidator:
-        return HolderAccountValidator(self._ctx)
-
-    @property
-    def _holder_acct(self) -> HolderAccountModel:
-        return self._holder_acct_validator.holder_account
 
     async def execute(self) -> ExecTxRespCode:
         assert self.is_valid
@@ -89,12 +78,12 @@ class IterativeTxStrategy(BaseTxStrategy):
         fail_retry_cnt = 0
 
         for retry in itertools.count():
-            if await self._holder_acct_validator.is_finalized():
+            if await self._ctx.holder_validator.is_finalized():
                 return ExecTxRespCode.Failed
 
-            if evm_step_cnt == self._holder_acct.evm_step_cnt:
+            if evm_step_cnt == self._ctx.holder.evm_step_cnt:
                 fail_retry_cnt += 1
-                if fail_retry_cnt > self._ctx.cfg.retry_on_fail:
+                if fail_retry_cnt > self._cfg.retry_on_fail:
                     raise SolNoMoreRetriesError()
 
             elif evm_step_cnt != -1:
@@ -102,11 +91,11 @@ class IterativeTxStrategy(BaseTxStrategy):
                     "retry %d: the number of completed EVM steps has changed (%d != %d)",
                     retry,
                     evm_step_cnt,
-                    self._holder_acct.evm_step_cnt,
+                    self._ctx.holder.evm_step_cnt,
                 )
                 fail_retry_cnt = 0
 
-            evm_step_cnt = self._holder_acct.evm_step_cnt
+            evm_step_cnt = self._ctx.holder.evm_step_cnt
 
             try:
                 await self._recheck_tx_list(self.name)
@@ -121,7 +110,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 pass
 
     async def cancel(self) -> ExecTxRespCode | None:
-        if not await self._holder_acct_validator.is_active():
+        if not await self._ctx.holder_validator.is_active():
             return ExecTxRespCode.Failed
         elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed
@@ -130,45 +119,11 @@ class IterativeTxStrategy(BaseTxStrategy):
         # generate cancel tx with the default CU budget
         self._reset_to_def()
 
-        max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
         base_cfg = self._init_sol_tx_cfg(name=self._cancel_name)
-        base_tx = self._build_cancel_tx(base_cfg)
+        ix = self._ctx.neon_prog.make_cancel_ix()
 
-        # get optimal CU budget
-        optimal_cfg = await self._calc_cu_budget("cancel", base_cfg, base_tx)
-
-        # if it is impossible to calculate the optimal CUs limit,
-        #  switch to default mode with the decreased CU limit in 2 times,
-        #  it should be enough because the cancel ix do only 3 steps:
-        #     1. unpack holder
-        #     2. return not-used gas-tokens
-        #     3. mark holder as finalized
-        if optimal_cfg.is_empty:
-            cu_limit = max_cu_limit // 2
-            _LOG.debug("fail to calculate an optimal CU budget for 'cancel', use the half (%s) CUs", cu_limit)
-            optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=cu_limit)
-
-        # two attempts to cancel tx
-        for retry in range(2):
-            try:
-                tx = self._build_cancel_tx(optimal_cfg)
-                if await self._send_tx_list(tx):
-                    return ExecTxRespCode.Failed
-
-            except SolCbExceededError:
-                if self._def_cu_limit:
-                    raise SolCbExceededCriticalError()
-
-                _LOG.debug(
-                    "fail to execute 'cancel' with the half (%s) CUs, use the maximum (%s) CUs",
-                    optimal_cfg.cu_limit,
-                    self._def_cu_limit,
-                )
-                self._def_cu_limit = max_cu_limit
-                optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=max_cu_limit)
-
-        _LOG.error("failed!? cancel tx")
-        return None
+        await self._emulate_and_send_single_tx("cancel", ix, base_cfg)
+        return ExecTxRespCode.Failed
 
     def _reset_to_def(self) -> None:
         self._def_ix_mode = NeonIxMode.Unknown
@@ -181,11 +136,14 @@ class IterativeTxStrategy(BaseTxStrategy):
             try:
                 if self._has_one_iter():
                     _LOG.debug("just 1 iteration")
-                    iter_list_cfg = await self._get_single_iter_list_cfg()
-                elif not (iter_list_cfg := await self._get_iter_list_cfg()):
+                    return await self._send_single_iter()
+
+                elif not (optimal_cfg := await self._get_iter_list_cfg()):
                     return False
 
-                tx_list = tuple(self._build_tx(iter_list_cfg) for _ in range(iter_list_cfg.iter_cnt))
+                tx_list = tuple(
+                    self._build_cu_tx(self._build_tx_ix(optimal_cfg), optimal_cfg) for _ in range(optimal_cfg.iter_cnt)
+                )
                 return await self._send_tx_list(tx_list)
 
             except SolUnknownReceiptError:
@@ -214,6 +172,11 @@ class IterativeTxStrategy(BaseTxStrategy):
                     )
                     raise SolCbExceededCriticalError()
 
+    async def _send_single_iter(self, ix_mode=NeonIxMode.Unknown) -> bool:
+        base_cfg = self._init_sol_tx_cfg(ix_mode=ix_mode)
+        ix = self._build_tx_ix(base_cfg)
+        return await self._emulate_and_send_single_tx("single", ix, base_cfg)
+
     async def _get_iter_list_cfg(self) -> SolIterListCfg | None:
         evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
 
@@ -240,21 +203,21 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         evm_step_cnt = max(self._ctx.total_evm_step_cnt, evm_step_cnt_per_iter)
         for retry in range(7):
-            if await self._holder_acct_validator.is_finalized():
+            if await self._ctx.holder_validator.is_finalized():
                 return None
 
             _LOG.debug(
                 "retry %d: %d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
                 retry,
                 self._ctx.total_evm_step_cnt,
-                self._holder_acct.evm_step_cnt,
+                self._ctx.holder.evm_step_cnt,
                 evm_step_cnt,
             )
 
             total_evm_step_cnt = self._calc_total_evm_step_cnt()
             exec_iter_cnt = (total_evm_step_cnt // evm_step_cnt) + (1 if (total_evm_step_cnt % evm_step_cnt) > 1 else 0)
 
-            if self._ctx.cfg.mp_send_batch_tx:
+            if self._cfg.mp_send_batch_tx:
                 # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
                 iter_cnt = max(exec_iter_cnt + self._calc_wrap_iter_cnt(), 1)
             else:
@@ -271,8 +234,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             evm_step_cnt = max(total_evm_step_cnt // max(exec_iter_cnt, 1) + 1, evm_step_cnt_per_iter)
 
             base_cfg = self._init_sol_tx_cfg(evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
-            tx_list = tuple(self._build_tx(base_cfg) for _ in range(iter_cnt))
-            optimal_cfg = await self._calc_cu_budget(f"retry {retry}", base_cfg, tx_list)
+            optimal_cfg = await self._calc_cu_budget(f"retry {retry}", base_cfg)
             if not optimal_cfg.is_empty:
                 return optimal_cfg
             elif optimal_cfg.evm_step_cnt == evm_step_cnt:
@@ -281,14 +243,10 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return await self._get_def_iter_list_cfg()
 
-    async def _calc_cu_budget(
-        self,
-        hdr: str,
-        base_cfg: SolIterListCfg,
-        tx_list: Sequence[SolTx] | SolTx,
-    ) -> SolIterListCfg:
+    async def _calc_cu_budget(self, hdr: str, base_cfg: SolIterListCfg) -> SolIterListCfg:
         evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
 
+        tx_list = tuple(self._build_cu_tx(self._build_tx_ix(base_cfg), base_cfg) for _ in range(base_cfg.iter_cnt))
         # emulate
         try:
             emul_tx_list = await self._emulate_tx_list(tx_list)
@@ -301,25 +259,15 @@ class IterativeTxStrategy(BaseTxStrategy):
         threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)  # 95% of the maximum
         evm_step_cnt: Final[int] = base_cfg.evm_step_cnt
 
-        if not isinstance(emul_tx_list, Sequence):
-            iter_cnt = 1
-            used_cu_limit = emul_tx_list.meta.used_cu_limit
-        else:
-            iter_cnt = max(next((idx for idx, x in enumerate(emul_tx_list) if x.meta.error), len(emul_tx_list)), 1)
-            emul_tx_list = emul_tx_list[:iter_cnt]
-            used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
-
-        if not isinstance(emul_tx_list, Sequence):
-            gas_limit = self._find_gas_limit(emul_tx_list)
-        else:
-            gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
+        iter_cnt = max(next((idx for idx, x in enumerate(emul_tx_list) if x.meta.error), len(emul_tx_list)), 1)
+        emul_tx_list = emul_tx_list[:iter_cnt]
+        used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
 
         _LOG.debug(
-            "%s: %d EVM steps, %d CUs, %s GAS, %d executed iterations, %d success iterations",
+            "%s: %d EVM steps, %d CUs, %d executed iterations, %d success iterations",
             hdr,
             evm_step_cnt,
             used_cu_limit,
-            gas_limit,
             base_cfg.iter_cnt,
             iter_cnt,
         )
@@ -331,6 +279,8 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
+
+        gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
 
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 100_000
@@ -352,7 +302,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         evm_step_cnt: Final[int] = self._ctx.evm_step_cnt_per_iter
         total_evm_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
 
-        if self._ctx.cfg.mp_send_batch_tx:
+        if self._cfg.mp_send_batch_tx:
             exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt, 1)
             iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt()
         else:
@@ -367,7 +317,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             def_cfg.cu_limit,
             def_cfg.iter_cnt,
             total_evm_step_cnt,
-            self._holder_acct.evm_step_cnt,
+            self._ctx.holder.evm_step_cnt,
         )
         return def_cfg
 
@@ -379,20 +329,6 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return True
 
-    async def _get_single_iter_list_cfg(self) -> SolIterListCfg | None:
-        base_cfg = self._init_sol_tx_cfg()
-        base_tx = self._build_tx(base_cfg)
-
-        optimal_cfg = await self._calc_cu_budget("single", base_cfg, base_tx)
-        if not optimal_cfg.is_empty:
-            return optimal_cfg
-
-        # if it's impossible to optimize the CU budget, switch to default mode with the decreased CU limit in 2 times
-        cu_limit = SolCbProg.MaxCuLimit // 2
-        _LOG.debug("single: %s EVM steps, %s CUs", base_cfg.evm_step_cnt, cu_limit)
-        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=cu_limit)
-        return optimal_cfg
-
     def _init_sol_tx_cfg(
         self,
         *,
@@ -400,9 +336,9 @@ class IterativeTxStrategy(BaseTxStrategy):
         iter_cnt: int = 1,
         **kwargs,
     ) -> SolIterListCfg:
-        ix_mode = self._calc_ix_mode()
-
+        ix_mode = kwargs.pop("ix_mode", NeonIxMode.Unknown) or self._calc_ix_mode()
         cu_limit = kwargs.pop("cu_limit", self._def_cu_limit) or SolCbProg.MaxCuLimit
+
         tx_cfg = super()._init_sol_tx_cfg(ix_mode=ix_mode, cu_limit=cu_limit, **kwargs)
 
         evm_step_cnt = max(evm_step_cnt, self._ctx.evm_step_cnt_per_iter)
@@ -422,7 +358,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return base_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
 
     def _calc_total_evm_step_cnt(self) -> int:
-        return max(self._ctx.total_evm_step_cnt - self._holder_acct.evm_step_cnt, 0)
+        return max(self._ctx.total_evm_step_cnt - self._ctx.holder.evm_step_cnt, 0)
 
     def _calc_wrap_iter_cnt(self) -> int:
         ix_mode = self._calc_ix_mode()
@@ -466,14 +402,11 @@ class IterativeTxStrategy(BaseTxStrategy):
         )
         # fmt: on
 
-    def _build_tx(self, tx_cfg: SolIterListCfg) -> SolLegacyTx:
+    def _build_tx_ix(self, tx_cfg: SolIterListCfg) -> SolTxIx:
         step_cnt = tx_cfg.evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
-        return self._build_cu_tx(prog.make_tx_step_from_data_ix(tx_cfg.ix_mode, step_cnt, uniq_idx), tx_cfg)
-
-    def _build_cancel_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_cancel_ix(), tx_cfg)
+        return prog.make_tx_step_from_data_ix(tx_cfg.ix_mode, step_cnt, uniq_idx)
 
     async def _decode_neon_tx_return(self) -> ExecTxRespCode | None:
         tx_state_list = self._sol_tx_list_sender.tx_state_list
@@ -500,7 +433,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         if has_already_finalized:
             return ExecTxRespCode.Failed
 
-        if await self._holder_acct_validator.is_finalized():
+        if await self._ctx.holder_validator.is_finalized():
             return ExecTxRespCode.Failed
 
         return None
