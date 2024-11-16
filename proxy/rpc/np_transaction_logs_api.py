@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import ClassVar
+from typing import ClassVar, Sequence
 
 from pydantic import Field
 
@@ -22,7 +22,7 @@ class _RpcLogListRequest(BaseJsonRpcModel):
     topicList: list[EthHash32Field | list[EthHash32Field]] = Field(default_factory=list, validation_alias="topics")
 
     @cached_property
-    def address_list(self) -> tuple[EthAddress, ...]:
+    def address_list(self) -> Sequence[EthAddress]:
         if isinstance(self.address, list):
             return tuple(filter(lambda a: not a.is_empty, self.address))
         if not self.address.is_empty:
@@ -30,11 +30,11 @@ class _RpcLogListRequest(BaseJsonRpcModel):
         return tuple()
 
     @cached_property
-    def topic_list(self) -> tuple[tuple[EthHash32, ...], ...]:
+    def topic_list(self) -> Sequence[Sequence[EthHash32]]:
         if not self.topicList:
             return tuple()
 
-        topic_list: list[tuple[EthHash32, ...]] = list()
+        topic_list: list[Sequence[EthHash32]] = list()
         for topic in self.topicList:
             if isinstance(topic, list):
                 topic = tuple(filter(lambda t: not t.is_empty, topic))
@@ -78,7 +78,7 @@ class NpTxLogsApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::TransactionLogs"
 
     @NeonProxyApi.method(name="eth_getLogs")
-    async def get_eth_logs(self, params: _RpcLogListRequest) -> tuple[RpcEthTxEventModel, ...]:
+    async def get_eth_logs(self, params: _RpcLogListRequest) -> Sequence[RpcEthTxEventModel]:
         is_empty, from_block, to_block = await self._get_slot_range(params)
         if is_empty:
             return tuple()
@@ -87,13 +87,13 @@ class NpTxLogsApi(NeonProxyApi):
         return tuple([RpcEthTxEventModel.from_raw(e) for e in event_list if not e.is_hidden])
 
     @NeonProxyApi.method(name="neon_getLogs")
-    async def get_neon_logs(self, params: _RpcLogListRequest) -> tuple[RpcNeonTxEventModel, ...]:
+    async def get_neon_logs(self, params: _RpcLogListRequest) -> Sequence[RpcNeonTxEventModel]:
         is_empty, from_block, to_block = await self._get_slot_range(params)
         if is_empty:
-            return tuple()
+            return list()
 
         event_list = await self._db.get_event_list(from_block, to_block, params.address_list, params.topic_list)
-        return tuple([RpcNeonTxEventModel.from_raw(e) for e in event_list])
+        return [RpcNeonTxEventModel.from_raw(e) for e in event_list]
 
     async def _get_slot_range(self, params: _RpcLogListRequest) -> tuple[bool, int | None, int | None]:
         if not params.blockHash.is_empty:

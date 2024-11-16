@@ -155,7 +155,7 @@ class SolClient(HttpClient):
             data=request.to_json(),
             stat_client=self._stat_client,
             stat_name=self._stat_name,
-            method=request.__class__.__name__[:1].lower() + request.__class__.__name__[1:]
+            method=request.__class__.__name__[:1].lower() + request.__class__.__name__[1:],
         )
 
         with request:
@@ -228,7 +228,7 @@ class SolClient(HttpClient):
         address_list: Sequence[SolPubKey],
         size: int | None = None,
         commit=SolCommit.Confirmed,
-    ) -> tuple[SolAccountModel, ...]:
+    ) -> Sequence[SolAccountModel]:
         data_slice = None if not size else _SoldersDataSliceCfg(0, size)
         cfg = _SoldersAcctInfoCfg(
             _SoldersAcctEnc.Base64,
@@ -239,7 +239,7 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetAcctInfoListResp)
         return tuple([SolAccountModel.from_raw(addr, raw) for addr, raw in zip(address_list, resp.value)])
 
-    async def get_slot_list(self, start_slot: int, stop_slot, commit=SolCommit.Confirmed) -> tuple[int, ...]:
+    async def get_slot_list(self, start_slot: int, stop_slot, commit=SolCommit.Confirmed) -> Sequence[int]:
         req = _SoldersGetSlotList(start_slot, stop_slot, commit.to_rpc_commit(), self._get_next_id())
         resp = await self._send_request(req, _SoldersGetSlotListResp)
         return tuple(resp.value)
@@ -343,7 +343,7 @@ class SolClient(HttpClient):
         address: SolPubKey,
         limit: int,
         commit=SolCommit.Confirmed,
-    ) -> tuple[SolRpcTxSigInfo, ...]:
+    ) -> Sequence[SolRpcTxSigInfo]:
         cfg = _SoldersTxSigCfg(limit=limit, commitment=commit.to_rpc_commit())
         req = _SoldersGetTxSigForAddr(address, cfg, self._get_next_id())
         resp = await self._send_request(req, _SoldersGetTxSigForAddrResp)
@@ -364,7 +364,7 @@ class SolClient(HttpClient):
         tx_sig_list: Sequence[SolTxSig],
         commit=SolCommit.Confirmed,
         json_format=False,
-    ) -> tuple[SolRpcTxSlotInfo | None, ...]:
+    ) -> Sequence[SolRpcTxSlotInfo | None]:
         if not tx_sig_list:
             return tuple()
         tx_list = await asyncio.gather(*[self.get_tx(tx_sig, commit, json_format) for tx_sig in tx_sig_list])
@@ -401,7 +401,7 @@ class SolClient(HttpClient):
         tx_list: Sequence[SolTx],
         skip_preflight: bool,
         max_retry_cnt: int | None,
-    ) -> tuple[SolRpcSendTxResultInfo | None, ...]:
+    ) -> Sequence[SolRpcSendTxResultInfo | None]:
         if not tx_list:
             return tuple()
         tx_sig_list = await asyncio.gather(*[self.send_tx(tx, skip_preflight, max_retry_cnt) for tx in tx_list])
@@ -444,7 +444,7 @@ class SolClient(HttpClient):
         filter_offset: int,
         filter_data: bytes,
         commit: SolCommit = SolCommit.Confirmed,
-    ) -> tuple[SolAccountModel, ...]:
+    ) -> Sequence[SolAccountModel]:
         data_slice = _SoldersDataSliceCfg(offset, size)
         acct_cfg = _SoldersAcctInfoCfg(
             _SoldersAcctEnc.Base64,

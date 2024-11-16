@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import ClassVar
+from typing import ClassVar, Sequence
 
 from pydantic import Field, AliasChoices
 from typing_extensions import Final, Self
@@ -231,9 +231,9 @@ class NpGasPriceApi(NeonProxyApi):
         block_cnt = min(block_cnt, _FEE_HISTORY_MAX_BLOCK_CNT)
 
         # Fetching the data about compute units on Solana.
-        block_cu_price_list: tuple[NeonBlockCuPriceInfo, ...] = tuple()
+        block_cu_price_list: Sequence[NeonBlockCuPriceInfo] = tuple()
         if is_reward_list:
-            block_cu_price_list: tuple[NeonBlockCuPriceInfo, ...] = await self._db.get_block_cu_price_list(
+            block_cu_price_list: Sequence[NeonBlockCuPriceInfo] = await self._db.get_block_cu_price_list(
                 block_cnt, latest_slot
             )
 
@@ -272,7 +272,7 @@ class NpGasPriceApi(NeonProxyApi):
         # if not enough, fetch base_fee_per_gas from Neon Transactions DB table and fill up the rest.
         if (not block_base_fee_list) or (block_base_fee_list[-1].slot > earliest_slot):
             query_slot: int = latest_slot if not block_base_fee_list else block_base_fee_list[-1].slot - 1
-            db_base_fee_list: tuple[NeonBlockBaseFeeInfo, ...] = await self._db.get_block_base_fee_list(
+            db_base_fee_list: Sequence[NeonBlockBaseFeeInfo] = await self._db.get_block_base_fee_list(
                 self._get_chain_id(ctx), block_cnt, query_slot
             )
             block_base_fee_list.extend(db_base_fee_list)
@@ -346,7 +346,7 @@ class NpGasPriceApi(NeonProxyApi):
 
     @staticmethod
     def _calc_priority_fee_list(
-        percentile_list: list[int], priority_fee_percentile_list: list[int], current_gas_price: int
+        percentile_list: Sequence[int], priority_fee_percentile_list: Sequence[int], current_gas_price: int
     ) -> list[int]:
         """
         Calculate the list of `percentiles` of priority fee rewards.

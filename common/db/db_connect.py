@@ -76,7 +76,7 @@ class DbConnection:
     async def stop(self) -> None:
         pass
 
-    async def sql_to_query(self, *sql) -> DbQueryBody | tuple[DbQueryBody, ...]:
+    async def sql_to_query(self, *sql) -> DbQueryBody | Sequence[DbQueryBody]:
         """
         Combine all parts of SQL into one bytes-string.
         It happens each time in the cursor.execute(), so the function is used to decrease the time of the execution.

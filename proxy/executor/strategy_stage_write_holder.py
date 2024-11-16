@@ -1,4 +1,4 @@
-from typing import ClassVar
+from typing import ClassVar, Sequence
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon_rpc.api import HolderAccountStatus
@@ -15,7 +15,7 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
         super().__init__(*args, **kwargs)
         self._holder_status = HolderAccountStatus.Empty
 
-    def get_tx_name_list(self) -> tuple[str, ...]:
+    def get_tx_name_list(self) -> Sequence[str]:
         if self._ctx.is_stuck_tx:
             return tuple()
         return tuple([self.name])

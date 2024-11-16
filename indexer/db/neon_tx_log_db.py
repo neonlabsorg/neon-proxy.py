@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 from typing_extensions import Self
 
@@ -35,7 +36,7 @@ class NeonTxLogDb(HistoryDbTable):
             block_table_name=self._block_table_name,
         )
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [
             _Record.from_event(event)
             for block in block_list
@@ -50,9 +51,9 @@ class NeonTxLogDb(HistoryDbTable):
         ctx: DbTxCtx,
         from_slot: int | None,
         to_slot: int | None,
-        address_list: tuple[EthAddress, ...],
-        topic_list: tuple[tuple[EthHash32, ...], ...],
-    ) -> tuple[NeonTxEventModel, ...]:
+        address_list: Sequence[EthAddress],
+        topic_list: Sequence[Sequence[EthHash32]],
+    ) -> Sequence[NeonTxEventModel]:
 
         query_list: list[DbSqlComposable] = [DbSql("1 = 1")]
         param_dict = dict()

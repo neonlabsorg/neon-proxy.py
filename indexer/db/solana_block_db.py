@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from typing import Sequence
 from typing_extensions import Self
 
 from common.config.constants import ONE_BLOCK_SEC
@@ -322,23 +323,23 @@ class SolBlockDb(HistoryDbTable):
         )
         return await self._block_from_value(ctx, None, slot_range, rec)
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [_Record.from_block_hdr(block.neon_block_hdr) for block in block_list]
         await self._insert_row_list(ctx, rec_list)
 
-    async def finalize_block_list(self, ctx: DbTxCtx, from_slot: int, to_slot: int, slot_list: tuple[int, ...]) -> None:
+    async def finalize_block_list(self, ctx: DbTxCtx, from_slot: int, to_slot: int, slot_list: Sequence[int]) -> None:
         by_slot_range = _BySlotRange(from_slot, to_slot, list(slot_list))
         await self._update_row(ctx, self._finalize_query, by_slot_range)
         await self._update_row(ctx, self._clean_query, by_slot_range)
 
-    async def activate_block_list(self, ctx: DbTxCtx, from_slot: int, slot_list: tuple[int, ...]) -> None:
+    async def activate_block_list(self, ctx: DbTxCtx, from_slot: int, slot_list: Sequence[int]) -> None:
         by_slot_range = _BySlotRange(from_slot, -1, list(slot_list))
         await self._update_row(ctx, self._deactivate_query, by_slot_range)
         await self._update_row(ctx, self._activate_query, by_slot_range)
 
     async def get_block_cu_price_list(
         self, ctx: DbTxCtx, block_cnt: int, latest_slot: int
-    ) -> tuple[NeonBlockCuPriceInfo, ...]:
+    ) -> Sequence[NeonBlockCuPriceInfo]:
         rec_list = await self._fetch_all(
             ctx,
             self._cu_price_list_query,

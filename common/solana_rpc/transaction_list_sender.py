@@ -74,7 +74,7 @@ class SolTxSendState:
 
 class SolTxListSigner(abc.ABC):
     @abc.abstractmethod
-    async def sign_tx_list(self, sol_tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]: ...
+    async def sign_tx_list(self, sol_tx_list: Sequence[SolTx]) -> Sequence[SolTx]: ...
 
 
 class SolTxListSender:
@@ -151,7 +151,7 @@ class SolTxListSender:
         return await self._send()
 
     @property
-    def tx_state_list(self) -> tuple[SolTxSendState, ...]:
+    def tx_state_list(self) -> Sequence[SolTxSendState]:
         return tuple(list(self._tx_state_dict.values()))
 
     @property

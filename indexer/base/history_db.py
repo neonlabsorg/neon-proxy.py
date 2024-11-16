@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from typing import Sequence
+
 from common.db.base_db_table import BaseDbTable
 from common.db.db_connect import DbQueryBody, DbSqlParam, DbSql, DbTxCtx
 
@@ -34,5 +36,5 @@ class HistoryDbTable(BaseDbTable):
         )
         self._clean_query = await self._db.sql_to_query(clean_sql)
 
-    async def finalize_block_list(self, ctx: DbTxCtx, from_slot: int, to_slot: int, slot_list: tuple[int, ...]) -> None:
+    async def finalize_block_list(self, ctx: DbTxCtx, from_slot: int, to_slot: int, slot_list: Sequence[int]) -> None:
         await self._update_row(ctx, self._clean_query, _BySlotRange(from_slot, to_slot, list(slot_list)))

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Sequence
 
 from common.config.config import Config
 from common.db.constant_db import ConstantDb
@@ -204,7 +204,7 @@ class IndexerDb:
     def is_reindexing_mode(self) -> bool:
         return self._is_reindexing_mode
 
-    async def submit_block_list(self, min_used_slot: int, neon_block_queue: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def submit_block_list(self, min_used_slot: int, neon_block_queue: Sequence[NeonIndexedBlockInfo]) -> None:
         async def _tx(ctx: DbTxCtx) -> None:
             await self._submit_new_block_list(ctx, neon_block_queue)
             if self.is_reindexing_mode:
@@ -233,7 +233,7 @@ class IndexerDb:
 
         await self._db_conn.run_tx(_db_tx)
 
-    async def _submit_new_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def _submit_new_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         new_block_list = tuple([block for block in block_list if not block.is_done])
         if not new_block_list:
             return
@@ -254,7 +254,7 @@ class IndexerDb:
             block.mark_done()
 
     async def _finalize_block_list(
-        self, ctx: DbTxCtx, last_block: NeonIndexedBlockInfo, block_queue: tuple[NeonIndexedBlockInfo, ...]
+        self, ctx: DbTxCtx, last_block: NeonIndexedBlockInfo, block_queue: Sequence[NeonIndexedBlockInfo]
     ) -> None:
         for db in self._stuck_db_list:
             await db.set_obj_list(ctx, last_block)
@@ -263,7 +263,7 @@ class IndexerDb:
         if slot_list:
             await self._finalize_slot_list(ctx, last_block.slot, slot_list)
 
-    async def _finalize_slot_list(self, ctx, last_slot: int, slot_list: tuple[int, ...]) -> None:
+    async def _finalize_slot_list(self, ctx, last_slot: int, slot_list: Sequence[int]) -> None:
         block_range = self._finalized_slot, last_slot, slot_list
         for db_table in self._history_db_list:
             # it doesn't matter in which order will be removed old records from secondary tables,
@@ -272,7 +272,7 @@ class IndexerDb:
         # the branch switching should be atomic
         await self._sol_block_db.finalize_block_list(ctx, *block_range)
 
-    async def _activate_block_list(self, ctx: DbTxCtx, block_queue: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def _activate_block_list(self, ctx: DbTxCtx, block_queue: Sequence[NeonIndexedBlockInfo]) -> None:
         slot_list = tuple([b.slot for b in block_queue if not b.is_finalized])
         if slot_list:
             await self._sol_block_db.activate_block_list(ctx, self._finalized_slot, slot_list)
@@ -333,11 +333,11 @@ class IndexerDb:
     def get_min_used_slot(self) -> int:
         return self._min_used_slot or 0
 
-    async def get_stuck_neon_holder_list(self) -> tuple[int | None, tuple[dict, ...]]:
+    async def get_stuck_neon_holder_list(self) -> tuple[int | None, Sequence[dict]]:
         return await self._stuck_neon_holder_db.get_obj_list(None, True)
 
-    async def get_stuck_neon_tx_list(self) -> tuple[int | None, tuple[dict, ...]]:
+    async def get_stuck_neon_tx_list(self) -> tuple[int | None, Sequence[dict]]:
         return await self._stuck_neon_tx_db.get_obj_list(None, True)
 
-    async def get_stuck_neon_alt_list(self) -> tuple[int | None, tuple[dict, ...]]:
+    async def get_stuck_neon_alt_list(self) -> tuple[int | None, Sequence[dict]]:
         return await self._stuck_neon_alt_db.get_obj_list(None, True)

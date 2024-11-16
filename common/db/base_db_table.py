@@ -25,8 +25,8 @@ class BaseDbTable:
         db: DbConnection,
         table_name: str,
         record_type: DbRecordType,
-        key_list: tuple[str, ...],
-    ):
+        key_list: Sequence[str],
+    ) -> None:
         self._db = db
         self._raw_table_name = table_name
         self._table_name = DbSqlIdent(table_name)

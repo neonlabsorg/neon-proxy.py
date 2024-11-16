@@ -6,7 +6,7 @@ import logging
 import time
 import typing
 from dataclasses import dataclass, field
-from typing import Iterator, Generator, ClassVar
+from typing import Iterator, Generator, ClassVar, Sequence
 
 from pydantic import Field
 from typing_extensions import Self
@@ -1002,9 +1002,9 @@ class NeonIndexedBlockInfo:
     def from_stuck_data(
         sol_block: SolRpcBlockInfo,
         stuck_slot: int,
-        neon_holder_list: tuple[dict, ...],
-        neon_tx_list: tuple[dict, ...],
-        alt_list: tuple[dict, ...],
+        neon_holder_list: Sequence[dict],
+        neon_tx_list: Sequence[dict],
+        alt_list: Sequence[dict],
     ) -> NeonIndexedBlockInfo:
 
         new_block = NeonIndexedBlockInfo(sol_block)
@@ -1583,5 +1583,5 @@ class SolNeonDecoderCtx:
             self._sol_neon_ix = None
 
     @property
-    def neon_block_queue(self) -> tuple[NeonIndexedBlockInfo, ...]:
+    def neon_block_queue(self) -> Sequence[NeonIndexedBlockInfo]:
         return tuple(self._neon_block_queue)

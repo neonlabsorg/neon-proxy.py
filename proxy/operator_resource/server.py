@@ -1,5 +1,7 @@
 import asyncio
 
+from typing import Sequence
+
 from common.solana.signer import SolSigner
 from .op_acquire_resource_api import OpAcquireResourceApi
 from .op_balance_api import OpBalanceApi
@@ -24,7 +26,7 @@ class OpResourceServer(OpResourceServerAbc):
         self._add_api(OpSolSignApi(self))
         self._add_api(OpBalanceApi(self))
 
-    async def get_signer_list(self) -> tuple[SolSigner, ...]:
+    async def get_signer_list(self) -> Sequence[SolSigner]:
         return await self._op_secret_mng.get_signer_list()
 
     async def _on_server_start(self) -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, Sequence
 
 from typing_extensions import Self
 
@@ -263,7 +263,7 @@ class SolNeonTxMetaInfo:
     def __repr__(self) -> str:
         return self.to_string()
 
-    def sol_neon_ix_list(self) -> tuple[SolNeonTxIxMetaInfo, ...]:
+    def sol_neon_ix_list(self) -> Sequence[SolNeonTxIxMetaInfo]:
         def _new_sol_neon_ix(_sol_tx_ix: SolTxIxMetaInfo) -> SolNeonTxIxMetaInfo | None:
             if (_sol_tx_ix.prog_id != NeonProg.ID) or (not _sol_tx_ix.has_sol_ix_data):
                 return None

@@ -9,10 +9,10 @@ from typing import Union, ClassVar, Sequence, Literal
 
 import aiohttp as _ws
 import pydantic
+import solders.errors as _err
 import solders.rpc.config as _cfg
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
-import solders.errors as _err
 from typing_extensions import Self
 
 from .client import SolClient
@@ -105,7 +105,7 @@ class _SolWsSession:
             raise SolError("WebSocket is not connected")
         await self._ws_session.send_str(data.to_json())
 
-    async def _ws_receive_data(self, timeout_sec: float) -> tuple[_SoldersWsMsg, ...]:
+    async def _ws_receive_data(self, timeout_sec: float) -> Sequence[_SoldersWsMsg]:
         if not self._ws_session:
             raise SolError("WebSocket is not connected")
 

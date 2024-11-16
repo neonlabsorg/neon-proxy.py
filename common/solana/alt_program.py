@@ -114,7 +114,7 @@ class SolAltProg:
 
 
 class SolAltAccountInfo:
-    _max_u64: Final[int] = 2 ** 64 - 1
+    _max_u64: Final[int] = 2**64 - 1
     MetaSize: Final[int] = _alt.LOOKUP_TABLE_META_SIZE
     OwnerOffset: Final[int] = 22
 
@@ -136,7 +136,7 @@ class SolAltAccountInfo:
 
         # skip 4 bytes of type of lookup table
         self._meta = _alt.LookupTableMeta.from_bytes(data[4:])
-        self._addr_list_data = data[self.MetaSize:]
+        self._addr_list_data = data[self.MetaSize :]
 
     @classmethod
     def from_bytes(cls, address: SolPubKey, data: bytes | None) -> Self:
@@ -163,13 +163,13 @@ class SolAltAccountInfo:
         return SolAltID(address=self.address, owner=self.owner, recent_slot=0, nonce=0)
 
     @cached_property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
+    def account_key_list(self) -> Sequence[SolPubKey]:
         # tried solders, but _alt.AddressLookupTable doesn't work...
         offset = 0
         acct_key_cnt = len(self._addr_list_data) // SolPubKey.KeySize
         acct_key_list = list()
         for _ in range(acct_key_cnt):
-            key = SolPubKey.from_bytes(self._addr_list_data[offset:offset + SolPubKey.KeySize])
+            key = SolPubKey.from_bytes(self._addr_list_data[offset : offset + SolPubKey.KeySize])
             offset += SolPubKey.KeySize
             acct_key_list.append(key)
 

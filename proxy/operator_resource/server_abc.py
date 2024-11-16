@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 
+from typing import  Sequence
 from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
@@ -48,7 +49,7 @@ class OpResourceServerAbc(BaseIntlProxyServer, abc.ABC):
         self._stat_client = stat_client
 
     @abc.abstractmethod
-    async def get_signer_list(self) -> tuple[SolSigner, ...]: ...
+    async def get_signer_list(self) -> Sequence[SolSigner]: ...
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         evm_cfg = await self._mp_client.get_evm_cfg()

@@ -5,7 +5,7 @@ import os
 import random
 import re
 from decimal import Decimal
-from typing import Final, Union, ClassVar
+from typing import Final, Union, ClassVar, Sequence
 from urllib.parse import urlparse
 
 from pythclient.solana import (
@@ -401,7 +401,7 @@ class Config:
     # Base settings
 
     @cached_property
-    def sol_url_list(self) -> tuple[str, ...]:
+    def sol_url_list(self) -> Sequence[str]:
         sol_url_list = self._split_str(os.environ.get(self.sol_url_name, ""))
         if not sol_url_list:
             _LOG.warning("%s is not defined, force to use the localhost", self.sol_url_name)
@@ -409,7 +409,7 @@ class Config:
         return tuple(sol_url_list)
 
     @cached_property
-    def sol_send_tx_url_list(self) -> tuple[str, ...]:
+    def sol_send_tx_url_list(self) -> Sequence[str]:
         return tuple(self._split_str(os.environ.get(self.sol_send_tx_url_name, "")))
 
     @property
@@ -417,7 +417,7 @@ class Config:
         return self._random_from_list(self.sol_url_list)
 
     @staticmethod
-    def _random_from_list(src_list: tuple[str, ...]) -> str:
+    def _random_from_list(src_list: Sequence[str]) -> str:
         if len(src_list) == 0:
             return ""
         elif len(src_list) == 1:
@@ -429,7 +429,7 @@ class Config:
         return float(self._env_num(self.sol_timeout_sec_name, self._1min, 1, self._1hour))
 
     @cached_property
-    def sol_ws_url_list(self) -> tuple[str, ...]:
+    def sol_ws_url_list(self) -> Sequence[str]:
         sol_ws_url_list = self._split_str(os.environ.get(self.sol_ws_url_name, ""))
         if not sol_ws_url_list:
             _LOG.debug(
@@ -449,7 +449,7 @@ class Config:
         return self._env_bool(self.hide_sensitive_info_name, True)
 
     @cached_property
-    def sensitive_info_list(self) -> tuple[str, ...]:
+    def sensitive_info_list(self) -> Sequence[str]:
         res_list = (
             list(self.sol_url_list)
             + list(self.pyth_url_list)
@@ -696,7 +696,7 @@ class Config:
         return self._split_str(os.environ.get(self.pyth_url_name, ""))
 
     @cached_property
-    def pyth_url_list(self) -> tuple[str, ...]:
+    def pyth_url_list(self) -> Sequence[str]:
         pyth_url_list = self._pyth_url_list
         if not pyth_url_list:
             _LOG.debug(
@@ -708,7 +708,7 @@ class Config:
         return tuple(pyth_url_list)
 
     @cached_property
-    def pyth_ws_url_list(self) -> tuple[str, ...]:
+    def pyth_ws_url_list(self) -> Sequence[str]:
         pyth_ws_url_list = self._split_str(os.environ.get(self.pyth_ws_url_name, ""))
         if not pyth_ws_url_list:
             pyth_url_list = self._pyth_url_list
@@ -762,14 +762,14 @@ class Config:
         return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, (10**9))
 
     @cached_property
-    def dynamic_fee_cfg_url_list(self) -> tuple[str, ...]:
+    def dynamic_fee_cfg_url_list(self) -> Sequence[str]:
         dynamic_url_list = self._split_str(os.environ.get(self.dynamic_fee_cfg_url_name, ""))
         if not dynamic_url_list:
             _LOG.debug("%s is not defined", self.dynamic_fee_cfg_url_name)
         return tuple(dynamic_url_list)
 
     @cached_property
-    def atlas_fee_url_list(self) -> tuple[str, ...]:
+    def atlas_fee_url_list(self) -> Sequence[str]:
         atlas_url_list = self._split_str(os.environ.get(self.atlas_fee_url_name, ""))
         if not atlas_url_list:
             _LOG.debug("%s is not defined", self.atlas_fee_url_name)
@@ -895,7 +895,7 @@ class Config:
         return self._env_num(self.slot_processing_delay_name, 0, 0, 64)
 
     @cached_property
-    def ch_dsn_list(self) -> tuple[str, ...]:
+    def ch_dsn_list(self) -> Sequence[str]:
         """List of DSN addresses of clickhouse servers used by Tracer API node"""
         return tuple(self._env_dsn_list(self.clickhouse_dsn_list_name))
 
