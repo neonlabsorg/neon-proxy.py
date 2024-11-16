@@ -198,7 +198,7 @@ class OpResourceMng(OpResourceComponent):
                 _LOG.debug("got token_address %s for %s:%s", token_sol_addr, owner, hex(chain_id))
         return op_signer.eth_address, token_sol_addr
 
-    async def sign_tx_list(self, payer: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
+    async def sign_tx_list(self, payer: SolPubKey, tx_list: Sequence[SolTx]) -> Sequence[SolTx]:
         with logging_context(opkey=self._opkey(payer)):
             if not (op_signer := self._find_op_signer(payer)):
                 _LOG.error("error on trying to find payer %s to sign the tx-list", payer)
@@ -209,7 +209,7 @@ class OpResourceMng(OpResourceComponent):
             _LOG.debug("done sign the tx-list: %s", tx_list)
         return tx_list
 
-    def get_eth_address_list(self) -> tuple[OpEthAddressModel, ...]:
+    def get_eth_address_list(self) -> Sequence[OpEthAddressModel]:
         generator = map(
             lambda x: OpEthAddressModel(owner=x.owner, eth_address=x.eth_address),
             self._active_signer_dict.values(),
@@ -255,7 +255,7 @@ class OpResourceMng(OpResourceComponent):
             tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
             await self._send_tx(op_signer.signer, tx)
 
-    def get_signer_key_list(self) -> tuple[SolPubKey, ...]:
+    def get_signer_key_list(self) -> Sequence[SolPubKey]:
         key_set = set(
             list(self._active_signer_dict.keys())
             + list(self._deactivated_signer_dict.keys())

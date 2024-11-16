@@ -264,7 +264,7 @@ class NeonProg:
         return self._eth_rlp_tx
 
     @property
-    def rw_account_key_list(self) -> tuple[SolPubKey, ...]:
+    def rw_account_key_list(self) -> Sequence[SolPubKey]:
         return self._get_rw_acct_key_list()
 
     def make_delete_holder_ix(self) -> SolTxIx:
@@ -569,7 +569,7 @@ class NeonProg:
         )
 
     @reset_cached_method
-    def _get_rw_acct_key_list(self) -> tuple[SolPubKey, ...]:
+    def _get_rw_acct_key_list(self) -> Sequence[SolPubKey]:
         base_key_list = [
             self._holder_addr,
             self._payer,

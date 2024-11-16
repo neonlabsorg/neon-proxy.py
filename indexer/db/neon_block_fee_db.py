@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQueryBody
 from common.neon.block import NeonBlockBaseFeeInfo
@@ -41,7 +42,7 @@ class NeonBlockFeeDB(HistoryDbTable):
 
         self._base_fee_list_query = await self._db.sql_to_query(base_fee_list_sql)
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list: list[_Record] = list()
 
         for block in block_list:
@@ -62,7 +63,7 @@ class NeonBlockFeeDB(HistoryDbTable):
 
     async def get_block_base_fee_list(
         self, ctx: DbTxCtx, chain_id: int, block_cnt: int, latest_slot: int
-    ) -> tuple[NeonBlockBaseFeeInfo, ...]:
+    ) -> Sequence[NeonBlockBaseFeeInfo]:
         rec_list = await self._fetch_all(
             ctx,
             self._base_fee_list_query,

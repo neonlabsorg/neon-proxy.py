@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left
-from typing import ClassVar, Final, Iterable
+from typing import ClassVar, Final, Iterable, Sequence
 
 from typing_extensions import Self
 
@@ -15,11 +15,11 @@ from ..utils.pydantic import BaseModel
 class CuPricePercentileModel(BaseModel):
     _PercentileStep: Final[int] = 10  # Percentiles are a multiple of 10.
     _PercentileCount: Final[int] = 11  # 100 / step + 1.
-    _PercentileList: Final[list[int]] = [i * 10 for i in range(11)]  # 0, 10, ..., 100
+    _PercentileList: Final[Sequence[int]] = tuple([i * 10 for i in range(11)])  # 0, 10, ..., 100
 
     _default: ClassVar[CuPricePercentileModel | None] = None
 
-    cu_price_list: list[int] = list()
+    cu_price_list: Sequence[int] = tuple()
 
     @classmethod
     def default(cls) -> Self:
@@ -28,7 +28,7 @@ class CuPricePercentileModel(BaseModel):
         return cls._default
 
     @classmethod
-    def from_raw(cls, cu_price_list: list[int] | None) -> Self:
+    def from_raw(cls, cu_price_list: Sequence[int] | None) -> Self:
         if (not cu_price_list) or (len(cu_price_list) < cls._PercentileCount):
             return cls.default()
         return cls(cu_price_list=cu_price_list)

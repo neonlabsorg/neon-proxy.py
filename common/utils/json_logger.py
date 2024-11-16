@@ -10,6 +10,7 @@ import pathlib
 import traceback
 from datetime import datetime
 from logging import LogRecord, Filter
+from typing import Sequence
 
 
 class Logger:
@@ -65,7 +66,7 @@ class JSONFormatter(logging.Formatter):
 
         msg_dict["@t"] = datetime.fromtimestamp(record.created).isoformat()
         msg_dict["@p"] = pathname + ":" + str(record.lineno)
-        msg_dict["pid"] = record.process,
+        msg_dict["pid"] = record.process
 
         msg_filter = record.msg_filter if hasattr(record, "msg_filter") else None
         if isinstance(record.msg, dict):
@@ -147,7 +148,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(msg_dict)
 
     @staticmethod
-    def _get_exc_info(record: LogRecord, msg_filter) -> tuple[str, str, tuple[str, ...], str | None]:
+    def _get_exc_info(record: LogRecord, msg_filter) -> tuple[str, str, Sequence[str], str | None]:
         exc_msg = str(record.exc_info[1])
         if msg_filter:
             exc_msg = msg_filter(exc_msg)

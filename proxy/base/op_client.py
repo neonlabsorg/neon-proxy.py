@@ -80,24 +80,24 @@ class OpResourceClient(AppDataClient):
         req = OpSignEthTxRequest(req_id=req_id, neon_tx=neon_tx, chain_id=chain_id)
         return await self._sign_eth_tx(req)
 
-    async def sign_sol_tx_list(self, req_id: dict, owner: SolPubKey, tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
+    async def sign_sol_tx_list(self, req_id: dict, owner: SolPubKey, tx_list: Sequence[SolTx]) -> Sequence[SolTx]:
         model_list = [SolTxModel.from_raw(tx) for tx in tx_list]
         req = OpSignSolTxListRequest(req_id=req_id, owner=owner, tx_list=model_list)
         resp = await self._sign_sol_tx_list(req)
         return tuple([model.tx for model in resp.tx_list])
 
-    async def get_signer_key_list(self, req_id: dict) -> tuple[SolPubKey, ...]:
+    async def get_signer_key_list(self, req_id: dict) -> Sequence[SolPubKey]:
         req = OpGetSignerKeyListRequest(req_id=req_id)
         resp = await self._get_signer_key_list(req)
         return tuple(resp.signer_key_list)
 
-    async def get_eth_address_list(self, req_id: dict) -> tuple[OpEthAddressModel, ...]:
+    async def get_eth_address_list(self, req_id: dict) -> Sequence[OpEthAddressModel]:
         req = OpGetEthAddressListRequest(req_id=req_id)
         resp = await self._get_eth_list(req)
         return tuple(resp.eth_address_list)
 
-    async def withdraw(self, req_id: dict, chain_list: list[int]) -> None:
-        req = OpWithdrawTokenRequest(req_id=req_id, chain_list=chain_list)
+    async def withdraw(self, req_id: dict, chain_list: Sequence[int]) -> None:
+        req = OpWithdrawTokenRequest(req_id=req_id, chain_list=list(chain_list))
         _resp = await self._withdraw(req)
 
     async def destroy_holder(self, req_id: dict, owner: SolPubKey, holder: SolPubKey) -> None:

@@ -4,6 +4,8 @@ import itertools
 import logging
 import os
 
+from typing import Sequence
+
 import hvac
 from hvac.api.secrets_engines.kv_v2 import DEFAULT_MOUNT_POINT
 
@@ -21,7 +23,7 @@ class OpSecretMng(OpResourceComponent):
     async def stop(self) -> None:
         pass
 
-    async def get_signer_list(self) -> tuple[SolSigner, ...]:
+    async def get_signer_list(self) -> Sequence[SolSigner]:
         if self._cfg.hvac_url is not None:
             secret_list = await self._read_secret_list_from_hvac()
         else:
@@ -33,7 +35,7 @@ class OpSecretMng(OpResourceComponent):
             _LOG.debug("got signer list of: %s - keys", len(secret_list))
         return secret_list
 
-    async def _read_secret_list_from_hvac(self) -> tuple[SolSigner, ...]:
+    async def _read_secret_list_from_hvac(self) -> Sequence[SolSigner]:
         _LOG.debug("read secret keys from HashiCorp Vault...")
 
         client = hvac.Client(url=self._cfg.hvac_url, token=self._cfg.hvac_token)
@@ -68,7 +70,7 @@ class OpSecretMng(OpResourceComponent):
 
         return tuple(secret_list)
 
-    async def _read_secret_list_from_fs(self) -> tuple[SolSigner, ...]:
+    async def _read_secret_list_from_fs(self) -> Sequence[SolSigner]:
         _LOG.debug("read secret keys from filesystem...")
 
         keypair_file = await SolCmdClient(self._cfg).get_keypair_file()

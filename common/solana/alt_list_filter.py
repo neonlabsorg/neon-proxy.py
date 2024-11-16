@@ -14,7 +14,7 @@ class SolAltListFilter:
         self._validate_legacy_msg()
 
     @cached_property
-    def legacy_account_key_list(self) -> tuple[SolPubKey, ...]:
+    def legacy_account_key_list(self) -> Sequence[SolPubKey]:
         return tuple([SolPubKey.from_raw(key) for key in self._msg.account_keys])
 
     @property
@@ -22,7 +22,7 @@ class SolAltListFilter:
         return len(self._prog_id_set)
 
     @cached_property
-    def tx_account_key_list(self) -> tuple[SolPubKey, ...]:
+    def tx_account_key_list(self) -> Sequence[SolPubKey]:
         # Returns the list in the order from the tx, because keys is are already ordered in the tx
         return tuple([key for key in self.legacy_account_key_list if key in self._tx_acct_key_set])
 

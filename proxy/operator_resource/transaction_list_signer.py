@@ -9,7 +9,7 @@ class OpTxListSigner(SolTxListSigner):
     def __init__(self, signer: SolSigner) -> None:
         self._signer = signer
 
-    async def sign_tx_list(self, sol_tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
+    async def sign_tx_list(self, sol_tx_list: Sequence[SolTx]) -> Sequence[SolTx]:
         for tx in sol_tx_list:
             tx.sign(self._signer)
         return tuple(sol_tx_list)

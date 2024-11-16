@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Sequence
 
 from ..neon.neon_program import NeonProg
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
@@ -163,7 +164,7 @@ class SolTxErrorParser:
         return None
 
     @cached_method
-    def _get_log_list(self) -> tuple[str, ...]:
+    def _get_log_list(self) -> Sequence[str]:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return tuple(self._receipt.logs or list())
         if isinstance(self._receipt, SolRpcTxSlotInfo):
@@ -171,7 +172,7 @@ class SolTxErrorParser:
         return tuple()
 
     @cached_method
-    def _get_evm_log_list(self) -> tuple[str, ...]:
+    def _get_evm_log_list(self) -> Sequence[str]:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             rpc_meta = self._receipt
         elif isinstance(self._receipt, SolRpcTxSlotInfo):

@@ -79,7 +79,7 @@ class SolAltTxBuilder:
             return recent_slot
 
     @property
-    def tx_name_list(self) -> tuple[str, ...]:
+    def tx_name_list(self) -> Sequence[str]:
         return tuple([self._create_name, self._extend_name])
 
     async def build_alt(self, legacy_tx: SolLegacyTx, ignore_key_list: Sequence[SolPubKey]) -> SolAltInfo:

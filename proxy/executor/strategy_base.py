@@ -38,7 +38,7 @@ class BaseTxPrepStage(abc.ABC):
         return self._ctx.token.simple_cu_price
 
     @abc.abstractmethod
-    def get_tx_name_list(self) -> tuple[str, ...]:
+    def get_tx_name_list(self) -> Sequence[str]:
         pass
 
     @abc.abstractmethod

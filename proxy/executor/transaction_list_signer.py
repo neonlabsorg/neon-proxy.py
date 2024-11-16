@@ -12,5 +12,5 @@ class OpTxListSigner(SolTxListSigner):
         self._payer = payer
         self._op_client = op_client
 
-    async def sign_tx_list(self, sol_tx_list: Sequence[SolTx]) -> tuple[SolTx, ...]:
+    async def sign_tx_list(self, sol_tx_list: Sequence[SolTx]) -> Sequence[SolTx]:
         return await self._op_client.sign_sol_tx_list(self._req_id, self._payer, sol_tx_list)

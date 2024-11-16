@@ -142,9 +142,7 @@ class NeonIndexerApp:
 
         return self._finalized_slot
 
-    async def _get_reindex_slot_range_list(
-        self,
-    ) -> tuple[IndexerDbSlotRange, ...]:
+    async def _get_reindex_slot_range_list(self) -> Sequence[IndexerDbSlotRange]:
         self._reindex_start_slot, self._reindex_ident = self._get_cfg_reindex_start_slot()
 
         if (self._reindex_start_slot is None) or (not self._cfg.reindex_thread_cnt):
@@ -184,7 +182,7 @@ class NeonIndexerApp:
         await self._db.constant_db.set(None, reindex_ident_name, self._reindex_ident)
         return False
 
-    async def _load_exist_reindex_range_list(self) -> tuple[IndexerDbSlotRange, ...]:
+    async def _load_exist_reindex_range_list(self) -> Sequence[IndexerDbSlotRange]:
         slot_range_list: list[IndexerDbSlotRange] = list()
 
         key_list = await self._db.constant_db.get_key_list(None)
@@ -228,7 +226,7 @@ class NeonIndexerApp:
 
     async def _add_new_reindex_range_list(
         self, slot_range_list: Sequence[IndexerDbSlotRange]
-    ) -> tuple[IndexerDbSlotRange, ...]:
+    ) -> Sequence[IndexerDbSlotRange]:
         start_slot = max(self._reindex_start_slot, self._first_slot)
         if len(slot_range_list):
             start_slot = max(slot_range_list[-1].stop_slot, start_slot)
@@ -237,7 +235,7 @@ class NeonIndexerApp:
 
         return await self._merge_slot_range_list(slot_range_list, new_slot_range_list)
 
-    async def _build_new_reindex_range_list(self, start_slot: int, avail_cnt: int) -> tuple[IndexerDbSlotRange, ...]:
+    async def _build_new_reindex_range_list(self, start_slot: int, avail_cnt: int) -> Sequence[IndexerDbSlotRange]:
         """
         Reindex slots between the reindexing start slot and indexing start slot.
         Check that the number of ranges is not exceeded.
@@ -270,14 +268,14 @@ class NeonIndexerApp:
         self,
         slot_range_list: Sequence[IndexerDbSlotRange],
         new_slot_range_list: Sequence[IndexerDbSlotRange],
-    ) -> tuple[IndexerDbSlotRange, ...]:
+    ) -> Sequence[IndexerDbSlotRange]:
         """
         If it is the fast restart, the number of slots between restarts is small.
         So here we are trying to squash the last range from the last restart with the new first range.
         """
         merged_slot_range: IndexerDbSlotRange | None = None
 
-        def _merge() -> tuple[IndexerDbSlotRange, ...]:
+        def _merge() -> Sequence[IndexerDbSlotRange]:
             _slot_range_list = list(slot_range_list)
             if merged_slot_range is not None:
                 _slot_range_list.append(merged_slot_range)

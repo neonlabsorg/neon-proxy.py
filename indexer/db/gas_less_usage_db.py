@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Sequence
 
 from typing_extensions import Self
 
@@ -11,7 +12,7 @@ class GasLessUsageDb(HistoryDbTable):
     def __init__(self, db: DbConnection):
         super().__init__(db, "gas_less_usages", _Record, ("neon_sig",))
 
-    async def set_block_list(self, ctx: DbTxCtx, block_list: tuple[NeonIndexedBlockInfo, ...]) -> None:
+    async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [
             _Record.from_tx(tx)
             for block in block_list

@@ -90,8 +90,8 @@ class NeonExecTxCtx:
         self._sol_tx_list_dict: dict[str, list[tuple[SolTx, bool]]] = dict()
 
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
-        self._ro_addr_list: tuple[SolPubKey, ...] = tuple()
-        self._acct_meta_list: tuple[SolAccountMeta, ...] = tuple()
+        self._ro_addr_list: Sequence[SolPubKey] = tuple()
+        self._acct_meta_list: Sequence[SolAccountMeta] = tuple()
         self._emul_resp: EmulNeonCallResp | None = None
 
         self._skip_simple_strategy = False
@@ -141,15 +141,15 @@ class NeonExecTxCtx:
         return len(self._acct_meta_list)
 
     @property
-    def account_key_list(self) -> tuple[SolPubKey, ...]:
+    def account_key_list(self) -> Sequence[SolPubKey]:
         return self._get_acct_key_list()
 
     @property
-    def rw_account_key_list(self) -> tuple[SolPubKey, ...]:
+    def rw_account_key_list(self) -> Sequence[SolPubKey]:
         return self.neon_prog.rw_account_key_list
 
     @reset_cached_method
-    def _get_acct_key_list(self) -> tuple[SolPubKey, ...]:
+    def _get_acct_key_list(self) -> Sequence[SolPubKey]:
         return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
 
     @property
@@ -238,7 +238,7 @@ class NeonExecTxCtx:
         return self.is_stuck_tx or self._holder.is_active
 
     @property
-    def ro_address_list(self) -> tuple[SolPubKey, ...]:
+    def ro_address_list(self) -> Sequence[SolPubKey]:
         return self._ro_addr_list
 
     def set_ro_address_list(self, addr_list: Sequence[SolPubKey]) -> None:
@@ -437,11 +437,11 @@ class NeonExecTxCtx:
         return self._emul_resp.is_block_used
 
     @property
-    def alt_id_list(self) -> tuple[SolAltID, ...]:
+    def alt_id_list(self) -> Sequence[SolAltID]:
         return tuple(self._alt_id_set)
 
     @property
-    def stuck_alt_address_list(self) -> tuple[SolPubKey, ...]:
+    def stuck_alt_address_list(self) -> Sequence[SolPubKey]:
         assert self.is_stuck_tx
         return tuple(self._tx_request.stuck_tx.alt_address_list)
 
@@ -456,7 +456,7 @@ class NeonExecTxCtx:
                     cnt += 1
         return cnt
 
-    def pop_sol_tx_list(self, tx_name_list: tuple[str, ...]) -> tuple[SolTx, ...]:
+    def pop_sol_tx_list(self, tx_name_list: Sequence[str]) -> Sequence[SolTx]:
         tx_list: list[SolTx] = list()
         for tx_name in tx_name_list:
             if tx_sublist := self._sol_tx_list_dict.pop(tx_name, None):

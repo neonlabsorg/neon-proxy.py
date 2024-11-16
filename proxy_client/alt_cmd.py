@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import ClassVar, Final
+from typing import ClassVar, Final, Sequence
 
 from typing_extensions import Self
 
@@ -118,7 +118,7 @@ class AltHandler(BaseNPCmdHandler):
     async def _destroy_alt(
         self,
         req_id: dict,
-        owner_list: tuple[SolPubKey, ...],
+        owner_list: Sequence[SolPubKey],
         address: SolPubKey,
     ) -> int:
         sol_client = await self._get_sol_client()
