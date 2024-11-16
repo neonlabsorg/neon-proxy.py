@@ -105,7 +105,7 @@ class _CuPriceLevelValidator:
     _level_dict: ClassVar[dict[str, str]] = {v.lower(): v for v in CuPriceLevel}
 
     @classmethod
-    def from_raw(cls, raw: str | CuPriceLevel | None) -> Self:
+    def from_raw(cls, raw: str | CuPriceLevel | None) -> CuPriceLevel:
         try:
             if not raw:
                 return CuPriceLevel.Default
