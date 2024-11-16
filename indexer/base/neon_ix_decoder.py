@@ -306,9 +306,6 @@ class TxStepFromAccountNoChainIdIxDecoder(BaseTxStepIxDecoder):
     def execute(self) -> bool:
         return self._execute("NeonTx-wo-ChainId step from NeonHolder.Data")
 
-    def _on_tx_return_event(self, tx: NeonIndexedTxInfo) -> None:
-        self._decode_neon_tx_from_holder_account(tx)
-
 
 class CancelWithHashIxDecoder(BaseTxStepIxDecoder):
     ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.CancelWithHash
