@@ -6,13 +6,11 @@ from typing import Sequence, Final
 
 from typing_extensions import Self
 
-from common.config.config import Config
-from common.cu_price.client import CuPriceClient
 from common.ethereum.hash import EthTxHash
 from common.neon.account import NeonAccount
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
-from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel, CoreApiBlockModel
-from common.neon_rpc.client import CoreApiClient
+from common.neon.transaction_model import NeonTxModel
+from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
 from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolAccountMeta
@@ -21,19 +19,19 @@ from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.token_program import SplTokenProg
 from common.solana.transaction import SolTx
-from common.solana_rpc.client import SolClient
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
+from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
-from indexer.db.indexer_db_client import IndexerDbClient
+from .holder_validator import HolderAccountValidator
+from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_list_signer import OpTxListSigner
 from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest, ExecTokenModel
-from ..base.op_client import OpResourceClient
-from ..stat.client import StatClient
+from ..base.op_api import OpResourceModel
 
 _LOG = logging.getLogger(__name__)
 
 
-class NeonExecTxCtx:
+class NeonExecTxCtx(ExecutorComponent):
     # TODO: remove after re-emulate implementation
     _global_ro_addr_set: Final[frozenset[SolPubKey]] = frozenset(
         [
@@ -62,27 +60,15 @@ class NeonExecTxCtx:
 
     def __init__(
         self,
-        cfg: Config,
-        sol_client: SolClient,
-        core_api_client: CoreApiClient,
-        op_client: OpResourceClient,
-        cu_price_client: CuPriceClient,
-        stat_client: StatClient,
-        db: IndexerDbClient,
+        server: ExecutorServerAbc,
+        op_resource: OpResourceModel,
         tx_request: ExecTxRequest | ExecStuckTxRequest,
     ) -> None:
-        self._cfg = cfg
-        self._sol_client = sol_client
-        self._core_api_client = core_api_client
-        self._op_client = op_client
-        self._cu_price_client = cu_price_client
-        self._stat_client = stat_client
-        self._db = db
+        super().__init__(server)
 
+        self._op_resource = op_resource
         self._tx_request = tx_request
-        self._holder: HolderAccountModel | None = None
 
-        self._token_sol_addr = tx_request.resource.token_sol_address
         self._evm_step_cnt_per_iter: int | None = 0
 
         self._uniq_idx = itertools.count()
@@ -103,38 +89,27 @@ class NeonExecTxCtx:
         return self
 
     @cached_property
-    def req_id(self) -> dict:
-        if isinstance(self._tx_request, ExecTxRequest):
-            return dict(tx=self._tx_request.tx.tx_id)
-        return dict(tx=self._tx_request.stuck_tx.tx_id, is_stuck=True)
+    def _holder_addr(self) -> SolPubKey:
+        if self.is_stuck_tx:
+            return self._tx_request.stuck_tx.holder_address
+        return self._op_resource.holder_address
+
+    @cached_property
+    def holder_validator(self) -> HolderAccountValidator:
+        return HolderAccountValidator(self._server, self.neon_tx_hash, self._holder_addr, self.is_stuck_tx)
 
     @property
-    def cfg(self) -> Config:
-        return self._cfg
-
-    @property
-    def sol_client(self) -> SolClient:
-        return self._sol_client
-
-    @property
-    def core_api_client(self) -> CoreApiClient:
-        return self._core_api_client
-
-    @property
-    def cu_price_client(self) -> CuPriceClient:
-        return self._cu_price_client
-
-    @property
-    def stat_client(self) -> StatClient:
-        return self._stat_client
-
-    @property
-    def db(self) -> IndexerDbClient:
-        return self._db
+    def holder(self) -> HolderAccountModel:
+        return self.holder_validator.holder_account
 
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
-        return OpTxListSigner(self.req_id, self.payer, self._op_client)
+        return OpTxListSigner(self._tx_request.req_id, self.sol_payer, self._op_client)
+
+    @cached_property
+    def sol_watch_session(self) -> SolWatchTxSession:
+        """watch session creates a connection to solana, this step minimize the number of solana connections"""
+        return SolWatchTxSession(self._cfg, self._sol_client)
 
     @property
     def len_account_meta_list(self) -> int:
@@ -161,9 +136,6 @@ class NeonExecTxCtx:
 
     def set_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> None:
         self._base_tx_acct_set = base_tx_account_set
-
-    def set_holder_account(self, holder: HolderAccountModel) -> None:
-        self._holder = holder
 
     def set_emulator_result(self, resp: EmulNeonCallResp) -> None:
         _LOG.debug("emulator result contains %d EVM steps, %d iterations", resp.evm_step_cnt, resp.iter_cnt)
@@ -194,7 +166,7 @@ class NeonExecTxCtx:
             }
 
         # Keep metas from the holder in writable mode
-        for key in self._holder.account_key_list:
+        for key in self.holder.account_key_list:
             if key not in acct_meta_dict:
                 acct_meta_dict[key] = SolAccountMeta(pubkey=key, is_signer=False, is_writable=True)
 
@@ -210,7 +182,7 @@ class NeonExecTxCtx:
         )
         _LOG.debug(
             "holder contains %d accounts, total %d accounts: %s",
-            len(self._holder.account_key_list),
+            len(self.holder.account_key_list),
             len(acct_meta_list),
             self._FmtAcctMeta(acct_meta_list),
         )
@@ -228,14 +200,6 @@ class NeonExecTxCtx:
         self._acct_meta_list = acct_meta_list
         self._neon_prog.init_account_meta_list(acct_meta_list)
         self._test_neon_prog.init_account_meta_list(acct_meta_list)
-
-    @property
-    def holder_block(self) -> CoreApiBlockModel:
-        return self._holder.block
-
-    @property
-    def is_started(self) -> bool:
-        return self.is_stuck_tx or self._holder.is_active
 
     @property
     def ro_address_list(self) -> Sequence[SolPubKey]:
@@ -297,17 +261,16 @@ class NeonExecTxCtx:
 
     @cached_property
     def _neon_prog(self) -> NeonProg:
-        return self._new_neon_prog(self.payer)
+        return self._new_neon_prog(self.sol_payer)
 
     @cached_property
     def _test_neon_prog(self) -> NeonProg:
         return self._new_neon_prog(SolSigner.fake().pubkey)
 
     def _new_neon_prog(self, payer: SolPubKey) -> NeonProg:
-        prog = NeonProg(payer).init_holder_address(self.holder_address)
+        prog = NeonProg(payer).init_holder_address(self._holder_addr)
 
-        assert not self._token_sol_addr.is_empty
-        prog.init_token_address(self._token_sol_addr)
+        prog.init_token_address(self._op_resource.token_sol_address)
 
         if not self.is_stuck_tx:
             eth_rlp_tx = self._tx_request.tx.eth_tx_data.to_bytes()
@@ -323,24 +286,23 @@ class NeonExecTxCtx:
         return isinstance(self._tx_request, ExecStuckTxRequest)
 
     @cached_property
-    def payer(self) -> SolPubKey:
-        return self._tx_request.resource.owner
+    def sol_payer(self) -> SolPubKey:
+        return self._op_resource.owner
 
     @cached_property
     def token(self) -> ExecTokenModel:
         return self._tx_request.token
 
-    @property
-    def holder_address(self) -> SolPubKey:
-        if self.is_stuck_tx:
-            return self._tx_request.stuck_tx.holder_address
-        return self._tx_request.resource.holder_address
-
     @cached_property
     def holder_tx(self) -> CoreApiTxModel:
         if self.is_stuck_tx:
-            return self._holder.tx
+            return self.holder.tx
         return CoreApiTxModel.from_neon_tx(self._tx_request.tx.neon_tx, self.chain_id)
+
+    @cached_property
+    def neon_tx(self) -> NeonTxModel:
+        assert not self.is_stuck_tx
+        return self._tx_request.tx.neon_tx
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:
@@ -351,7 +313,6 @@ class NeonExecTxCtx:
     @cached_property
     def has_chain_id(self) -> bool:
         if self.is_stuck_tx:
-            assert self._holder
             return True
 
         return self._tx_request.tx.neon_tx.has_chain_id
@@ -359,13 +320,13 @@ class NeonExecTxCtx:
     @cached_property
     def chain_id(self) -> int:
         if self.is_stuck_tx:
-            return self._holder.chain_id
+            return self.holder.chain_id
         return self._tx_request.tx.chain_id
 
     @cached_property
     def sender(self) -> NeonAccount:
         if self.is_stuck_tx:
-            return self._holder.sender
+            return self.holder.sender
 
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.sender, tx.chain_id)
@@ -373,7 +334,7 @@ class NeonExecTxCtx:
     @cached_property
     def receiver(self) -> NeonAccount:
         if self.is_stuck_tx:
-            return self._holder.receiver
+            return self.holder.receiver
 
         tx = self._tx_request.tx
         return NeonAccount.from_raw(tx.receiver, tx.chain_id)

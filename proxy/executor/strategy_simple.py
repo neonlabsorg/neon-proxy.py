@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Final, ClassVar
+from typing import ClassVar
 
-from common.neon.neon_program import NeonEvmIxCode, NeonProg
-from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.errors import SolCbExceededError
+from common.neon.neon_program import NeonEvmIxCode
+from common.solana.instruction import SolTxIx
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy, SolTxCfg
@@ -27,7 +26,9 @@ class SimpleTxStrategy(BaseTxStrategy):
         assert self.is_valid
 
         if not await self._recheck_tx_list(self.name):
-            await self._emulate_and_send_tx_list()
+            base_cfg = self._init_sol_tx_cfg(cu_limit=self._cfg.cu_limit)
+            ix = self._build_tx_ix(base_cfg)
+            await self._emulate_and_send_single_tx("simple", ix, base_cfg)
 
         tx_send_state_list = self._sol_tx_list_sender.tx_state_list
         status = SolTxSendState.Status
@@ -51,44 +52,8 @@ class SimpleTxStrategy(BaseTxStrategy):
         _LOG.debug("canceling of a simple NeonTx...")
         return None
 
-    async def _emulate_and_send_tx_list(self) -> bool:
-        base_cfg = self._init_sol_tx_cfg(cu_limit=self._ctx.cfg.cu_limit)
-        base_tx = self._build_tx(base_cfg)
-
-        emul_tx = await self._emulate_tx_list(base_tx)
-        used_cu_limit: Final[int] = emul_tx.meta.used_cu_limit
-
-        evm_step_cnt: Final[int] = self._ctx.total_evm_step_cnt
-        max_cu_limit: Final[int] = base_cfg.cu_limit
-        # let's decrease the available cu-limit on 5% percents, because Solana decrease it
-        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)
-
-        if used_cu_limit > threshold_cu_limit:
-            _LOG.debug(
-                "simple: %d EVM steps, %d CUs is bigger than the upper limit %d",
-                evm_step_cnt,
-                used_cu_limit,
-                threshold_cu_limit,
-            )
-            raise SolCbExceededError()
-
-        round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 100_000
-        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
-        _LOG.debug("simple: %d EVM steps, %d CUs (round to %s CUs)", evm_step_cnt, used_cu_limit, round_cu_limit)
-
-        gas_limit = self._find_gas_limit(emul_tx)
-
-        optimal_cfg = await self._update_cu_price(base_cfg, cu_limit=round_cu_limit, gas_limit=gas_limit)
-        tx = self._build_tx(optimal_cfg)
-        return await self._send_tx_list(tx)
-
-    async def _update_cu_price(self, tx_cfg: SolTxCfg, *, cu_limit: int, gas_limit: int) -> SolTxCfg:
-        cu_price: int = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
-        return tx_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
-
-    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_data_ix(), tx_cfg)
+    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+        return self._ctx.neon_prog.make_tx_exec_from_data_ix()
 
     async def _validate(self) -> bool:
         return (

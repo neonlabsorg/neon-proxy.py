@@ -24,7 +24,6 @@ from ..base.mp_api import (
     MpGasPriceModel,
     MpTokenGasPriceModel,
 )
-from ..base.op_api import OpResourceModel
 from ..stat.api import NeonTxDoneData, NeonTxFailData, NeonTxPoolData, NeonTxTokenPoolData
 
 _LOG = logging.getLogger(__name__)
@@ -154,8 +153,11 @@ class MpTxExecutor(MempoolComponent):
                     break
 
                 gas_price = self.get_gas_price()
-                while (await self._acquire_stuck_tx(gas_price)) or (await self._acquire_scheduled_tx(gas_price)):
-                    continue
+
+                result = True
+                while result:
+                    result = await self._acquire_stuck_tx(gas_price)
+                    result = await self._acquire_scheduled_tx(gas_price) or result
 
                 task_list, self._completed_task_list = self._completed_task_list, list()
                 if task_list:
@@ -201,13 +203,9 @@ class MpTxExecutor(MempoolComponent):
                     self._stuck_tx_dict.skip_tx(stuck_tx)
                     return True
 
-            resource = await self._op_client.get_resource(dict(tx=stuck_tx.tx_id, is_stuck=True), stuck_tx.chain_id)
-            if resource.is_empty:
-                return False
-
             self._stuck_tx_dict.acquire_tx(stuck_tx)
             self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(
-                self._exec_stuck_tx(stuck_tx, gas_price, token, resource)
+                self._exec_stuck_tx(stuck_tx, gas_price, token)
             )
 
         return True
@@ -217,19 +215,13 @@ class MpTxExecutor(MempoolComponent):
         stuck_tx: MpStuckTxModel,
         gas_price: MpGasPriceModel,
         token: MpTokenGasPriceModel,
-        resource: OpResourceModel,
     ) -> None:
         with logging_context(tx=stuck_tx.tx_id):
-            await self._exec_stuck_tx_impl(stuck_tx, ExecTokenModel.from_raw(gas_price, token), resource)
+            await self._exec_stuck_tx_impl(stuck_tx, ExecTokenModel.from_raw(gas_price, token))
 
-    async def _exec_stuck_tx_impl(
-        self,
-        stuck_tx: MpStuckTxModel,
-        token: ExecTokenModel,
-        resource: OpResourceModel,
-    ) -> None:
+    async def _exec_stuck_tx_impl(self, stuck_tx: MpStuckTxModel, token: ExecTokenModel) -> None:
         try:
-            resp = await self._exec_client.complete_stuck_tx(stuck_tx, token, resource)
+            resp = await self._exec_client.complete_stuck_tx(stuck_tx, token)
         except BaseException as exc:
             resp = ExecTxResp(code=ExecTxRespCode.Failed)
             _LOG.error("error on send stuck NeonTx to executor", exc_info=exc)
@@ -242,11 +234,7 @@ class MpTxExecutor(MempoolComponent):
         )
         _LOG.debug(msg)
 
-        is_good_resource = True
-        if resp.code == ExecTxRespCode.BadResource:
-            is_good_resource = False
-            self._stuck_tx_dict.cancel_tx(stuck_tx)
-        elif resp.code == ExecTxRespCode.Failed:
+        if resp.code == ExecTxRespCode.Failed:
             self._stuck_tx_dict.fail_tx(stuck_tx)
             self._stat_client.commit_neon_tx_fail(NeonTxFailData(time_nsec=stuck_tx.process_time_nsec))
         elif resp.code == ExecTxRespCode.Done:
@@ -255,7 +243,6 @@ class MpTxExecutor(MempoolComponent):
             _LOG.error("unknown exec response code %s", resp)
             self._stuck_tx_dict.fail_tx(stuck_tx)
 
-        await self._op_client.free_resource(dict(tx=stuck_tx.tx_id, is_stuck=True), is_good_resource, resource)
         if task := self._exec_task_dict.pop(stuck_tx.neon_tx_hash, None):
             self._completed_task_list.append(task)
         else:
@@ -282,13 +269,9 @@ class MpTxExecutor(MempoolComponent):
                 continue
             assert tx.neon_tx_hash not in self._exec_task_dict
 
-            resource = await self._op_client.get_resource(dict(tx=tx.tx_id), tx.chain_id)
-            if resource.is_empty:
-                break
-
             tx_schedule.acquire_tx(tx)
             self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(
-                self._exec_scheduled_tx(tx, gas_price, token, resource)
+                self._exec_scheduled_tx(tx, gas_price, token)
             )
             return True
 
@@ -298,15 +281,14 @@ class MpTxExecutor(MempoolComponent):
         self,
         tx: MpTxModel,
         gas_price: MpGasPriceModel,
-        token: MpTokenGasPriceModel,
-        resource: OpResourceModel,
+        token: MpTokenGasPriceModel
     ) -> None:
         with logging_context(tx=tx.tx_id):
-            await self._exec_scheduled_tx_impl(tx, ExecTokenModel.from_raw(gas_price, token), resource)
+            await self._exec_scheduled_tx_impl(tx, ExecTokenModel.from_raw(gas_price, token))
 
-    async def _exec_scheduled_tx_impl(self, tx: MpTxModel, token: ExecTokenModel, resource: OpResourceModel) -> None:
+    async def _exec_scheduled_tx_impl(self, tx: MpTxModel, token: ExecTokenModel) -> None:
         try:
-            resp = await self._exec_client.exec_tx(tx, token, resource)
+            resp = await self._exec_client.exec_tx(tx, token)
         except BaseException as exc:
             resp = ExecTxResp(code=ExecTxRespCode.Failed)
             _LOG.error("error on send NeonTx to executor", exc_info=exc)
@@ -322,11 +304,7 @@ class MpTxExecutor(MempoolComponent):
             else:
                 _LOG.debug(msg)
 
-        is_good_resource = True
-        if resp.code == ExecTxRespCode.BadResource:
-            is_good_resource = False
-            action = MpTxSchedule.cancel_tx
-        elif resp.code == ExecTxRespCode.NonceTooHigh:
+        if resp.code == ExecTxRespCode.NonceTooHigh:
             action = MpTxSchedule.cancel_tx
         elif resp.code in (ExecTxRespCode.Failed, ExecTxRespCode.NonceTooLow):
             action = MpTxSchedule.fail_tx
@@ -342,10 +320,6 @@ class MpTxExecutor(MempoolComponent):
             self._stat_client.commit_neon_tx_fail(NeonTxFailData(time_nsec=tx.process_time_nsec))
 
         self._call_tx_schedule(tx.chain_id, action, tx, resp.state_tx_cnt)
-
-        if resp.chain_id:
-            resource.set_chain_id(resp.chain_id)
-        await self._op_client.free_resource(dict(tx=tx.tx_id), is_good_resource, resource)
 
         if task := self._exec_task_dict.pop(tx.neon_tx_hash, None):
             self._completed_task_list.append(task)

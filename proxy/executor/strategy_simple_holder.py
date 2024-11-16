@@ -1,7 +1,7 @@
 from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
-from common.solana.transaction_legacy import SolLegacyTx
+from common.solana.instruction import SolTxIx
 from .strategy_base import SolTxCfg
 from .strategy_simple import SimpleTxStrategy
 from .strategy_stage_alt import alt_strategy
@@ -15,8 +15,8 @@ class SimpleHolderTxStrategy(SimpleTxStrategy):
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(WriteHolderTxPrepStage(*args, **kwargs))
 
-    def _build_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
-        return self._build_cu_tx(self._ctx.neon_prog.make_tx_exec_from_account_ix(), tx_cfg)
+    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+        return self._ctx.neon_prog.make_tx_exec_from_account_ix()
 
     async def _validate(self) -> bool:
         return (
