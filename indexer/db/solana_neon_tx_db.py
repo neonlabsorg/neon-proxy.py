@@ -10,6 +10,7 @@ from common.ethereum.hash import EthTxHash
 from common.neon.transaction_decoder import SolNeonTxIxMetaInfo, SolNeonTxIxMetaModel
 from common.solana.signature import SolTxSig, SolTxSigSlotInfo
 from common.solana.transaction_decoder import SolTxCostModel
+from common.utils.format import if_none, if_value
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
 
@@ -139,7 +140,7 @@ class _Record:
             sol_sig=sol_neon_ix.sol_tx_sig.to_string(),
             block_slot=sol_neon_ix.slot,
             idx=sol_neon_ix.sol_ix_idx,
-            inner_idx=sol_neon_ix.sol_inner_ix_idx,
+            inner_idx=if_none(sol_neon_ix.sol_inner_ix_idx, -1),
             ix_code=sol_neon_ix.neon_ix_code,
             is_success=sol_neon_ix.is_success,
             neon_sig=sol_neon_ix.neon_tx_hash.to_string(),
@@ -167,7 +168,7 @@ class _RecordWithCost(_Record):
             sol_tx_sig=self.sol_sig,
             slot=self.block_slot,
             sol_ix_idx=self.idx,
-            sol_inner_ix_idx=inner_ix_idx,
+            sol_inner_ix_idx=if_value(inner_ix_idx, -1, None),
             is_success=self.is_success,
             neon_tx_hash=self.neon_sig,
             neon_ix_code=self.ix_code,

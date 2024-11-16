@@ -15,6 +15,7 @@ from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel
+from common.utils.format import if_value, if_none
 from common.utils.pydantic import RootModel, BaseModel, UIntFromHexField
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
@@ -264,7 +265,7 @@ class _Record:
         return cls(
             sol_sig=neon_rcpt.sol_tx_sig.to_string(),
             sol_ix_idx=neon_rcpt.sol_ix_idx,
-            sol_ix_inner_idx=neon_rcpt.sol_inner_ix_idx,
+            sol_ix_inner_idx=if_none(neon_rcpt.sol_inner_ix_idx, -1),
             block_slot=neon_rcpt.slot,
             tx_idx=neon_rcpt.neon_tx_idx,
             neon_sig=neon_tx.neon_tx_hash.to_string(),
@@ -335,7 +336,7 @@ class _RecordWithBlock(_Record):
             block_hash=self.block_hash,
             sol_tx_sig=self.sol_sig,
             sol_ix_idx=self.sol_ix_idx,
-            sol_inner_ix_idx=self.sol_ix_inner_idx,
+            sol_inner_ix_idx=if_value(self.sol_ix_inner_idx, -1, None),
             neon_tx_idx=self.tx_idx,
             status=self.status,
             total_gas_used=self.gas_used,

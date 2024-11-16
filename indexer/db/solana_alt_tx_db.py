@@ -11,6 +11,7 @@ from common.neon.transaction_decoder import SolNeonAltTxIxModel
 from common.solana.alt_program import SolAltIxCode
 from common.solana.signature import SolTxSig, SolTxSigSlotInfo
 from common.solana.transaction_decoder import SolTxCostModel
+from common.utils.format import if_none, if_value
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
 
@@ -124,7 +125,7 @@ class _Record:
             sol_sig=sol_alt.sol_tx_sig.to_string(),
             block_slot=sol_alt.slot,
             idx=sol_alt.sol_ix_idx,
-            inner_idx=sol_alt.sol_inner_ix_idx,
+            inner_idx=if_none(sol_alt.sol_inner_ix_idx, -1),
             is_success=sol_alt.is_success,
             ix_code=int(sol_alt.alt_ix_code),
             alt_address=sol_alt.alt_address.to_string(),
@@ -142,7 +143,7 @@ class _RecordWithCost(_Record):
             sol_tx_sig=self.sol_sig,
             slot=self.block_slot,
             sol_ix_idx=self.idx,
-            sol_inner_ix_idx=self.inner_idx,
+            sol_inner_ix_idx=if_value(self.inner_idx, -1, None),
             is_success=self.is_success,
             sol_tx_cost=SolTxCostModel(
                 sol_tx_sig=self.sol_sig,
