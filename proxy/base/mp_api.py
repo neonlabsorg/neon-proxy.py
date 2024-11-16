@@ -8,7 +8,6 @@ from typing import Annotated
 from pydantic import Field, PlainValidator, PlainSerializer
 from typing_extensions import Self
 
-from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthTxHashField, EthTxHash, EthAddress
 from common.neon.account import NeonAccountField

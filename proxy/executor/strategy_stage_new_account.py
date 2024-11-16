@@ -46,4 +46,4 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
         return True
 
     async def _get_neon_account(self) -> NeonAccountModel:
-        return await self._ctx.core_api_client.get_neon_account(self._ctx.sender, None)
+        return await self._core_api_client.get_neon_account(self._ctx.sender, None)

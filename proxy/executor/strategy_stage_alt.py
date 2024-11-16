@@ -6,7 +6,8 @@ from typing import Sequence, ClassVar
 from common.neon.neon_program import NeonProg
 from common.solana.alt_info import SolAltInfo
 from common.solana.alt_program import SolAltProg
-from common.solana.errors import SolTxSizeError, SolAltContentError
+from common.solana.errors import SolTxSizeError
+from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
@@ -24,7 +25,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         self._legacy_tx: SolLegacyTx | None = None
         self._last_alt: SolAltInfo | None = None
         self._alt_dict: dict[SolPubKey, SolAltInfo] = dict()
-        self._alt_builder = SolAltTxBuilder(self._ctx.sol_client, self._ctx.payer, self._cu_price)
+        self._alt_builder = SolAltTxBuilder(self._sol_client, self._ctx.sol_payer, self._cu_price)
 
     def get_tx_name_list(self) -> Sequence[str]:
         return self._alt_builder.tx_name_list
@@ -113,7 +114,7 @@ class AltTxPrepStage(BaseTxPrepStage):
 
     def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
         for alt in alt_list:
-            if alt.owner != self._ctx.payer:
+            if alt.owner != self._ctx.sol_payer:
                 continue
             elif len(actual_alt.account_key_list) + len(alt.account_key_list) >= SolAltProg.MaxAltAccountCnt:
                 continue
@@ -157,15 +158,11 @@ def alt_strategy(cls):
 
         def _build_test_legacy_tx(self) -> SolLegacyTx:
             with self._ctx.test_mode():
-                return self._build_legacy_tx(self._init_sol_tx_cfg())
+                tx_cfg = self._init_sol_tx_cfg()
+                ix = cls._build_tx_ix(self, tx_cfg)
+                return cls._build_cu_tx(ix, tx_cfg)
 
-        def _build_legacy_tx(self, tx_cfg: SolTxCfg) -> SolLegacyTx:
-            return cls._build_tx(self, tx_cfg)
-
-        def _build_tx(self, tx_cfg: SolTxCfg) -> SolV0Tx:
-            return self._alt_stage.build_tx(self._build_legacy_tx(tx_cfg))
-
-        def _build_cancel_tx(self, tx_cfg: SolTxCfg) -> SolV0Tx:
-            return self._alt_stage.build_tx(cls._build_cancel_tx(self, tx_cfg))
+        def _build_cu_tx(self, ix: SolTxIx, tx_cfg: SolTxCfg) -> SolV0Tx:
+            return self._alt_stage.build_tx(cls._build_cu_tx(ix, tx_cfg))
 
     return AltStrategy

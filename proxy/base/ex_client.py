@@ -21,16 +21,11 @@ class ExecutorClient(AppDataClient):
         self.connect(host=self._cfg.exec_ip, port=self._cfg.exec_port, path=EXECUTOR_ENDPOINT)
         self.set_timeout_sec(60 * 90)  # 90 minutes
 
-    async def exec_tx(self, tx: MpTxModel, token: ExecTokenModel, resource: OpResourceModel) -> ExecTxResp:
-        return await self._exec_tx(ExecTxRequest(tx=tx, token=token, resource=resource))
+    async def exec_tx(self, tx: MpTxModel, token: ExecTokenModel) -> ExecTxResp:
+        return await self._exec_tx(ExecTxRequest(tx=tx, token=token))
 
-    async def complete_stuck_tx(
-        self,
-        stuck_tx: MpStuckTxModel,
-        token: ExecTokenModel,
-        resource: OpResourceModel,
-    ) -> ExecTxResp:
-        return await self._complete_stuck_tx(ExecStuckTxRequest(stuck_tx=stuck_tx, token=token, resource=resource))
+    async def complete_stuck_tx(self, stuck_tx: MpStuckTxModel, token: ExecTokenModel) -> ExecTxResp:
+        return await self._complete_stuck_tx(ExecStuckTxRequest(stuck_tx=stuck_tx, token=token))
 
     async def destroy_alt_list(self, req_id: dict, stuck_alt_list: Sequence[NeonAltModel]) -> None:
         req = DestroyAltListRequest(req_id=req_id, alt_list=list(stuck_alt_list))

@@ -19,8 +19,7 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolOutOfMemoryError,
 )
-from .errors import BadResourceError, StuckTxError, WrongStrategyError
-from .holder_validator import HolderAccountValidator
+from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
@@ -32,7 +31,7 @@ from .strategy_simple_holder import SimpleHolderTxStrategy, AltSimpleHolderTxStr
 from .strategy_simple_solana_call import SimpleTxSolanaCallStrategy, AltSimpleTxSolanaCallStrategy
 from .strategy_simple_solana_call_holder import SimpleHolderTxSolanaCallStrategy, AltSimpleHolderTxSolanaCallStrategy
 from .transaction_executor_ctx import NeonExecTxCtx
-from ..base.ex_api import ExecTxResp, ExecTxRespCode
+from ..base.ex_api import ExecTxRespCode
 
 _LOG = logging.getLogger(__name__)
 _BaseTxStrategyList = list[type[BaseTxStrategy]]
@@ -86,9 +85,8 @@ class NeonTxExecutor(ExecutorComponent):
         AltHolderTxStrategy,
     ]
 
-    async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(ctx)
-        await holder_validator.validate_stuck_tx()
+    async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxRespCode:
+        await ctx.holder_validator.validate_stuck_tx()
 
         try:
             await self._init_base_sol_tx(ctx)
@@ -97,25 +95,19 @@ class NeonTxExecutor(ExecutorComponent):
             # get the list of accounts for validation
             await self._emulate_neon_tx(ctx)
 
-            exit_code = await self._select_strategy(ctx, self._tx_strategy_list)
-            state_tx_cnt = await self._get_state_tx_cnt(ctx)
+            return await self._select_strategy(ctx, self._tx_strategy_list)
 
         except EthNonceTooLowError as exc:
             _LOG.debug("%s", str(exc))
-            exit_code = ExecTxRespCode.NonceTooLow
-            state_tx_cnt = exc.state_tx_cnt
+            return ExecTxRespCode.NonceTooLow
 
         except EthNonceTooHighError as exc:
             _LOG.debug("%s", str(exc))
-            exit_code = ExecTxRespCode.NonceTooHigh
-            state_tx_cnt = exc.state_tx_cnt
+            return ExecTxRespCode.NonceTooHigh
 
-        return ExecTxResp(code=exit_code, state_tx_cnt=state_tx_cnt)
-
-    async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxResp:
-        holder_validator = HolderAccountValidator(ctx)
-        if not await holder_validator.is_active():
-            return ExecTxResp(code=ExecTxRespCode.Failed)
+    async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxRespCode:
+        if not await ctx.holder_validator.is_active():
+            return ExecTxRespCode.Failed
 
         # get solana address of the sender and receiver
         await self._init_base_sol_tx(ctx)
@@ -127,8 +119,7 @@ class NeonTxExecutor(ExecutorComponent):
             if (alt_acct := SolAltAccountInfo.from_bytes(acct.address, acct.data)).is_exist:
                 ctx.add_alt_id(alt_acct.ident)
 
-        exit_code = await self._select_strategy(ctx, self._stuck_tx_strategy_list)
-        return ExecTxResp(code=exit_code, chain_id=ctx.chain_id)
+        return await self._select_strategy(ctx, self._stuck_tx_strategy_list)
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
         for _Strategy in tx_strategy_list:
@@ -136,7 +127,7 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("skip simple strategy %s", _Strategy.name)
                 continue
 
-            strategy = _Strategy(ctx)
+            strategy = _Strategy(self._server, ctx)
             if not await strategy.validate():
                 _LOG.debug("skip strategy %s: %s", strategy.name, strategy.validation_error_msg)
                 continue
@@ -173,10 +164,6 @@ class NeonTxExecutor(ExecutorComponent):
             except StuckTxError as exc:
                 _LOG.warning("stuck NeonTx error: %s", str(exc))
                 raise
-
-            except BadResourceError as exc:
-                _LOG.warning("bad resource error: %s", str(exc))
-                return ExecTxRespCode.BadResource
 
             except (
                 WrongStrategyError,
@@ -240,7 +227,7 @@ class NeonTxExecutor(ExecutorComponent):
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
             sender_balance=sender_balance,
-            emulator_block=ctx.holder_block,
+            emulator_block=ctx.holder.block,
         )
 
         ctx.set_emulator_result(emul_resp)
@@ -251,23 +238,27 @@ class NeonTxExecutor(ExecutorComponent):
         ctx.set_ro_address_list(ro_addr_list)
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
-        if ctx.is_started:
+        if await self._is_started(ctx):
             return
 
-        state_tx_cnt = await self._get_state_tx_cnt(ctx)
+        state_tx_cnt = await self._core_api_client.get_state_tx_cnt(ctx.sender, None)
         EthNonceTooHighError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
         EthNonceTooLowError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
 
     async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
-        if not ctx.is_started:
+        if not await self._is_started(ctx):
             return None
 
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.balance
 
-    async def _get_state_tx_cnt(self, ctx: NeonExecTxCtx) -> int:
-        acct = await self._core_api_client.get_neon_account(ctx.sender, None)
-        return acct.state_tx_cnt
+    @staticmethod
+    async def _is_started(ctx: NeonExecTxCtx) -> bool:
+        if ctx.is_stuck_tx:
+            return True
+        elif await ctx.holder_validator.is_active():
+            return True
+        return False
 
     async def _init_base_sol_tx(self, ctx: NeonExecTxCtx) -> None:
         addr_list = tuple([ctx.sender, ctx.receiver])
