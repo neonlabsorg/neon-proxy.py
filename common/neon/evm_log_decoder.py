@@ -200,7 +200,7 @@ class NeonInvalidTagError(NeonTxErrorLogInfo):
         super().from_raw(code, msg)
         code = int.from_bytes(data[0:4])
         address = data[4:24]
-        expected = int.from_bytes(log_rec.data[24:25])
+        expected = int.from_bytes(data[24:25])
 
     def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonInvalidTagError:
         return NeonInvalidTagError(
