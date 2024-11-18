@@ -257,7 +257,7 @@ class SolBlockDb(HistoryDbTable):
             return NeonBlockHdrModel.new_empty(slot=0)
 
         if not (block_time := await self._generate_block_time(ctx, slot)):
-            return NeonBlockHdrModel(slot=slot)
+            return NeonBlockHdrModel.new_empty(slot=slot)
 
         is_finalized = slot <= slot_range.finalized_slot
         sol_commit = EthCommit.Finalized if is_finalized else EthCommit.Latest
@@ -368,7 +368,7 @@ class _Record:
             parent_block_slot=hdr.parent_slot,
             is_finalized=hdr.is_finalized,
             is_active=hdr.is_finalized,
-            cu_price_percentiles=hdr.cu_price_list,
+            cu_price_percentiles=list(hdr.cu_price_list),
         )
 
 
