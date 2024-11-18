@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Final
+
 from typing_extensions import Self, ClassVar
 
 from common.ethereum.bin_str import EthBinStrField
@@ -11,6 +13,11 @@ from common.utils.cached import cached_method
 from common.utils.pydantic import BaseModel
 
 OP_RESOURCE_ENDPOINT = "/api/v1/resource/"
+
+
+class OpGetActiveOperatorKey(BaseModel):
+    req_id: dict
+    chain_id: int | None
 
 
 class OpGetResourceRequest(BaseModel):
@@ -32,6 +39,8 @@ class OpResourceResp(BaseModel):
 
 
 class OpResourceModel(BaseModel):
+    EmptyResourceId: Final[int] = -1
+
     owner: SolPubKeyField
     holder_address: SolPubKeyField
     resource_id: int
@@ -47,7 +56,7 @@ class OpResourceModel(BaseModel):
             cls._default = OpResourceModel(
                 owner=SolPubKey.default(),
                 holder_address=SolPubKey.default(),
-                resource_id=0,
+                resource_id=cls.EmptyResourceId,
                 chain_id=0,
                 eth_address=EthAddress.default(),
                 token_sol_address=SolPubKey.default(),
