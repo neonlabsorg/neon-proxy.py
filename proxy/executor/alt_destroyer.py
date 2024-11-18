@@ -161,19 +161,19 @@ class SolAltDestroyer(ExecutorComponent):
 
     async def _deactivate_alt(self, alt: SolAltID) -> bool:
         ix = SolAltProg(alt.owner).make_deactivate_alt_ix(alt)
-        return await self._send_tx(alt, SolAltIxCode.Deactivate.name, ix)
+        return await self._send_tx(alt, SolAltIxCode.Deactivate.name, SolAltProg.CuLimitDeactivate, ix)
 
     async def _close_alt(self, alt: SolAltID) -> bool:
         ix = SolAltProg(alt.owner).make_close_alt_ix(alt)
-        return await self._send_tx(alt, SolAltIxCode.Close.name, ix)
+        return await self._send_tx(alt, SolAltIxCode.Close.name, SolAltProg.CuLimitClose, ix)
 
-    async def _send_tx(self, alt: SolAltID, name: str, ix: SolTxIx) -> bool:
+    async def _send_tx(self, alt: SolAltID, name: str, cu_limit: int, ix: SolTxIx) -> bool:
         tx_list_signer = OpTxListSigner(dict(alt=alt.ctx_id), alt.owner, self._op_client)
         watch_session = SolWatchTxSession(self._cfg, self._sol_client)
 
         cb_prog = SolCbProg()
         cu_price_ix = cb_prog.make_cu_price_ix(self._cfg.def_simple_cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(3_000)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
 
         tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
         return await SolTxListSender(self._cfg, self._stat_client, watch_session, tx_list_signer).send(tuple([tx]))

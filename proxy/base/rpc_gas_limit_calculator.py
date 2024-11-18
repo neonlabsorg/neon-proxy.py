@@ -110,18 +110,22 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     def _sol_tx_from_eth_tx(self, eth_tx: EthTx, resp: EmulNeonCallResp) -> SolLegacyTx:
         cb_prog = self._cb_prog
-        ix_list = [
-            cb_prog.make_cu_price_ix(cb_prog.BaseCuPrice),
-            cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize),
-            cb_prog.make_cu_limit_ix(cb_prog.MaxCuLimit),
-        ]
 
         neon_prog = self._neon_prog
         neon_prog.init_neon_tx(EthTxHash.from_raw(eth_tx.neon_tx_hash), eth_tx.to_bytes())
         neon_prog.init_account_meta_list(resp.sol_account_meta_list)
-        ix_list.append(neon_prog.make_tx_step_from_data_ix(NeonIxMode.Default, self._cfg.max_emulate_evm_step_cnt, 101))
 
-        sol_tx = SolLegacyTx(name="Estimate", ix_list=tuple(ix_list))
+        neon_ix = neon_prog.make_tx_step_from_data_ix(NeonIxMode.Default, self._cfg.max_emulate_evm_step_cnt, 101)
+
+        ix_list = tuple([
+            cb_prog.make_cu_price_ix(cb_prog.BaseCuPrice),
+            cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize),
+            cb_prog.make_cu_limit_ix(cb_prog.MaxCuLimit),
+            neon_ix,
+        ])
+
+
+        sol_tx = SolLegacyTx(name="Estimate", ix_list=ix_list)
         sol_tx.recent_block_hash = SolBlockHash.fake()
         return sol_tx
 
