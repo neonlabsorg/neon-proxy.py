@@ -156,6 +156,13 @@ class NeonProg:
     TreasuryGas: ClassVar[int] = 0
     BaseGas: ClassVar[int] = SignatureGas + 0
 
+    # Holder IX CUs limit
+    CuLimitHolderWrite: Final[int] = 25_000
+    CuLimitHolderCreate: Final[int] = 7_500
+    CuLimitHolderDestroy: Final[int] = 7_500
+    # Operator balance CUs limit
+    CuLimitOpCreateBalance: Final[int] = 150_000
+
     # The notation is as follows:
     #   The first, without +, goes required accounts for the Neon instruction.
     #   Then, with + prefix, follows accounts that aren't listed in the Neon instruction, but are a part of Solana

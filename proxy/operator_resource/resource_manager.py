@@ -512,7 +512,7 @@ class OpResourceMng(OpResourceComponent):
         neon_prog = NeonProg(signer.pubkey).init_holder_address(op_holder.address)
 
         cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(7_500)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(neon_prog.CuLimitHolderCreate)
 
         create_acct_ix = sys_prog.make_create_account_with_seed_ix(
             address=op_holder.address,
@@ -551,10 +551,12 @@ class OpResourceMng(OpResourceComponent):
 
     async def _delete_holder_by_address(self, signer: SolSigner, holder_address: SolPubKey) -> bool:
         cb_prog = SolCbProg()
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(7_500)
+        neon_prog = NeonProg(signer.pubkey).init_holder_address(holder_address)
 
-        delete_ix = NeonProg(signer.pubkey).init_holder_address(holder_address).make_delete_holder_ix()
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(neon_prog.CuLimitHolderCreate)
+
+        delete_ix = neon_prog.make_delete_holder_ix()
         tx = SolLegacyTx(name="deleteHolderAccount", ix_list=tuple([cu_price_ix, cu_limit_ix, delete_ix]))
         if result := await self._send_tx(signer, tx):
             self._deleted_holder_addr_set.add(holder_address)
@@ -563,11 +565,12 @@ class OpResourceMng(OpResourceComponent):
     async def _validate_neon_acct_list(self, op_signer: OpSignerInfo, evm_cfg: EvmConfigModel) -> bool:
         assert evm_cfg is not None
 
-        cb_prog = SolCbProg
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(150_000)
-
+        cb_prog = SolCbProg()
         neon_prog = NeonProg(op_signer.owner)
+
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(neon_prog.CuLimitOpCreateBalance)
+
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
         ix_list: list[SolTxIx] = list()
         for token in evm_cfg.token_dict.values():
