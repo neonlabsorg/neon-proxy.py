@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import random
 from collections import deque
 from typing import Sequence, Final
 
@@ -82,6 +83,14 @@ class OpResourceMng(OpResourceComponent):
             await self._refresh_signer_task
         if self._activate_signer_task:
             await self._activate_signer_task
+
+    def get_active_operator(self) -> SolPubKey:
+        if not (op_signer_list := list(self._active_signer_dict.values())):
+            return SolPubKey.default()
+
+        len_list = len(op_signer_list)
+        idx = random.randint(0, len_list - 1) if len_list > 1 else 0
+        return op_signer_list[idx].owner
 
     def get_resource(self, owner: SolPubKey, holder_address: SolPubKey, chain_id: int | None) -> OpResourceModel:
         if (op_signer := self._active_signer_dict.get(owner, None)) is None:
