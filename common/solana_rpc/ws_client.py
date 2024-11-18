@@ -130,6 +130,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
     async def _ws_send_data(self, data: _SolWsSendData) -> None:
         if not self.is_connected:
             raise SolError("WebSocket is not connected")
+        # _LOG.debug("TYPE %s, %s", type(data), str(data))
         await self._ws_session.send_str(data.to_json())
 
     async def _ws_receive_data(self, timeout_sec: float | None) -> Sequence[_SoldersWsMsg]:
@@ -190,6 +191,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 if key := self._sub_dict.pop(item.subscription, None):
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.req_id not in self._req_dict, f"request {info.req_id} for {key} still exists?"
+                    # _LOG.debug("GOT NOTIF %s", key)
                     self._on_sub_notif(info, item)
                 else:
                     _LOG.warning("unknown subscription %s on notification", item.subscription)
@@ -209,6 +211,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
             # _LOG.debug("subscribe %s on tx %s", sig_info.req_id, tx)
             await self._ws_send_data(req)
         except (BaseException,):
+            # _LOG.error("ERROR subscribe %s", str(e), exc_info=e)
             self._obj_dict.pop(key, None)
             self._req_dict.pop(req_id, None)
             raise
@@ -225,6 +228,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
             try:
                 await self._ws_send_data(req)
             except (BaseException,):
+                # _LOG.error("ERROR unsubscribe %s", str(e), exc_info=e)
                 pass
 
     # fmt: off
@@ -266,17 +270,18 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
 
     async def _wait(self, timeout_sec: float) -> bool:
         start_time_sec = time.monotonic()
+        # _LOG.debug("OBJ %s %s", len(self._obj_dict), timeout_sec)
         while self._obj_dict:
             if (wait_sec := timeout_sec - (time.monotonic() - start_time_sec)) <= 0:
                 return False
             await super()._wait(wait_sec)
         return True
 
-    async def _new_sub_request(self, info: _TxInfo, commit: SolCommit) -> _SolWsSendData:
+    def _new_sub_request(self, info: _TxInfo, commit: SolCommit) -> _SolWsSendData:
         cfg = _SoldersTxSigCfg(commit.to_rpc_commit())
         return _SoldersSubTxSig(info.key, cfg, info.req_id)
 
-    async def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData:
+    def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData:
         return _SoldersUnsubTxSig(sub_id, req_id)
 
 
