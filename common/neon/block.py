@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, Sequence
 
 from typing_extensions import Self
 
@@ -17,10 +17,10 @@ from ..utils.pydantic import BaseModel
 @dataclass(frozen=True)
 class NeonBlockCuPriceInfo:
     slot: int
-    cu_price_list: list[int]
+    cu_price_list: Sequence[int]
 
     @classmethod
-    def from_raw(cls, slot: int, cu_price_list: list[int] | None) -> NeonBlockCuPriceInfo:
+    def from_raw(cls, slot: int, cu_price_list: Sequence[int] | None) -> NeonBlockCuPriceInfo:
         return cls(
             slot=slot,
             cu_price_list=CuPricePercentileModel.from_raw(cu_price_list).cu_price_list,
@@ -41,7 +41,7 @@ class NeonBlockHdrModel(BaseModel):
     block_time: int | None
     parent_slot: int | None
     parent_block_hash: EthBlockHashField
-    cu_price_list: list[int] = CuPricePercentileModel.default().cu_price_list
+    cu_price_list: Sequence[int] = CuPricePercentileModel.default().cu_price_list
 
     @classmethod
     def default(cls) -> Self:

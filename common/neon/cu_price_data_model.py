@@ -24,14 +24,14 @@ class CuPricePercentileModel(BaseModel):
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
-            cls._default = cls(cu_price_list=[0] * cls._PercentileCount)
+            cls._default = cls(cu_price_list=tuple([0] * cls._PercentileCount))
         return cls._default
 
     @classmethod
     def from_raw(cls, cu_price_list: Sequence[int] | None) -> Self:
         if (not cu_price_list) or (len(cu_price_list) < cls._PercentileCount):
             return cls.default()
-        return cls(cu_price_list=cu_price_list)
+        return cls(cu_price_list=tuple(cu_price_list))
 
     @classmethod
     def from_sol_block(cls, sol_block: SolRpcBlockInfo) -> Self:
@@ -71,7 +71,7 @@ class CuPricePercentileModel(BaseModel):
         )
 
     @classmethod
-    def get_weighted_percentile(cls, pp: int, data_point_cnt: int, cu_price_list_seq: Iterable[list[int]]) -> float:
+    def get_weighted_percentile(cls, pp: int, data_point_cnt: int, cu_price_list_seq: Iterable[Sequence[int]]) -> float:
         """
         Returns weighted average of `pp` percentiles for each price data in `price_seq`.
         The first price data is taken with the most significant weight.
