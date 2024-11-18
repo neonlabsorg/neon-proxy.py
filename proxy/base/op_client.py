@@ -34,6 +34,7 @@ from .op_api import (
     OpDestroyHolderResp,
     OpUnblockHolderRequest,
     OpUnblockHolderResp,
+    OpGetActiveOperatorKey,
 )
 
 
@@ -61,6 +62,9 @@ class OpResourceClient(AppDataClient):
                 holder_address=holder_address,
             )
         )
+
+    async def get_active_key(self, req_id: dict, chain_id: int | None) -> OpResourceModel:
+        return await self._get_active_key(OpGetActiveOperatorKey(req_id=req_id, chain_id=chain_id))
 
     async def free_resource(self, req_id: dict, is_good_resource: bool, resource: OpResourceModel) -> bool:
         req = OpFreeResourceRequest(req_id=req_id, is_good=is_good_resource, resource=resource)
@@ -111,6 +115,9 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="getOperatorResource")
     async def _get_resource(self, request: OpGetResourceRequest) -> OpResourceModel: ...
+
+    @AppDataClient.method(name="getActiveOperatorKey")
+    async def _get_active_key(self, request: OpGetActiveOperatorKey) -> OpResourceModel: ...
 
     @AppDataClient.method(name="freeOperatorResource")
     async def _free_resource(self, request: OpFreeResourceRequest) -> OpResourceResp: ...

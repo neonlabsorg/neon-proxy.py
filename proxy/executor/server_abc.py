@@ -29,6 +29,10 @@ class ExecutorComponent(BaseIntlProxyComponent):
         return self._server._op_client  # noqa
 
     @cached_property
+    def _mp_client(self) -> MempoolClient:
+        return self._server._mp_client  # noqa
+
+    @cached_property
     def _cu_price_client(self) -> CuPriceClient:
         return self._server._cu_price_client  # noqa
 

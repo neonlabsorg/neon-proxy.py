@@ -12,7 +12,6 @@ from common.solana.alt_program import SolAltID
 from common.utils.cached import cached_property
 from common.utils.pydantic import BaseModel
 from .mp_api import MpTxModel, MpStuckTxModel, MpTokenGasPriceModel, MpGasPriceModel
-from .op_api import OpResourceModel
 
 EXECUTOR_ENDPOINT = "/api/v1/executor/"
 
@@ -49,7 +48,6 @@ class ExecTxRequest(BaseModel):
 class ExecStuckTxRequest(BaseModel):
     stuck_tx: MpStuckTxModel
     token: ExecTokenModel
-    op_resource: OpResourceModel = OpResourceModel.default()
 
     @cached_property
     def req_id(self) -> dict:
