@@ -33,6 +33,15 @@ class SolTxErrorParser:
         self._receipt = receipt
 
     @cached_method
+    def check_if_require_resize_iter(self) -> bool:
+        if self.check_if_preprocessed_error():
+            if self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.ProgramFailedToComplete:
+                return True
+
+        log_list = self._get_evm_log_list()
+        return any(log_rec.find(self._require_resize_iter_msg) != -1 for log_rec in reversed(log_list))
+
+    @cached_method
     def check_if_error(self) -> bool:
         if isinstance(self._receipt, (SolRpcSendTxErrorInfo, SolRpcNodeUnhealthyErrorInfo)):
             return True

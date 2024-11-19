@@ -105,7 +105,7 @@ class NeonTxEventModel(BaseModel):
         return int(bloom)
 
 @dataclass
-class NeonTxErrorLogInfo:
+class NeonTxErrorLogInfo(ABC):
     class ErrorCode(IntEnum):
         Custom = 0
         ProgramError = 1
@@ -173,101 +173,81 @@ class NeonTxErrorLogInfo:
         PriorityFeeParsingError = 63
         PriorityFeeError = 64
     code: ErrorCode
-    # data: bytearray
+    data: bytearray
     message: str
 
     @classmethod
-    def from_raw(cls, code: int, message: str):
+    def from_raw(cls, code: int, data: bytearray, message: str):
         code = code
+        data = data[4:]
         message = message
 
     def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonTxErrorLogInfo:
         return NeonTxErrorLogInfo(
             code=self.code,
+            data=self.data,
             message=self.message,
         )
 
-
-@dataclass
-class NeonInvalidTagError(NeonTxErrorLogInfo):
-
-    code: int
-    address: str  # [bytes, 20]
-    expected: int
-
-    @classmethod
-    def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-        super().from_raw(code, msg)
-        code = int.from_bytes(data[0:4])
-        address = data[4:24]
-        expected = int.from_bytes(data[24:25])
-
-    def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonInvalidTagError:
-        return NeonInvalidTagError(
-            code=self.code,
-            message=self.message,
-            address = self.address,
-            expected = self.expected,
-        )
-
-@dataclass
-class NeonOutOfGasError(NeonTxErrorLogInfo):
-
-    code: int
-    has_gas_limit: int  # [bytes, 20]
-    req_gas_limit: int
-
-    @classmethod
-    def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-        super().from_raw(code, msg)
-        code = int.from_bytes(data[0:4])
-        has_gas_limit = int.from_bytes(data[4:36])
-        req_gas_limit = int.from_bytes(data[36:68])
-
-    def to_clean_copy(self) -> NeonOutOfGasError:
-        return NeonOutOfGasError(
-            code=self.code,
-            message=self.message,
-            has_gas_limit = self.has_gas_limit,
-            req_gas_limit = self.req_gas_limit,
-        )
-
-    @dataclass
-    class NeonTxAlreadyFinalizedError(NeonTxErrorLogInfo):
-        code: int
-
-        @classmethod
-        def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-            super().from_raw(code, msg)
-            code = int.from_bytes(data[0:4])
-
-        def to_clean_copy(self) -> NeonTxAlreadyFinalizedError:
-            return NeonTxAlreadyFinalizedError(
-                code=self.code,
-            )
-
-
-@dataclass
-class NeonInvalidNonceError(NeonTxErrorLogInfo):
-
-    code: int
-    has_gas_limit: int  # [bytes, 20]
-    req_gas_limit: int
-
-    @classmethod
-    def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-        super().from_raw(code, msg)
-        code = int.from_bytes(data[0:4])
-        has_gas_limit = int.from_bytes(data[4:36])
-        req_gas_limit = int.from_bytes(data[36:68])
-
-    def to_clean_copy(self) -> NeonInvalidNonceError:
-        return NeonInvalidNonceError(
-            code=self.code,
-            message=self.message,
-            has_gas_limit = self.has_gas_limit,
-            req_gas_limit = self.req_gas_limit,
-        )
+#
+# @dataclass
+# class NeonInvalidTagError(NeonTxErrorLogInfo):
+#
+#     code: int
+#     address: str  # [bytes, 20]
+#     expected: int
+#
+#     @classmethod
+#     def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
+#         super().from_raw(code, msg)
+#         code = int.from_bytes(data[0:4])
+#         address = data[4:24]
+#         expected = int.from_bytes(data[24:25])
+#
+#     def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonInvalidTagError:
+#         return NeonInvalidTagError(
+#             code=self.code,
+#             message=self.message,
+#             address = self.address,
+#             expected = self.expected,
+#         )
+#
+# @dataclass
+# class NeonOutOfGasError(NeonTxErrorLogInfo):
+#
+#     code: int
+#     has_gas_limit: int  # [bytes, 20]
+#     req_gas_limit: int
+#
+#     @classmethod
+#     def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
+#         super().from_raw(code, msg)
+#         code = int.from_bytes(data[0:4])
+#         has_gas_limit = int.from_bytes(data[4:36])
+#         req_gas_limit = int.from_bytes(data[36:68])
+#
+#     def to_clean_copy(self) -> NeonOutOfGasError:
+#         return NeonOutOfGasError(
+#             code=self.code,
+#             message=self.message,
+#             has_gas_limit = self.has_gas_limit,
+#             req_gas_limit = self.req_gas_limit,
+#         )
+#
+#     @dataclass
+#     class NeonTxAlreadyFinalizedError(NeonTxErrorLogInfo):
+#         code: int
+#
+#         @classmethod
+#         def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
+#             super().from_raw(code, msg)
+#             code = int.from_bytes(data[0:4])
+#
+#         def to_clean_copy(self) -> NeonTxAlreadyFinalizedError:
+#             return NeonTxAlreadyFinalizedError(
+#                 code=self.code,
+#             )
+#
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:

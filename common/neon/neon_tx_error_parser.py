@@ -30,15 +30,6 @@ class NeonTxErrorParser(SolTxErrorParser):
     _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
 
     @cached_method
-    def check_if_require_resize_iter(self) -> bool:
-        if self.check_if_preprocessed_error():
-            if self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.ProgramFailedToComplete:
-                return True
-
-        log_list = self._get_evm_log_list()
-        return any(log_rec.find(self._require_resize_iter_msg) != -1 for log_rec in reversed(log_list))
-
-    @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
         evm_log_list = self._get_evm_log_list()
         if any(self._create_neon_acct_re.match(log_rec) for log_rec in evm_log_list):
@@ -50,13 +41,14 @@ class NeonTxErrorParser(SolTxErrorParser):
     @cached_method
     def check_if_already_finalized(self) -> bool:
         log_list = self._get_evm_error_log_list()
-        return any(log_rec == self._already_finalized_msg for log_rec in log_list)
+        return any(log_rec.code == NeonTxErrorLogInfo.ErrorCode.StorageAccountFinalized for log_rec in log_list)
 
     @cached_method
     def get_nonce_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
-            if type(log_rec) is NeonInvalidTagError: #replace to invalid nonce
+            if log_rec.code == NeonTxErrorLogInfo.ErrorCode.NeonInvalidTagError: #replace to invalid nonce
+                # address =
                 _LOG.debug("get_nonce_error %s: found NeonInvalidTagError, address = %s", cls.name, log_rec.address)
                 return int(log_rec.expected), int(log_rec.expected)
         return None
@@ -65,8 +57,9 @@ class NeonTxErrorParser(SolTxErrorParser):
     def get_out_of_gas_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
-            if type(log_rec) is NeonOutOfGasError:
-                has_gas_limit, req_gas_limit = log_rec.has_gaas_limit, log_rec.req_gas_limit
+            if log_rec.code == NeonTxErrorLogInfo.ErrorCode.OutOfGas:
+                has_gas_limit = int.from_bytes(log_rec.data[0:32])
+                req_gas_limit = int.from_bytes(log_recdata[32:64])
                 return int(has_gas_limit), int(req_gas_limit)
         return None
 
@@ -113,4 +106,7 @@ class NeonTxErrorParser(SolTxErrorParser):
             neon_log = NeonEvmLogDecoder().decode(sol_tx_idx, log_list)
             for error_item in neon_log.tx_error_list:
                 error_log_list.append(error_item)
+
+        _LOG.debug("_get_evm_error_log_list %s: len(error_log_list) \n {error_log_list}", cls.name, len(error_log_list), error_log_list)
+
         return tuple(error_log_list)
