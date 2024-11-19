@@ -450,6 +450,11 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
+        # TODO: remove after upgrade
+        neon_tx: dict | None = data.get("neon_tx", None)
+        if "tx_chain_id" in neon_tx:
+            neon_tx["chain_id"] = neon_tx.pop("tx_chain_id", None)
+        #
         init = cls.InitData.from_dict(data)
 
         self = cls(
