@@ -463,6 +463,10 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx_rcpt: dict | None = data.get("neon_tx_rcpt", None)
         if "priority_fee_spent" not in neon_tx_rcpt:
             neon_tx_rcpt["priority_fee_spent"] = 0
+
+        neon_tx: dict | None = data.get("neon_tx", None)
+        if "tx_chain_id" in neon_tx:
+            neon_tx["chain_id"] = neon_tx.pop("tx_chain_id", None)
         #
         init = cls.InitData.from_dict(data)
 
