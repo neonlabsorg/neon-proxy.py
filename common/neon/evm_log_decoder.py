@@ -105,7 +105,7 @@ class NeonTxEventModel(BaseModel):
         return int(bloom)
 
 @dataclass
-class NeonTxErrorLogInfo(ABC):
+class NeonTxErrorLogInfo:
     class ErrorCode(IntEnum):
         Custom = 0
         ProgramError = 1
@@ -178,9 +178,12 @@ class NeonTxErrorLogInfo(ABC):
 
     @classmethod
     def from_raw(cls, code: int, data: bytearray, message: str):
-        code = code
-        data = data[4:]
-        message = message
+        _LOG.debug("NeonTxErrorLogInfo : from_raw")
+        return NeonTxErrorLogInfo(
+            code = code,
+            data = data[4:],
+            message = message,
+        )
 
     def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonTxErrorLogInfo:
         return NeonTxErrorLogInfo(
@@ -188,66 +191,6 @@ class NeonTxErrorLogInfo(ABC):
             data=self.data,
             message=self.message,
         )
-
-#
-# @dataclass
-# class NeonInvalidTagError(NeonTxErrorLogInfo):
-#
-#     code: int
-#     address: str  # [bytes, 20]
-#     expected: int
-#
-#     @classmethod
-#     def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-#         super().from_raw(code, msg)
-#         code = int.from_bytes(data[0:4])
-#         address = data[4:24]
-#         expected = int.from_bytes(data[24:25])
-#
-#     def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonInvalidTagError:
-#         return NeonInvalidTagError(
-#             code=self.code,
-#             message=self.message,
-#             address = self.address,
-#             expected = self.expected,
-#         )
-#
-# @dataclass
-# class NeonOutOfGasError(NeonTxErrorLogInfo):
-#
-#     code: int
-#     has_gas_limit: int  # [bytes, 20]
-#     req_gas_limit: int
-#
-#     @classmethod
-#     def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-#         super().from_raw(code, msg)
-#         code = int.from_bytes(data[0:4])
-#         has_gas_limit = int.from_bytes(data[4:36])
-#         req_gas_limit = int.from_bytes(data[36:68])
-#
-#     def to_clean_copy(self) -> NeonOutOfGasError:
-#         return NeonOutOfGasError(
-#             code=self.code,
-#             message=self.message,
-#             has_gas_limit = self.has_gas_limit,
-#             req_gas_limit = self.req_gas_limit,
-#         )
-#
-#     @dataclass
-#     class NeonTxAlreadyFinalizedError(NeonTxErrorLogInfo):
-#         code: int
-#
-#         @classmethod
-#         def from_raw(cls, code: ErrorCode, data: bytearray, msg: str):
-#             super().from_raw(code, msg)
-#             code = int.from_bytes(data[0:4])
-#
-#         def to_clean_copy(self) -> NeonTxAlreadyFinalizedError:
-#             return NeonTxAlreadyFinalizedError(
-#                 code=self.code,
-#             )
-#
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
@@ -571,13 +514,13 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         msg = base64.b64decode(data_list[2])
         _LOG.debug("decode %s: found error with message %s", cls.name, msg)
 
-        if code == NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag:
-            _LOG.debug("decode %s: fcode == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey", cls.name, msg)
-            e =  NeonInvalidTagError.from_raw(code, data, msg)
-            _LOG.debug("decode %s: AccountInvalidKey.address =", cls.name, e.address)
-        else:
-            _LOG.debug("decode %s: code != NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey %d", cls.name, NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag)
-            e = NeonTxErrorLogInfo(code, msg)
+        # if code == NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag:
+        #     _LOG.debug("decode %s: fcode == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey", cls.name, msg)
+        #     e =  NeonInvalidTagError.from_raw(code, data, msg)
+        #     _LOG.debug("decode %s: AccountInvalidKey.address =", cls.name, e.address)
+        # else:
+        #     _LOG.debug("decode %s: code != NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey %d", cls.name, NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag)
+        e = NeonTxErrorLogInfo.from_raw(code, data, msg)
 
         log.tx_error_list.append(e)
 
