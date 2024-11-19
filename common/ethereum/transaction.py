@@ -455,7 +455,7 @@ class EthTx:
         if not max_fee_per_gas:
             return gas_price
 
-        if (base_fee_per_gas := max_fee_per_gas - max_priority_fee_per_gas) >= 0:
+        if (base_fee_per_gas := max_fee_per_gas - max_priority_fee_per_gas) > 0:
             return base_fee_per_gas
         return max_fee_per_gas
 
