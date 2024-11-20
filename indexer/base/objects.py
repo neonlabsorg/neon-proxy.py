@@ -279,7 +279,7 @@ class _NeonTxEventDraft:
     def from_raw(cls, src: NeonTxEventModel) -> Self:
         return cls(**dict(src))
 
-    def  to_clean_copy(self) -> NeonTxEventModel:
+    def to_clean_copy(self) -> NeonTxEventModel:
         return NeonTxEventModel.model_validate(self, from_attributes=True)
 
     @cached_property

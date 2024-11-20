@@ -55,6 +55,7 @@ class SolTxSendState:
         InvalidIxDataError = enum.auto()
         RequireResizeIterError = enum.auto()
         OutOfMemoryError = enum.auto()
+        UnknownError = enum.auto()
 
     status: Status
     tx: SolTx
