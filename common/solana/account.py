@@ -14,11 +14,11 @@ SolRpcAccountInfo = _acct.Account
 
 class SolAccountModel(BaseModel):
     address: SolPubKeyField = Field(default=SolPubKey.default())
-    balance: int = Field(validation_alias=AliasChoices("lamports", "balance"))
+    balance: int = Field(0, validation_alias=AliasChoices("lamports", "balance"))
     data: Base64Field
     owner: SolPubKeyField
     executable: bool = Field(default=False)
-    rent_epoch: int = Field(default=0, alias="rentEpoch")
+    rent_epoch: int = Field(default=0, validation_alias=AliasChoices("rent_epoch", "rentEpoch"))
 
     _default: ClassVar[SolAccountModel | None] = None
 
@@ -27,7 +27,6 @@ class SolAccountModel(BaseModel):
         if not cls._default:
             cls._default = cls(
                 address=SolPubKey.default(),
-                balance=0,
                 data=bytes(),
                 owner=SolPubKey.default(),
             )
@@ -55,7 +54,7 @@ class SolAccountModel(BaseModel):
                 data=raw.data,
                 owner=raw.owner,
                 executable=raw.executable,
-                rentEpoch=raw.rent_epoch,
+                rent_epoch=raw.rent_epoch,
             )
         raise ValueError(f"Wrong input type: {type(raw).__name__}")
 
