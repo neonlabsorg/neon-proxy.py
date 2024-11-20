@@ -369,7 +369,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     @staticmethod
     def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
         fake_tx_ix = SolTxIxMetaInfo.default()
-        log = NeonEvmLogDecoder().decode_old(fake_tx_ix, emul_tx.meta.log_list)
+        sol_tx_idx = SolTxIdx(sol_tx_sig=SolTxSig.default(),
+                              sol_ix_idx=1,
+                              sol_inner_ix_idx=None)
+        neon_log = NeonEvmLogDecoder().decode(sol_tx_idx, sol_log.log_msg_list())
+        _LOG.debug("_emulate_tx_list, neon_log.tx_error_list.size() =d", len(neon_log.tx_error_list))
         if log.tx_ix_gas.is_empty:
             gas_limit = NeonProg.BaseGas
             _LOG.debug("no GAS information, use default %s", gas_limit)
