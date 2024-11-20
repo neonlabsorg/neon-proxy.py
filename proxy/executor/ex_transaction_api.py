@@ -60,7 +60,7 @@ class NeonTxExecApi(ExecutorApi):
                             stuck_res = op_res
 
                         stuck_req = ExecStuckTxRequest(stuck_tx=stuck_tx, token=token)
-                        await self._complete_stuck_neon_tx_retry_loop(stuck_req, op_res)
+                        await self._complete_stuck_neon_tx_retry_loop(stuck_req, stuck_res)
 
                         _LOG.debug("return back to the execution of NeonTx %s", ctx.neon_tx_hash)
 

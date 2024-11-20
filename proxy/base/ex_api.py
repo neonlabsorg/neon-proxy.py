@@ -71,7 +71,6 @@ ExecTxRespCodeField = Annotated[
 class ExecTxResp(BaseModel):
     code: ExecTxRespCodeField
     state_tx_cnt: int = 0
-    chain_id: int | None = None
 
 
 class NeonAltModel(BaseModel):
