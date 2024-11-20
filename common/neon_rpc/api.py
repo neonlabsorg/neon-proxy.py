@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Any, Annotated, Final, Sequence, ClassVar
 
@@ -26,7 +27,7 @@ from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as
 _LOG = logging.getLogger(__name__)
 
 
-class BaseModel(_BaseModel):
+class _BaseRespModel(_BaseModel):
     _model_config = _BaseModel.model_config.copy()
     _model_config.pop("extra")
 
@@ -34,6 +35,16 @@ class BaseModel(_BaseModel):
         extra="allow",
         **_model_config,
     )
+
+
+def _gen_unique_id() -> str:
+    value = str(uuid.uuid4())
+    _LOG.debug("generate ID %s for core-api", value)
+    return value
+
+
+class _BaseRequestModel(_BaseModel):
+    ctx_id: str = Field(serialization_alias="id", default_factory=_gen_unique_id)
 
 
 class CoreApiResultCode(StrEnum):
@@ -56,7 +67,7 @@ class CoreApiResultCode(StrEnum):
 CoreApiResultField = Annotated[CoreApiResultCode, PlainValidator(CoreApiResultCode.from_raw)]
 
 
-class CoreApiResp(BaseModel):
+class CoreApiResp(_BaseRespModel):
     result: CoreApiResultField
     error: str = None
     error_code: DecIntField | None = None
@@ -65,7 +76,7 @@ class CoreApiResp(BaseModel):
     logs: list[dict] = Field(default_factory=list)
 
 
-class _AccountModel(BaseModel):
+class _AccountModel(_BaseModel):
     address: EthZeroAddressField
     chain_id: DecUIntField
 
@@ -76,7 +87,7 @@ class _AccountModel(BaseModel):
         return cls(address=raw.eth_address, chain_id=raw.chain_id)
 
 
-class NeonAccountListRequest(BaseModel):
+class NeonAccountListRequest(_BaseRequestModel):
     account_list: list[_AccountModel] = Field(serialization_alias="account")
     slot: DecUIntField | None
 
@@ -106,10 +117,10 @@ class NeonAccountStatus(StrEnum):
 NeonAccountStatusField = Annotated[NeonAccountStatus, PlainValidator(NeonAccountStatus.from_raw)]
 
 
-class NeonAccountModel(BaseModel):
+class NeonAccountModel(_BaseRespModel):
     account: NeonAccountField
     status: NeonAccountStatusField
-    state_tx_cnt: DecUIntField = Field(validation_alias=AliasChoices("state_tx_cnt", "trx_count"))
+    state_tx_cnt: DecUIntField = Field(validation_alias=AliasChoices("trx_count", "state_tx_cnt"))
     balance: HexUIntField
     sol_address: SolPubKeyField = Field(validation_alias=AliasChoices("solana_address", "sol_address"))
     contract_sol_address: SolPubKeyField = Field(
@@ -127,10 +138,10 @@ class NeonAccountModel(BaseModel):
         return cls(
             account=account,
             status=NeonAccountStatus.Empty,
-            state_tx_cnt=0,
-            balance=0,
             sol_address=SolPubKey.default(),
             contract_sol_address=SolPubKey.default(),
+            state_tx_cnt=0,
+            balance=0,
         )
 
     @classmethod
@@ -147,12 +158,12 @@ class NeonAccountModel(BaseModel):
         return self.account.eth_address
 
 
-class NeonContractRequest(BaseModel):
+class NeonContractRequest(_BaseRequestModel):
     contract: EthZeroAddressField
     slot: DecUIntField | None
 
 
-class NeonContractModel(BaseModel):
+class NeonContractModel(_BaseRespModel):
     account: NeonAccountField
     code: EthBinStrField
     sol_address: SolPubKeyField = Field(validation_alias="solana_address")
@@ -180,13 +191,13 @@ class NeonContractModel(BaseModel):
         return not self.code.is_empty
 
 
-class NeonStorageAtRequest(BaseModel):
+class NeonStorageAtRequest(_BaseRequestModel):
     contract: EthZeroAddressField
     index: HexUIntField
     slot: DecUIntField | None
 
 
-class OpEarnAccountModel(BaseModel):
+class OpEarnAccountModel(_BaseModel):
     status: NeonAccountStatusField
     operator_key: SolPubKeyField
     neon_account: NeonAccountField
@@ -202,7 +213,7 @@ class OpEarnAccountModel(BaseModel):
         return self.account.eth_address
 
 
-class BpfLoader2ProgModel(BaseModel):
+class BpfLoader2ProgModel(_BaseModel):
     version: int
     exec_address: SolPubKeyField = SolPubKeyField.default()
 
@@ -218,7 +229,7 @@ class BpfLoader2ProgModel(BaseModel):
         return cls(version=version, exec_address=SolPubKeyField.from_bytes(data[4:]))
 
 
-class BpfLoader2ExecModel(BaseModel):
+class BpfLoader2ExecModel(_BaseModel):
     version: int
     deployed_slot: int = 0
     minimum_size: Final[int] = 8
@@ -235,14 +246,14 @@ class BpfLoader2ExecModel(BaseModel):
         return cls(version=version, deployed_slot=int.from_bytes(data[4:8], "little"))
 
 
-class TokenModel(BaseModel):
+class TokenModel(_BaseRespModel):
     chain_id: DecIntField = Field(serialization_alias="id", validation_alias=AliasChoices("id", "chain_id"))
     mint: SolPubKeyField = Field(serialization_alias="token", validation_alias=AliasChoices("token", "mint"))
     name: str
     is_default: bool = Field(default=False, exclude=True)
 
 
-class EvmConfigModel(BaseModel):
+class EvmConfigModel(_BaseRespModel):
     deployed_slot: DecIntField
 
     treasury_pool_cnt: DecIntField
@@ -400,7 +411,7 @@ class EvmConfigModel(BaseModel):
                 dst_dict[dst_key] = src_dict.get(src_key, default)
 
 
-class HolderAccountRequest(BaseModel):
+class HolderAccountRequest(_BaseRequestModel):
     pubkey: SolPubKeyField
 
     @classmethod
@@ -447,7 +458,7 @@ CoreApiHexStrField = Annotated[
 ]
 
 
-class CoreApiTxModel(BaseModel):
+class CoreApiTxModel(_BaseRespModel):
     from_address: EthZeroAddressField = Field(
         validation_alias=AliasChoices("from", "from_address"),
         serialization_alias="from",
@@ -482,7 +493,7 @@ class CoreApiTxModel(BaseModel):
         return EthTx.calc_cost(self)
 
 
-class HolderAccountModel(BaseModel):
+class HolderAccountModel(_BaseRespModel):
     address: SolPubKeyField
 
     status: HolderAccountStatusField
@@ -501,9 +512,7 @@ class HolderAccountModel(BaseModel):
         return cls(
             address=address,
             status=HolderAccountStatus.Empty,
-            size=0,
             owner=SolPubKey.default(),
-            neon_tx_hash=EthTxHash.default(),
         )
 
     @classmethod
@@ -543,20 +552,20 @@ class HolderAccountModel(BaseModel):
         return self.status == HolderAccountStatus.Finalized
 
 
-class _CrateModel(BaseModel):
+class _CrateModel(_BaseRespModel):
     version: str
 
 
-class _VersionModel(BaseModel):
+class _VersionModel(_BaseRespModel):
     commit_id: str
 
 
-class CoreApiBuildModel(BaseModel):
+class CoreApiBuildModel(_BaseRespModel):
     crate_info: _CrateModel
     version_control: _VersionModel
 
 
-class EmulSolAccountModel(BaseModel):
+class EmulSolAccountModel(_BaseModel):
     balance: DecUIntField = Field(serialization_alias="lamports")
     data: CoreApiHexStrField
     owner: SolPubKeyField
@@ -577,16 +586,16 @@ class EmulSolAccountModel(BaseModel):
         )
 
 
-class EmulNeonAccountModel(BaseModel):
+class EmulNeonAccountModel(_BaseModel):
     nonce: DecUIntField | None = None
     balance: HexUIntField | None = None
 
 
-class EmulTraceCfgModel(BaseModel):
+class EmulTraceCfgModel(_BaseModel):
     neon_account_dict: dict[EthZeroAddressField, EmulNeonAccountModel] = Field(serialization_alias="stateOverrides")
 
 
-class EmulNeonCallRequest(BaseModel):
+class EmulNeonCallRequest(_BaseRequestModel):
     tx: CoreApiTxModel
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
@@ -620,7 +629,7 @@ class EmulNeonCallExitCode(StrEnum):
 EmulNeonCallExitCodeField = Annotated[EmulNeonCallExitCode, PlainValidator(EmulNeonCallExitCode.from_raw)]
 
 
-class EmulAccountMetaModel(BaseModel):
+class EmulAccountMetaModel(_BaseRespModel):
     pubkey: SolPubKeyField
     is_writable: bool
     is_legacy: bool
@@ -629,7 +638,7 @@ class EmulAccountMetaModel(BaseModel):
         return SolAccountMeta(pubkey=self.pubkey, is_writable=self.is_writable, is_signer=False)
 
 
-class EmulNeonCallResp(BaseModel):
+class EmulNeonCallResp(_BaseRespModel):
     exit_code: EmulNeonCallExitCodeField = Field(validation_alias="exit_status")
     external_sol_call: bool = Field(validation_alias="external_solana_call")
     revert_before_sol_call: bool = Field(validation_alias="reverts_before_solana_calls")
@@ -647,7 +656,7 @@ class EmulNeonCallResp(BaseModel):
         return tuple([a.to_sol_account_meta() for a in self.raw_meta_list])
 
 
-class EmulSolTxListRequest(BaseModel):
+class EmulSolTxListRequest(_BaseRespModel):
     cu_limit: DecUIntField = Field(serialization_alias="compute_units")
     account_cnt_limit: DecUIntField = Field(serialization_alias="account_limit")
     verify: bool
@@ -655,13 +664,13 @@ class EmulSolTxListRequest(BaseModel):
     tx_list: list[CoreApiHexStrField] = Field(serialization_alias="transactions")
 
 
-class EmulSolTxMetaModel(BaseModel):
+class EmulSolTxMetaModel(_BaseRespModel):
     error: dict | None
     log_list: list[str] = Field(default_factory=list, validation_alias="logs")
     used_cu_limit: DecUIntField = Field(validation_alias="executed_units")
 
 
-class EmulSolTxListResp(BaseModel):
+class EmulSolTxListResp(_BaseRespModel):
     meta_list: list[EmulSolTxMetaModel] = Field(validation_alias="transactions")
 
 
