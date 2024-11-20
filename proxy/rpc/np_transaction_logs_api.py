@@ -78,16 +78,16 @@ class NpTxLogsApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::TransactionLogs"
 
     @NeonProxyApi.method(name="eth_getLogs")
-    async def get_eth_logs(self, params: _RpcLogListRequest) -> Sequence[RpcEthTxEventModel]:
+    async def get_eth_logs(self, params: _RpcLogListRequest) -> list[RpcEthTxEventModel]:
         is_empty, from_block, to_block = await self._get_slot_range(params)
         if is_empty:
-            return tuple()
+            return list()
 
         event_list = await self._db.get_event_list(from_block, to_block, params.address_list, params.topic_list)
-        return tuple([RpcEthTxEventModel.from_raw(e) for e in event_list if not e.is_hidden])
+        return [RpcEthTxEventModel.from_raw(e) for e in event_list if not e.is_hidden]
 
     @NeonProxyApi.method(name="neon_getLogs")
-    async def get_neon_logs(self, params: _RpcLogListRequest) -> Sequence[RpcNeonTxEventModel]:
+    async def get_neon_logs(self, params: _RpcLogListRequest) -> list[RpcNeonTxEventModel]:
         is_empty, from_block, to_block = await self._get_slot_range(params)
         if is_empty:
             return list()
