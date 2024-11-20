@@ -6,9 +6,9 @@ from typing_extensions import Self
 
 from common.config.config import Config
 from common.ethereum.bin_str import EthBinStr
-from common.ethereum.hash import EthAddress, EthTxHash
+from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
-from common.neon.transaction_model import NeonTxModel
+from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EvmConfigModel, NeonAccountStatus
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context
@@ -188,21 +188,17 @@ class OpBalanceHandler(BaseNPCmdHandler):
             gas_limit = 25_000
 
         state_tx_cnt = await core_api_client.get_state_tx_cnt(NeonAccount.from_raw(sender_addr, chain_id))
-        tx = NeonTxModel(
-            tx_type=0,
-            neon_tx_hash=EthTxHash.default(),
+        param_dict = dict(
+            tx_type=NeonTxType.Legacy,
             from_address=sender_addr,
             to_address=dest_addr,
-            contract=EthAddress.default(),
             nonce=state_tx_cnt,
             gas_price=0,
             gas_limit=gas_limit,
             value=value,
             call_data=EthBinStr.default(),
-            v=0,
-            r=0,
-            s=0,
         )
+        tx = NeonTxModel.from_raw(param_dict)
         resp = await op_client.sign_eth_tx(req_id, tx, chain_id)
         if resp.error:
             _LOG.error("cannot sign tx: %s", resp.error)
