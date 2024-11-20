@@ -36,7 +36,10 @@ class RpcEthTxRequest(BaseJsonRpcModel):
         default=EthAddress.default(),
         validation_alias=AliasChoices("to", "toAddress"),
     )
-    data: EthBinStrField = Field(default=EthBinStr.default())
+    data: EthBinStrField = Field(
+        default=EthBinStr.default(),
+        validation_alias=AliasChoices("data", "input"),
+    )
     value: HexUIntField = Field(default=0)
     nonce: HexUIntField | None = Field(default=None)
 
