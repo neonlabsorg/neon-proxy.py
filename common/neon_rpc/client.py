@@ -50,7 +50,7 @@ from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import cached_method, ttl_cached_method
-from ..utils.json_logger import log_msg, get_ctx
+from ..utils.json_logger import log_msg
 from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
@@ -180,12 +180,12 @@ class CoreApiClient(HttpClient):
         return acct.state_tx_cnt
 
     async def get_neon_contract(self, account: NeonAccount, block: NeonBlockHdrModel | None) -> NeonContractModel:
-        req = NeonContractRequest(contract=account.eth_address, slot=self._get_slot(block), id=get_ctx())
+        req = NeonContractRequest(contract=account.eth_address, slot=self._get_slot(block))
         resp: CoreApiResp = await self._send_request("contract", req)
         return NeonContractModel.from_dict(resp.value[0], account=account)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
-        req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block), id=get_ctx())
+        req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
         resp: CoreApiResp = await self._send_request("storage", req)
         return EthHash32.from_raw(bytes(resp.value))
 
@@ -272,7 +272,6 @@ class CoreApiClient(HttpClient):
             preload_sol_address_list=list(preload_sol_address_list),
             sol_account_dict=emul_sol_acct_dict,
             slot=self._get_slot(block),
-            id=get_ctx(),
         )
         resp: EmulNeonCallResp = await self._send_request("emulate", req, EmulNeonCallResp)
         if check_result:
@@ -292,7 +291,6 @@ class CoreApiClient(HttpClient):
             verify=False,
             blockhash=blockhash.to_bytes(),
             tx_list=list(map(lambda tx: tx.to_bytes(), tx_list)),
-            id=get_ctx(),
         )
 
         resp: EmulSolTxListResp = await self._send_request("simulate_solana", req, EmulSolTxListResp)
