@@ -11,7 +11,7 @@ from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
 from ..solana.transaction import SolTx
 from common.neon.neon_tx_error_parser import NeonTxErrorParser
-from ..config.config import Config
+from common.config.config import Config
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolBlockhashNotFound,
