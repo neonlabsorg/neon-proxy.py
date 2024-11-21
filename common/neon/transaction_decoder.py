@@ -6,6 +6,7 @@ from typing import Iterator, Sequence
 
 from typing_extensions import Self
 
+from common.neon.evm_log_decoder import SolTxIdx
 from .evm_log_decoder import NeonEvmLogDecoder, NeonTxLogInfo, NeonTxLogReturnInfo, NeonTxEventModel
 from .neon_program import NeonProg
 from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddress, EthAddressField
