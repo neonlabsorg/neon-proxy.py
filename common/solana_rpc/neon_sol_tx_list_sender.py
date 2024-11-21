@@ -6,6 +6,7 @@ from common.solana_rpc.transaction_list_sender import SolTxSendState
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
+from ..solana.transaction import SolTx
 from common.neon.neon_tx_error_parser import NeonTxErrorParser
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
@@ -21,6 +22,35 @@ _LOG = logging.getLogger(__name__)
 class NeonSolTxListSender(SolTxListSender):
 
     _DecodeResult = SolTxListSender._DecodeResult
+
+    def clear(self) -> None:
+        super().clear()
+
+    def _add_tx_receipt(
+        self,
+        tx: SolTx,
+        now: int,
+        tx_receipt: SolRpcTxReceiptInfo | None,
+        no_receipt_status: SolTxSendState.Status,
+    ):
+        if not tx_receipt:
+            res = self._DecodeResult(no_receipt_status, None)
+        else:
+            res = self._decode_tx_status(tx, now, tx_receipt)
+
+        tx_state = SolTxSendState(
+            status=res.tx_status,
+            tx=tx,
+            receipt=tx_receipt,
+            error=res.error,
+        )
+
+        status = SolTxSendState.Status
+        if tx_state.status not in (status.WaitForReceipt, status.UnknownError):
+            _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
+
+        self._tx_state_dict[tx_state.tx.sig] = tx_state
+        self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
 
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         status = SolTxSendState.Status
