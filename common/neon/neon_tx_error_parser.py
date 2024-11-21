@@ -97,7 +97,6 @@ class NeonTxErrorParser(SolTxErrorParser):
         log_list: list[str] = list()
         log_state = SolTxLogTreeDecoder.decode(self._tx.message, rpc_meta, self._tx.account_key_list)
         # TODO: add EvmLogDecoder, add parsing, error, and return that transaction is finalized
-
         sol_tx_idx = SolTxIdx (sol_tx_sig=SolTxSig.default(),
                                sol_ix_idx = 1,
                                sol_inner_ix_idx = None)
