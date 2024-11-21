@@ -27,6 +27,7 @@ class NeonTxErrorParser(SolTxErrorParser):
     message: str
 
     _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
+    _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
@@ -50,7 +51,7 @@ class NeonTxErrorParser(SolTxErrorParser):
                 address = log_rec.data[0:19]
                 state_tx_cnt = int.from_bytes(data[20:27])
                 tx_nonce = int.from_bytes(data[28:35])
-                _LOG.debug("get_nonce_error: address = %s, state_tx_cnt %d , tx_nonce = %d", address, state_tx_cnt, tx_nonce)
+                _LOG.debug("get_nonce_error: address = %s, state_tx_cnt %d, tx_nonce = %d", address, state_tx_cnt, tx_nonce)
                 return int(state_tx_cnt), int(tx_nonce)
         return None
 
