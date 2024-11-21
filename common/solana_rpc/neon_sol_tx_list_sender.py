@@ -2,12 +2,16 @@ import dataclasses
 import logging
 
 from common.solana_rpc.transaction_list_sender import SolTxListSender
+from common.solana_rpc.transaction_list_sender import SolTxListSigner
+from common.solana_rpc.transaction_list_sender import SolTxStatClient
+from common.solana_rpc.transaction_list_sender import SolWatchTxSession
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
 from ..solana.transaction import SolTx
 from common.neon.neon_tx_error_parser import NeonTxErrorParser
+from ..config.config import Config
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolBlockhashNotFound,
@@ -22,6 +26,15 @@ _LOG = logging.getLogger(__name__)
 class NeonSolTxListSender(SolTxListSender):
 
     _DecodeResult = SolTxListSender._DecodeResult
+
+    def __init__(
+            self,
+            cfg: Config,
+            stat_client: SolTxStatClient,
+            sol_session: SolWatchTxSession,
+            sol_tx_signer: SolTxListSigner,
+    ) -> None:
+        super().__init__(cfg, stat_client, sol_session, sol_tx_signer)
 
     def clear(self) -> None:
         super().clear()

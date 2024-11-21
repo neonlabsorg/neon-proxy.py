@@ -10,6 +10,8 @@ from typing_extensions import Self
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
+from common.solana_rpc.neon_sol_tx_list_sender import NeonSolTxListSender
+from common.solana_rpc.ws_client import SolWatchTxSession
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
 from common.solana.commit_level import SolCommit
@@ -131,13 +133,13 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     async def cancel(self) -> ExecTxRespCode | None:
         pass
 
+    # @cached_property
+    # def _sol_tx_list_sender(self) -> NeonSolTxListSender:
+    #     watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
+    #     return NeonSolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
     @cached_property
     def _sol_tx_list_sender(self) -> NeonSolTxListSender:
-        watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
-        return NeonSolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
-
-    def _sol_tx_list_sender(self) -> SolTxListSender:
-        return SolTxListSender(
+        return NeonSolTxListSender(
             self._cfg,
             self._stat_client,
             self._ctx.sol_watch_session,
