@@ -1,1 +1,1 @@
-server_type = "cpx51"
+server_type = "cpx52"
