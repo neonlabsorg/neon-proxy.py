@@ -7,6 +7,7 @@ import random
 from collections import deque
 from typing import Sequence, Final
 
+from common.neon.neon_tx_error_parser import NeonTxErrorParser
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthAddress
 from common.neon.account import NeonAccount
