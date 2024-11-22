@@ -6,7 +6,6 @@ import enum
 import logging
 import re
 from dataclasses import dataclass
-from typing import Annotated
 from typing import Final, Sequence, Annotated
 from enum import IntEnum
 from eth_bloom import BloomFilter
@@ -108,77 +107,76 @@ class NeonTxEventModel(BaseModel):
 class NeonTxErrorLogInfo:
     class ErrorCode(IntEnum):
         Custom = 0
-        ProgramError = 1
-        PubkeyError = 2
-        RlpError = 3
-        Secp256k1Error = 4
-        BincodeError = 5
-        BorshError = 6
-        FromHexError = 7
-        TryFromIntError = 8
-        TryFromSliceError = 9
-        Utf8Error = 10
-        AccountMissing = 11
-        AccountBlocked = 12
-        AccountCreatedByAnotherTransaction = 13
-        AccountInvalidTag = 14
-        AccountInvalidOwner = 15
-        AccountInvalidKey = 16
-        AccountInvalidData = 17
-        AccountNotWritable = 18
-        AccountNotSigner = 19
-        AccountNotRentExempt = 20
-        AccountAlreadyInitialized = 21
-        AccountLegacy = 22
-        UnauthorizedOperator = 23
-        StorageAccountUninitialized = 24
-        StorageAccountFinalized = 25
-        UnknownPrecompileMethodSelector = 26
-        InsufficientBalance = 27
-        InvalidTransferToken = 28
-        OutOfGas = 29
-        OutOfPriorityFee = 30
-        GasReceiverInvalidChainId = 31
-        StackOverflow = 32
-        StackUnderflow = 33
-        PushOutOfBounds = 34
-        MemoryAccessOutOfLimits = 35
-        ReturnDataCopyOverflow = 36
-        StaticModeViolation = 37
-        InvalidJump = 38
-        InvalidOpcode = 39
-        UnknownOpcode = 40
-        NonceOverflow = 41
-        InvalidTransactionNonce = 42
-        InvalidChainId = 43
-        DeployToExistingAccount = 44
-        EVMObjectFormatNotSupported = 45
-        ContractCodeSizeLimit = 46
-        SenderHasDeployedCode = 47
-        IntegerOverflow = 48
-        OutOfBounds = 49
-        HolderInvalidOwner = 50
-        HolderInsufficientSize = 51
-        HolderInvalidHash = 52
-        AccountSpaceAllocationFailure = 53
-        InvalidAccountForCall = 54
-        UnavalableExternalSolanaCall = 55
-        RecursiveCall = 56
-        ExternalCallFailed = 57
-        OperatorBalanceInvalidOwner = 58
-        OperatorBalanceMissing = 59
-        OperatorBalanceInvalidChainId = 60
-        OperatorBalanceInvalidAddress = 61
-        PriorityFeeNotSpecified = 62
-        PriorityFeeParsingError = 63
-        PriorityFeeError = 64
+        ProgramError = enum.auto()
+        PubkeyError = enum.auto()
+        RlpError = enum.auto()
+        Secp256k1Error = enum.auto()
+        BincodeError = enum.auto()
+        BorshError = enum.auto()
+        FromHexError = enum.auto()
+        TryFromIntError = enum.auto()
+        TryFromSliceError = enum.auto()
+        Utf8Error = enum.auto()
+        AccountMissing = enum.auto()
+        AccountBlocked = enum.auto()
+        AccountCreatedByAnotherTransaction = enum.auto()
+        AccountInvalidTag = enum.auto()
+        AccountInvalidOwner = enum.auto()
+        AccountInvalidKey = enum.auto()
+        AccountInvalidData = enum.auto()
+        AccountNotWritable = enum.auto()
+        AccountNotSigner = enum.auto()
+        AccountNotRentExempt = enum.auto()
+        AccountAlreadyInitialized = enum.auto()
+        AccountLegacy = enum.auto()
+        UnauthorizedOperator = enum.auto()
+        StorageAccountUninitialized = enum.auto()
+        StorageAccountFinalized = enum.auto()
+        UnknownPrecompileMethodSelector = enum.auto()
+        InsufficientBalance = enum.auto()
+        InvalidTransferToken = enum.auto()
+        OutOfGas = enum.auto()
+        OutOfPriorityFee = enum.auto()
+        GasReceiverInvalidChainId = enum.auto()
+        StackOverflow = enum.auto()
+        StackUnderflow = enum.auto()
+        PushOutOfBounds = enum.auto()
+        MemoryAccessOutOfLimits = enum.auto()
+        ReturnDataCopyOverflow = enum.auto()
+        StaticModeViolation = enum.auto()
+        InvalidJump = enum.auto()
+        InvalidOpcode = enum.auto()
+        UnknownOpcode = enum.auto()
+        NonceOverflow = enum.auto()
+        InvalidTransactionNonce = enum.auto()
+        InvalidChainId = enum.auto()
+        DeployToExistingAccount = enum.auto()
+        EVMObjectFormatNotSupported = enum.auto()
+        ContractCodeSizeLimit = enum.auto()
+        SenderHasDeployedCode = enum.auto()
+        IntegerOverflow = enum.auto()
+        OutOfBounds = enum.auto()
+        HolderInvalidOwner = enum.auto()
+        HolderInsufficientSize = enum.auto()
+        HolderInvalidHash = enum.auto()
+        AccountSpaceAllocationFailure = enum.auto()
+        InvalidAccountForCall = enum.auto()
+        UnavalableExternalSolanaCall = enum.auto()
+        RecursiveCall = enum.auto()
+        ExternalCallFailed = enum.auto()
+        OperatorBalanceInvalidOwner = enum.auto()
+        OperatorBalanceMissing = enum.auto()
+        OperatorBalanceInvalidChainId = enum.auto()
+        OperatorBalanceInvalidAddress = enum.auto()
+        PriorityFeeNotSpecified = enum.auto()
+        PriorityFeeParsingError = enum.auto()
+        PriorityFeeError = enum.auto()
     code: ErrorCode
     data: bytearray
     message: str
 
     @classmethod
     def from_raw(cls, code: int, data: bytearray, message: str):
-        _LOG.debug("NeonTxErrorLogInfo : from_raw")
         return NeonTxErrorLogInfo(
             code = code,
             data = data[4:],
@@ -497,32 +495,24 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
-
-        _LOG.debug("_NeonEvmErrorLogDecoder:  decode '%s", cls.name)
+        """
+        Unpacks Neon error data:
+        ERROR <32 bytes - code> <bytearray - data> <str - message>
+        """
         if len(data_list) != 3:
             _LOG.error("failed to decode %s: should be at least 3 element in %s", cls.name, data_list)
             return
 
-        bs = base64.b64decode(data_list[0]) #["ERROR", code, /*arg_count, args..., */ "message data abc"]
+        bs = base64.b64decode(data_list[0])
         code = int.from_bytes(bs, "little")
-        _LOG.debug("decode %s: found error with code %d", cls.name, code)
 
         bs = base64.b64decode(data_list[1])
         data = bytearray(bs)
-        _LOG.debug("decode %s: found error with data %s", cls.name, data)
 
         msg = base64.b64decode(data_list[2])
-        _LOG.debug("decode %s: found error with message %s", cls.name, msg)
 
-        # if code == NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag:
-        #     _LOG.debug("decode %s: fcode == NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey", cls.name, msg)
-        #     e =  NeonInvalidTagError.from_raw(code, data, msg)
-        #     _LOG.debug("decode %s: AccountInvalidKey.address =", cls.name, e.address)
-        # else:
-        #     _LOG.debug("decode %s: code != NeonTxErrorLogInfo.ErrorCode.AccountInvalidKey %d", cls.name, NeonTxErrorLogInfo.ErrorCode.AccountInvalidTag)
-        e = NeonTxErrorLogInfo.from_raw(code, data, msg)
-
-        log.tx_error_list.append(e)
+        error = NeonTxErrorLogInfo.from_raw(code, data, msg)
+        log.tx_error_list.append(error)
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
