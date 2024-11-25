@@ -133,10 +133,6 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     async def cancel(self) -> ExecTxRespCode | None:
         pass
 
-    # @cached_property
-    # def _sol_tx_list_sender(self) -> NeonSolTxListSender:
-    #     watch_session = SolWatchTxSession(self._ctx.cfg, self._ctx.sol_client)
-    #     return NeonSolTxListSender(self._ctx.cfg, self._ctx.stat_client, watch_session, self._ctx.sol_tx_list_signer)
     @cached_property
     def _sol_tx_list_sender(self) -> NeonSolTxListSender:
         return NeonSolTxListSender(
