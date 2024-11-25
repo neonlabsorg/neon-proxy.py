@@ -281,7 +281,7 @@ class _NeonTxLogDraft:
     is_already_finalized: bool
 
     @classmethod
-    def from_raw_old(cls, sol_tx_ix: SolTxIxMetaInfo) -> Self:
+    def from_raw(cls, sol_tx_ix: SolTxIxMetaInfo) -> Self:
         return cls(
             sol_tx_ix=sol_tx_ix,
             neon_tx_hash=EthTxHash.default(),
@@ -791,7 +791,7 @@ class NeonEvmLogDecoder:
     def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
         """Extracts Neon transaction events from Solana transaction receipt"""
 
-        log = _NeonTxLogDraft.from_raw_old(sol_tx_ix)
+        log = _NeonTxLogDraft.from_raw(sol_tx_ix)
         for msg in log_iter:
             if msg == self._log_truncated_msg:
                 log.is_truncated = True
