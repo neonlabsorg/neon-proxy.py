@@ -93,11 +93,6 @@ class SolTxListSender:
         SolTxSendState.Status.InvalidIxDataError,
     )
 
-    @dataclasses.dataclass(frozen=True)
-    class _DecodeResult:
-        tx_status: SolTxSendState.Status
-        error: BaseException | None
-
     def __init__(
         self,
         cfg: Config,
@@ -427,31 +422,10 @@ class SolTxListSender:
         for tx, tx_receipt in zip(tx_list, tx_receipt_list):
             self._add_tx_receipt(tx, now, tx_receipt, SolTxSendState.Status.NoReceiptError)
 
-    def _add_tx_receipt(
-        self,
-        tx: SolTx,
-        now: int,
-        tx_receipt: SolRpcTxReceiptInfo | None,
-        no_receipt_status: SolTxSendState.Status,
-    ):
-        if not tx_receipt:
-            res = self._DecodeResult(no_receipt_status, None)
-        else:
-            res = self._decode_tx_status(tx, now, tx_receipt)
-
-        tx_state = SolTxSendState(
-            status=res.tx_status,
-            tx=tx,
-            receipt=tx_receipt,
-            error=res.error,
-        )
-
-        status = SolTxSendState.Status
-        if tx_state.status not in (status.WaitForReceipt, status.UnknownError):
-            _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
-
-        self._tx_state_dict[tx_state.tx.sig] = tx_state
-        self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
+    @dataclasses.dataclass(frozen=True)
+    class _DecodeResult:
+        tx_status: SolTxSendState.Status
+        error: BaseException | None
 
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         status = SolTxSendState.Status
@@ -509,6 +483,32 @@ class SolTxListSender:
             return self._DecodeResult(status.UnknownError, SolUnknownReceiptError())
 
         return self._DecodeResult(status.GoodReceipt, None)
+
+    def _add_tx_receipt(
+        self,
+        tx: SolTx,
+        now: int,
+        tx_receipt: SolRpcTxReceiptInfo | None,
+        no_receipt_status: SolTxSendState.Status,
+    ):
+        if not tx_receipt:
+            res = self._DecodeResult(no_receipt_status, None)
+        else:
+            res = self._decode_tx_status(tx, now, tx_receipt)
+
+        tx_state = SolTxSendState(
+            status=res.tx_status,
+            tx=tx,
+            receipt=tx_receipt,
+            error=res.error,
+        )
+
+        status = SolTxSendState.Status
+        if tx_state.status not in (status.WaitForReceipt, status.UnknownError):
+            _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
+
+        self._tx_state_dict[tx_state.tx.sig] = tx_state
+        self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
 
     def _commit_tx_stat_time(self, tx: SolTx, now: int, is_fail: bool) -> None:
         if not tx.is_signed:
