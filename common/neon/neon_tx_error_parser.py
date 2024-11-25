@@ -51,7 +51,6 @@ class NeonTxErrorParser(SolTxErrorParser):
                 address = log_rec.data[0:19]
                 state_tx_cnt = int.from_bytes(data[20:27])
                 tx_nonce = int.from_bytes(data[28:35])
-                _LOG.debug("get_nonce_error: address = %s, state_tx_cnt %d, tx_nonce = %d", address, state_tx_cnt, tx_nonce)
                 return int(state_tx_cnt), int(tx_nonce)
         return None
 
@@ -62,7 +61,6 @@ class NeonTxErrorParser(SolTxErrorParser):
             if log_rec.code == NeonTxErrorLogInfo.ErrorCode.OutOfGas:
                 has_gas_limit = int.from_bytes(log_rec.data[0:31])
                 req_gas_limit = int.from_bytes(log_recdata[32:64])
-                _LOG.debug("get_out_of_gas_error: has_gas_limit = %d , req_gas_limit = %d",has_gas_limit, req_gas_limit)
                 return int(has_gas_limit), int(req_gas_limit)
         return None
 
@@ -96,7 +94,6 @@ class NeonTxErrorParser(SolTxErrorParser):
 
         log_list: list[str] = list()
         log_state = SolTxLogTreeDecoder.decode(self._tx.message, rpc_meta, self._tx.account_key_list)
-        # TODO: add EvmLogDecoder, add parsing, error, and return that transaction is finalized
         sol_tx_idx = SolTxIdx (sol_tx_sig=SolTxSig.default(),
                                sol_ix_idx = 1,
                                sol_inner_ix_idx = None)
@@ -106,10 +103,7 @@ class NeonTxErrorParser(SolTxErrorParser):
             if log_info.prog_id == NeonProg.ID:
                 log_list.extend(log_info.log_msg_list())
             neon_log = NeonEvmLogDecoder().decode(sol_tx_idx, log_list)
-            _LOG.debug("_get_evm_error_log_list: len(neon_log.tx_error_list) = %d ,", len(neon_log.tx_error_list))
             for error_item in neon_log.tx_error_list:
                 error_log_list.append(error_item)
-
-        _LOG.debug("_get_evm_error_log_list: len(error_log_list) = %d}", len(error_log_list))
 
         return tuple(error_log_list)
