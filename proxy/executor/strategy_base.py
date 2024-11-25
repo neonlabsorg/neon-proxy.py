@@ -371,7 +371,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         #                       sol_ix_idx=1,
         #                       sol_inner_ix_idx=None)
         # neon_log = NeonEvmLogDecoder().decode_old(fake_tx_ix, sol_log.log_msg_list())
-        log = NeonEvmLogDecoder().decode_old(fake_tx_ix, emul_tx.meta.log_list)
+        log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
         _LOG.debug("_emulate_tx_list: neon_log.tx_error_list.size() = %d", len(log.tx_error_list))
         if log.tx_ix_gas.is_empty:
             gas_limit = NeonProg.BaseGas

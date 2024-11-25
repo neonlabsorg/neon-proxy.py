@@ -788,7 +788,7 @@ class NeonEvmLogDecoder:
 
         return log.to_clean_copy()
 
-    def decode_old(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
+    def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
         """Extracts Neon transaction events from Solana transaction receipt"""
 
         log = _NeonTxLogDraft.from_raw_old(sol_tx_ix)
