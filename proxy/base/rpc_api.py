@@ -18,6 +18,7 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import CoreApiTxModel
+from common.utils.cached import cached_property
 from common.utils.pydantic import HexUIntField
 
 
@@ -36,10 +37,9 @@ class RpcEthTxRequest(BaseJsonRpcModel):
         default=EthAddress.default(),
         validation_alias=AliasChoices("to", "toAddress"),
     )
-    data: EthBinStrField = Field(
-        default=EthBinStr.default(),
-        validation_alias=AliasChoices("data", "input"),
-    )
+    data_v1: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="data")
+    data_v2: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="input")
+
     value: HexUIntField = Field(default=0)
     nonce: HexUIntField | None = Field(default=None)
 
@@ -58,13 +58,16 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             if self.maxPriorityFeePerGas > self.maxFeePerGas:
                 raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
 
+    @cached_property
+    def data(self) -> EthBinStr:
+        return self.data_v2 if not self.data_v2.is_empty else self.data_v1
+
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
             cls._default = cls(
                 fromAddress=EthAddress.default(),
                 toAddress=EthAddress.default(),
-                data=EthBinStr.default(),
             )
         return cls._default
 
