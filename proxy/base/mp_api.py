@@ -199,12 +199,12 @@ class MpSlotGasPriceModel(BaseModel):
 
 
 class MpRequest(BaseModel):
-    ctx_id: str
+    ctx_id: dict
     chain_id: int
 
 
 class MpTxCntRequest(BaseModel):
-    ctx_id: str
+    ctx_id: dict
     sender: NeonAccountField
 
 
@@ -213,7 +213,7 @@ class MpTxCntResp(BaseModel):
 
 
 class MpTxRequest(BaseModel):
-    ctx_id: str
+    ctx_id: dict
     tx: MpTxModel
     state_tx_cnt: int
 
@@ -241,12 +241,12 @@ class MpTxResp(BaseModel):
 
 
 class MpGetTxByHashRequest(BaseModel):
-    ctx_id: str
+    ctx_id: dict
     neon_tx_hash: EthTxHashField
 
 
 class MpGetTxBySenderNonceRequest(BaseModel):
-    ctx_id: str
+    ctx_id: dict
     sender: NeonAccountField
     tx_nonce: int
 

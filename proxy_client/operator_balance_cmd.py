@@ -205,7 +205,6 @@ class OpBalanceHandler(BaseNPCmdHandler):
             return False
 
         eth_tx_rlp = resp.signed_tx.to_bytes()
-        ctx = str(req_id["uuid"])
         tx = NeonTxModel.from_raw(eth_tx_rlp)
 
         value = value / (10 ** 18)
@@ -216,7 +215,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
             f"{tx.neon_tx_hash.to_string()}"
         )
 
-        resp = await mp_client.send_raw_transaction(ctx, resp.signed_tx.to_bytes(), chain_id, state_tx_cnt)
+        resp = await mp_client.send_raw_transaction(req_id, resp.signed_tx.to_bytes(), chain_id, state_tx_cnt)
         if resp.code != MpTxRespCode.Success:
             _LOG.error("fail to send tx: %s", resp.code.name)
             return False
