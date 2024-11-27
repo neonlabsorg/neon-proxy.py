@@ -618,7 +618,11 @@ class NeonEvmLogDecoder:
         if len(data_list) < 1:
             return "", tuple()
 
-        mnemonic = str(base64.b64decode(data_list[0]), "utf-8")
+        try:
+            mnemonic = str(base64.b64decode(data_list[0]), "utf-8")
+        except UnicodeDecodeError:
+            return "", tuple()
+
         return mnemonic, data_list[1:]
 
     def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
