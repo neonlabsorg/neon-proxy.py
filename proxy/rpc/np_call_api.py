@@ -20,7 +20,9 @@ from .api import RpcBlockRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxRequest
 from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
+import logging
 
+_LOG = logging.getLogger(__name__)
 
 class _RpcEthAccountModel(BaseJsonRpcModel):
     nonce: HexUIntField = Field(0)
@@ -109,7 +111,9 @@ class NpCallApi(NeonProxyApi):
     ) -> EthBinStrField:
         _ = object_state
         chain_id = self._get_tx_chain_id(ctx, tx)
+        _LOG.info("eth_call, chain_id = %d", chain_id)
         block = await self.get_block_by_tag(block_tag)
+        _LOG.info("eth_call, block.slot = %d", block.slot)
         evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
@@ -117,6 +121,8 @@ class NpCallApi(NeonProxyApi):
             check_result=True,
             block=block,
         )
+        _LOG.info("eth_call, resp.result = %d", resp.result)
+        _LOG.info("eth_call, resp.result = %d", resp.result)
         return resp.result
 
     @NeonProxyApi.method(name="eth_estimateGas")

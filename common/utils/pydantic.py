@@ -15,7 +15,9 @@ from typing_extensions import Self
 
 from .cached import cached_method, cached_property, reset_cached_method
 from .format import hex_to_uint, str_fmt_object
+import logging
 
+_LOG = logging.getLogger(__name__)
 
 class BaseModel(_PydanticBaseModel):
     model_config = ConfigDict(
@@ -32,10 +34,12 @@ class BaseModel(_PydanticBaseModel):
 
     @classmethod
     def from_json(cls, json_data: str) -> Self:
+        _LOG.info("BaseModel, from_json = %v", json_data)
         return cls.model_validate_json(json_data)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
+        _LOG.info("BaseModel, from_dict = %v", data)
         return cls.model_validate(data)
 
     def to_json(self) -> str:
