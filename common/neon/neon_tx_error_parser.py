@@ -102,7 +102,7 @@ class NeonTxErrorParser(SolTxErrorParser):
         for log_info in log_state.log_list:
             if log_info.prog_id == NeonProg.ID:
                 log_list.extend(log_info.log_msg_list())
-            neon_log = NeonEvmLogDecoder().decode(sol_tx_idx, log_list)
+            neon_log = NeonEvmLogDecoder().decode(sol_tx_idx.to_sol_tx_ix_meta_info(), log_list)
             for error_item in neon_log.tx_error_list:
                 error_log_list.append(error_item)
 
