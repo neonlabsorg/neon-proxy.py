@@ -6,7 +6,8 @@ from ..solana.pubkey import SolPubKey
 ######################################
 # Solana general settings:
 ONE_BLOCK_SEC: Final[float] = float(os.environ.get("SOLANA_BLOCK_SEC", "0.4"))
-MIN_FINALIZE_SEC: Final[float] = ONE_BLOCK_SEC * 32
+MIN_FINALIZE_BLOCK: Final[int] = 32
+MIN_FINALIZE_SEC: Final[float] = ONE_BLOCK_SEC * MIN_FINALIZE_BLOCK
 SOL_PKT_SIZE: Final[int] = 1280 - 40 - 8
 
 ######################################
@@ -26,7 +27,7 @@ NEON_EVM_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw(
     os.environ.get("NEON_EVM_PROGRAM", os.environ.get("EVM_LOADER"))  # EVM_LOADER for compatibility only
 )
 DEFAULT_TOKEN_NAME: Final[str] = os.environ.get("DEFAULT_TOKEN_NAME", "neon").strip().upper()
-CHAIN_TOKEN_NAME: Final[str] = os.environ.get("CHAIN_TOKEN_NAME", "sol").strip().upper()
+LAYER0_TOKEN_NAME: Final[str] = os.environ.get("LAYER0_TOKEN_NAME", "sol").strip().upper()
 
 MAINNET_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw("NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG")
 MAINNET_GENESIS_HASH: Final[str] = "7f1vrAJpnAFdqwNZQe8Z4pEnJjGDMeQqPWQ9Xf198byy"  # 195'350'522

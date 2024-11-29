@@ -136,7 +136,7 @@ class EthHash32(_BaseHash):
     def ident(self) -> str:
         return self.to_bytes()[:4].hex()
 
-    def to_string(self, default: str | None = None) -> str | None:
+    def to_string(self, default=ZeroHash) -> str | None:
         return self._to_string() if self._data else default
 
     @property
@@ -164,12 +164,12 @@ EthHash32Field = Annotated[
 EthZeroHash32Field = Annotated[
     EthHash32,
     PlainValidator(EthHash32.from_raw),
-    PlainSerializer(lambda v: v.to_string(EthHash32.ZeroHash), return_type=str),
+    PlainSerializer(lambda v: v.to_string(), return_type=str),
 ]
 EthNotNoneHash32Field = Annotated[
     EthHash32,
     PlainValidator(EthHash32.from_not_none),
-    PlainSerializer(lambda v: v.to_string(EthHash32.ZeroHash), return_type=str),
+    PlainSerializer(lambda v: v.to_string(), return_type=str),
 ]
 
 EthTxHash = EthHash32

@@ -6,7 +6,7 @@ import logging
 from collections import deque
 from typing import Final
 
-from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, CHAIN_TOKEN_NAME
+from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
 from common.cu_price.api import PriorityFeeCfg
 from common.cu_price.pyth_price_account import PythPriceAccount
 from common.neon.neon_program import NeonProg
@@ -44,7 +44,7 @@ class MpGasPriceCalculator(MempoolComponent):
             USDT=PythPriceAccount.new_empty("USDT", SolPubKey.from_raw("HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM")),
         )
 
-        self._gas_price = MpGasPriceModel(
+        self._gas_price_cache = MpGasPriceModel(
             chain_token_price_usd=0,
             operator_fee=int(self._cfg.operator_fee * self._fee_precision),
             priority_fee=int(self._cfg.priority_fee * self._fee_precision),
@@ -57,6 +57,22 @@ class MpGasPriceCalculator(MempoolComponent):
                 token_mint=SolPubKey.default(),
                 token_price_usd=0,
                 is_default_token=True,
+                is_layer0_token=False,
+                is_const_gas_price=True,
+                suggested_gas_price=0,
+                profitable_gas_price=0,
+                pct_gas_price=1,
+                min_acceptable_gas_price=0,
+                min_executable_gas_price=0,
+                gas_price_list=list(),
+            ),
+            layer0_token=MpTokenGasPriceModel(
+                chain_id=0,
+                token_name=LAYER0_TOKEN_NAME,
+                token_mint=SolPubKey.default(),
+                token_price_usd=0,
+                is_default_token=False,
+                is_layer0_token=True,
                 is_const_gas_price=True,
                 suggested_gas_price=0,
                 profitable_gas_price=0,
@@ -89,11 +105,16 @@ class MpGasPriceCalculator(MempoolComponent):
             await self._watch_session.disconnect()
 
     def get_gas_price(self) -> MpGasPriceModel:
-        return self._gas_price
+        return self._gas_price_cache
+
+    @property
+    def _gas_price(self) -> MpGasPriceModel:
+        # override the parent property to remove cycling
+        return self._gas_price_cache
 
     async def _update_gas_price_loop(self) -> None:
         while True:
-            sleep_sec = self._update_sec if not self._gas_price.is_empty else 1
+            sleep_sec = self._update_sec if not self._gas_price_cache.is_empty else 1
             with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
             if self._stop_event.is_set():
@@ -101,19 +122,20 @@ class MpGasPriceCalculator(MempoolComponent):
 
             with logging_context(ctx="mp-update-gas-price"):
                 try:
-                    evm_cfg = await self._server.get_evm_cfg()
+                    evm_cfg = await self._get_evm_cfg()
                     fee_cfg = await self._cu_price_client.get_fee_cfg()
-                    if gas_price := await self._get_gas_price(evm_cfg, fee_cfg):
-                        self._gas_price = gas_price
+                    if gas_price := await self._calc_gas_price(evm_cfg, fee_cfg):
+                        self._gas_price_cache = gas_price
                 except BaseException as exc:
                     _LOG.error("error on update gas-price", exc_info=exc)
 
-    async def _get_gas_price(self, evm_cfg: EvmConfigModel, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
-        base_price_acct = await self._get_price_account(CHAIN_TOKEN_NAME)
+    async def _calc_gas_price(self, evm_cfg: EvmConfigModel, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
+        base_price_acct = await self._get_price_account(LAYER0_TOKEN_NAME)
         base_price_usd = base_price_acct.price
 
         token_dict: dict[str, MpTokenGasPriceModel] = dict()
         default_token: MpTokenGasPriceModel | None = None
+        layer0_token: MpTokenGasPriceModel | None = None
 
         for token in evm_cfg.token_dict.values():
             price_acct = await self._get_price_account(token.name)
@@ -122,6 +144,8 @@ class MpGasPriceCalculator(MempoolComponent):
                 token_dict[token.name] = token_gas_price
                 if token_gas_price.is_default_token:
                     default_token = token_gas_price
+                elif token_gas_price.is_layer0_token:
+                    layer0_token = token_gas_price
             else:
                 return None
 
@@ -147,6 +171,7 @@ class MpGasPriceCalculator(MempoolComponent):
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
             token_dict=token_dict,
             default_token=default_token,
+            layer0_token=layer0_token,
         )
 
     async def _calc_token_gas_price(
@@ -195,6 +220,7 @@ class MpGasPriceCalculator(MempoolComponent):
             token_mint=token.mint,
             token_price_usd=int(token_price_usd * self._token_usd_precision),
             is_default_token=token.is_default,
+            is_layer0_token=token.is_layer0,
             is_const_gas_price=is_const_price,
             suggested_gas_price=suggested_price,
             profitable_gas_price=profitable_price,

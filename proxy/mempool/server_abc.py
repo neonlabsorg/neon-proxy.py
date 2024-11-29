@@ -45,6 +45,13 @@ class MempoolComponent(BaseIntlProxyComponent):
     def _cu_price_client(self) -> CuPriceClient:
         return self._server._cu_price_client  # noqa
 
+    @property
+    def _gas_price(self) -> MpGasPriceModel:
+        return self._server.get_gas_price()
+
+    async def _get_evm_cfg(self) -> EvmConfigModel:
+        return await self._server.get_evm_cfg()
+
 
 class MempoolApi(MempoolComponent, AppDataApi):
     def __init__(self, server: MempoolServerAbc) -> None:

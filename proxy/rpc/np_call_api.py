@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Any
 
 from pydantic import Field
 from typing_extensions import Self
@@ -11,14 +11,18 @@ from common.ethereum.hash import EthAddressField, EthHash32Field
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.jsonrpc.errors import InvalidParamError
-from common.neon.transaction_model import NeonTxModel
+from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
+from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
-from common.solana.pubkey import SolPubKeyField
+from common.solana.pubkey import SolPubKeyField, SolPubKey
+from common.solana.sys_program import SolSysProg
 from common.utils.cached import cached_property
+from common.utils.format import if_none
 from common.utils.pydantic import HexUIntField, RootModel
 from .api import RpcBlockRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyApi
-from ..base.rpc_api import RpcEthTxRequest
+from ..base.rpc_api import RpcEthTxRequest, BaseEthGasModel, BaseEthCallModel
 from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
 
 
@@ -90,6 +94,56 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
             )
 
         raise ValueError(f"Wrong input type: {type(raw).__name__}")
+
+
+_RpcNeonSkdSubTxModel = BaseEthCallModel
+
+
+class _RpcNeonSkdTxRequest(BaseEthGasModel):
+    txType: HexUIntField = Field(default=NeonTxType.Scheduled.value, validation_alias="type")
+    scheduledSolanaPayer: SolPubKeyField
+    txList: list[_RpcNeonSkdSubTxModel] = Field(default_factory=list, validation_alias="transactions")
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if not NeonTxType.is_scheduled_tx(self.txType):
+            raise ValueError(f"type should be {NeonTxType.Scheduled.value}")
+        if self.scheduledSolanaPayer.is_empty:
+            raise ValueError("scheduledSolanaPayer should be present")
+        if self.maxPriorityFeePerGas > self.maxFeePerGas:
+            raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
+        if not self.txList:
+            raise ValueError("transactions should be present")
+
+    def validate_chain_id(self, chain_id: int) -> None:
+        if (self.chainId or chain_id) != chain_id:
+            raise ValueError(f"chainId should equal to {chain_id}")
+
+    def to_core_tx_list(self, chain_id: int) -> list[CoreApiTxModel]:
+        return [
+            CoreApiTxModel(
+                from_address=tx.fromAddress,
+                payer=NeonAddress.from_raw(self.scheduledSolanaPayer, 0).eth_address,
+                solanaPayer=self.scheduledSolanaPayer,
+                to_address=tx.toAddress,
+                nonce=self.nonce,
+                value=tx.value,
+                data=tx.data.to_bytes(),
+                gas_limit=tx.gas,
+                gas_price=(self.maxFeePerGas - self.maxPriorityFeePerGas),
+                chain_id=chain_id,
+            )
+            for tx in self.txList
+        ]
+
+
+class _RpcSkdTxEstimateResp(BaseJsonRpcModel):
+    chainId: HexUIntField
+    maxFeePerGas: HexUIntField
+    maxPriorityFeePerGas: HexUIntField
+    nonce: HexUIntField
+    treasuryIndex: HexUIntField
+    accountList: list[SolPubKeyField]
+    gasList: list[HexUIntField]
 
 
 class NpCallApi(NeonProxyApi):
@@ -176,6 +230,66 @@ class NpCallApi(NeonProxyApi):
             block=block,
         )
         return _RpcEmulatorResp.from_raw(resp)
+
+    @NeonProxyApi.method(name="neon_estimateScheduledGas")
+    async def neon_estimate_skd_tx(
+        self,
+        ctx: HttpRequestCtx,
+        call: _RpcNeonSkdTxRequest,
+        block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
+    ) -> _RpcSkdTxEstimateResp:
+        self._validate_layer0_chain_id(ctx)
+
+        chain_id = self._get_chain_id(ctx)
+        call.validate_chain_id(chain_id)
+
+        evm_cfg = await self._get_evm_cfg()
+        block = await self.get_block_by_tag(block_tag)
+
+        sender_addr = NeonAddress.from_raw(call.scheduledSolanaPayer, chain_id)
+        sender_acct = await self._core_api_client.get_neon_account(sender_addr, block)
+        if if_none(call.nonce, sender_acct.state_tx_cnt) != sender_acct.state_tx_cnt:
+            raise EthError("nonce mismatch")
+
+        _, gas_price = await self._get_token_gas_price(ctx)
+        max_priority_fee_per_gas = await self._get_max_priority_fee_per_gas(ctx)
+        skd_tree_acct = await self._core_api_client.get_neon_skd_tree(sender_addr, sender_acct.state_tx_cnt, block)
+
+        base_index = sender_acct.state_tx_cnt + int.from_bytes(sender_addr.to_bytes()[:4], "little")
+        treasury_index, _, treasury_addr = NeonProg.calc_treasury_address(base_index)
+
+        gas_limit_list = [
+            await self._gas_limit_calc.estimate(tx, dict(), block)
+            for tx in call.to_core_tx_list(chain_id)
+        ]
+
+        skd_tree_addr, _ = SolPubKey.find_program_address(
+            [
+                evm_cfg.account_seed_version.to_bytes(1, "little"),
+                b"Tree",
+                sender_addr.to_bytes(),
+                chain_id.to_bytes(8, "little"),
+                sender_acct.state_tx_cnt.to_bytes(8, "little"),
+            ],
+            NeonProg.ID,
+        )
+
+        return _RpcSkdTxEstimateResp(
+            chainId=chain_id,
+            maxFeePerGas=gas_price.profitable_gas_price,
+            maxPriorityFeePerGas=max_priority_fee_per_gas,
+            nonce=sender_acct.state_tx_cnt,
+            treasuryIndex=treasury_index,
+            accountList=[
+                call.scheduledSolanaPayer,
+                sender_acct.sol_address,
+                treasury_addr,
+                skd_tree_addr,
+                NeonProg.DepositAddress,
+                SolSysProg.ID,
+            ],
+            gasList=gas_limit_list
+        )
 
     def _get_tx_chain_id(self, ctx: HttpRequestCtx, tx: RpcEthTxRequest) -> int:
         chain_id = self._get_chain_id(ctx)

@@ -8,7 +8,7 @@ from common.ethereum.hash import EthAddressField, EthTxHashField
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.jsonrpc.errors import InvalidParamError
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.utils.cached import cached_property
 from common.utils.format import hex_to_bytes
@@ -63,7 +63,7 @@ class PrEthTxApi(PrivateRpcApi):
         elif tx.fromAddress.is_empty:
             raise InvalidParamError(error_list='no sender in transaction')
 
-        sender_acct = NeonAccount.from_raw(tx.fromAddress, chain_id)
+        sender_addr = NeonAddress.from_raw(tx.fromAddress, chain_id)
         neon_tx = tx.to_neon_tx()
 
         if not neon_tx.gas_limit:
@@ -72,7 +72,7 @@ class PrEthTxApi(PrivateRpcApi):
             object.__setattr__(neon_tx, "gas_limit", gas_limit)
 
         if not neon_tx.nonce:
-            nonce = await self._core_api_client.get_state_tx_cnt(sender_acct)
+            nonce = await self._core_api_client.get_state_tx_cnt(sender_addr)
             object.__setattr__(neon_tx, "nonce", nonce)
 
         resp = await self._op_client.sign_eth_tx(self._get_ctx_id(ctx), neon_tx, chain_id)

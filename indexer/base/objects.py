@@ -18,7 +18,7 @@ from common.neon.block import NeonBlockHdrModel
 from common.neon.evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo, SolNeonAltTxIxModel
-from common.neon.transaction_model import NeonTxModel
+from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus, NeonSkdTxModel
 from common.solana.block import SolRpcBlockInfo
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey, SolPubKeyField
@@ -335,12 +335,14 @@ class _NeonTxReceiptDraft:
 
     total_gas_used: int
     sum_gas_used: int
-    priority_fee_spent: int
+    priority_fee_used: int
 
     event_list: list[NeonTxEventModel]
 
-    is_completed: bool
     is_canceled: bool
+
+    parent_tx_list: list[EthTxHash]
+    child_tx_list: list[EthTxHash]
 
     @classmethod
     def from_raw(cls, src: NeonTxReceiptModel) -> Self:
@@ -377,6 +379,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         total_priority_fee: int = 0
         has_truncated_log: bool
         has_good_ix: bool = Field(default=False)
+        is_completed: bool = Field(default=False)
         neon_tx: NeonTxModel
         neon_tx_event_list: list[NeonTxEventModel]
         neon_tx_rcpt: NeonTxReceiptModel
@@ -395,6 +398,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         total_priority_fee: int,
         has_truncated_log: bool,
         has_good_ix: bool,
+        is_completed: bool,
         alt_address_list: list[SolPubKey],
         **kwargs,
     ) -> None:
@@ -411,6 +415,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._total_priority_fee = total_priority_fee
         self._has_truncated_log = has_truncated_log
         self._has_good_ix = has_good_ix
+        self._is_completed = is_completed
         self._alt_addr_list = alt_address_list
 
         # default:
@@ -450,6 +455,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             total_priority_fee=0,
             has_truncated_log=False,
             has_good_ix=False,
+            is_completed=False,
             alt_address_list=list(),
         )
 
@@ -459,14 +465,15 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx: dict = data.get("neon_tx")
         if "gas_price_legacy" in neon_tx:
             neon_tx["gas_price"] = neon_tx.pop("gas_price_legacy")
-
-        neon_tx_rcpt: dict | None = data.get("neon_tx_rcpt", None)
-        if "priority_fee_spent" not in neon_tx_rcpt:
-            neon_tx_rcpt["priority_fee_spent"] = 0
-
-        neon_tx: dict | None = data.get("neon_tx", None)
         if "tx_chain_id" in neon_tx:
             neon_tx["chain_id"] = neon_tx.pop("tx_chain_id", None)
+
+        neon_tx_rcpt: dict = data.get("neon_tx_rcpt")
+        if "priority_fee_used" not in neon_tx_rcpt:
+            neon_tx_rcpt["priority_fee_used"] = data.pop("priority_fee_spent", 0)
+
+        if "is_completed" not in data:
+            data["is_completed"] = neon_tx_rcpt.get("is_completed", False)
         #
         init = cls.InitData.from_dict(data)
 
@@ -482,6 +489,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             total_priority_fee=init.total_priority_fee,
             has_truncated_log=init.has_truncated_log,
             has_good_ix=init.has_good_ix,
+            is_completed=init.is_completed,
             alt_address_list=init.alt_address_list,
             init=init,
         )
@@ -506,6 +514,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             total_priority_fee=self._total_priority_fee,
             has_truncated_log=self._has_truncated_log,
             has_good_ix=self._has_good_ix,
+            is_completed=self._is_completed,
             neon_tx=self._neon_tx,
             neon_tx_rcpt=self._neon_tx_rcpt.to_clean_copy(),
             neon_tx_event_list=tx_event_list,
@@ -560,7 +569,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @property
     def is_completed(self) -> bool:
-        return self._neon_tx_rcpt.is_completed
+        return self._is_completed
 
     def set_chain_id(self, chain_id: int) -> None:
         self._chain_id = chain_id
@@ -588,16 +597,16 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self.set_tx_return(sol_neon_ix, tx_ret)
 
     def set_tx_return(self, sol_neon_ix: SolNeonTxIxMetaInfo, tx_return: NeonTxLogReturnInfo) -> None:
-        if self._neon_tx_rcpt.is_completed:
+        if self._is_completed:
             _LOG.debug("skip an surplus return: %s", tx_return)
             return
 
         self._complete_clone()
         rcpt = self._neon_tx_rcpt
         if tx_return.event_type == NeonTxEventModel.Type.Return:
-            rcpt.is_completed = True
+            self._is_completed = True
         elif tx_return.event_type == NeonTxEventModel.Type.Cancel:
-            rcpt.is_completed = True
+            self._is_completed = True
             rcpt.is_canceled = True
 
         rcpt.status = tx_return.status
@@ -628,9 +637,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             self._operator = sol_neon_ix.operator
 
     def extend_neon_tx_event_list(self, sol_neon_ix: SolNeonTxIxMetaInfo) -> None:
-        if not (tx_event_list := [_NeonTxEventDraft.from_raw(e) for e in sol_neon_ix.iter_neon_tx_event]):
-            return
-
+        tx_event_list = [_NeonTxEventDraft.from_raw(e) for e in sol_neon_ix.iter_neon_tx_event]
         total_gas_used = sol_neon_ix.neon_total_gas_used or self._total_gas_used
         if not sol_neon_ix.is_success:
             event_hide_info = True, True, total_gas_used
@@ -664,7 +671,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         rcpt.block_hash = neon_block_hdr.block_hash
         rcpt.neon_tx_idx = neon_tx_idx
         rcpt.sum_gas_used = sum_gas_used
-        rcpt.priority_fee_spent = self._total_priority_fee
+        rcpt.priority_fee_used = self._total_priority_fee
 
         neon_tx_event_list = self._get_sorted_tx_event_list()
         self._fill_tx_event_order_nums(neon_tx_event_list)
@@ -741,9 +748,11 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
                 addr_stack.append(addr)
             elif event.is_exit_event_type:
                 if not addr_stack:
-                    _LOG.debug("bad %s in %s", event.event_type.name, self.neon_tx_hash)
-                    self._has_truncated_log = True
-                    break
+                    _LOG.warning("bad %s in %s", event.event_type.name, self.neon_tx_hash)
+                    # self._has_truncated_log = True
+                    # break
+                    current_level, current_order = 0, 0
+                    continue
 
                 event_level, addr = current_level, addr_stack.pop()
                 current_level -= 1
@@ -952,6 +961,21 @@ class SolIndexedAltInfo:
         _LOG.warning("stuck: %s", self)
 
 
+@dataclass(frozen=True)
+class NeonIndexedSkdTxStatusInfo:
+    neon_tx_hash: EthTxHash
+    tree_address: SolPubKey
+    holder_address: SolPubKey
+    status: NeonSkdTxStatus
+
+
+@dataclass(frozen=True)
+class NeonIndexedSkdTxRelationInfo:
+    tree_address: SolPubKey
+    parent_tx_hash: EthTxHash
+    child_tx_hash: EthTxHash
+
+
 class NeonIndexedBlockInfo:
     def __init__(self, sol_block: SolRpcBlockInfo) -> None:
         self._sol_block = sol_block
@@ -972,6 +996,11 @@ class NeonIndexedBlockInfo:
         self._done_neon_tx_list: list[NeonIndexedTxInfo] = list()
         self._stuck_neon_tx_list: list[NeonIndexedTxInfo] = list()
         self._failed_neon_tx_set: set[NeonIndexedTxInfo.Key] = set()
+
+        self._neon_skd_tx_list: list[NeonSkdTxModel] = list()
+        self._neon_skd_tx_status_list: list[NeonIndexedSkdTxStatusInfo] = list()
+        self._neon_skd_tx_relation_list: list[NeonIndexedSkdTxRelationInfo] = list()
+        self._neon_skd_tree_done_list: list[SolPubKey] = list()
 
         self._sol_alt_dict: dict[SolIndexedAltInfo.Key, SolIndexedAltInfo] = dict()
 
@@ -1150,6 +1179,18 @@ class NeonIndexedBlockInfo:
         self._sol_alt_ix_list.append(alt_ix)
         alt.set_last_ix_slot(alt_ix.slot, alt_ix.sol_tx_cost.sol_signer)
 
+    def add_neon_skd_tx(self, tx: NeonSkdTxModel) -> None:
+        self._neon_skd_tx_list.append(tx)
+
+    def add_neon_skd_tx_status(self, tx: NeonIndexedSkdTxStatusInfo) -> None:
+        self._neon_skd_tx_status_list.append(tx)
+
+    def add_neon_skd_tx_relation(self, tx: NeonIndexedSkdTxRelationInfo) -> None:
+        self._neon_skd_tx_relation_list.append(tx)
+
+    def done_neon_skd_tree(self, tree_address: SolPubKey) -> None:
+        self._neon_skd_tree_done_list.append(tree_address)
+
     def iter_stuck_neon_holder(self) -> Iterator[NeonIndexedHolderInfo]:
         # assert self._is_stuck_completed
         return iter(self._stuck_neon_holder_list)
@@ -1220,6 +1261,18 @@ class NeonIndexedBlockInfo:
             # don't override db with corrupted data
             return iter(())
         return iter(self._done_neon_tx_list)
+
+    def iter_neon_skd_tx(self) -> Iterator[NeonSkdTxModel]:
+        return iter(self._neon_skd_tx_list)
+
+    def iter_neon_skd_tx_status(self) -> Iterator[NeonIndexedSkdTxStatusInfo]:
+        return iter(self._neon_skd_tx_status_list)
+
+    def iter_neon_skd_tx_relation(self) -> Iterator[NeonIndexedSkdTxRelationInfo]:
+        return iter(self._neon_skd_tx_relation_list)
+
+    def iter_done_neon_skd_tree(self) -> Iterator[SolPubKey]:
+        return iter(self._neon_skd_tree_done_list)
 
     def iter_alt(self) -> Iterator[SolIndexedAltInfo]:
         return iter(self._sol_alt_dict.values())
@@ -1469,8 +1522,9 @@ class SolNeonDecoderCtx:
     #           for solana_ix in solana_tx.solana_ix_list:
     #               solana_ix.level <- level in stack of calls
     #  ....
-    def __init__(self, cfg: Config, stat: SolNeonDecoderStat):
+    def __init__(self, cfg: Config, layer0_chain_id: int, stat: SolNeonDecoderStat):
         self._cfg = cfg
+        self._layer0_chain_id = layer0_chain_id
         self._stat = stat
 
         self._start_slot = 0
@@ -1524,6 +1578,10 @@ class SolNeonDecoderCtx:
     @property
     def is_finalized(self) -> bool:
         return self._is_finalized
+
+    @property
+    def layer0_chain_id(self) -> int:
+        return self._layer0_chain_id
 
     @property
     def neon_block(self) -> NeonIndexedBlockInfo:

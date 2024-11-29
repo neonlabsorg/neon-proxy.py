@@ -32,6 +32,8 @@ from .api import (
     EmulTraceCfgModel,
     EmulNeonAccountModel,
     CoreApiBlockModel,
+    NeonSkdTreeModel,
+    NeonSkdTreeRequest,
 )
 from ..config.config import Config
 from ..ethereum.commit_level import EthCommit
@@ -40,7 +42,7 @@ from ..ethereum.hash import EthAddress, EthHash32
 from ..http.client import HttpClient
 from ..http.errors import PydanticValidationError
 from ..http.utils import HttpURL
-from ..neon.account import NeonAccount
+from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
 from ..solana.account import SolAccountModel
@@ -155,34 +157,34 @@ class CoreApiClient(HttpClient):
 
     async def get_neon_account_list(
         self,
-        account_list: Sequence[NeonAccount],
+        address_list: Sequence[NeonAddress],
         block: NeonBlockHdrModel | None,
     ) -> Sequence[NeonAccountModel]:
-        req = NeonAccountListRequest.from_raw(account_list, self._get_slot(block))
+        req = NeonAccountListRequest.from_raw(address_list, self._get_slot(block))
         resp: CoreApiResp = await self._send_request("balance", req)
         if resp.error:
             msg = log_msg(
-                "get error on reading balance accounts {Accounts}: {Error}",
-                Accounts=account_list,
+                "get error on reading balance accounts {Addresses}: {Error}",
+                Addresses=address_list,
                 Error=resp.error,
             )
             _LOG.error(msg, extra=self._msg_filter)
-            return tuple([NeonAccountModel.new_empty(acct) for acct in account_list])
+            return tuple([NeonAccountModel.new_empty(addr) for addr in address_list])
 
-        return tuple([NeonAccountModel.from_dict(data, account=a) for a, data in zip(account_list, resp.value)])
+        return tuple([NeonAccountModel.from_dict(data, address=a) for a, data in zip(address_list, resp.value)])
 
-    async def get_neon_account(self, account: NeonAccount, block: NeonBlockHdrModel | None) -> NeonAccountModel:
-        acct_list = await self.get_neon_account_list([account], block)
+    async def get_neon_account(self, address: NeonAddress, block: NeonBlockHdrModel | None) -> NeonAccountModel:
+        acct_list = await self.get_neon_account_list([address], block)
         return acct_list[0]
 
-    async def get_state_tx_cnt(self, account: NeonAccount, block: NeonBlockHdrModel | None = None) -> int:
-        acct = await self.get_neon_account(account, block)
+    async def get_state_tx_cnt(self, address: NeonAddress, block: NeonBlockHdrModel | None = None) -> int:
+        acct = await self.get_neon_account(address, block)
         return acct.state_tx_cnt
 
-    async def get_neon_contract(self, account: NeonAccount, block: NeonBlockHdrModel | None) -> NeonContractModel:
-        req = NeonContractRequest(contract=account.eth_address, slot=self._get_slot(block))
+    async def get_neon_contract(self, address: NeonAddress, block: NeonBlockHdrModel | None) -> NeonContractModel:
+        req = NeonContractRequest(contract=address.eth_address, slot=self._get_slot(block))
         resp: CoreApiResp = await self._send_request("contract", req)
-        return NeonContractModel.from_dict(resp.value[0], account=account)
+        return NeonContractModel.from_dict(resp.value[0], address=address)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
         req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
@@ -193,14 +195,14 @@ class CoreApiClient(HttpClient):
         self,
         evm_cfg: EvmConfigModel,
         operator_key: SolPubKey,
-        account: NeonAccount,
+        address: NeonAddress,
         _block: NeonBlockHdrModel | None,
     ) -> OpEarnAccountModel:
         seed_list = (
             evm_cfg.account_seed_version.to_bytes(1, byteorder="little"),
             operator_key.to_bytes(),
-            account.eth_address.to_bytes(),
-            account.chain_id.to_bytes(32, byteorder="big"),
+            address.eth_address.to_bytes(),
+            address.chain_id.to_bytes(32, byteorder="big"),
         )
 
         token_sol_addr, _ = SolPubKey.find_program_address(seed_list, NeonProg.ID)
@@ -227,7 +229,7 @@ class CoreApiClient(HttpClient):
         return OpEarnAccountModel(
             status=status,
             operator_key=operator_key,
-            neon_account=account,
+            neon_address=address,
             token_sol_address=token_sol_addr,
             balance=balance,
         )
@@ -295,6 +297,16 @@ class CoreApiClient(HttpClient):
 
         resp: EmulSolTxListResp = await self._send_request("simulate_solana", req, EmulSolTxListResp)
         return tuple([EmulSolTxInfo(tx, meta) for tx, meta in zip(tx_list, resp.meta_list)])
+
+    async def get_neon_skd_tree(
+        self,
+        payer: NeonAddress,
+        nonce: int,
+        block: NeonBlockHdrModel | None = None,
+    ) -> NeonSkdTreeModel:
+        req = NeonSkdTreeRequest.from_raw(payer=payer, nonce=nonce, slot=self._get_slot(block))
+        resp: NeonSkdTreeModel = await self._send_request("transaction_tree", req, NeonSkdTreeModel)
+        return resp
 
     async def _send_request(
         self,

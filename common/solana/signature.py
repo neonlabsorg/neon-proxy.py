@@ -8,7 +8,7 @@ import solders.signature as _sig
 from pydantic import PlainValidator, PlainSerializer
 from typing_extensions import Self
 
-from common.utils.cached import cached_method
+from common.utils.cached import cached_method, cached_property
 
 SolRpcTxSigInfo = _resp.RpcConfirmedTransactionStatusWithSignature
 _SoldersSig = _sig.Signature
@@ -36,6 +36,8 @@ class SolTxSig(_SoldersSig):
     def from_raw(cls, raw: _RawSig) -> Self:
         if isinstance(raw, cls):
             return raw
+        elif raw is None:
+            return cls.default()
         elif isinstance(raw, _SoldersSig):
             return cls(raw.__bytes__())
         elif isinstance(raw, str):
@@ -64,6 +66,10 @@ class SolTxSig(_SoldersSig):
 
     def to_bytes(self) -> bytes:
         return self.__bytes__()
+
+    @cached_property
+    def is_empty(self) -> bool:
+        return self.to_bytes() == self.default().to_bytes()
 
     def __repr__(self) -> str:
         return self.to_string()

@@ -9,7 +9,7 @@ from typing import Sequence, Final
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthAddress
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import (
     EvmConfigModel,
@@ -126,7 +126,7 @@ class OpResourceMng(OpResourceComponent):
         return OpResourceModel.default()
 
     def _ret_resource(self, op_signer: OpSignerInfo, op_holder: OpHolderInfo, chain_id: int | None) -> OpResourceModel:
-        with logging_context(opkey=self._opkey(op_signer)):
+        with logging_context(opkey=op_signer.owner.ident):
             owner_token_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
 
             op_signer.used_holder_dict[op_holder.address] = op_holder
@@ -145,7 +145,7 @@ class OpResourceMng(OpResourceComponent):
             return op_resource
 
     async def free_resource(self, is_good_resource: bool, op_res: OpResourceModel) -> None:
-        with logging_context(opkey=self._opkey(op_res.owner)):
+        with logging_context(opkey=op_res.owner.ident):
             if not (op_signer := self._find_op_signer(op_res.owner)):
                 _LOG.error("error on trying to free an absent resource %s", op_res)
                 return
@@ -196,7 +196,7 @@ class OpResourceMng(OpResourceComponent):
         )
 
     def get_token_address(self, owner: SolPubKey, chain_id: int) -> tuple[EthAddress, SolPubKey]:
-        with logging_context(opkey=self._opkey(owner)):
+        with logging_context(opkey=owner.ident):
             if not (op_signer := self._find_op_signer(owner)):
                 _LOG.error("error on trying to find owner of token address %s:%s", owner, chain_id)
                 return EthAddress.default(), SolPubKey.default()
@@ -209,7 +209,7 @@ class OpResourceMng(OpResourceComponent):
         return op_signer.eth_address, token_sol_addr
 
     async def sign_tx_list(self, payer: SolPubKey, tx_list: Sequence[SolTx]) -> Sequence[SolTx]:
-        with logging_context(opkey=self._opkey(payer)):
+        with logging_context(opkey=payer.ident):
             if not (op_signer := self._find_op_signer(payer)):
                 _LOG.error("error on trying to find payer %s to sign the tx-list", payer)
                 return tuple(tx_list)
@@ -244,19 +244,19 @@ class OpResourceMng(OpResourceComponent):
                     ix_list.append(cb_prog.make_cu_price_ix(self._cu_price))
                     ix_list.append(cb_prog.make_cu_limit_ix(50_000))
 
-                neon_acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
-                neon_balance = await self._core_api_client.get_neon_account(neon_acct, None)
+                neon_addr = NeonAddress.from_raw(op_signer.eth_address, chain_id)
+                neon_acct = await self._core_api_client.get_neon_account(neon_addr, None)
                 neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)
 
-                if neon_balance.status == NeonAccountStatus.Empty:
+                if neon_acct.status == NeonAccountStatus.Empty:
                     ix = neon_prog.make_create_neon_account_ix(
-                        neon_acct,
-                        neon_balance.sol_address,
-                        neon_balance.contract_sol_address,
+                        neon_addr,
+                        neon_acct.sol_address,
+                        neon_acct.contract_sol_address,
                     )
                     ix_list.append(ix)
 
-                ix = neon_prog.make_withdraw_operator_balance_ix(neon_balance.sol_address)
+                ix = neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address)
                 ix_list.append(ix)
 
             if not ix_list:
@@ -350,7 +350,7 @@ class OpResourceMng(OpResourceComponent):
 
         return OpSignerInfo(
             signer=signer,
-            neon_account=NeonAccount.from_private_key(signer.secret, 0),
+            neon_address=NeonAddress.from_private_key(signer.secret, 0),
             token_sol_address_dict=dict(),
             free_holder_list=deque(),
             used_holder_dict=dict(),
@@ -378,18 +378,12 @@ class OpResourceMng(OpResourceComponent):
         evm_cfg = await self._server.get_evm_cfg() if op_signer_list else None
 
         for op_signer in tuple(op_signer_list):
-            with logging_context(opkey=self._opkey(op_signer)):
+            with logging_context(opkey=op_signer.owner.ident):
                 if await self._activate_signer(op_signer, evm_cfg):
                     self._send_op_resource_holder_stat(op_signer)
                     if op_signer := self._disabled_signer_dict.pop(op_signer.owner, None):
                         # move the key to the active list for using in tx processing
                         self._active_signer_dict[op_signer.owner] = op_signer
-
-    @staticmethod
-    def _opkey(owner: SolPubKey | OpSignerInfo) -> str:
-        if isinstance(owner, OpSignerInfo):
-            owner = owner.owner
-        return owner.to_string()[:8]
 
     async def _activate_signer(self, op_signer: OpSignerInfo, evm_cfg: EvmConfigModel) -> bool:
         if not await self._validate_op_balance(op_signer):
@@ -579,7 +573,7 @@ class OpResourceMng(OpResourceComponent):
             token_sol_addr_dict[token.chain_id] = op_balance.earn_account.token_sol_address
             if op_balance.earn_account.status != NeonAccountStatus.Ok:
                 neon_prog.init_token_address(op_balance.earn_account.token_sol_address)
-                ix = neon_prog.make_create_operator_balance_ix(op_balance.neon_account.account)
+                ix = neon_prog.make_create_operator_balance_ix(op_balance.neon_account.neon_address)
                 ix_list.append(ix)
 
         if ix_list:
@@ -594,14 +588,14 @@ class OpResourceMng(OpResourceComponent):
     async def _get_op_neon_acct(
         self, op_signer: OpSignerInfo, chain_id: int, evm_cfg: EvmConfigModel
     ) -> OpNeonBalanceInfo:
-        neon_acct = NeonAccount.from_raw(op_signer.eth_address, chain_id)
+        neon_addr = NeonAddress.from_raw(op_signer.eth_address, chain_id)
 
-        neon, earn = await asyncio.gather(
-            self._core_api_client.get_neon_account(neon_acct, None),
+        neon_acct, earn_acct = await asyncio.gather(
+            self._core_api_client.get_neon_account(neon_addr, None),
             self._core_api_client.get_earn_account(
                 evm_cfg,
                 op_signer.owner,
-                neon_acct,
+                neon_addr,
                 None,
             ),
         )
@@ -610,11 +604,11 @@ class OpResourceMng(OpResourceComponent):
             OpEarnedTokenBalanceData(
                 token_name=evm_cfg.chain_dict[chain_id].name,
                 eth_address=op_signer.eth_address,
-                balance=neon.balance + earn.balance,
+                balance=neon_acct.balance + earn_acct.balance,
             )
         )
 
-        return OpNeonBalanceInfo(neon_account=neon, earn_account=earn)
+        return OpNeonBalanceInfo(neon_account=neon_acct, earn_account=earn_acct)
 
     async def _delete_signer_list(self) -> None:
         for op_signer in list(self._deactivated_signer_dict.values()):

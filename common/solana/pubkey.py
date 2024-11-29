@@ -7,7 +7,7 @@ from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
 from typing_extensions import Self
 
-from ..utils.cached import cached_method
+from ..utils.cached import cached_method, cached_property
 
 _SoldersPubKey = _pk.Pubkey
 
@@ -41,11 +41,17 @@ class SolPubKey(_SoldersPubKey):
             return cls(raw.__bytes__())
         elif isinstance(raw, str):
             return cls.from_string(raw)
-        elif isinstance(raw, (bytes, bytearray)):
+        elif isinstance(raw, (bytes, bytearray,)):
             return cls.from_bytes(raw)
-        elif isinstance(raw, Sequence):
+        elif isinstance(raw, (tuple, list,)):
             return cls.from_sequence(raw)
         raise ValueError(f"Wrong input type {type(raw).__name__}")
+
+    @classmethod
+    def from_not_none(cls, raw: _RawSolPubKey) -> Self:
+        if raw is None:
+            raise ValueError("Wrong input: null")
+        return cls.from_raw(raw)
 
     @classmethod
     def from_string(cls, s: str) -> Self:
@@ -84,6 +90,10 @@ class SolPubKey(_SoldersPubKey):
     def is_empty(self) -> bool:
         return self.to_bytes() == self.default().to_bytes()
 
+    @cached_property
+    def ident(self) -> str:
+        return self.to_string()[:8]
+
     def to_string(self) -> str:
         return self.__str__()
 
@@ -116,5 +126,12 @@ _RawSolPubKey = Union[None, str, bytes, bytearray, Sequence[int], SolPubKey, _So
 SolPubKeyField = Annotated[
     SolPubKey,
     PlainValidator(SolPubKey.from_raw),
+    PlainSerializer(lambda v: v.to_string(), return_type=str),
+]
+
+
+SolNotNonePubKeyField = Annotated[
+    SolPubKey,
+    PlainValidator(SolPubKey.from_not_none),
     PlainSerializer(lambda v: v.to_string(), return_type=str),
 ]

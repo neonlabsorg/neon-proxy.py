@@ -49,7 +49,7 @@ class TestNeonHash(unittest.TestCase):
         self.assertEqual(empty_hash.HashSize, 32)
         self.assertTrue(empty_hash.is_empty)
         self.assertEqual(len(empty_hash.to_bytes()), 0)
-        self.assertIsNone(empty_hash.to_string())
+        self.assertIsNotNone(empty_hash.to_string())
         self.assertEqual(empty_hash.to_string("0x1"), "0x1")
 
         with self.assertRaises(ValueError):

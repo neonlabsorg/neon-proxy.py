@@ -7,7 +7,7 @@ from typing import ClassVar, Final, Sequence
 
 from typing_extensions import Self
 
-from .account import NeonAccount
+from .address import NeonAddress
 from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthTxHash
@@ -63,6 +63,15 @@ class NeonEvmIxCode(IntEnum):
     DeleteOperatorBalance = 0x3b               # 59
     WithdrawOperatorBalance = 0x3c             # 60
 
+    SkdTxStartFromAccount = 0x46               # 70
+    SkdTxStartFromData = 0x47                  # 71
+    SkdTxFinish = 0x49                         # 73
+    SkdTxCreate = 0x4a                         # 74
+    SkdTxCreateMultiple = 0x4b                 # 75
+    SkdTreeDestroy = 0x4c                        # 76
+    SkdTxSkipFromAccount = 0x4d                # 77
+    SkdTxSkipFromData = 0x4e                   # 78
+
     OldTxExecFromDataV1013 = 0x32              # 50
     OldTxExecFromDataSolanaCallV1013 = 0x38    # 56
 
@@ -100,6 +109,7 @@ class NeonIxMode(IntEnum):
 
 @dataclass(frozen=True)
 class NeonBaseTxAccountSet:
+    payer: SolPubKey
     sender: SolPubKey
     receiver: SolPubKey
     receiver_contract: SolPubKey
@@ -110,6 +120,7 @@ class NeonBaseTxAccountSet:
     def default(cls) -> Self:
         if not cls._default:
             cls._default = cls(
+                payer=SolPubKey.default(),
                 sender=SolPubKey.default(),
                 receiver=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
@@ -150,8 +161,11 @@ class NeonProg:
     _treasury_pool_seed: ClassVar[bytes | None] = None
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.Unknown
     _evm_version: ClassVar[str] = "0.0.0"
+    _deposit_seed: Final[bytes] = b"Deposit"
 
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
+    DepositAddress: ClassVar[SolPubKey] = SolPubKey.find_program_address(tuple([_deposit_seed]), ID)[0]
+    #
     SignatureGas: Final[int] = 5_000
     TreasuryGas: ClassVar[int] = 0
     BaseGas: ClassVar[int] = SignatureGas + 0
@@ -162,6 +176,8 @@ class NeonProg:
     CuLimitHolderDestroy: Final[int] = 7_500
     # Operator balance CUs limit
     CuLimitOpCreateBalance: Final[int] = 150_000
+    # Tree account CUs limit
+    CuLimitSkdTreeAccountDestroy: Final[int] = 200_000
 
     # The notation is as follows:
     #   The first, without +, goes required accounts for the Neon instruction.
@@ -177,7 +193,7 @@ class NeonProg:
     BaseAccountCnt: Final[int] = 7
 
     def __init__(self, payer: SolPubKey) -> None:
-        assert self._treasury_pool_cnt is not None, "NeonIxBuilder should be initialized: NeonIxBuilder.init_prog"
+        assert self._treasury_pool_cnt is not None, "NeonProg should be initialized: NeonProg.init_prog"
 
         self._payer = payer
         self._token_sol_addr = SolPubKey.default()
@@ -185,11 +201,12 @@ class NeonProg:
         self._acct_meta_list: list[SolAccountMeta] = list()
         self._addr_set: set[SolPubKey] = set()
         self._ro_addr_set: set[SolPubKey] = set()
-        self._eth_rlp_tx = bytes()
+        self._rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
         self._treasury_pool_index_buf = bytes()
         self._treasury_pool_addr = SolPubKey.default()
+        self._skd_tree_addr = SolPubKey.default()
 
     @classmethod
     def init_prog(cls, cfg: NeonProgCfg) -> None:
@@ -200,6 +217,10 @@ class NeonProg:
 
         cls.TreasuryGas = cfg.treasury_payment
         cls.BaseGas = cls.SignatureGas + cfg.treasury_payment
+
+    @classmethod
+    def is_init(cls) -> bool:
+        return cls._treasury_pool_cnt is not None
 
     @classmethod
     def validate_protocol(cls) -> None:
@@ -214,25 +235,44 @@ class NeonProg:
         self._holder_addr = holder_address
         return self
 
-    def init_neon_tx(self, neon_tx_hash: EthTxHash, eth_rlp_tx: bytes) -> Self:
-        self._eth_rlp_tx = eth_rlp_tx
+    def init_skd_tree_address(self, skd_tree_address: SolPubKey) -> Self:
+        self._skd_tree_addr = skd_tree_address
+        return self
+
+    def init_neon_tx(self, neon_tx_hash: EthTxHash, rlp_tx: bytes) -> Self:
+        self._rlp_tx = rlp_tx
         self._neon_tx_hash = neon_tx_hash
 
         base_index = int().from_bytes(self._neon_tx_hash.to_bytes()[:4], "little")
-        treasury_pool_index = base_index % self._treasury_pool_cnt
-        self._treasury_pool_index_buf = treasury_pool_index.to_bytes(4, "little")
-        self._treasury_pool_addr, _ = SolPubKey.find_program_address(
-            seed_list=(
-                self._treasury_pool_seed,
-                self._treasury_pool_index_buf,
-            ),
-            prog_id=self.ID,
-        )
+        _, index_buf, addr = self.calc_treasury_address(base_index)
+
+        self._treasury_pool_index_buf = index_buf
+        self._treasury_pool_addr = addr
         return self
+
+    @classmethod
+    def calc_treasury_address(cls, base_index: int) -> tuple[int, bytes, SolPubKey]:
+        assert cls._treasury_pool_cnt is not None, "NeonProg should be initialized: NeonProg.init_prog"
+        index = base_index % cls._treasury_pool_cnt
+        index_buf = index.to_bytes(4, "little")
+
+        addr, _ = SolPubKey.find_program_address(
+            seed_list=(
+                cls._treasury_pool_seed,
+                index_buf,
+            ),
+            prog_id=cls.ID,
+        )
+
+        return index, index_buf, addr
 
     def init_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> Self:
         _LOG.debug(
-            "set sender solana address %s, receiver solana address %s, receiver contract address %s",
+            "set payer solana address %s, "
+            "set sender solana address %s, "
+            "receiver solana address %s, "
+            "receiver contract address %s",
+            base_tx_account_set.payer,
             base_tx_account_set.sender,
             base_tx_account_set.receiver,
             base_tx_account_set.receiver_contract,
@@ -269,8 +309,8 @@ class NeonProg:
 
     @property
     def holder_msg(self) -> bytes:
-        assert self._eth_rlp_tx is not None
-        return self._eth_rlp_tx
+        assert self._rlp_tx is not None
+        return self._rlp_tx
 
     @property
     def rw_account_key_list(self) -> Sequence[SolPubKey]:
@@ -312,7 +352,7 @@ class NeonProg:
 
     def make_create_neon_account_ix(
         self,
-        neon_account: NeonAccount,
+        neon_address: NeonAddress,
         sol_address: SolPubKey,
         contract_sol_address: SolPubKey,
     ) -> SolTxIx:
@@ -320,15 +360,15 @@ class NeonProg:
 
         _LOG.debug(
             "Create neon address: %s, solana address: %s, contract solana address: %s",
-            neon_account,
+            neon_address,
             sol_address,
             contract_sol_address,
         )
 
         ix_data_list = (
             NeonEvmIxCode.CreateAccountBalance.value.to_bytes(1, byteorder="little"),
-            neon_account.to_bytes(),
-            neon_account.chain_id.to_bytes(8, byteorder="little"),
+            neon_address.to_bytes(),
+            neon_address.chain_id.to_bytes(8, byteorder="little"),
         )
 
         return SolTxIx(
@@ -342,15 +382,15 @@ class NeonProg:
             ),
         )
 
-    def make_create_operator_balance_ix(self, neon_account: NeonAccount) -> SolTxIx:
+    def make_create_operator_balance_ix(self, neon_address: NeonAddress) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("Create operator token account: %s, solana address: %s", neon_account, self._token_sol_addr)
+        _LOG.debug("Create operator token account: %s, solana address: %s", neon_address, self._token_sol_addr)
 
         ix_data_list = (
             NeonEvmIxCode.CreateOperatorBalance.value.to_bytes(1, byteorder="little"),
-            neon_account.eth_address.to_bytes(),
-            neon_account.chain_id.to_bytes(8, byteorder="little"),
+            neon_address.eth_address.to_bytes(),
+            neon_address.chain_id.to_bytes(8, byteorder="little"),
         )
 
         return SolTxIx(
@@ -438,7 +478,7 @@ class NeonProg:
         return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromAccountNoChainId, mode, step_cnt, index, None)
 
     def make_tx_step_from_data_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
-        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, mode, step_cnt, index, self._eth_rlp_tx)
+        return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, mode, step_cnt, index, self._rlp_tx)
 
     def make_cancel_ix(self) -> SolTxIx:
         self.validate_protocol()
@@ -463,6 +503,40 @@ class NeonProg:
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 
+    def make_start_skd_tx_from_data_ix(self, neon_tx_idx: int) -> SolTxIx:
+        return self._make_skd_tx_start_ix(neon_tx_idx, NeonEvmIxCode.SkdTxStartFromData, self._rlp_tx)
+
+    def make_start_skd_tx_from_account_ix(self, neon_tx_idx: int) -> SolTxIx:
+        return self._make_skd_tx_start_ix(neon_tx_idx, NeonEvmIxCode.SkdTxStartFromAccount, bytes())
+
+    def make_skip_skd_tx_from_data_ix(self, neon_tx_idx: int) -> SolTxIx:
+        return self._make_skd_tx_ix(NeonEvmIxCode.SkdTxSkipFromData, neon_tx_idx, self._rlp_tx, list())
+
+    def make_skip_skd_tx_from_account_ix(self, neon_tx_idx: int) -> SolTxIx:
+        return self._make_skd_tx_ix(NeonEvmIxCode.SkdTxSkipFromAccount, neon_tx_idx, bytes(), list())
+
+    def make_finish_skd_tx_ix(self, neon_tx_idx: int) -> SolTxIx:
+        return self._make_skd_tx_ix(NeonEvmIxCode.SkdTxFinish, neon_tx_idx, bytes(), list())
+
+    def make_destroy_skd_tree_ix(self) -> SolTxIx:
+        assert not self._skd_tree_addr.is_empty
+        self.validate_protocol()
+
+        ix_code = NeonEvmIxCode.SkdTreeDestroy
+        ix_data_list = (
+            ix_code.value.to_bytes(1, byteorder="little"),
+            self._treasury_pool_index_buf,
+        )
+
+        acct_meta_list = [
+            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=self._base_tx_acct_set.payer, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._treasury_pool_addr, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._skd_tree_addr, is_signer=False, is_writable=True),
+        ]
+
+        return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
+
     # protected:
 
     def _make_tx_exec_from_data_ix(self, ix_code: NeonEvmIxCode) -> SolTxIx:
@@ -471,7 +545,7 @@ class NeonProg:
         ix_data_list = (
             ix_code.value.to_bytes(1, byteorder="little"),
             self._treasury_pool_index_buf,
-            self._eth_rlp_tx,
+            self._rlp_tx,
         )
         return self._make_holder_ix(ix_data=bytes().join(ix_data_list), acct_meta_list=self._acct_meta_list)
 
@@ -517,6 +591,42 @@ class NeonProg:
 
         return SolTxIx(program_id=self.ID, data=ix_data, accounts=tuple(acct_meta_list))
 
+    def _make_skd_tx_start_ix(self, skd_tx_idx: int, ix_code: NeonEvmIxCode, ix_data: bytes) -> SolTxIx:
+        # fmt: off
+        acct_meta_list = [
+             SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
+             SolAccountMeta(pubkey=self._base_tx_acct_set.payer, is_signer=False, is_writable=True),
+        ] + self._base_tx_acct_meta_list
+        # fmt: on
+
+        return self._make_skd_tx_ix(ix_code, skd_tx_idx, ix_data, acct_meta_list)
+
+    def _make_skd_tx_ix(
+        self,
+        ix_code: NeonEvmIxCode,
+        skd_tx_idx: int,
+        ix_data: bytes,
+        acct_meta_list: list[SolAccountMeta],
+    ) -> SolTxIx:
+        assert not self._skd_tree_addr.is_empty
+
+        self.validate_protocol()
+
+        ix_data_list = (
+            ix_code.value.to_bytes(1, byteorder="little"),
+            skd_tx_idx.to_bytes(4, byteorder="little"),
+            ix_data,
+        )
+
+        acct_meta_list = [
+            SolAccountMeta(pubkey=self._holder_addr, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._skd_tree_addr, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=self._token_sol_addr, is_signer=False, is_writable=True),
+        ] + acct_meta_list
+
+        return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
+
     @property
     def _ro_acct_meta_list(self) -> list[SolAccountMeta]:
         return self._get_ro_acct_meta_list()
@@ -552,10 +662,13 @@ class NeonProg:
     def _get_base_tx_acct_meta_list(self) -> list[SolAccountMeta]:
         meta_list = [SolAccountMeta(self._base_tx_acct_set.sender, is_signer=False, is_writable=True)]
         _LOG.debug("add sender: %s", self._base_tx_acct_set.sender)
-        if self._base_tx_acct_set.receiver in self._addr_set:
+        if self._base_tx_acct_set.payer != self._base_tx_acct_set.sender:
+            _LOG.debug("add payer: %s", self._base_tx_acct_set.payer)
+            meta_list.append(SolAccountMeta(self._base_tx_acct_set.payer, is_signer=False, is_writable=True))
+        if (not self._addr_set) or (self._base_tx_acct_set.receiver in self._addr_set):
             _LOG.debug("add receiver: %s", self._base_tx_acct_set.receiver)
             meta_list.append(SolAccountMeta(self._base_tx_acct_set.receiver, is_signer=False, is_writable=False))
-        if (addr := self._base_tx_acct_set.receiver_contract) in self._addr_set:
+        if (not self._addr_set) or ((addr := self._base_tx_acct_set.receiver_contract) in self._addr_set):
             _LOG.debug("add receiver contract: %s", addr)
             meta_list.append(SolAccountMeta(addr, is_signer=False, is_writable=False))
         return meta_list

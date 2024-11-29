@@ -19,7 +19,8 @@ class SolNeonTxDb(HistoryDbTable):
     def __init__(self, db: DbConnection):
         super().__init__(db, "solana_neon_transactions", _Record, ("sol_sig", "block_slot", "idx", "inner_idx"))
         self._select_sig_list_query = DbQueryBody()
-        self._select_query = DbQueryBody()
+        self._select_by_neon_tx_hash_query = DbQueryBody()
+        self._select_by_sol_tx_sig_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -45,7 +46,7 @@ class SolNeonTxDb(HistoryDbTable):
             neon_tx_hash=DbSqlParam("neon_tx_hash"),
         )
 
-        select_sql = DbSql(
+        select_by_neon_tx_hash_sql = DbSql(
             """;
             SELECT DISTINCT 
                 {column_list},
@@ -73,7 +74,36 @@ class SolNeonTxDb(HistoryDbTable):
             neon_tx_hash=DbSqlParam("neon_tx_hash"),
         )
 
-        self._select_sig_list_query, self._select_query = await self._db.sql_to_query(select_sig_list_sql, select_sql)
+        select_by_sol_tx_sig_sql = DbSql(
+            """;
+            SELECT DISTINCT 
+                {column_list}
+            FROM 
+                {table_name} a
+            INNER JOIN 
+                {block_table_name} AS b
+                ON b.block_slot = a.block_slot
+                AND b.is_active = True
+            WHERE 
+                a.sol_sig = {sol_tx_sig}
+            LIMIT 1
+            """
+        ).format(
+            table_name=self._table_name,
+            column_list=self._column_list,
+            block_table_name=self._block_table_name,
+            sol_tx_sig=DbSqlParam("sol_tx_sig"),
+        )
+
+        (
+            self._select_sig_list_query,
+            self._select_by_neon_tx_hash_query,
+            self._select_by_sol_tx_sig_query,
+        ) = await self._db.sql_to_query(
+            select_sig_list_sql,
+            select_by_neon_tx_hash_sql,
+            select_by_sol_tx_sig_sql,
+        )
 
     async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
         rec_list = [_Record.from_sol_neon_ix(ix) for block in block_list for ix in block.iter_sol_neon_ix()]
@@ -87,7 +117,7 @@ class SolNeonTxDb(HistoryDbTable):
         rec_list = await self._fetch_all(
             ctx,
             self._select_sig_list_query,
-            _ByNeonTxSig(neon_tx_hash.to_string()),
+            _ByNeonTxHash(neon_tx_hash.to_string()),
             record_type=_SolTxSigSlot,
         )
 
@@ -108,11 +138,15 @@ class SolNeonTxDb(HistoryDbTable):
     ) -> Sequence[SolNeonTxIxMetaModel]:
         rec_list = await self._fetch_all(
             ctx,
-            self._select_query,
-            _ByNeonTxSig(neon_tx_hash.to_string()),
+            self._select_by_neon_tx_hash_query,
+            _ByNeonTxHash(neon_tx_hash.to_string()),
             record_type=_RecordWithCost,
         )
         return tuple([rec.to_sol_neon_ix() for rec in rec_list])
+
+    async def get_neon_tx_hash_by_sol_tx_sig(self, ctx: DbTxCtx, sol_tx_sig: SolTxSig) -> EthTxHash | None:
+        rec = await self._fetch_one(ctx, self._select_by_sol_tx_sig_query, _BySolTxSig(sol_tx_sig.to_string()))
+        return EthTxHash.from_raw(rec.neon_sig) if rec else None
 
 
 @dataclass(frozen=True)
@@ -192,8 +226,13 @@ class _RecordWithCost(_Record):
 
 
 @dataclass(frozen=True)
-class _ByNeonTxSig:
+class _ByNeonTxHash:
     neon_tx_hash: str
+
+
+@dataclass(frozen=True)
+class _BySolTxSig:
+    sol_tx_sig: str
 
 
 @dataclass(frozen=True)

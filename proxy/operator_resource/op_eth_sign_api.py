@@ -2,7 +2,7 @@ import logging
 from typing import ClassVar
 
 from common.ethereum.hash import EthAddress
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
 from .resource_manager import OpResourceMng
@@ -46,10 +46,10 @@ class OpEthSignApi(OpResourceApi):
     def _op_resource_mng(self) -> OpResourceMng:
         return self._server._op_resource_mng  # noqa
 
-    async def _get_neon_account(self, eth_address: EthAddress, chain_id: int) -> NeonAccount | None:
+    async def _get_neon_account(self, eth_address: EthAddress, chain_id: int) -> NeonAddress | None:
         if not (op_signer := self._op_resource_mng.get_signer_by_eth_address(eth_address)):
             return None
 
-        if op_signer.neon_account.chain_id != chain_id:
-            return NeonAccount.from_private_key(op_signer.neon_account.private_key, chain_id)
-        return op_signer.neon_account
+        if op_signer.neon_address.chain_id != chain_id:
+            return NeonAddress.from_private_key(op_signer.neon_address.private_key, chain_id)
+        return op_signer.neon_address

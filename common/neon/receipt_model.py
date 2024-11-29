@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Union
 
+from pydantic import Field
 from typing_extensions import Self
 
 from .evm_log_decoder import NeonTxEventModel
-from ..ethereum.hash import EthBlockHash, EthBlockHashField
+from ..ethereum.hash import EthBlockHash, EthBlockHashField, EthTxHashField
 from ..solana.signature import SolTxSig, SolTxSigField
 from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel, HexUIntField
@@ -17,22 +18,24 @@ _LOG = logging.getLogger(__name__)
 class NeonTxReceiptModel(BaseModel):
     slot: int | None
     block_hash: EthBlockHashField
-
+    # Solana instruction with Neon Receipt
     sol_tx_sig: SolTxSigField
     sol_ix_idx: int | None
     sol_inner_ix_idx: int | None
-
+    # Ethereum-like status
     neon_tx_idx: int | None
     status: HexUIntField
-
+    # Gas usage
     total_gas_used: HexUIntField
     sum_gas_used: HexUIntField
-    priority_fee_spent: HexUIntField
-
-    event_list: list[NeonTxEventModel]
-
-    is_completed: bool
+    priority_fee_used: HexUIntField
+    # Neon+Ethereum-like events
+    event_list: list[NeonTxEventModel] = Field(default_factory=list)
+    # if NeonTx was canceled
     is_canceled: bool
+    # parent and childs for scheduling
+    parent_tx_list: list[EthTxHashField] = Field(default_factory=list)
+    child_tx_list: list[EthTxHashField] = Field(default_factory=list)
 
     @classmethod
     def default(cls) -> Self:
@@ -46,10 +49,11 @@ class NeonTxReceiptModel(BaseModel):
             status=0,
             total_gas_used=0,
             sum_gas_used=0,
-            priority_fee_spent=0,
+            priority_fee_used=0,
             event_list=list(),
-            is_completed=False,
             is_canceled=False,
+            parent_tx_list=list(),
+            child_tx_list=list(),
         )
 
     @classmethod
@@ -72,10 +76,6 @@ class NeonTxReceiptModel(BaseModel):
         for event in self.event_list:
             value |= event.log_bloom
         return value
-
-    @property
-    def is_valid(self) -> bool:
-        return self.is_completed
 
 
 _RawTxReceipt = Union[NeonTxReceiptModel, dict, None]

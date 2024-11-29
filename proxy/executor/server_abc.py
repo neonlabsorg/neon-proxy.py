@@ -44,7 +44,7 @@ class ExecutorComponent(BaseIntlProxyComponent):
     def _db(self) -> IndexerDbClient:
         return self._server._db  # noqa
 
-    async def get_evm_cfg(self) -> EvmConfigModel:
+    async def _get_evm_cfg(self) -> EvmConfigModel:
         return await self._server.get_evm_cfg()
 
 

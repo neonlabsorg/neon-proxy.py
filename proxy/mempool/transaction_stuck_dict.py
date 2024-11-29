@@ -43,6 +43,9 @@ class MpStuckTxDict:
     def peek_tx(self) -> MpStuckTxModel | None:
         return next(iter(self._tx_dict.values()), None)
 
+    def get_processing_tx_by_hash(self, neon_tx_hash: EthTxHash) -> MpStuckTxModel | None:
+        return self._processing_tx_dict.get(neon_tx_hash, None)
+
     def acquire_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._pop_tx(stuck_tx)
         self._processing_tx_dict[stuck_tx.neon_tx_hash] = stuck_tx

@@ -11,7 +11,7 @@ from common.ethereum.errors import EthError, EthNonceTooLowError
 from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockCuPriceInfo, NeonBlockBaseFeeInfo
 from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.solana.cb_program import SolCbProg
@@ -163,7 +163,7 @@ class NpGasPriceApi(NeonProxyApi):
             return _RpcDefaultGasPriceModel.from_raw(gas_price, token_gas_price)
 
         state_tx_cnt = await self._core_api_client.get_state_tx_cnt(
-            NeonAccount.from_raw(call.fromAddress, token_gas_price.chain_id),
+            NeonAddress.from_raw(call.fromAddress, token_gas_price.chain_id),
             None,
         )
         tx_nonce = call.nonce if call.nonce is not None else state_tx_cnt
@@ -183,20 +183,7 @@ class NpGasPriceApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="eth_maxPriorityFeePerGas")
     async def get_max_priority_fee_per_gas(self, ctx: HttpRequestCtx) -> HexUIntField:
-        # Fetch the compute units price across last several blocks (as specified in the cfg).
-        pp = self._cfg.cu_price_estimator_percentile
-        block_cnt = self._cfg.cu_price_estimator_block_cnt
-
-        block_list = await self._db.get_block_cu_price_list(block_cnt)
-
-        median_cu_price: float = CuPricePercentileModel.get_weighted_percentile(
-            pp, len(block_list), map(lambda v: v.cu_price_list, block_list)
-        )
-
-        # Convert it into ethereum world by multiplying by profitable_gas_price
-        # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
-        _, token_gas_price = await self._get_token_gas_price(ctx)
-        return int(token_gas_price.profitable_gas_price * median_cu_price / SolCbProg.MicroLamport)
+        return await self._get_max_priority_fee_per_gas(ctx)
 
     @NeonProxyApi.method(name="eth_feeHistory")
     async def get_fee_history(

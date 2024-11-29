@@ -5,20 +5,28 @@ import contextlib
 import enum
 import logging
 import time
-from typing import Final, Sequence
+from typing import Final, Sequence, Iterator
 
 from common.config.config import Config
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthAddress
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.client import CoreApiClient
 from common.utils.cached import cached_method, reset_cached_method
 from common.utils.json_logger import logging_context, log_msg
 from .sender_nonce import SenderNonce
 from .sorted_queue import SortedQueue
-from ..base.mp_api import MpTxModel, MpTxRespCode, MpTxResp, MpTxPoolContentResp
 from .transaction_dict import MpTxDict
+from ..base.mp_api import (
+    MpTxModel,
+    MpTxRespCode,
+    MpTxResp,
+    MpTxPoolContentResp,
+    MpTxStatusModel,
+    MpTxExecPctModel,
+    MpTxStatusListResp,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -163,6 +171,7 @@ class _SenderTxPool:
         self._gas_price = 0
         self._heartbeat_sec = int(time.monotonic())
         self._state_tx_cnt = 0
+        self._balance = 0
         self._processing_tx: MpTxModel | None = None
         self._tx_nonce_queue = SortedQueue[MpTxModel, int, str](
             lt_key_func=lambda a: -a.nonce,
@@ -279,9 +288,14 @@ class _SenderTxPool:
             return self._processing_tx.nonce + 1
         return self._state_tx_cnt
 
-    def set_state_tx_cnt(self, value: int) -> None:
+    @property
+    def balance(self) -> int:
+        return self._balance
+
+    def set_sender_state(self, state_tx_cnt: int, balance: int) -> None:
         if not self.is_processing:
-            self._state_tx_cnt = value
+            self._state_tx_cnt = state_tx_cnt
+            self._balance = balance
 
     @property
     def heartbeat_sec(self) -> int:
@@ -319,9 +333,8 @@ class _SenderTxPool:
             pending_pos += 1
         return pending_pos
 
-    @property
-    def tx_list(self) -> list[MpTxModel]:
-        return list(reversed(self._tx_nonce_queue))
+    def iter_tx_list(self) -> Iterator[MpTxModel]:
+        return iter(self._tx_nonce_queue)
 
     def pop_tx_list(self) -> list[MpTxModel]:
         return self._tx_nonce_queue.pop_queue()
@@ -347,9 +360,17 @@ class _SenderTxPool:
             return self.State.Empty
         elif self.is_processing:
             return self.State.Processing
-        elif self._state_tx_cnt != self.top_tx.nonce:
+
+        if (self._state_tx_cnt != self.top_tx.nonce) or (not self.has_sufficient_balance):
             return self.State.Suspended
         return self.State.Queued
+
+    @property
+    def has_sufficient_balance(self) -> bool:
+        top_tx = self.top_tx
+        if top_tx.neon_tx.is_scheduled_tx:
+            return True
+        return top_tx.neon_tx.cost <= self._balance
 
     def _log_action(self, msg: str, tx: MpTxModel) -> dict:
         return log_msg(
@@ -376,6 +397,7 @@ class MpTxSchedule:
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
 
         self._tx_dict = _TxDict(chain_id, global_tx_dict)
+        self._global_tx_dict = global_tx_dict
         self._token: Final[str] = token
         self._chain_id: Final[int] = chain_id
 
@@ -425,7 +447,7 @@ class MpTxSchedule:
     def token(self) -> str:
         return self._token
 
-    def add_tx(self, tx: MpTxModel, state_tx_cnt: int) -> MpTxResp:
+    def add_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> MpTxResp:
         _LOG.debug(log_msg("add tx {Tx} to mempool {ChainID} with {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info()))
 
         def _is_higher_gas_price(_hdr: str, _old_tx: MpTxModel | None) -> MpTxResp | None:
@@ -490,7 +512,7 @@ class MpTxSchedule:
 
         self._check_oversized_and_reduce()
         self._add_tx_to_sender_pool(pool, tx)
-        self._schedule_sender_pool(pool, state_tx_cnt)
+        self._schedule_sender_pool(pool, state_tx_cnt, balance)
 
         msg = log_msg("done add tx {Tx}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info())
         _LOG.debug(msg)
@@ -506,7 +528,7 @@ class MpTxSchedule:
             return False
 
         self._drop_tx_from_sender_pool(pool, tx)
-        self._schedule_sender_pool(pool, tx.nonce)
+        self._schedule_sender_pool(pool, tx.nonce, pool.balance)
         return True
 
     @property
@@ -538,21 +560,71 @@ class MpTxSchedule:
         pool = self._find_sender_pool(sender)
         return None if not pool else pool.last_nonce + 1
 
-    def done_tx(self, tx: MpTxModel, state_tx_cnt: int) -> None:
+    def get_tx_status_list(
+        self,
+        sender: EthAddress,
+        state_tx_cnt: int,
+        balance: int,
+        min_exec_gas_price: int,
+    ) -> MpTxStatusListResp:
+        def _get_exec_pct_list(_tx: MpTxModel, is_done: bool) -> list[MpTxExecPctModel]:
+            nonlocal state_tx_cnt
+            nonlocal in_processing
+
+            if (_tx.nonce == state_tx_cnt) and in_processing:
+                return self._global_tx_dict.get_exec_pct_list(_tx.neon_tx_hash)
+            elif is_done:
+                return [MpTxExecPctModel(neon_tx_hash=_tx.neon_tx_hash, exec_pct=100)]
+            return list()
+
+        def _new_tx_status(_tx: MpTxModel, is_done: bool) -> MpTxStatusModel:
+            return MpTxStatusModel.from_raw(_tx, _get_exec_pct_list(_tx, is_done))
+
+        tx_status_list: list[MpTxStatusModel] = list()
+        in_processing = False
+        if pool := self._find_sender_pool(sender):
+            self._schedule_sender_pool(pool, state_tx_cnt, balance)
+            if not pool.is_empty:
+                state_tx_cnt = pool.state_tx_cnt
+                in_processing = pool.is_processing
+                tx_status_list = [_new_tx_status(tx, False) for tx in pool.iter_tx_list()]
+
+        # Add last 2 processed txs from the cache
+        tx_nonce = (tx_status_list[-1].nonce if tx_status_list else state_tx_cnt) - 1
+        min_tx_nonce = max(tx_nonce - 1, 0)
+        sender = NeonAddress.from_raw(sender, self._chain_id)
+        while tx_nonce >= min_tx_nonce:
+            if tx := self._global_tx_dict.get_tx_by_sender_nonce(sender, tx_nonce):
+                tx_status_list.append(_new_tx_status(tx, True))
+                tx_nonce -= 1
+            else:
+                break
+
+        return MpTxStatusListResp(
+            state_tx_cnt=state_tx_cnt,
+            balance=balance,
+            min_exec_gas_price=min_exec_gas_price,
+            in_processing=in_processing,
+            tx_status_list=list(reversed(tx_status_list)),
+        )
+
+    def done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
         _LOG.debug(log_msg("done tx {Tx}", Tx=tx))
-        self._done_tx(tx, state_tx_cnt)
+        self._done_tx(tx, state_tx_cnt, balance)
 
-    def fail_tx(self, tx: MpTxModel, state_tx_cnt: int) -> None:
+    def fail_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
         _LOG.debug(log_msg("fail tx {Tx}", Tx=tx))
-        self._done_tx(tx, state_tx_cnt)
+        self._done_tx(tx, state_tx_cnt, balance)
 
-    def cancel_tx(self, tx: MpTxModel, state_tx_cnt: int) -> bool:
+    def cancel_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> bool:
         _LOG.debug(log_msg("cancel tx {Tx}", Tx=tx))
-        pool = self._get_sender_pool(tx.sender)
+        if not (pool := self._find_sender_pool(tx.sender)):
+            return False
+
         pool.cancel_process_tx(tx)
         self._tx_dict.cancel_process_tx(tx)
 
-        self._schedule_sender_pool(pool, state_tx_cnt)
+        self._schedule_sender_pool(pool, state_tx_cnt, balance)
         return True
 
     def get_content(self) -> MpTxPoolContentResp:
@@ -560,7 +632,7 @@ class MpTxSchedule:
         queued_list: list[NeonTxModel] = list()
 
         for tx_pool in self._sender_pool_dict.values():
-            tx_list = list(map(lambda tx: tx.neon_tx, tx_pool.tx_list))
+            tx_list = list(map(lambda tx: tx.neon_tx, reversed(tx_pool.iter_tx_list())))
             pending_stop_pos = tx_pool.pending_stop_pos
             pending_list.extend(tx_list[:pending_stop_pos])
             queued_list.extend(tx_list[pending_stop_pos:])
@@ -610,10 +682,10 @@ class MpTxSchedule:
         assert pool, f"Failed to get sender tx pool by sender {sender}"
         return pool
 
-    def _schedule_sender_pool(self, pool: _SenderTxPool, state_tx_cnt: int) -> None:
+    def _schedule_sender_pool(self, pool: _SenderTxPool, state_tx_cnt: int, balance: int) -> None:
         self._drop_old_tx_list(pool, state_tx_cnt)
         self._sync_sender_state(pool)
-        pool.set_state_tx_cnt(state_tx_cnt)
+        pool.set_sender_state(state_tx_cnt, balance)
         self._sync_sender_state(pool)
 
     def _drop_old_tx_list(self, pool: _SenderTxPool, state_tx_cnt: int) -> None:
@@ -651,12 +723,14 @@ class MpTxSchedule:
             self._tx_dict.queue_tx(pool.sender, pool.top_tx.nonce)
             _LOG.debug(log_msg("resume sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
 
-    def _done_tx(self, tx: MpTxModel, state_tx_cnt: int) -> None:
-        pool = self._get_sender_pool(tx.sender)
+    def _done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
+        if not (pool := self._find_sender_pool(tx.sender)):
+            return
+
         pool.done_tx(tx)
         self._tx_dict.done_tx(tx)
 
-        self._schedule_sender_pool(pool, state_tx_cnt)
+        self._schedule_sender_pool(pool, state_tx_cnt, balance)
         _LOG.debug(log_msg("mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", **self._info()))
 
     def _check_oversized_and_reduce(self) -> None:
@@ -710,13 +784,13 @@ class MpTxSchedule:
         if not self._suspended_sender_set:
             return
 
-        addr_list = tuple(map(lambda addr: NeonAccount.from_raw(addr, self._chain_id), self._suspended_sender_set))
+        addr_list = tuple(map(lambda addr: NeonAddress.from_raw(addr, self._chain_id), self._suspended_sender_set))
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
 
         for acct in acct_list:
-            pool = self._find_sender_pool(acct.account.eth_address)
+            pool = self._find_sender_pool(acct.eth_address)
             if pool and pool.state == pool.State.Suspended:
-                self._schedule_sender_pool(pool, acct.state_tx_cnt)
+                self._schedule_sender_pool(pool, acct.state_tx_cnt, acct.balance)
 
     async def _heartbeat_loop(self) -> None:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10

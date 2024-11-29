@@ -24,7 +24,11 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
 
         prog = self._ctx.neon_prog
         neon_acct = await self._get_neon_account()
-        ix = prog.make_create_neon_account_ix(neon_acct.account, neon_acct.sol_address, neon_acct.contract_sol_address)
+        ix = prog.make_create_neon_account_ix(
+            neon_acct.neon_address,
+            neon_acct.sol_address,
+            neon_acct.contract_sol_address,
+        )
 
         return [[SolLegacyTx(self.name, tuple([ix]))]]
 
@@ -34,7 +38,7 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
         return True
 
     async def _is_account_exist(self) -> bool:
-        if self._ctx.is_stuck_tx:
+        if self._ctx.is_stuck_tx or self._ctx.is_scheduled_tx:
             return True
 
         # valid only for less-fee transactions

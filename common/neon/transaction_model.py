@@ -1,20 +1,94 @@
 from __future__ import annotations
 
 import logging
-from typing import Union, Any, ClassVar
+from enum import IntEnum
+from typing import Union, Any, ClassVar, Annotated
 
+from pydantic import PlainValidator, PlainSerializer
 from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStr, EthBinStrField
 from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddressField, EthAddress
 from ..ethereum.transaction import EthTx, EthTxType
+from ..solana.pubkey import SolPubKey, SolPubKeyField
+from ..solana.signature import SolTxSigField, SolTxSig
 from ..utils.cached import cached_method, cached_property
-from ..utils.format import str_fmt_object, hex_to_uint
-from ..utils.pydantic import BaseModel, HexUIntField
+from ..utils.format import str_fmt_object, hex_to_uint, hex_to_int, has_hex_start
+from ..utils.pydantic import BaseModel, HexUIntField, DecUIntField
 
 _LOG = logging.getLogger(__name__)
 
 NeonTxType = EthTxType
+
+
+class NeonSkdTxStatus(IntEnum):
+    Failed = 0x00
+    Success = 0x01
+    Skipped = 0x02
+    InProgress = 0x03
+
+    ToStart = 0xE0
+    ToSkip = 0xE1
+    Destroyed = 0xEF
+
+    NotStarted = 0xFF
+
+    @classmethod
+    def from_raw(cls, value: int | str | NeonSkdTxStatus | None) -> Self:
+        if isinstance(value, cls):
+            return value
+
+        try:
+            if isinstance(value, str):
+                if has_hex_start(value):
+                    value = hex_to_int(value)
+                else:
+                    name_dict = cls._get_name_dict()
+                    return name_dict[value]
+
+            return cls(value)
+        except (BaseException,):
+            _LOG.debug("bad NeonSkdTree status %s", value)
+            return cls.NotStarted
+
+    @classmethod
+    def _get_name_dict(cls) -> dict[str, NeonSkdTxStatus]:
+        if hasattr(cls, "_name_dict"):
+            return getattr(cls, "_name_dict")
+
+        # fmt: off
+        _name_dict: dict[str, NeonSkdTxStatus] = {
+            item.name: item
+            for item in cls.__members__.values()
+        }
+        # fmt: on
+        setattr(cls, "_name_dict", _name_dict)
+        return _name_dict
+
+
+NeonSkdTxStatusField = Annotated[
+    NeonSkdTxStatus,
+    PlainValidator(NeonSkdTxStatus.from_raw),
+    PlainSerializer(lambda v: v.value, return_type=int),
+]
+
+
+class NeonSkdTxModel(BaseModel):
+    slot: DecUIntField
+    neon_tx_hash: EthTxHashField
+    tree_address: SolPubKeyField
+    sol_skd_tx_sig: SolTxSigField
+    sol_skd_payer: SolPubKeyField
+    neon_payer: EthAddressField
+    chain_id: DecUIntField
+    nonce: DecUIntField
+    index: DecUIntField
+    rlp_tx: EthBinStrField
+    status: NeonSkdTxStatusField = NeonSkdTxStatus.NotStarted
+
+    @cached_method
+    def to_string(self) -> str:
+        return str_fmt_object(self, skip_key_list=tuple(["rlp_tx"]))
 
 
 class NeonTxModel(BaseModel):
@@ -23,14 +97,21 @@ class NeonTxModel(BaseModel):
     chain_id: HexUIntField | None = None
     neon_tx_hash: EthTxHashField = EthTxHash.default()
     from_address: EthAddressField
+    # custom value in the case of scheduled txs, in other cases there are the same value with from_address
+    payer: EthAddressField
+    sol_skd_payer: SolPubKeyField = SolPubKey.default()
+    # exists only in scheduled txs
+    intent: EthAddressField = EthAddress.default()
+    intent_call_data: EthBinStrField = EthBinStr.default()
     to_address: EthAddressField
     contract: EthAddressField = EthAddress.default()
     nonce: HexUIntField
+    index: HexUIntField = 0
     # Gas price for the legacy transactions.
-    gas_price: HexUIntField | None = None
+    gas_price: HexUIntField = 0
     # Gas parameters for the Dynamic Gas transactions.
-    max_priority_fee_per_gas: HexUIntField | None = None
-    max_fee_per_gas: HexUIntField | None = None
+    max_priority_fee_per_gas: HexUIntField = 0
+    max_fee_per_gas: HexUIntField = 0
     gas_limit: HexUIntField
     value: HexUIntField
     call_data: EthBinStrField
@@ -38,6 +119,8 @@ class NeonTxModel(BaseModel):
     v: HexUIntField = 0
     r: HexUIntField = 0
     s: HexUIntField = 0
+    # Solana signature
+    sol_skd_tx_sig: SolTxSigField = SolTxSig.default()
 
     rlp_tx: EthBinStrField = EthBinStr.default()
     error: str | None = None
@@ -49,30 +132,54 @@ class NeonTxModel(BaseModel):
                 "max_priority_fee_per_gas",
                 "max_fee_per_gas",
                 "access_list",
+                "payer",
+                "index",
+                "intent",
+                "intent_call_data",
             ]
         ),
-        NeonTxType.DynamicGas: tuple(["gas_price",]),
+        NeonTxType.DynamicGas: tuple(
+            [
+                "gas_price",
+                "payer",
+                "index",
+                "intent",
+                "intent_call_data",
+            ]
+        ),
+        NeonTxType.Scheduled: tuple(["gas_price", "access_list"]),
     }
 
     def model_post_init(self, _ctx: Any) -> None:
         _ = NeonTxType(self.tx_type)
 
-        if self.is_legacy_tx:
-            if self.gas_price is None:
-                raise ValueError("gas_price is not specified for the Legacy transaction.")
-            if (self.max_fee_per_gas is not None) or (self.max_priority_fee_per_gas is not None):
-                raise ValueError("max_fee_per_gas and max_priority_fee_per_gas should not be present.")
-        elif self.is_dynamic_gas_tx:
-            if (self.max_priority_fee_per_gas is None) or (self.max_fee_per_gas is None):
-                raise ValueError(
-                    "max_priority_fee_per_gas or max_fee_per_gas is not specified for the Dynamic Gas transaction."
-                )
-            if self.gas_price is not None:
-                raise ValueError("gas_price should not be present.")
+        if not self.is_scheduled_tx:
+            if self.index:
+                raise ValueError("index should not be present.")
+            if not self.intent.is_empty:
+                raise ValueError("intent should not be present.")
+            if not self.intent_call_data.is_empty:
+                raise ValueError("intent_call_data should not be present.")
+            if not self.sol_skd_tx_sig.is_empty:
+                raise ValueError("Solana signature should not be present.")
+            if not self.sol_skd_payer.is_empty:
+                raise ValueError("Solana payer should not be present.")
+
+        if not self.is_legacy_tx:
             if self.max_priority_fee_per_gas > self.max_fee_per_gas:
                 raise ValueError("max priority fee per gas higher than max fee per gas.")
             if self.chain_id is None:
-                raise ValueError("chain_id should be specified for the Dynamic Gas transactions.")
+                raise ValueError("chain_id should be specified")
+
+        if self.is_scheduled_tx:
+            if self.v or self.s or self.r:
+                raise ValueError("Ethereum signature should not be present.")
+
+            # TODO: remove on implement intents
+            if not self.intent.is_empty:
+                raise ValueError("intent should not be present.")
+            if not self.intent_call_data.is_empty:
+                raise ValueError("intent_call_data should not be present.")
 
     @classmethod
     def new_empty(
@@ -83,14 +190,13 @@ class NeonTxModel(BaseModel):
     ) -> Self:
         return cls(
             tx_type=NeonTxType.DynamicGas,
-            chain_id=0,
+            chain_id=0,  # noqa:
             neon_tx_hash=neon_tx_hash,
             from_address=EthAddress.default(),
+            payer=EthAddress.default(),
             to_address=EthAddress.default(),
             contract=EthAddress.default(),
             nonce=0,
-            max_fee_per_gas=0,
-            max_priority_fee_per_gas=0,
             gas_limit=0,
             value=0,
             call_data=EthBinStr.default(),
@@ -112,19 +218,39 @@ class NeonTxModel(BaseModel):
             return data
         elif data is None:
             return cls.default()
-        elif isinstance(data, (str, bytes, bytearray)):
-            return cls._from_rlp(data, raise_exception)
-        elif isinstance(data, EthTx):
-            return cls._from_eth_tx(data, bytes())
-        elif isinstance(data, dict):
-            return cls._from_dict(data)
-        elif isinstance(data, EthTxHash):
-            return cls._from_tx_hash(data)
+
+        try:
+            if isinstance(data, NeonSkdTxModel):
+                return cls._from_rlp_tx(data.rlp_tx, data.sol_skd_tx_sig, data.sol_skd_payer)
+            elif isinstance(data, (str, bytes, bytearray)):
+                return cls._from_rlp_tx(data)
+            elif isinstance(data, EthTx):
+                return cls._from_eth_tx(data, bytes())
+            elif isinstance(data, dict):
+                return cls._from_dict(data)
+            elif isinstance(data, EthTxHash):
+                return cls._from_tx_hash(data)
+        except Exception as exc:
+            if raise_exception:
+                raise
+
+            return cls.new_empty(error=str(exc))
 
         raise ValueError(f"Unsupported input type: {type(data).__name__}")
 
     @classmethod
     def _from_dict(cls, data: dict[str, Any]) -> Self:
+        if "rlp_tx" in data:
+            return cls._from_rlp_tx(
+                data["rlp_tx"],
+                data.get("sol_skd_tx_sig", None),
+                data.get("sol_skd_payer", None),
+            )
+
+        return cls._from_tx_dict(data)
+
+    @classmethod
+    def _from_tx_dict(cls, data: dict[str, Any]) -> Self:
         tx_type = NeonTxType.from_raw(data.get("tx_type", NeonTxType.DynamicGas))
 
         exclude_list = cls._exclude_list_dict.get(tx_type)
@@ -132,6 +258,7 @@ class NeonTxModel(BaseModel):
             data.pop(value, None)
 
         data["tx_type"] = tx_type
+        data.setdefault("payer", data.get("from_address"))
 
         if NeonTxType.is_legacy_tx(tx_type):
             v = hex_to_uint(data.get("v", 0))
@@ -140,18 +267,23 @@ class NeonTxModel(BaseModel):
         return cls.from_dict(data)
 
     @classmethod
-    def _from_rlp(cls, data: str | bytes | bytearray, raise_exception: bool) -> Self:
-        try:
-            tx = EthTx.from_raw(data)
-            return cls._from_eth_tx(tx, data)
-        except Exception as exc:
-            if raise_exception:
-                raise
-
-            return cls.new_empty(error=str(exc))
+    def _from_rlp_tx(
+        cls,
+        data: str | bytes | bytearray,
+        sol_skd_tx_sig: SolTxSig | None = None,
+        sol_skd_payer: SolPubKey | None = None,
+    ) -> Self:
+        tx = EthTx.from_raw(data)
+        return cls._from_eth_tx(tx, data, sol_skd_tx_sig, sol_skd_payer)
 
     @classmethod
-    def _from_eth_tx(cls, tx: EthTx, rlp_tx: bytes) -> Self:
+    def _from_eth_tx(
+        cls,
+        tx: EthTx,
+        rlp_tx: bytes,
+        sol_skd_tx_sig: SolTxSig | None = None,
+        sol_skd_payer: SolPubKey | None = None,
+    ) -> Self:
         if not rlp_tx:
             rlp_tx = tx.to_bytes()
 
@@ -160,7 +292,13 @@ class NeonTxModel(BaseModel):
             chain_id=tx.chain_id,
             neon_tx_hash=tx.neon_tx_hash,
             from_address=tx.from_address,
+            payer=tx.payer,
+            sol_skd_tx_sig=sol_skd_tx_sig or SolTxSig.default(),
+            sol_skd_payer=sol_skd_payer or SolPubKey.default(),
             nonce=tx.nonce,
+            index=tx.index,
+            intent=tx.intent,
+            intent_call_data=tx.intent_call_data,
             to_address=tx.to_address,
             contract=tx.contract,
             call_data=tx.call_data,
@@ -179,8 +317,8 @@ class NeonTxModel(BaseModel):
 
     @cached_method
     def _to_eth_tx(self) -> EthTx:
-        value_dict = self.to_eth_dict()
-        return EthTx(**value_dict)
+        param_dict = self.to_eth_dict()
+        return EthTx(**param_dict)
 
     @classmethod
     def _from_tx_hash(cls, neon_tx_hash: EthTxHash) -> Self:
@@ -194,12 +332,16 @@ class NeonTxModel(BaseModel):
     def is_legacy_tx(self) -> bool:
         return NeonTxType.is_legacy_tx(self.tx_type)
 
+    @property
+    def is_scheduled_tx(self) -> bool:
+        return NeonTxType.is_scheduled_tx(self.tx_type)
+
     @cached_method
     def to_rlp_tx(self) -> bytes:
         return self.rlp_tx.to_bytes() if not self.rlp_tx.is_empty else self._to_eth_tx().to_bytes()
 
     def to_eth_dict(self) -> dict:
-        value_dict = dict(
+        param_dict = dict(
             nonce=self.nonce,
             gas_limit=self.gas_limit,
             to_address=self.to_address.to_bytes(),
@@ -210,9 +352,9 @@ class NeonTxModel(BaseModel):
             v=self.v,
         )
         if self.is_legacy_tx:
-            value_dict["gas_price"] = self.gas_price
+            param_dict["gas_price"] = self.gas_price
         elif self.is_dynamic_gas_tx:
-            value_dict.update(
+            param_dict.update(
                 dict(
                     type=self.tx_type,
                     chain_id=self.chain_id,
@@ -221,9 +363,11 @@ class NeonTxModel(BaseModel):
                     max_priority_fee_per_gas=self.max_priority_fee_per_gas,
                 )
             )
+        elif self.is_scheduled_tx:
+            raise ValueError("Not supported transaction type")
         else:
             raise ValueError("Unknown transaction type")
-        return value_dict
+        return param_dict
 
     @property
     def has_chain_id(self) -> bool:
@@ -241,6 +385,14 @@ class NeonTxModel(BaseModel):
     def base_fee_per_gas(self) -> int:
         return EthTx.calc_base_fee_per_gas(self)
 
+    @cached_property
+    def effective_gas_price(self) -> int:
+        return self.gas_price if self.is_legacy_tx else self.max_fee_per_gas
+
+    @cached_property
+    def cost(self) -> int:
+        return self.calc_cost()
+
     def calc_cost(self, *, gas_limit: int | None = None, value: int | None = None) -> int:
         return EthTx.calc_cost(self, gas_limit=gas_limit, value=value)
 
@@ -255,4 +407,12 @@ class NeonTxModel(BaseModel):
         return self.to_string()
 
 
-_RawNeonTxModel = Union[str, bytes, dict, EthTxHash, EthTx, None]
+_RawNeonTxModel = Union[
+    str,
+    bytes,
+    dict,
+    NeonSkdTxModel,
+    EthTxHash,
+    EthTx,
+    None,
+]

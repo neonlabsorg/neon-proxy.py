@@ -7,7 +7,7 @@ from pydantic import PlainValidator, PlainSerializer
 from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHashField
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress, NeonAddressField
 from common.solana.alt_program import SolAltID
 from common.utils.cached import cached_property
 from common.utils.pydantic import BaseModel
@@ -41,36 +41,39 @@ class ExecTxRequest(BaseModel):
         return dict(tx=self.tx.tx_id)
 
     @cached_property
-    def sender(self) -> NeonAccount:
-        return NeonAccount.from_raw(self.tx.sender, self.token.chain_id)
+    def sender(self) -> NeonAddress:
+        return NeonAddress.from_raw(self.tx.sender, self.token.chain_id)
 
 
-class ExecStuckTxRequest(BaseModel):
+class ExecTxResp(BaseModel):
+    result: bool
+
+
+class CompleteStuckTxRequest(BaseModel):
     stuck_tx: MpStuckTxModel
-    token: ExecTokenModel
 
     @cached_property
     def req_id(self) -> dict:
         return dict(tx=self.stuck_tx.tx_id, is_stuck=True)
 
 
-class ExecTxRespCode(IntEnum):
-    Done = 1
-    Failed = 2
-    NonceTooLow = 3
-    NonceTooHigh = 4
+class CompleteStuckTxResp(BaseModel):
+    result: bool
 
 
-ExecTxRespCodeField = Annotated[
-    ExecTxRespCode,
-    PlainValidator(lambda v: ExecTxRespCode(v)),
-    PlainSerializer(lambda v: v.value, return_type=int),
-]
+class DestroyTreeAccountRequest(BaseModel):
+    neon_tx_hash: EthTxHashField
+    payer: NeonAddressField
+    nonce: int
+    token: ExecTokenModel
+
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(tx=self.neon_tx_hash.ident, is_destroy=True)
 
 
-class ExecTxResp(BaseModel):
-    code: ExecTxRespCodeField
-    state_tx_cnt: int = 0
+class DestroyTreeAccountResp(BaseModel):
+    result: bool
 
 
 class NeonAltModel(BaseModel):
@@ -84,4 +87,60 @@ class DestroyAltListRequest(BaseModel):
 
 
 class DestroyAltListResp(BaseModel):
+    result: bool
+
+
+class ExecTxDoneCode(IntEnum):
+    Done = 1
+    Failed = 2
+    NonceTooLow = 3
+    NonceTooHigh = 4
+
+
+ExecTxDoneCodeField = Annotated[
+    ExecTxDoneCode,
+    PlainValidator(lambda v: ExecTxDoneCode(v)),
+    PlainSerializer(lambda v: v.value, return_type=int),
+]
+
+
+class ExecTxDoneRequest(BaseModel):
+    neon_tx_hash: EthTxHashField
+    code: ExecTxDoneCodeField
+    state_tx_cnt: int = 0
+    balance: int = 0
+
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(tx=self.neon_tx_hash.ident)
+
+
+class ExecTxDoneResp(BaseModel):
+    result: bool
+
+
+class ExecTxDoneStuckRequest(BaseModel):
+    neon_tx_hash: EthTxHashField
+    code: ExecTxDoneCodeField
+
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(tx=self.neon_tx_hash.ident)
+
+
+class ExecTxDoneStuckResp(BaseModel):
+    result: bool
+
+
+class ExecTxNotifyStatusRequest(BaseModel):
+    base_tx_hash: EthTxHashField
+    neon_tx_hash: EthTxHashField
+    exec_pct: int
+
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(tx=self.neon_tx_hash.ident)
+
+
+class ExecTxNotifyStatusResp(BaseModel):
     result: bool

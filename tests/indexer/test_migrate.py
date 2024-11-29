@@ -1,6 +1,6 @@
 import unittest
 
-from indexer.db.neon_tx_db import _RecordWithBlock
+from indexer.db.neon_tx_db_old import _RecordWithBlock
 
 
 class TestMigrate(unittest.TestCase):

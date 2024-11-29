@@ -7,7 +7,7 @@ from eth_hash.auto import keccak
 from typing_extensions import Self
 
 from common.ethereum.hash import EthAddress
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import OpEarnAccountModel, NeonAccountModel
 from common.solana.pubkey import SolPubKey
@@ -42,7 +42,7 @@ class OpHolderInfo:
 @dataclass
 class OpSignerInfo:
     signer: SolSigner
-    neon_account: NeonAccount
+    neon_address: NeonAddress
     token_sol_address_dict: dict[int, SolPubKey]
 
     free_holder_list: deque[OpHolderInfo]
@@ -59,7 +59,7 @@ class OpSignerInfo:
 
     @property
     def eth_address(self) -> EthAddress:
-        return self.neon_account.eth_address
+        return self.neon_address.eth_address
 
     def pop_free_holder_list(self) -> deque[OpHolderInfo]:
         holder_list, self.free_holder_list = self.free_holder_list, deque()

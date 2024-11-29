@@ -71,11 +71,6 @@ class OpResourceClient(AppDataClient):
         resp = await self._free_resource(req)
         return resp.result
 
-    async def get_token_sol_address(self, req_id: dict, owner: SolPubKey, chain_id: int) -> SolPubKey:
-        req = OpGetTokenSolAddressRequest(req_id=req_id, owner=owner, chain_id=chain_id)
-        resp = await self._get_token_sol_address(req)
-        return resp.token_sol_address
-
     async def sign_eth_msg(self, req_id: dict, sender: EthAddressField, data: EthBinStrField) -> OpSignEthMsgResp:
         req = OpSignEthMsgRequest(req_id=req_id, sender=sender, data=data)
         return await self._sign_eth_msg(req)
@@ -121,9 +116,6 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="freeOperatorResource")
     async def _free_resource(self, request: OpFreeResourceRequest) -> OpResourceResp: ...
-
-    @AppDataClient.method(name="getOperatorTokenAddress")
-    async def _get_token_sol_address(self, request: OpGetTokenSolAddressRequest) -> OpTokenSolAddressModel: ...
 
     @AppDataClient.method(name="signEthMessage")
     async def _sign_eth_msg(self, request: OpSignEthMsgRequest) -> OpSignEthMsgResp: ...

@@ -10,26 +10,31 @@ from typing import Final
 
 from common.config.config import Config
 from common.ethereum.hash import EthTxHash
-from common.neon.account import NeonAccount
-from common.neon.transaction_model import NeonTxModel
+from common.neon.address import NeonAddress
 from common.utils.json_logger import logging_context
 from .sender_nonce import SenderNonce
-from ..base.mp_api import MpTxModel
+from ..base.mp_api import MpTxModel, MpTxExecPctModel
 
 _LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class _Item:
+class _LRUItem:
     start_time_sec: int
     tx: MpTxModel
 
 
+@dataclass
+class _TxItem:
+    tx: MpTxModel
+    exec_pct_list: list[MpTxExecPctModel]
+
+
 class MpTxDict:
     def __init__(self, cfg: Config):
-        self._tx_hash_dict: dict[EthTxHash, MpTxModel] = dict()
-        self._sender_nonce_dict: dict[SenderNonce, MpTxModel] = dict()
-        self._tx_queue: deque[_Item] = deque()
+        self._tx_hash_dict: dict[EthTxHash, _TxItem] = dict()
+        self._sender_nonce_dict: dict[SenderNonce, _TxItem] = dict()
+        self._tx_queue: deque[_LRUItem] = deque()
         self._clear_time_sec: Final[int] = cfg.mp_cache_life_sec
 
         self._stop_event = asyncio.Event()
@@ -48,28 +53,38 @@ class MpTxDict:
 
     def add_tx(self, tx: MpTxModel) -> None:
         _LOG.debug("add tx %s to tx-cache", tx)
-        self._tx_hash_dict[tx.neon_tx_hash] = tx
-        self._sender_nonce_dict[SenderNonce.from_raw(tx)] = tx
+
+        item = _TxItem(tx=tx, exec_pct_list=list())
+        self._tx_hash_dict[tx.neon_tx_hash] = item
+        self._sender_nonce_dict[SenderNonce.from_raw(tx)] = item
 
     def done_tx(self, neon_tx_hash: EthTxHash) -> None:
-        if tx := self._tx_hash_dict.get(neon_tx_hash):
-            item = _Item(start_time_sec=int(time.monotonic()), tx=tx)
-            self._tx_queue.append(item)
+        if item := self._tx_hash_dict.get(neon_tx_hash):
+            lru = _LRUItem(start_time_sec=int(time.monotonic()), tx=item.tx)
+            self._tx_queue.append(lru)
 
     def pop_tx(self, neon_tx_hash: EthTxHash) -> None:
-        if tx := self._tx_hash_dict.pop(neon_tx_hash, None):
-            self._sender_nonce_dict.pop(SenderNonce.from_raw(tx), None)
+        if item := self._tx_hash_dict.pop(neon_tx_hash, None):
+            self._sender_nonce_dict.pop(SenderNonce.from_raw(item.tx), None)
 
-    def get_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonTxModel | None:
-        if tx := self._tx_hash_dict.get(neon_tx_hash, None):
-            return tx.neon_tx
-        return None
+    def notify_exec_pct(self, base_tx_hash: EthTxHash, neon_tx_hash: EthTxHash, exec_pct: int) -> bool:
+        if not (item := self._tx_hash_dict.get(base_tx_hash, None)):
+            return False
 
-    def get_tx_by_sender_nonce(self, neon_account: NeonAccount, tx_nonce: int) -> NeonTxModel | None:
-        key = SenderNonce.from_raw((neon_account.eth_address, neon_account.chain_id, tx_nonce))
-        if tx := self._sender_nonce_dict.get(key, None):
-            return tx.neon_tx
-        return None
+        if (idx := next((idx for idx, v in enumerate(item.exec_pct_list) if v.neon_tx_hash == neon_tx_hash), -1)) != -1:
+            item.exec_pct_list.pop(idx)
+        item.exec_pct_list.append(MpTxExecPctModel(neon_tx_hash=neon_tx_hash, exec_pct=exec_pct))
+        return True
+
+    def get_tx_by_hash(self, neon_tx_hash: EthTxHash) -> MpTxModel | None:
+        return item.tx if (item := self._tx_hash_dict.get(neon_tx_hash, None)) else None
+
+    def get_tx_by_sender_nonce(self, neon_address: NeonAddress, tx_nonce: int) -> MpTxModel | None:
+        key = SenderNonce.from_raw((neon_address.eth_address, neon_address.chain_id, tx_nonce))
+        return item.tx if (item := self._sender_nonce_dict.get(key, None)) else None
+
+    def get_exec_pct_list(self, neon_tx_hash: EthTxHash) -> list[MpTxExecPctModel]:
+        return list() if not (item := self._tx_hash_dict.get(EthTxHash.from_raw(neon_tx_hash))) else item.exec_pct_list
 
     async def _clear_loop(self) -> None:
         next_item_sec = 0

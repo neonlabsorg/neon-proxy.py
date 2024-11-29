@@ -18,6 +18,8 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import CoreApiTxModel
+from common.solana.pubkey import SolPubKeyField
+from common.solana.signature import SolTxSigField
 from common.utils.cached import cached_property
 from common.utils.pydantic import HexUIntField
 
@@ -27,8 +29,16 @@ class RpcAccessItemModel(BaseJsonRpcModel):
     storageKeys: list[EthHash32Field]
 
 
-class RpcEthTxRequest(BaseJsonRpcModel):
-    txType: HexUIntField = Field(default=0, validation_alias="type")
+class BaseEthGasModel(BaseJsonRpcModel):
+    gasPrice: HexUIntField = Field(default=2 ** 64)
+    maxFeePerGas: HexUIntField = Field(default=2 ** 64)
+    maxPriorityFeePerGas: HexUIntField = Field(default=0)
+
+    nonce: HexUIntField | None = Field(default=None)
+    chainId: HexUIntField = Field(default=0)
+
+
+class BaseEthCallModel(BaseJsonRpcModel):
     fromAddress: EthAddressField = Field(
         default=EthAddress.default(),
         validation_alias=AliasChoices("from", "fromAddress"),
@@ -40,40 +50,34 @@ class RpcEthTxRequest(BaseJsonRpcModel):
     data_v1: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="data")
     data_v2: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="input")
 
+    gas: HexUIntField = Field(default=2 ** 64)
     value: HexUIntField = Field(default=0)
-    nonce: HexUIntField | None = Field(default=None)
-
-    gas: HexUIntField = Field(default=2**64)
-    gasPrice: HexUIntField = Field(default=2**64)
-    maxFeePerGas: HexUIntField = Field(default=2**64)
-    maxPriorityFeePerGas: HexUIntField = Field(default=0)
-
-    accessList: list[RpcAccessItemModel] = Field(default_factory=list)
-    chainId: HexUIntField = Field(default=0)
-
-    _default: ClassVar[RpcEthTxRequest | None] = None
-
-    def model_post_init(self, _ctx: Any) -> None:
-        if self.txType != 0:
-            if self.maxPriorityFeePerGas > self.maxFeePerGas:
-                raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
 
     @cached_property
     def data(self) -> EthBinStr:
         return self.data_v2 if not self.data_v2.is_empty else self.data_v1
 
+
+class RpcEthTxRequest(BaseEthGasModel, BaseEthCallModel):
+    txType: HexUIntField = Field(default=NeonTxType.Legacy.value, validation_alias="type")
+    accessList: list[RpcAccessItemModel] = Field(default_factory=list)
+
+    _default: ClassVar[RpcEthTxRequest | None] = None
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if self.maxPriorityFeePerGas > self.maxFeePerGas:
+            raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
+
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
-            cls._default = cls(
-                fromAddress=EthAddress.default(),
-                toAddress=EthAddress.default(),
-            )
+            cls._default = cls()
         return cls._default
 
     def to_core_tx(self, chain_id: int) -> CoreApiTxModel:
         return CoreApiTxModel(
             from_address=self.fromAddress,
+            payer=self.fromAddress,
             to_address=self.toAddress,
             nonce=self.nonce,
             value=self.value,
@@ -92,6 +96,7 @@ class RpcEthTxRequest(BaseJsonRpcModel):
             tx_type=self.txType,
             neon_tx_hash=EthTxHash.default(),
             from_address=self.fromAddress,
+            payer=self.payerAddress,
             to_address=self.toAddress,
             contract=EthAddress.default(),
             nonce=self.nonce,
@@ -106,54 +111,41 @@ class RpcEthTxRequest(BaseJsonRpcModel):
 
 
 class RpcEthTxResp(BaseJsonRpcModel):
-    blockHash: EthBlockHashField | None
-    blockNumber: HexUIntField | None
-    transactionIndex: HexUIntField | None
+    blockHash: EthBlockHashField | None = None
+    blockNumber: HexUIntField | None = None
+    transactionIndex: HexUIntField | None = None
     txHash: EthTxHashField = Field(serialization_alias="hash")
     txType: HexUIntField = Field(serialization_alias="type")
     fromAddress: EthAddressField = Field(serialization_alias="from")
+    scheduledPayer: EthAddressField = EthAddress.default()
+    scheduledSolanaPayer: SolPubKeyField | None = Field(None)
     nonce: HexUIntField
+    scheduledIndex: HexUIntField | None = None
     gasPrice: HexUIntField
-    maxPriorityFeePerGas: HexUIntField | None
-    maxFeePerGas: HexUIntField | None
+    maxPriorityFeePerGas: HexUIntField | None = None
+    maxFeePerGas: HexUIntField | None = None
     gas: HexUIntField
     toAddress: EthAddressField = Field(serialization_alias="to")
     value: HexUIntField
     data: EthBinStrField = Field(serialization_alias="input")
+    # scheduledIntent: EthAddressField | None = None
+    # scheduledIntentInput: EthBinStrField | None = None
     chainId: HexUIntField | None
-    v: HexUIntField
-    r: HexUIntField
-    s: HexUIntField
+    v: HexUIntField | None = None
+    r: HexUIntField | None = None
+    s: HexUIntField | None = None
+    scheduledSolanaSignature: SolTxSigField | None = None
 
     @classmethod
     def from_raw(cls, meta: NeonTxMetaModel | NeonTxModel) -> Self:
-        if isinstance(meta, NeonTxMetaModel):
-            tx = meta.neon_tx
-
-            rcpt = meta.neon_tx_rcpt
-            blockhash = rcpt.block_hash
-            slot = rcpt.slot
-            tx_idx = rcpt.neon_tx_idx
-            gas_price = meta.effective_gas_price
-        else:
-            tx = meta
-
-            blockhash = None
-            slot = None
-            tx_idx = None
-            gas_price = tx.gas_price if tx.is_legacy_tx else tx.max_fee_per_gas
+        tx = meta.neon_tx if isinstance(meta, NeonTxMetaModel) else meta
 
         return cls(
-            blockHash=blockhash,
-            blockNumber=slot,
-            transactionIndex=tx_idx,
             txHash=tx.neon_tx_hash,
             txType=tx.tx_type,
-            fromAddress=tx.from_address.to_string(),
+            fromAddress=tx.from_address,
             nonce=tx.nonce,
-            gasPrice=gas_price,
-            maxPriorityFeePerGas=tx.max_priority_fee_per_gas,
-            maxFeePerGas=tx.max_fee_per_gas,
+            gasPrice=tx.effective_gas_price,
             gas=tx.gas_limit,
             toAddress=tx.to_address,
             value=tx.value,
@@ -162,7 +154,48 @@ class RpcEthTxResp(BaseJsonRpcModel):
             # N.B. Various RPC providers differ in this regard.
             # For example Infura claims to NOT return it for the legacy transaction in the docs, but they still do...
             chainId=tx.chain_id,
-            v=tx.v,
-            r=tx.r,
-            s=tx.s,
+            **cls._to_dict(meta),
         )
+
+    @staticmethod
+    def _to_dict(meta: NeonTxMetaModel) -> dict:
+        tx = meta.neon_tx if isinstance(meta, NeonTxMetaModel) else meta
+        param_dict = dict()
+
+        if isinstance(meta, NeonTxMetaModel):
+            rcpt = meta.neon_tx_rcpt
+            param_dict = dict(
+                blockHash=rcpt.block_hash,
+                blockNumber=rcpt.slot,
+                transactionIndex=rcpt.neon_tx_idx,
+            )
+
+        if not tx.is_legacy_tx:
+            param_dict.update(
+                dict(
+                    maxPriorityFeePerGas=tx.max_priority_fee_per_gas,
+                    maxFeePerGas=tx.max_fee_per_gas,
+                )
+            )
+
+        if tx.is_scheduled_tx:
+            param_dict.update(
+                dict(
+                    scheduledIndex=tx.index,
+                    scheduledPayer=tx.payer,
+                    scheduledSolanaPayer=tx.sol_skd_payer,
+                    scheduledSolanaSignature=tx.sol_skd_tx_sig,
+                    # scheduledIntent=tx.intent,
+                    # scheduledIntentInput=tx.intent_call_data,
+                )
+            )
+        else:
+            param_dict.update(
+                dict(
+                    v=tx.v,
+                    r=tx.r,
+                    s=tx.s,
+                )
+            )
+
+        return param_dict

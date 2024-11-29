@@ -7,14 +7,14 @@ from typing import Final
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthTxHash
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.utils.json_logger import logging_context, log_msg
 from .server_abc import MempoolServerAbc, MempoolComponent
 from .transaction_dict import MpTxDict
 from .transaction_schedule import MpTxSchedule
 from .transaction_stuck_dict import MpStuckTxDict
-from ..base.ex_api import ExecTxRespCode, ExecTxResp, ExecTokenModel
+from ..base.ex_api import ExecTokenModel, ExecTxDoneCode, ExecTxDoneRequest, ExecTxDoneStuckRequest
 from ..base.mp_api import (
     MpTxResp,
     MpTxRespCode,
@@ -23,6 +23,7 @@ from ..base.mp_api import (
     MpStuckTxModel,
     MpGasPriceModel,
     MpTokenGasPriceModel,
+    MpTxStatusListResp,
 )
 from ..stat.api import NeonTxDoneData, NeonTxFailData, NeonTxPoolData, NeonTxTokenPoolData
 
@@ -63,23 +64,23 @@ class MpTxExecutor(MempoolComponent):
             task.cancel()
         await asyncio.gather(*task_list)
 
-    async def schedule_tx_request(self, tx: MpTxModel, state_tx_cnt: int) -> MpTxResp:
+    async def schedule_tx_request(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> MpTxResp:
         try:
             if self._tx_dict.get_tx_by_hash(tx.neon_tx_hash) is not None:
                 # _LOG.debug("tx is already known")
                 return MpTxResp(code=MpTxRespCode.AlreadyKnown, state_tx_cnt=None)
 
-            if result := await self._update_tx_order(tx):
+            if result := self._update_tx_order(tx):
                 return result
 
-            if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id)):
-                evm_cfg = await self._server.get_evm_cfg()
+            if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id, None)):
+                evm_cfg = await self._get_evm_cfg()
                 token = evm_cfg.chain_dict.get(tx.chain_id).name
                 tx_schedule = MpTxSchedule(self._cfg, self._core_api_client, token, tx.chain_id, self._tx_dict)
                 self._tx_schedule_dict[tx.chain_id] = tx_schedule
                 await tx_schedule.start()
 
-            if not (result := tx_schedule.add_tx(tx, state_tx_cnt)):
+            if not (result := tx_schedule.add_tx(tx, state_tx_cnt, balance)):
                 return MpTxResp(code=MpTxRespCode.UnknownChainID, state_tx_cnt=None)
 
             return result
@@ -91,17 +92,54 @@ class MpTxExecutor(MempoolComponent):
         finally:
             self._exec_event.set()
 
-    def get_pending_tx_cnt(self, sender: NeonAccount) -> int | None:
+    async def drop_tx(self, neon_tx_hash: EthTxHash) -> bool:
+        if not (tx := self._tx_dict.get_tx_by_hash(neon_tx_hash)):
+            return True
+
+        return self._call_tx_schedule(tx.chain_id, MpTxSchedule.drop_tx, tx.sender, tx.nonce)
+
+    def notify_exec_tx_status(self, base_tx_hash: EthTxHash, neon_tx_hash: EthTxHash, exec_pct: int) -> bool:
+        return self._tx_dict.notify_exec_pct(base_tx_hash, neon_tx_hash, exec_pct)
+
+    def done_exec_tx(self, result: ExecTxDoneRequest) -> bool:
+        if not (tx := self._tx_dict.get_tx_by_hash(result.neon_tx_hash)):
+            _LOG.warning("unknown tx %s", result.neon_tx_hash)
+            return False
+
+        return self._done_exec_tx(tx, result)
+
+    def done_complete_stuck_tx(self, result: ExecTxDoneStuckRequest) -> bool:
+        if not (stuck_tx := self._stuck_tx_dict.get_processing_tx_by_hash(result.neon_tx_hash)):
+            _LOG.warning("unknown stuck tx %s", result.neon_tx_hash)
+            return False
+
+        return self._done_complete_stuck_tx(stuck_tx, result)
+
+    def get_pending_tx_cnt(self, sender: NeonAddress) -> int | None:
         return self._call_tx_schedule(sender.chain_id, MpTxSchedule.get_pending_tx_cnt, sender.eth_address)
 
-    def get_last_tx_cnt(self, sender: NeonAccount) -> int | None:
+    def get_last_tx_cnt(self, sender: NeonAddress) -> int | None:
         return self._call_tx_schedule(sender.chain_id, MpTxSchedule.get_last_tx_cnt, sender.eth_address)
 
     def get_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonTxModel | None:
-        return self._tx_dict.get_tx_by_hash(neon_tx_hash)
+        return tx.neon_tx if (tx := self._tx_dict.get_tx_by_hash(neon_tx_hash)) else None
 
-    def get_tx_by_sender_nonce(self, sender: NeonAccount, tx_nonce: int) -> NeonTxModel | None:
-        return self._tx_dict.get_tx_by_sender_nonce(sender, tx_nonce)
+    def get_tx_by_sender_nonce(self, sender: NeonAddress, tx_nonce: int) -> NeonTxModel | None:
+        return tx.neon_tx if (tx := self._tx_dict.get_tx_by_sender_nonce(sender, tx_nonce)) else None
+
+    def get_tx_list_by_sender(self, sender: NeonAddress, state_tx_cnt: int, balance: int) -> MpTxStatusListResp | None:
+        if not (token := self._gas_price.chain_dict.get(sender.chain_id, None)):
+            _LOG.warning("unknown chainID: 0x%x", sender.chain_id)
+            return None
+
+        return self._call_tx_schedule(
+            sender.chain_id,
+            MpTxSchedule.get_tx_status_list,
+            sender.eth_address,
+            state_tx_cnt,
+            balance,
+            token.min_executable_gas_price,
+        )
 
     def get_content(self, chain_id: int) -> MpTxPoolContentResp:
         pending_list = list()
@@ -112,10 +150,7 @@ class MpTxExecutor(MempoolComponent):
             queued_list.extend(cont.queued_list)
         return MpTxPoolContentResp(pending_list=pending_list, queued_list=queued_list)
 
-    def get_gas_price(self) -> MpGasPriceModel:
-        return self._server.get_gas_price()
-
-    async def _update_tx_order(self, tx: MpTxModel) -> MpTxResp | None:
+    def _update_tx_order(self, tx: MpTxModel) -> MpTxResp | None:
         if not tx.neon_tx.has_chain_id:
             _LOG.debug("increase gas-price for wo-chain-id-tx (for sorting in scheduling queue)")
         elif not tx.gas_price:
@@ -123,8 +158,7 @@ class MpTxExecutor(MempoolComponent):
         else:
             return None
 
-        gas_price = self.get_gas_price()
-        if not (token := gas_price.chain_dict.get(tx.chain_id, None)):
+        if not (token := self._gas_price.chain_dict.get(tx.chain_id, None)):
             _LOG.warning("unknown chainID: 0x%x", tx.chain_id)
             return MpTxResp(code=MpTxRespCode.UnknownChainID, state_tx_cnt=None)
 
@@ -138,7 +172,7 @@ class MpTxExecutor(MempoolComponent):
     def _call_tx_schedule(self, chain_id: int, method, *args):
         if tx_schedule := self._tx_schedule_dict.get(chain_id, None):
             return method(tx_schedule, *args)
-        if chain_id not in self.get_gas_price().chain_dict:
+        if chain_id not in self._gas_price.chain_dict:
             _LOG.warning("unknown chainID: 0x%x", chain_id)
         return None
 
@@ -152,11 +186,11 @@ class MpTxExecutor(MempoolComponent):
                 if self._stop_event.is_set():
                     break
 
-                gas_price = self.get_gas_price()
+                gas_price = self._gas_price
 
                 result = True
                 while result:
-                    result = await self._acquire_stuck_tx(gas_price)
+                    result = await self._acquire_stuck_tx()
                     result = await self._acquire_scheduled_tx(gas_price) or result
 
                 task_list, self._completed_task_list = self._completed_task_list, list()
@@ -180,7 +214,7 @@ class MpTxExecutor(MempoolComponent):
         )
         self._stat_client.commit_neon_tx_pool(data)
 
-    async def _acquire_stuck_tx(self, gas_price: MpGasPriceModel) -> bool:
+    async def _acquire_stuck_tx(self) -> bool:
         if self._cfg.mp_skip_stuck_tx:
             return False
 
@@ -192,55 +226,43 @@ class MpTxExecutor(MempoolComponent):
                 self._stuck_tx_dict.skip_tx(stuck_tx)
                 return True
 
-            if not (token := gas_price.chain_dict.get(stuck_tx.chain_id, None)):
-                _LOG.warning("unknown chainID: 0x%x", stuck_tx.chain_id)
-                self._stuck_tx_dict.skip_tx(stuck_tx)
-                return True
-
             if tx := self._tx_dict.get_tx_by_hash(stuck_tx.neon_tx_hash):
-                result = self._call_tx_schedule(tx.chain_id, MpTxSchedule.drop_tx, tx.from_address, tx.nonce)
+                result = self._call_tx_schedule(tx.chain_id, MpTxSchedule.drop_tx, tx.sender, tx.nonce)
                 if not result:
                     self._stuck_tx_dict.skip_tx(stuck_tx)
                     return True
 
             self._stuck_tx_dict.acquire_tx(stuck_tx)
-            self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(
-                self._exec_stuck_tx(stuck_tx, gas_price, token)
-            )
+            self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(self._complete_stuck_tx(stuck_tx))
 
         return True
 
-    async def _exec_stuck_tx(
-        self,
-        stuck_tx: MpStuckTxModel,
-        gas_price: MpGasPriceModel,
-        token: MpTokenGasPriceModel,
-    ) -> None:
+    async def _complete_stuck_tx(self, stuck_tx: MpStuckTxModel) -> None:
         with logging_context(tx=stuck_tx.tx_id):
-            await self._exec_stuck_tx_impl(stuck_tx, ExecTokenModel.from_raw(gas_price, token))
+            try:
+                await self._exec_client.complete_stuck_tx(stuck_tx)
+            except BaseException as exc:
+                _LOG.error("error on executor", exc_info=exc)
 
-    async def _exec_stuck_tx_impl(self, stuck_tx: MpStuckTxModel, token: ExecTokenModel) -> None:
-        try:
-            resp = await self._exec_client.complete_stuck_tx(stuck_tx, token)
-        except BaseException as exc:
-            resp = ExecTxResp(code=ExecTxRespCode.Failed)
-            _LOG.error("error on send stuck NeonTx to executor", exc_info=exc)
+                result = ExecTxDoneStuckRequest(neon_tx_hash=stuck_tx.neon_tx_hash, code=ExecTxDoneCode.Failed)
+                self._done_complete_stuck_tx(stuck_tx, result)
 
+    def _done_complete_stuck_tx(self, stuck_tx: MpStuckTxModel, result: ExecTxDoneStuckRequest) -> bool:
         msg = log_msg(
             "done stuck tx {StuckTx}, result {Result}, time {TimeMS} msec",
             StuckTx=stuck_tx,
-            Result=resp,
+            Result=result,
             TimeMS=stuck_tx.process_time_msec,
         )
         _LOG.debug(msg)
 
-        if resp.code == ExecTxRespCode.Failed:
+        if result.code == ExecTxDoneCode.Failed:
             self._stuck_tx_dict.fail_tx(stuck_tx)
             self._stat_client.commit_neon_tx_fail(NeonTxFailData(time_nsec=stuck_tx.process_time_nsec))
-        elif resp.code == ExecTxRespCode.Done:
+        elif result.code == ExecTxDoneCode.Done:
             self._stuck_tx_dict.done_tx(stuck_tx)
         else:
-            _LOG.error("unknown exec response code %s", resp)
+            _LOG.error("unknown exec response code %s", result.code)
             self._stuck_tx_dict.fail_tx(stuck_tx)
 
         if task := self._exec_task_dict.pop(stuck_tx.neon_tx_hash, None):
@@ -248,6 +270,8 @@ class MpTxExecutor(MempoolComponent):
         else:
             _LOG.error("unknown task %s", stuck_tx.neon_tx_hash)
         self._exec_event.set()
+
+        return True
 
     async def _acquire_scheduled_tx(self, gas_price: MpGasPriceModel) -> bool:
         tx_schedule_list: list[MpTxSchedule] = list(self._tx_schedule_dict.values())
@@ -267,62 +291,59 @@ class MpTxExecutor(MempoolComponent):
             tx = tx_schedule.peek_top_tx()
             if (not tx) or (tx.gas_price < token.min_executable_gas_price):
                 continue
-            assert tx.neon_tx_hash not in self._exec_task_dict
 
-            tx_schedule.acquire_tx(tx)
-            self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(
-                self._exec_scheduled_tx(tx, gas_price, token)
-            )
+            with logging_context(tx=tx.neon_tx_hash.ident):
+                assert tx.neon_tx_hash not in self._exec_task_dict
+
+                tx_schedule.acquire_tx(tx)
+                self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(
+                    self._exec_scheduled_tx(tx, gas_price, token)
+                )
             return True
 
         return False
 
-    async def _exec_scheduled_tx(
-        self,
-        tx: MpTxModel,
-        gas_price: MpGasPriceModel,
-        token: MpTokenGasPriceModel
-    ) -> None:
+    async def _exec_scheduled_tx(self, tx: MpTxModel, gas_price: MpGasPriceModel, token: MpTokenGasPriceModel) -> None:
         with logging_context(tx=tx.tx_id):
-            await self._exec_scheduled_tx_impl(tx, ExecTokenModel.from_raw(gas_price, token))
+            try:
+                await self._exec_client.exec_tx(tx, ExecTokenModel.from_raw(gas_price, token))
+            except BaseException as exc:
+                _LOG.error("error on send NeonTx to executor", exc_info=exc)
+                self._done_exec_tx(tx, ExecTxDoneRequest(neon_tx_hash=tx.neon_tx_hash, code=ExecTxDoneCode.Failed))
 
-    async def _exec_scheduled_tx_impl(self, tx: MpTxModel, token: ExecTokenModel) -> None:
-        try:
-            resp = await self._exec_client.exec_tx(tx, token)
-        except BaseException as exc:
-            resp = ExecTxResp(code=ExecTxRespCode.Failed)
-            _LOG.error("error on send NeonTx to executor", exc_info=exc)
+    def _done_exec_tx(self, tx: MpTxModel, result: ExecTxDoneRequest) -> bool:
+        msg = log_msg(
+            "done tx {Tx}, result {Result}, time {TimeMS} msec",
+            Tx=tx,
+            Result=result,
+            TimeMS=tx.process_time_msec,
+        )
+        if result.code == ExecTxDoneCode.Failed:
+            _LOG.warning(msg)
         else:
-            msg = log_msg(
-                "done tx {Tx}, result {Result}, time {TimeMS} msec",
-                Tx=tx,
-                Result=resp,
-                TimeMS=tx.process_time_msec,
-            )
-            if resp.code == ExecTxRespCode.Failed:
-                _LOG.warning(msg)
-            else:
-                _LOG.debug(msg)
+            _LOG.debug(msg)
 
-        if resp.code == ExecTxRespCode.NonceTooHigh:
+        if result.code == ExecTxDoneCode.NonceTooHigh:
             action = MpTxSchedule.cancel_tx
-        elif resp.code in (ExecTxRespCode.Failed, ExecTxRespCode.NonceTooLow):
+        elif result.code in (ExecTxDoneCode.Failed, ExecTxDoneCode.NonceTooLow):
             action = MpTxSchedule.fail_tx
-        elif resp.code == ExecTxRespCode.Done:
+        elif result.code == ExecTxDoneCode.Done:
             action = MpTxSchedule.done_tx
         else:
             action = MpTxSchedule.fail_tx
-            _LOG.error("unknown exec response code %s", resp)
+            _LOG.error("unknown exec response code %s", result.code)
 
         if action == MpTxSchedule.done_tx:
             self._stat_client.commit_neon_tx_done(NeonTxDoneData(time_nsec=tx.process_time_nsec))
         elif action == MpTxSchedule.fail_tx:
             self._stat_client.commit_neon_tx_fail(NeonTxFailData(time_nsec=tx.process_time_nsec))
 
-        self._call_tx_schedule(tx.chain_id, action, tx, resp.state_tx_cnt)
+        self._call_tx_schedule(tx.chain_id, action, tx, result.state_tx_cnt, result.balance)
 
         if task := self._exec_task_dict.pop(tx.neon_tx_hash, None):
             self._completed_task_list.append(task)
         else:
             _LOG.error("unknown task %s", tx.neon_tx_hash)
         self._exec_event.set()
+
+        return True
