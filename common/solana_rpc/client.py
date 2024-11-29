@@ -272,6 +272,9 @@ class SolClient(HttpClient):
                 if SolBlockHash.from_raw(resp.value.previous_blockhash).is_empty:
                     _LOG.debug("fail on get block %s: empty parentBlockhash", slot)
                     return SolRpcBlockInfo.new_empty(slot, commit=commit)
+            if not resp.value:
+                return SolRpcBlockInfo.new_empty(slot, commit=commit)
+
         except SolRpcError as exc:
             _LOG.debug("fail on get block %s: %s", slot, exc.message, extra=self._msg_filter)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)

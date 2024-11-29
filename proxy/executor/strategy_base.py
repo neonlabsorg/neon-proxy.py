@@ -24,7 +24,7 @@ from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListS
 from common.utils.cached import cached_property
 from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_executor_ctx import NeonExecTxCtx
-from ..base.ex_api import ExecTxRespCode
+from ..base.ex_api import ExecTxDoneCode
 
 _LOG = logging.getLogger(__name__)
 
@@ -124,11 +124,13 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return result
 
     @abc.abstractmethod
-    async def execute(self) -> ExecTxRespCode:
+    async def execute(self) -> ExecTxDoneCode:
         pass
 
+    async def done_execution(self) -> None: ...
+
     @abc.abstractmethod
-    async def cancel(self) -> ExecTxRespCode | None:
+    async def cancel(self) -> ExecTxDoneCode | None:
         pass
 
     @cached_property
@@ -193,6 +195,12 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         self._validation_error_msg = f"NeonTx has size {neon_tx_size} > {self._base_sol_pkt_size}"
         return False
 
+    def _validate_not_scheduled_tx(self) -> bool:
+        if not self._ctx.is_scheduled_tx:
+            return True
+        self._validation_error_msg = "Scheduled transaction"
+        return False
+
     @cached_property
     def _base_sol_pkt_size(self) -> int:
         return SolTx.PktSize - NeonProg.BaseAccountCnt * SolPubKey.KeySize
@@ -214,7 +222,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
-        if not isinstance(tx_name_list, Sequence):
+        if not isinstance(tx_name_list, (tuple, list,)):
             tx_name_list = tuple([tx_name_list])
 
         if not (tx_list := self._ctx.pop_sol_tx_list(tx_name_list)):
@@ -229,7 +237,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx_list_sender = self._sol_tx_list_sender
         tx_list_sender.clear()
 
-        if not isinstance(tx_list, Sequence):
+        if not isinstance(tx_list, (tuple, list,)):
             tx_list = tuple([tx_list])
 
         try:
@@ -341,7 +349,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     async def _emulate_tx_list(
         self, tx_list: Sequence[SolTx] | SolTx, *, mult_factor: int = 0
     ) -> Sequence[EmulSolTxInfo] | EmulSolTxInfo:
-        if not isinstance(tx_list, Sequence):
+        if not isinstance(tx_list, (tuple, list,)):
             is_single_tx: Final[bool] = True
             tx_list = tuple([tx_list])
         else:
@@ -369,7 +377,9 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         try:
             log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
         except (BaseException,):
-            return NeonProg.BaseGas
+            gas_limit = NeonProg.BaseGas
+            _LOG.debug("exception on find GAS, use default %s", gas_limit)
+            return gas_limit
 
         if log.tx_ix_gas.is_empty:
             gas_limit = NeonProg.BaseGas

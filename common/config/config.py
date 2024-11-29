@@ -16,8 +16,8 @@ from .constants import (
     ONE_BLOCK_SEC,
     MIN_FINALIZE_SEC,
     DEFAULT_TOKEN_NAME,
+    LAYER0_TOKEN_NAME,
     SOL_PKT_SIZE,
-    CHAIN_TOKEN_NAME,
 )
 from ..solana.cb_program import SolCbProg
 from ..solana.commit_level import SolCommit
@@ -953,7 +953,7 @@ class Config:
             "MINIMAL_FINALIZATION_SEC": MIN_FINALIZE_SEC,
             "SOLANA_PACKET_SIZE": SOL_PKT_SIZE,
             "DEFAULT_TOKEN_NAME": DEFAULT_TOKEN_NAME,
-            "CHAIN_TOKEN_NAME": CHAIN_TOKEN_NAME,
+            "LAYER0_TOKEN_NAME": LAYER0_TOKEN_NAME,
             self.sol_url_name: self.sol_url_list,
             self.sol_send_tx_url_name: self.sol_send_tx_url_list,
             self.sol_ws_url_name: self.sol_ws_url_list,

@@ -9,13 +9,13 @@ from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, Confi
 from strenum import StrEnum
 from typing_extensions import Self
 
-from ..config.constants import DEFAULT_TOKEN_NAME
+from ..config.constants import DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
-from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress
+from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress, EthHash32Field
 from ..ethereum.transaction import EthTx
-from ..neon.account import NeonAccount, NeonAccountField
+from ..neon.address import NeonAddress, NeonAddressField
 from ..neon.neon_program import NeonProgCfg
-from ..neon.transaction_model import NeonTxModel
+from ..neon.transaction_model import NeonTxModel, NeonSkdTxStatusField, NeonSkdTxStatus, NeonTxType
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
@@ -81,7 +81,7 @@ class _AccountModel(_BaseModel):
     chain_id: DecUIntField
 
     @classmethod
-    def from_raw(cls, raw: _AccountModel | NeonAccount) -> Self:
+    def from_raw(cls, raw: _AccountModel | NeonAddress) -> Self:
         if isinstance(raw, _AccountModel):
             return raw
         return cls(address=raw.eth_address, chain_id=raw.chain_id)
@@ -92,7 +92,7 @@ class NeonAccountListRequest(_BaseRequestModel):
     slot: DecUIntField | None
 
     @classmethod
-    def from_raw(cls, account_list: Sequence[NeonAccount], slot: int | None) -> Self:
+    def from_raw(cls, account_list: Sequence[NeonAddress], slot: int | None) -> Self:
         return cls(account_list=[_AccountModel.from_raw(a) for a in account_list], slot=slot)
 
 
@@ -118,7 +118,7 @@ NeonAccountStatusField = Annotated[NeonAccountStatus, PlainValidator(NeonAccount
 
 
 class NeonAccountModel(_BaseRespModel):
-    account: NeonAccountField
+    neon_address: NeonAddressField
     user_sol_address: SolPubKeyField = Field(SolPubKey.default(), validation_alias="user_pubkey")
     status: NeonAccountStatusField
     state_tx_cnt: DecUIntField = Field(validation_alias=AliasChoices("trx_count", "state_tx_cnt"))
@@ -129,15 +129,15 @@ class NeonAccountModel(_BaseRespModel):
     )
 
     @classmethod
-    def from_dict(cls, data: [str, Any], *, account: NeonAccount | None = None) -> Self:
-        if not account:
+    def from_dict(cls, data: [str, Any], *, address: NeonAddress | None = None) -> Self:
+        if not address:
             return super().from_dict(data)
-        return cls._from_acct(account, data)
+        return cls._from_acct(address, data)
 
     @classmethod
-    def new_empty(cls, account: NeonAccount) -> Self:
+    def new_empty(cls, address: NeonAddress) -> Self:
         return cls(
-            account=account,
+            neon_address=address,
             status=NeonAccountStatus.Empty,
             sol_address=SolPubKey.default(),
             contract_sol_address=SolPubKey.default(),
@@ -146,17 +146,17 @@ class NeonAccountModel(_BaseRespModel):
         )
 
     @classmethod
-    def _from_acct(cls, account: NeonAccount, data: [str, Any]):
-        data["account"] = account
+    def _from_acct(cls, address: NeonAddress, data: [str, Any]):
+        data["neon_address"] = address
         return cls.model_validate(data)
 
     @property
     def chain_id(self) -> int:
-        return self.account.chain_id
+        return self.neon_address.chain_id
 
     @property
-    def address(self) -> EthAddress:
-        return self.account.eth_address
+    def eth_address(self) -> EthAddress:
+        return self.neon_address.eth_address
 
 
 class NeonContractRequest(_BaseRequestModel):
@@ -165,27 +165,27 @@ class NeonContractRequest(_BaseRequestModel):
 
 
 class NeonContractModel(_BaseRespModel):
-    account: NeonAccountField
+    neon_address: NeonAddressField
     code: EthBinStrField
     sol_address: SolPubKeyField = Field(validation_alias="solana_address")
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], *, account: NeonAccount | None = None) -> Self:
-        if not account:
+    def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
+        if not address:
             return super().from_dict(data)
-        return cls._from_acct(account, data)
+        return cls._from_acct(address, data)
 
     @classmethod
-    def _from_acct(cls, account: NeonAccount, data: dict[str, Any]) -> Self:
-        chain_id: int = data.pop("chain_id", None) or account.chain_id
+    def _from_acct(cls, address: NeonAddress, data: dict[str, Any]) -> Self:
+        chain_id: int = data.pop("chain_id", None) or address.chain_id
 
         # replace with the actual chain-id
-        data["account"] = NeonAccountField.from_raw(account, chain_id)
+        data["neon_address"] = NeonAddressField.from_raw(address, chain_id)
         return cls.model_validate(data)
 
     @property
     def chain_id(self) -> int:
-        return self.account.chain_id
+        return self.neon_address.chain_id
 
     @property
     def has_code(self) -> bool:
@@ -201,17 +201,17 @@ class NeonStorageAtRequest(_BaseRequestModel):
 class OpEarnAccountModel(_BaseModel):
     status: NeonAccountStatusField
     operator_key: SolPubKeyField
-    neon_account: NeonAccountField
+    neon_address: NeonAddressField
     token_sol_address: SolPubKeyField
     balance: DecUIntField
 
     @property
     def chain_id(self) -> int:
-        return self.account.chain_id
+        return self.neon_address.chain_id
 
     @property
     def eth_address(self) -> EthAddress:
-        return self.account.eth_address
+        return self.neon_address.eth_address
 
 
 class BpfLoader2ProgModel(_BaseModel):
@@ -252,6 +252,7 @@ class TokenModel(_BaseRespModel):
     mint: SolPubKeyField = Field(serialization_alias="token", validation_alias=AliasChoices("token", "mint"))
     name: str
     is_default: bool = Field(default=False, exclude=True)
+    is_layer0: bool = Field(default=False, exclude=True)
 
 
 class EvmConfigModel(_BaseRespModel):
@@ -264,6 +265,7 @@ class EvmConfigModel(_BaseRespModel):
     evm_step_cnt: DecIntField
     holder_msg_size: DecIntField
     gas_limit_multiplier_wo_chain_id: DecIntField
+    tree_account_slot_out: DecIntField
 
     evm_param_dict: dict[str, str] = Field(validation_alias=AliasChoices("config", "evm_param_dict"))
     token_list: list[TokenModel] = Field(validation_alias=AliasChoices("chains", "token_list"))
@@ -275,15 +277,14 @@ class EvmConfigModel(_BaseRespModel):
     revision: str
 
     _default_chain_id: int = 0
+    _layer0_chain_id: int = 0
     _default: ClassVar[EvmConfigModel | None] = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, deployed_slot: int | None = None) -> Self:
         if deployed_slot is None:
             return super().from_dict(data)
-        if "chains" in data:
-            return cls._from_core_dict(deployed_slot, data)
-        return cls._from_cmd_dict(deployed_slot, data)
+        return cls._from_core_dict(deployed_slot, data)
 
     @classmethod
     def _from_core_dict(cls, deployed_slot: int, data: dict[str, Any]) -> Self:
@@ -292,31 +293,6 @@ class EvmConfigModel(_BaseRespModel):
         cls._option_convertor(config, data)
 
         return cls.model_validate(data)
-
-    @classmethod
-    def _from_cmd_dict(cls, deployed_slot: int, data: dict[str, Any]) -> Self:
-        config = data
-        opt_dict = dict()
-        cls._option_convertor(config, opt_dict)
-
-        def_chain_id = int(config["NEON_CHAIN_ID"])
-        base_token_info = dict(
-            name=DEFAULT_TOKEN_NAME,
-            chain_id=def_chain_id,
-            mint=config["NEON_TOKEN_MINT"],
-            is_default=True,
-        )
-
-        data = dict(
-            deployed_slot=deployed_slot,
-            evm_param_dict=config,
-            token_list=[base_token_info],
-        )
-        data.update(opt_dict)
-
-        self = cls.model_validate(data)
-        object.__setattr__(self, "_default_chain_id", def_chain_id)
-        return self
 
     @classmethod
     def default(cls) -> Self:
@@ -356,21 +332,27 @@ class EvmConfigModel(_BaseRespModel):
             return tuple(self.token_list)
 
         def_chain_id = 0
+        layer0_chain_id = 0
         token_list: list[TokenModel] = list()
         for token in self.token_list:
             name = token.name.upper()
             if is_default := (name == DEFAULT_TOKEN_NAME):
                 def_chain_id = token.chain_id
+            if is_layer0 := (name == LAYER0_TOKEN_NAME):
+                layer0_chain_id = token.chain_id
+
             token = TokenModel(
                 chain_id=token.chain_id,
                 mint=token.mint,
                 name=name,
                 is_default=is_default,
+                is_layer0=is_layer0,
             )
             token_list.append(token)
 
         assert def_chain_id, "DEFAULT TOKEN NOT FOUND!"
         object.__setattr__(self, "_default_chain_id", def_chain_id)
+        object.__setattr__(self, "_layer0_chain_id", layer0_chain_id)
 
         return tuple(token_list)
 
@@ -383,6 +365,16 @@ class EvmConfigModel(_BaseRespModel):
     @property
     def default_token_name(self) -> str:
         return DEFAULT_TOKEN_NAME
+
+    @cached_property
+    def layer0_chain_id(self) -> int:
+        if not self._layer0_chain_id:
+            _ = self._normalized_token_list
+        return self._layer0_chain_id
+
+    @property
+    def layer0_token_name(self) -> str:
+        return LAYER0_TOKEN_NAME
 
     @cached_property
     def neon_prog_cfg(self) -> NeonProgCfg:
@@ -405,6 +397,7 @@ class EvmConfigModel(_BaseRespModel):
             ("NEON_HOLDER_MSG_SIZE", "holder_msg_size", -1),
             ("NEON_ACCOUNT_SEED_VERSION", "account_seed_version", -1),
             ("NEON_GAS_LIMIT_MULTIPLIER_NO_CHAINID", "gas_limit_multiplier_wo_chain_id", -1),
+            ("NEON_TREE_ACCOUNT_TIMEOUT", "tree_account_slot_out", -1),
         )
 
         for src_key, dst_key, default in key_list:
@@ -426,6 +419,8 @@ class HolderAccountStatus(StrEnum):
     Holder = "Holder"
     Active = "Active"
     Finalized = "Finalized"
+    ScheduledFinalized = "ScheduledFinalized"
+    ScheduledCanceled = "ScheduledCanceled"
 
     @classmethod
     def from_raw(cls, value: str | HolderAccountStatus) -> Self:
@@ -444,6 +439,14 @@ HolderAccountStatusField = Annotated[HolderAccountStatus, PlainValidator(HolderA
 
 
 class CoreApiHexStr(EthBinStr):
+    _default: ClassVar[CoreApiHexStr | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not isinstance(cls._default, CoreApiHexStr):
+            cls._default = cls(cls._empty_data)
+        return cls._default
+
     @cached_method
     def _to_string(self) -> str:
         return bytes_to_hex(self._data, prefix="")
@@ -464,7 +467,10 @@ class CoreApiTxModel(_BaseRespModel):
         validation_alias=AliasChoices("from", "from_address"),
         serialization_alias="from",
     )
+    payer: EthZeroAddressField
+    solanaPayer: SolPubKeyField | None = Field(default=None)
     nonce: DecUIntField | None
+    index: DecUIntField = 0
     to_address: EthAddressField = Field(
         default=EthAddress.default(),
         validation_alias=AliasChoices("to", "to_address"),
@@ -483,7 +489,9 @@ class CoreApiTxModel(_BaseRespModel):
     def from_neon_tx(cls, tx: NeonTxModel, chain_id: int | None) -> Self:
         return cls(
             from_address=tx.from_address,
+            payer=tx.payer,
             nonce=tx.nonce,
+            index=tx.index,
             to_address=tx.to_address,
             value=tx.value,
             data=tx.call_data.to_bytes(),
@@ -546,7 +554,7 @@ class HolderAccountModel(_BaseRespModel):
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
     block: CoreApiBlockModel
 
-    chain_id: DecUIntField | None = Field(default=0)
+    chain_id: DecUIntField = Field(default=0)
     evm_step_cnt: DecUIntField = Field(default=0, validation_alias="steps_executed")
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
 
@@ -567,22 +575,33 @@ class HolderAccountModel(_BaseRespModel):
         return cls.model_validate(data)
 
     @cached_property
-    def sender(self) -> NeonAccount:
+    def sender(self) -> NeonAddress:
         if self.tx is None:
-            return NeonAccount.default()
+            return NeonAddress.default()
 
-        return NeonAccount.from_raw(self.tx.from_address, self.chain_id)
+        return NeonAddress.from_raw(self.tx.from_address, self.chain_id)
 
     @cached_property
-    def receiver(self) -> NeonAccount:
+    def payer(self) -> NeonAddress:
         if self.tx is None:
-            return NeonAccount.default()
+            return NeonAddress.default()
+
+        return NeonAddress.from_raw(self.tx.payer, self.chain_id)
+
+    @cached_property
+    def receiver(self) -> NeonAddress:
+        if self.tx is None:
+            return NeonAddress.default()
 
         elif not self.tx.to_address.is_empty:
-            return NeonAccount.from_raw(self.tx.to_address, self.chain_id)
+            return NeonAddress.from_raw(self.tx.to_address, self.chain_id)
 
         contract_addr = EthTx.calc_contract_address(self.tx)
-        return NeonAccount.from_raw(contract_addr, self.chain_id)
+        return NeonAddress.from_raw(contract_addr, self.chain_id)
+
+    @cached_property
+    def is_scheduled_tx(self) -> bool:
+        return NeonTxType.is_scheduled_tx(self.tx_type)
 
     @property
     def is_empty(self) -> bool:
@@ -592,9 +611,10 @@ class HolderAccountModel(_BaseRespModel):
     def is_active(self) -> bool:
         return self.status == HolderAccountStatus.Active
 
-    @property
+    @cached_property
     def is_finalized(self) -> bool:
-        return self.status == HolderAccountStatus.Finalized
+        s = self.status
+        return self.status in (s.Finalized, s.ScheduledFinalized, s.ScheduledCanceled)
 
 
 class _CrateModel(_BaseRespModel):
@@ -726,3 +746,126 @@ class EmulSolTxListResp(_BaseRespModel):
 class EmulSolTxInfo:
     tx: SolTx
     meta: EmulSolTxMetaModel
+
+
+class NeonSkdTreeRequest(_BaseRequestModel):
+    payer: _AccountModel = Field(serialization_alias="origin")
+    nonce: DecUIntField
+    slot: DecUIntField | None
+
+    @classmethod
+    def from_raw(cls, payer: NeonAddress, nonce: int, slot: int | None = None) -> Self:
+        return cls(
+            payer=_AccountModel.from_raw(payer),
+            nonce=nonce,
+            slot=slot,
+        )
+
+
+class NeonSkdTreeNodeModel(_BaseRespModel):
+    status: NeonSkdTxStatusField
+    result_hash: EthHash32Field
+    neon_tx_hash: EthTxHashField = Field(validation_alias="transaction_hash")
+    gas_limit: HexUIntField
+    value: HexUIntField
+    child_tx_idx: DecUIntField = Field(validation_alias="child_transaction")
+    success_exec_limit: DecUIntField = Field(validation_alias="success_execute_limit")
+    parent_cnt: DecUIntField = Field(validation_alias="parent_count")
+
+
+class NeonSkdTreeStatus(StrEnum):
+    Empty = "Empty"
+    Error = "Error"
+    Ok = "Ok"
+
+    @classmethod
+    def from_raw(cls, value: str | NeonSkdTreeStatus) -> Self:
+        if isinstance(value, cls):
+            return value
+
+        try:
+            return cls(value)
+        except (BaseException,):
+            _LOG.error("unknown Neon scheduled Tree status %s from core-api", value)
+            return cls.Error
+
+
+NeonSkdTreeStatusField = Annotated[NeonSkdTreeStatus, PlainValidator(NeonSkdTreeStatus.from_raw)]
+
+
+class NeonSkdTreeModel(_BaseRespModel):
+    status: NeonSkdTreeStatusField
+    address: SolPubKeyField = Field(validation_alias=AliasChoices("address", "pubkey"))
+
+    payer: EthAddressField = Field(validation_alias=AliasChoices("payer", "origin"))
+    last_slot: DecUIntField
+    chain_id: DecUIntField
+    max_fee_per_gas: HexUIntField
+    max_priority_fee_per_gas: HexUIntField
+    balance: HexUIntField
+    last_idx: DecUIntField = Field(validation_alias=AliasChoices("last_idx", "last_index"))
+
+    node_list: list[NeonSkdTreeNodeModel] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("tx_list", "transactions"),
+    )
+
+    @classmethod
+    def new_empty(cls) -> Self:
+        return cls(
+            status=NeonSkdTreeStatus.Empty,
+            address=SolPubKey.default(),
+            payer=EthAddress.default(),
+            last_slot=0,
+            chain_id=0,
+            max_fee_per_gas=0,
+            max_priority_fee_per_gas=0,
+            balance=0,
+            last_idx=0,
+            node_list=list(),
+        )
+
+
+    @cached_property
+    def is_exist(self) -> bool:
+        return len(self.node_list) > 0
+
+    @cached_property
+    def is_started(self) -> bool:
+        if self.is_exist:
+            return True
+        return next((node for node in self.node_list if node.status != node.status.NotStarted), None) is not None
+
+    @cached_property
+    def active_status(self) -> NeonSkdTxStatus:
+        for node in self.node_list:
+            if (status := node.status) in (status.InProgress, status.NotStarted):
+                return status
+        return NeonSkdTxStatus.Success
+
+    def is_destroyable(self, current_slot: int, slot_out: int) -> bool:
+        return current_slot - self.last_slot > slot_out
+
+    def get_neon_skd_status(self, index: int) -> NeonSkdTxStatus:
+        if len(self.node_list) < index:
+            return NeonSkdTxStatus.Destroyed
+
+        node = self.node_list[index]
+        if (node.status != node.status.NotStarted) or node.parent_cnt:
+            return node.status
+
+        if not node.success_exec_limit:
+            return node.status.ToStart
+
+        # fmt: off
+        success_exec_cnt = sum(
+            (n.child_tx_idx == index) and (n.status == n.status.Success)
+            for n in self.node_list[:index]
+        )
+        # fmt: on
+
+        return (
+            NeonSkdTreeNodeModel.ToStart
+            if success_exec_cnt >= node.success_exec_limit
+            else NeonSkdTxStatus.ToSkip
+        )

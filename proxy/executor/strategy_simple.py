@@ -10,7 +10,7 @@ from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
-from ..base.ex_api import ExecTxRespCode
+from ..base.ex_api import ExecTxDoneCode
 
 _LOG = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class SimpleTxStrategy(BaseTxStrategy):
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(NewAccountTxPrepStage(*args, **kwargs))
 
-    async def execute(self) -> ExecTxRespCode:
+    async def execute(self) -> ExecTxDoneCode:
         assert self.is_valid
 
         if not await self._recheck_tx_list(self.name):
@@ -37,13 +37,13 @@ class SimpleTxStrategy(BaseTxStrategy):
             if tx_state.status == status.GoodReceipt:
                 if not (sol_neon_ix := self._find_sol_neon_ix(tx_state)):
                     _LOG.warning("no!? NeonTx instruction in %s", tx_state.tx)
-                    return ExecTxRespCode.Failed
+                    return ExecTxDoneCode.Failed
                 elif not sol_neon_ix.neon_tx_return.is_empty:
                     _LOG.debug("found NeonTx-Return in %s", tx_state.tx)
-                    return ExecTxRespCode.Done
+                    return ExecTxDoneCode.Done
                 else:
                     _LOG.warning("truncated!? NeonTx-Return in %s", tx_state.tx)
-                    return ExecTxRespCode.Failed
+                    return ExecTxDoneCode.Failed
 
         _LOG.debug("failed!? NeonTx-Return, try next strategy...")
         raise WrongStrategyError()
@@ -58,6 +58,7 @@ class SimpleTxStrategy(BaseTxStrategy):
     async def _validate(self) -> bool:
         return (
             self._validate_not_stuck_tx()
+            and self._validate_not_scheduled_tx()
             and self._validate_no_sol_call()
             and self._validate_has_chain_id()
             and self._validate_no_resize_iter()

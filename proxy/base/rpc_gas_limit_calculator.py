@@ -70,8 +70,8 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     def _tx_size_cost(self, evm_cfg: EvmConfigModel, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
         eth_tx = self._eth_tx_from_core_tx(core_tx)
-        if (len(eth_tx_rlp := eth_tx.to_bytes()) > SolTx.PktSize) or core_tx.to_address.is_empty:
-            return self._holder_tx_cost(evm_cfg, eth_tx_rlp)
+        if (len(rlp_tx := eth_tx.to_bytes()) > SolTx.PktSize) or core_tx.to_address.is_empty:
+            return self._holder_tx_cost(evm_cfg, rlp_tx)
 
         sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
         try:
@@ -85,7 +85,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         except BaseException as exc:
             _LOG.debug("error on pack solana tx", exc_info=exc)
 
-        return self._holder_tx_cost(evm_cfg, eth_tx_rlp)
+        return self._holder_tx_cost(evm_cfg, rlp_tx)
 
     @classmethod
     def _eth_tx_from_core_tx(cls, core_tx: CoreApiTxModel) -> EthTx:
@@ -130,8 +130,8 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         return sol_tx
 
     @classmethod
-    def _holder_tx_cost(cls, evm_cfg: EvmConfigModel, eth_tx_rlp: bytes) -> int:
-        return ((len(eth_tx_rlp) // evm_cfg.holder_msg_size) + 1) * 5000
+    def _holder_tx_cost(cls, evm_cfg: EvmConfigModel, rlp_tx: bytes) -> int:
+        return ((len(rlp_tx) // evm_cfg.holder_msg_size) + 1) * 5000
 
     def _alt_cost(self, resp: EmulNeonCallResp) -> int:
         """

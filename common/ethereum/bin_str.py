@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Final, Annotated, Union
+from typing import Final, Annotated, Union, ClassVar
 
 from typing_extensions import Self
 
@@ -11,6 +11,7 @@ from ..utils.pydantic import PlainValidator, PlainSerializer
 
 class EthBinStr:
     _empty_data: Final[bytes] = bytes()
+    _default: ClassVar[EthBinStr | None] = None
     NullStr: Final[str] = "0x"
 
     def __init__(self, data: bytes):
@@ -28,7 +29,9 @@ class EthBinStr:
 
     @classmethod
     def default(cls) -> Self:
-        return cls(cls._empty_data)
+        if not isinstance(cls._default, EthBinStr):
+            cls._default = cls(cls._empty_data)
+        return cls._default
 
     @classmethod
     def from_raw(cls, raw: _RawBinStr) -> Self:

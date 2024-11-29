@@ -20,15 +20,24 @@ _LOG = logging.getLogger(__name__)
 
 class EthTxType(IntEnum):
     Legacy = 0x00
-    # AccessList = 1 is yet to be supported.
+    # AccessList = 0x01 is yet to be supported.
     DynamicGas = 0x02
 
+    # Neon subtypes
+    Neon = 0x7F
+    SkdSubType = 0x01
+    Scheduled = Neon + SkdSubType
+
     @classmethod
-    def from_raw(cls, value: EthTxType | int | str | None) -> EthTxType:
+    def from_raw(cls, value: EthTxType | int | str | bytes | None) -> EthTxType:
         if isinstance(value, cls):
             return value
 
         try:
+            if isinstance(value, bytes):
+                tx_type, _ = cls.from_rlp_tx(value)
+                return tx_type
+
             if isinstance(value, str):
                 value = hex_to_int(value)
 
@@ -38,12 +47,58 @@ class EthTxType(IntEnum):
             return cls.Legacy
 
     @classmethod
-    def is_dynamic_gas_tx(cls, value: int | EthTxType) -> bool:
+    def from_rlp_tx(cls, value: bytes) -> tuple[EthTxType, int]:
+        # Determining transaction type according to the EIP-2718.
+        tx_type = value[0]
+        if tx_type == cls.Neon:
+            # Neon subtype transaction
+            neon_sub_type = value[1]
+            tx_type += neon_sub_type
+
+            if cls.is_scheduled_tx(tx_type):
+                return cls(tx_type), 2
+
+            raise ValueError(f"Invalid transaction type parsed: {tx_type}")
+
+        elif tx_type < cls.Neon:
+            # Typed transaction.
+            if cls.is_legacy_tx(tx_type):
+                # Legacy transaction in the envelope form.
+                pass
+            elif cls.is_dynamic_gas_tx(tx_type):
+                pass
+            else:
+                raise ValueError(f"Invalid transaction type parsed: {tx_type}")
+
+            # Remove the first byte, so the `s` contains rlp bytes only.
+            return cls(tx_type), 1
+
+        # Plain legacy transaction (non-enveloped).
+        return cls.Legacy, 0
+
+    @classmethod
+    def is_dynamic_gas_tx(cls, value: int | EthTxType | bytes) -> bool:
+        if isinstance(value, bytes):
+            value, _ = cls.from_rlp_tx(value)
         return value == cls.DynamicGas
 
     @classmethod
-    def is_legacy_tx(cls, value: int | EthTxType) -> bool:
+    def is_legacy_tx(cls, value: int | EthTxType | bytes) -> bool:
+        if isinstance(value, bytes):
+            value, _ = cls.from_rlp_tx(value)
         return value == cls.Legacy
+
+    @classmethod
+    def is_neon_subtype_tx(cls, value: int | EthTxType | bytes) -> bool:
+        if isinstance(value, bytes):
+            value, _ = cls.from_rlp_tx(value)
+        return value >= cls.Neon
+
+    @classmethod
+    def is_scheduled_tx(cls, value: int | EthTxType | bytes) -> bool:
+        if isinstance(value, bytes):
+            value, _ = cls.from_rlp_tx(value)
+        return value == cls.Scheduled
 
 
 class _FromAddressMixin(abc.ABC):
@@ -119,8 +174,11 @@ class _EthLegacyTxPayload(rlp.Serializable, _FromAddressMixin):
         ("s", rlp.codec.big_endian_int),
     )
 
-    max_fee_per_gas: Final[int | None] = None
-    max_priority_fee_per_gas: Final[int | None] = None
+    index: Final[int] = 0
+    max_fee_per_gas: Final[int] = 0
+    max_priority_fee_per_gas: Final[int] = 0
+    intent: Final[bytes] = bytes()
+    intent_call_data: Final[bytes] = bytes()
 
     @classmethod
     def from_raw(cls, s: bytes) -> Self:
@@ -194,6 +252,10 @@ class _EthLegacyTxPayload(rlp.Serializable, _FromAddressMixin):
 
         return self._calc_from_address()
 
+    @property
+    def payer(self) -> bytes:
+        return self.from_address
+
     @cached_property
     def neon_tx_hash(self) -> bytes:
         obj = (
@@ -221,7 +283,10 @@ class _EthDynamicGasTxPayload(rlp.Serializable, _FromAddressMixin):
     call_data: bytes
     access_list: list[tuple[bytes, list[bytes]]]
 
-    gas_price: Final[int | None] = None
+    index: Final[int] = 0
+    gas_price: Final[int] = 0
+    intent: Final[bytes] = bytes()
+    intent_call_data: Final[bytes] = bytes()
 
     _eth_type: Final[bytes] = EthTxType.DynamicGas.to_bytes(1, byteorder="little")
 
@@ -285,6 +350,10 @@ class _EthDynamicGasTxPayload(rlp.Serializable, _FromAddressMixin):
     def from_address(self) -> bytes:
         return self._calc_from_address()
 
+    @property
+    def payer(self) -> bytes:
+        return self.from_address
+
     @cached_property
     def neon_tx_hash(self) -> bytes:
         obj = (
@@ -304,22 +373,98 @@ class _EthDynamicGasTxPayload(rlp.Serializable, _FromAddressMixin):
         return keccak(self._eth_type + rlp.encode(obj))
 
 
+class _NeonSkdTxPayload(rlp.Serializable):
+    payer: bytes
+    sender: bytes
+    nonce: int
+    index: int
+    intent: bytes
+    intent_call_data: bytes
+    to_address: bytes
+    call_data: bytes
+    value: int
+    chain_id: int
+    gas_limit: int
+    max_fee_per_gas: int
+    max_priority_fee_per_gas: int
+
+    fields: Final[tuple] = (
+        ("payer", rlp.codec.binary),
+        ("sender", rlp.codec.binary),
+        ("nonce", rlp.codec.big_endian_int),
+        ("index", rlp.codec.big_endian_int),
+        ("intent", rlp.codec.binary),
+        ("intent_call_data", rlp.codec.binary),
+        ("to_address", rlp.codec.binary),
+        ("call_data", rlp.codec.binary),
+        ("value", rlp.codec.big_endian_int),
+        ("chain_id", rlp.codec.big_endian_int),
+        ("gas_limit", rlp.codec.big_endian_int),
+        ("max_fee_per_gas", rlp.codec.big_endian_int),
+        ("max_priority_fee_per_gas", rlp.codec.big_endian_int),
+    )
+
+    gas_price: Final[int] = 0
+    v: Final[int] = 0
+    r: Final[int] = 0
+    s: Final[int] = 0
+
+    # fmt: off
+    _neon_type = bytes().join(
+        [
+            EthTxType.Neon.to_bytes(1, byteorder="little"),
+            EthTxType.SkdSubType.to_bytes(1, byteorder="little"),
+        ]
+    )
+    # fmt: on
+
+    @classmethod
+    def from_raw(cls, s: bytes) -> Self:
+        return rlp.decode(s, cls)
+
+    @cached_method
+    def to_bytes(self) -> bytes:
+        return self._neon_type + rlp.encode(self)
+
+    @property
+    def has_chain_id(self) -> bool:
+        return True
+
+    @cached_property
+    def from_address(self) -> bytes:
+        return self.sender or self.payer
+
+    @cached_property
+    def neon_tx_hash(self) -> bytes:
+        obj = (
+            self.payer,
+            self.sender,
+            self.nonce,
+            self.index,
+            self.intent,
+            self.intent_call_data,
+            self.to_address,
+            self.call_data,
+            self.value,
+            self.chain_id,
+            self.gas_limit,
+            self.max_fee_per_gas,
+            self.max_priority_fee_per_gas,
+        )
+        return keccak(self._neon_type + rlp.encode(obj))
+
+
 class EthTx:
     def __init__(self, *args, **kwargs):
         tx_type = EthTxType.from_raw(kwargs.pop("type", EthTxType.Legacy))
         self._tx_type = tx_type
 
-        payload: _EthLegacyTxPayload | _EthDynamicGasTxPayload | None
+        payload: _EthLegacyTxPayload | _EthDynamicGasTxPayload | _NeonSkdTxPayload | None
         payload = kwargs.pop("payload", None)
         if payload is not None:
             self._payload = payload
         else:
-            if EthTxType.is_legacy_tx(tx_type):
-                payload_cls = _EthLegacyTxPayload
-            elif EthTxType.is_dynamic_gas_tx(tx_type):
-                payload_cls = _EthDynamicGasTxPayload
-            else:
-                raise ValueError(f"Invalid transaction type specified: {tx_type}")
+            payload_cls = self._get_payload_cls(tx_type)
             self._payload = payload_cls(*args, **kwargs)
 
     @classmethod
@@ -329,27 +474,20 @@ class EthTx:
         elif isinstance(s, bytearray):
             s = bytes(s)
 
-        # Determining transaction type according to the EIP-2718.
-        tx_type = s[0]
-        if tx_type < 0x7f:
-            # Typed transaction.
-            if EthTxType.is_legacy_tx(tx_type):
-                # Legacy transaction in the envelope form.
-                payload_cls = _EthLegacyTxPayload
-            elif EthTxType.is_dynamic_gas_tx(tx_type):
-                payload_cls = _EthDynamicGasTxPayload
-            else:
-                raise ValueError(f"Invalid transaction type parsed: {tx_type}")
+        tx_type, tx_type_len = EthTxType.from_rlp_tx(s)
+        payload_cls = cls._get_payload_cls(tx_type)
+        return cls(type=tx_type, payload=payload_cls.from_raw(s[tx_type_len:]))
 
-            # Remove the first byte, so the `s` contains rlp bytes only.
-            s = s[1:]
-            tx_type = EthTxType.from_raw(tx_type)
+    @staticmethod
+    def _get_payload_cls(tx_type: EthTxType) -> type[_EthLegacyTxPayload | _EthDynamicGasTxPayload | _NeonSkdTxPayload]:
+        if EthTxType.is_legacy_tx(tx_type):
+            return _EthLegacyTxPayload
+        elif EthTxType.is_dynamic_gas_tx(tx_type):
+            return _EthDynamicGasTxPayload
+        elif EthTxType.is_scheduled_tx(tx_type):
+            return _NeonSkdTxPayload
         else:
-            # Plain legacy transaction (non-enveloped).
-            tx_type = EthTxType.Legacy
-            payload_cls = _EthLegacyTxPayload
-
-        return cls(type=tx_type, payload=payload_cls.from_raw(s))
+            raise ValueError(f"Invalid transaction type specified: {tx_type}")
 
     @property
     def tx_type(self) -> EthTxType:
@@ -360,15 +498,19 @@ class EthTx:
         return self._payload.nonce
 
     @property
-    def gas_price(self) -> int | None:
+    def index(self) -> int:
+        return self._payload.index
+
+    @property
+    def gas_price(self) -> int:
         return self._payload.gas_price
 
     @property
-    def max_priority_fee_per_gas(self) -> int | None:
+    def max_priority_fee_per_gas(self) -> int:
         return self._payload.max_priority_fee_per_gas
 
     @property
-    def max_fee_per_gas(self) -> int | None:
+    def max_fee_per_gas(self) -> int:
         return self._payload.max_fee_per_gas
 
     @property
@@ -378,6 +520,14 @@ class EthTx:
     @property
     def value(self) -> int:
         return self._payload.value
+
+    @property
+    def intent(self) -> bytes:
+        return self._payload.intent
+
+    @property
+    def intent_call_data(self) -> bytes:
+        return self._payload.intent_call_data
 
     @property
     def call_data(self) -> bytes:
@@ -478,6 +628,10 @@ class EthTx:
     @property
     def from_address(self) -> bytes:
         return self._payload.from_address
+
+    @property
+    def payer(self) -> bytes:
+        return self._payload.payer
 
     @property
     def neon_tx_hash(self) -> bytes:

@@ -10,15 +10,17 @@ from typing_extensions import Self
 
 from common.config.config import Config
 from common.config.utils import LogMsgFilter
-from common.ethereum.errors import EthError
+from common.ethereum.errors import EthError, EthWrongChainIdError
 from common.ethereum.hash import EthAddress
 from common.http.errors import HttpRouteError
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcRequest, JsonRpcResp
 from common.jsonrpc.server import JsonRpcApi, JsonRpcServer
+from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.neon_rpc.client import CoreApiClient
+from common.solana.cb_program import SolCbProg
 from common.solana_rpc.client import SolClient
 from common.stat.api import RpcCallData
 from common.utils.cached import ttl_cached_method, cached_property
@@ -69,6 +71,10 @@ class BaseRpcServerComponent:
     def _get_chain_id(self, ctx: HttpRequestCtx) -> int:
         return self._server.get_chain_id(ctx)
 
+    def _validate_layer0_chain_id(self, ctx: HttpRequestCtx) -> None:
+        if self._get_chain_id(ctx) != self._server._layer0_chain_id:  # noqa
+            raise EthWrongChainIdError()
+
     async def _get_evm_cfg(self) -> EvmConfigModel:
         return await self._server.get_evm_cfg()
 
@@ -84,6 +90,22 @@ class BaseRpcServerComponent:
         tx_gas_limit: int,
     ) -> bool:
         return await self._server.has_fee_less_tx_permit(ctx, sender, contract, tx_nonce, tx_gas_limit)
+
+    async def _get_max_priority_fee_per_gas(self, ctx: HttpRequestCtx):
+        # Fetch the compute units price across last several blocks (as specified in the cfg).
+        pp = self._cfg.cu_price_estimator_percentile
+        block_cnt = self._cfg.cu_price_estimator_block_cnt
+
+        block_list = await self._db.get_block_cu_price_list(block_cnt)
+
+        median_cu_price: float = CuPricePercentileModel.get_weighted_percentile(
+            pp, len(block_list), map(lambda v: v.cu_price_list, block_list)
+        )
+
+        # Convert it into ethereum world by multiplying by profitable_gas_price
+        # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
+        _, token_gas_price = await self._get_token_gas_price(ctx)
+        return int(token_gas_price.profitable_gas_price * median_cu_price / SolCbProg.MicroLamport)
 
 
 class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
@@ -120,6 +142,9 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         self._process_pool = self._ProcessPool(self)
 
         self._default_chain_id: int = 0
+        self._default_token: str = ""
+        self._layer0_chain_id: int = 0
+        self._layer0_token: str = ""
         self._token_dict: dict[str, TokenModel] = dict()
 
     def start(self) -> None:
@@ -148,6 +173,12 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         chain_id = ctx.get_property_value("chain_id", None)
         assert chain_id is not None
         return chain_id
+
+    @staticmethod
+    def get_token(ctx: HttpRequestCtx) -> str:
+        token = ctx.get_property_value("token", None)
+        assert token is not None
+        return token
 
     @staticmethod
     def is_default_chain_id(ctx: HttpRequestCtx) -> bool:
@@ -268,9 +299,11 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         if not (token_name := ctx.request.path_params.get("token", "").strip().upper()):
             chain_id = self._default_chain_id
             ctx.set_property_value("is_default_chain_id", True)
+            ctx.set_property_value("token", self._default_token)
         elif token := self._token_dict.get(token_name, None):
             chain_id = token.chain_id
             ctx.set_property_value("is_default_chain_id", token.is_default)
+            ctx.set_property_value("token", token.name)
         else:
             await self._refresh_token_dict()
             raise HttpRouteError()
@@ -285,6 +318,9 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
             raise HttpRouteError()
 
         self._default_chain_id = evm_cfg.default_chain_id
+        self._default_token = evm_cfg.default_token_name
+        self._layer0_chain_id = evm_cfg.layer0_chain_id
+        self._layer0_token = evm_cfg.layer0_token_name
         self._token_dict = evm_cfg.token_dict
 
     def _add_api(self, api: JsonRpcApi) -> Self:

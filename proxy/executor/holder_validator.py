@@ -1,4 +1,5 @@
 import logging
+from typing import Final
 
 from common.ethereum.hash import EthTxHash
 from common.neon_rpc.api import HolderAccountModel
@@ -11,18 +12,38 @@ _LOG = logging.getLogger(__name__)
 
 
 class HolderAccountValidator(ExecutorComponent):
+    _op_resource_pct: Final[int] = 2
+    _emul_tx_pct: Final[int] = 10
+    _prepare_tx_pct: Final[int] = 20
+    _total_exec_pct: Final[int] = 100 - _prepare_tx_pct
+    _max_exec_pct: Final[int] = 95  # 100% is on complete tx in mempool
+
     def __init__(
         self,
         server: ExecutorServerAbc,
+        base_tx_hash: EthTxHash,
         neon_tx_hash: EthTxHash,
         holder_address: SolPubKey,
         is_stuck_tx: bool,
     ) -> None:
         super().__init__(server)
+        self._base_tx_hash = base_tx_hash
         self._neon_tx_hash = neon_tx_hash
         self._holder_addr = holder_address
         self._is_stuck_tx = is_stuck_tx
+        self._base_tx_exec_pct = self._op_resource_pct
+        self._tx_exec_pct = 0
+        self._emul_step_cnt = 0
         self._holder_acct: HolderAccountModel | None = None
+
+    def mark_complete_prepare(self) -> None:
+        if self._base_tx_exec_pct < self._prepare_tx_pct:
+            self._base_tx_exec_pct = self._prepare_tx_pct
+
+    def set_emul_step_cnt(self, emul_step_cnt: int) -> None:
+        if self._base_tx_exec_pct < self._emul_tx_pct:
+            self._base_tx_exec_pct = self._emul_tx_pct
+        self._emul_step_cnt = emul_step_cnt
 
     @ttl_cached_method(ttl_msec=10)
     async def _refresh(self) -> None:
@@ -36,6 +57,19 @@ class HolderAccountValidator(ExecutorComponent):
             len(self._holder_acct.account_key_list),
             self._holder_acct.evm_step_cnt,
         )
+
+        # Inform the mempool for the current progress of the transaction execution
+        if self._emul_step_cnt:
+            tx_exec_pct = self._holder_acct.evm_step_cnt * self._total_exec_pct // self._emul_step_cnt
+            tx_exec_pct = max(tx_exec_pct + self._base_tx_exec_pct, self._max_exec_pct)
+        else:
+            tx_exec_pct = self._base_tx_exec_pct
+
+        if tx_exec_pct <= self._tx_exec_pct:
+            return
+
+        self._tx_exec_pct = tx_exec_pct
+        await self._mp_client.notify_exec_tx_status(self._base_tx_hash, self._neon_tx_hash, tx_exec_pct)
 
     @property
     def holder_account(self) -> HolderAccountModel:

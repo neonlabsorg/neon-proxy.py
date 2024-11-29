@@ -19,7 +19,7 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolOutOfMemoryError,
 )
-from .errors import StuckTxError, WrongStrategyError
+from .errors import StuckTxError, WrongStrategyError, SkdTxError
 from .server_abc import ExecutorComponent
 from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
@@ -31,7 +31,7 @@ from .strategy_simple_holder import SimpleHolderTxStrategy, AltSimpleHolderTxStr
 from .strategy_simple_solana_call import SimpleTxSolanaCallStrategy, AltSimpleTxSolanaCallStrategy
 from .strategy_simple_solana_call_holder import SimpleHolderTxSolanaCallStrategy, AltSimpleHolderTxSolanaCallStrategy
 from .transaction_executor_ctx import NeonExecTxCtx
-from ..base.ex_api import ExecTxRespCode
+from ..base.ex_api import ExecTxDoneCode
 
 _LOG = logging.getLogger(__name__)
 _BaseTxStrategyList = list[type[BaseTxStrategy]]
@@ -85,7 +85,7 @@ class NeonTxExecutor(ExecutorComponent):
         AltHolderTxStrategy,
     ]
 
-    async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxRespCode:
+    async def exec_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxDoneCode:
         await ctx.holder_validator.validate_stuck_tx()
 
         try:
@@ -97,17 +97,21 @@ class NeonTxExecutor(ExecutorComponent):
 
             return await self._select_strategy(ctx, self._tx_strategy_list)
 
+        except SkdTxError as exc:
+            _LOG.debug("%s", str(exc))
+            return ExecTxDoneCode.Failed
+
         except EthNonceTooLowError as exc:
             _LOG.debug("%s", str(exc))
-            return ExecTxRespCode.NonceTooLow
+            return ExecTxDoneCode.NonceTooLow
 
         except EthNonceTooHighError as exc:
             _LOG.debug("%s", str(exc))
-            return ExecTxRespCode.NonceTooHigh
+            return ExecTxDoneCode.NonceTooHigh
 
-    async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxRespCode:
+    async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxDoneCode:
         if not await ctx.holder_validator.is_active():
-            return ExecTxRespCode.Failed
+            return ExecTxDoneCode.Failed
 
         # get solana address of the sender and receiver
         await self._init_base_sol_tx(ctx)
@@ -121,7 +125,7 @@ class NeonTxExecutor(ExecutorComponent):
 
         return await self._select_strategy(ctx, self._stuck_tx_strategy_list)
 
-    async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxRespCode:
+    async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxDoneCode:
         for _Strategy in tx_strategy_list:
             if ctx.skip_simple_strategy and _Strategy.is_simple:
                 _LOG.debug("skip simple strategy %s", _Strategy.name)
@@ -134,18 +138,22 @@ class NeonTxExecutor(ExecutorComponent):
 
             _LOG.debug("use strategy %s", strategy.name)
             if (exit_code := await self._exec_neon_tx(ctx, strategy)) is not None:
+                await self._done_exec_neon_tx(strategy)
                 _LOG.debug("done strategy %s with result %s", strategy.name, exit_code.name)
                 return exit_code
 
         _LOG.warning("didn't find a strategy for execution, NeonTx is too big for execution?")
-        return ExecTxRespCode.Failed
+        return ExecTxDoneCode.Failed
 
-    async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxRespCode | None:
+    async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
         for retry in itertools.count():
             if retry > 0:
                 _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
 
             try:
+                if await self._is_completed(ctx):
+                    return ExecTxDoneCode.Done
+
                 await strategy.prep_before_emulation()
                 if not ctx.is_stuck_tx:
                     await self._emulate_neon_tx(ctx)
@@ -156,9 +164,13 @@ class NeonTxExecutor(ExecutorComponent):
                 await self._validate_nonce(ctx)
 
                 # NeonTx is prepared for the execution
+                ctx.holder_validator.mark_complete_prepare()
                 return await strategy.execute()
 
             except (EthNonceTooLowError, EthNonceTooHighError):
+                raise
+
+            except SkdTxError:
                 raise
 
             except StuckTxError as exc:
@@ -195,7 +207,7 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("unexpected error", extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(strategy)
 
-    async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxRespCode | None:
+    async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
         for retry in range(self._cfg.retry_on_fail):
             if retry > 0:
                 _LOG.debug("cancel NeonTx, attempt %s...", retry + 1)
@@ -213,6 +225,16 @@ class NeonTxExecutor(ExecutorComponent):
                     extra=self._msg_filter,
                 )
                 return None
+
+    async def _done_exec_neon_tx(self, strategy: BaseTxStrategy) -> None:
+        try:
+            await strategy.done_execution()
+        except BaseException as exc:
+            _LOG.error(
+                "unexpected error on done exec NeonTx",
+                exc_info=exc,
+                extra=self._msg_filter,
+            )
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
         # update evm config
@@ -258,14 +280,27 @@ class NeonTxExecutor(ExecutorComponent):
             return True
         elif await ctx.holder_validator.is_active():
             return True
+        elif ctx.is_scheduled_tx:
+            if await ctx.skd_tree_parser.is_started():
+                return True
         return False
 
+    @staticmethod
+    async def _is_completed(ctx: NeonExecTxCtx) -> bool:
+        if not ctx.is_scheduled_tx:
+            return False
+
+        status = await ctx.skd_tree_parser.get_neon_skd_status(ctx.holder_tx.index)
+        return status not in (status.NotStarted, status.ToStart, status.ToSkip, status.InProgress)
+
     async def _init_base_sol_tx(self, ctx: NeonExecTxCtx) -> None:
-        addr_list = tuple([ctx.sender, ctx.receiver])
+        addr_list = [ctx.payer, ctx.sender, ctx.receiver]
+
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
         base_tx_acct_set = NeonBaseTxAccountSet(
-            sender=acct_list[0].sol_address,
-            receiver=acct_list[1].sol_address,
-            receiver_contract=acct_list[1].contract_sol_address,
+            payer=acct_list[0].sol_address,
+            sender=acct_list[1].sol_address,
+            receiver=acct_list[2].sol_address,
+            receiver_contract=acct_list[2].contract_sol_address,
         )
         ctx.set_tx_sol_address(base_tx_acct_set)

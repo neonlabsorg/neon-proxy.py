@@ -19,20 +19,23 @@ from common.ethereum.hash import (
     EthZeroAddressField,
     EthAddress,
     EthNotNoneAddressField,
+    EthTxHash,
 )
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
+from common.neon_rpc.api import NeonSkdTreeModel
 from common.solana.commit_level import SolCommit
-from common.solana.pubkey import SolPubKeyField, SolPubKey
+from common.solana.pubkey import SolPubKeyField, SolPubKey, SolNotNonePubKeyField
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
 from common.utils.pydantic import HexUIntField, Hex256UIntField, Hex8UIntField, Base58Field, HexUInt64Field
 from .api import RpcBlockRequest, RpcEthTxEventModel, RpcNeonTxEventModel
 from .server_abc import NeonProxyApi
+from ..base.mp_api import MpTxStatusModel
 from ..base.rpc_api import RpcEthTxResp
 
 _LOG = logging.getLogger(__name__)
@@ -69,9 +72,14 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
     gasUsed: HexUIntField
     cumulativeGasUsed: HexUIntField
     contractAddress: EthAddressField
+    root: EthHash32Field
     status: HexUIntField
     logsBloom: Hex256UIntField
     logs: list[RpcNeonTxEventModel | RpcEthTxEventModel]
+    scheduledParentTransactionHashes: list[EthTxHashField]
+    scheduledChildTransactionHashes: list[EthTxHashField]
+    #
+    _empty_root: Final[EthHash32Field] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
 
     @classmethod
     def from_raw(cls, neon_tx_meta: NeonTxMetaModel) -> Self:
@@ -81,8 +89,8 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
             logs=[RpcEthTxEventModel.from_raw(e) for e in rcpt.event_list if not e.is_hidden],
         )
 
-    @staticmethod
-    def _to_dict(neon_tx_meta: NeonTxMetaModel) -> dict:
+    @classmethod
+    def _to_dict(cls, neon_tx_meta: NeonTxMetaModel) -> dict:
         tx = neon_tx_meta.neon_tx
         rcpt = neon_tx_meta.neon_tx_rcpt
 
@@ -98,8 +106,11 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
             gasUsed=rcpt.total_gas_used,
             cumulativeGasUsed=rcpt.sum_gas_used,
             contractAddress=tx.contract,
+            root=cls._empty_root,
             status=rcpt.status,
             logsBloom=rcpt.log_bloom,
+            scheduledParentTransactionHashes=rcpt.parent_tx_list,
+            scheduledChildTransactionHashes=rcpt.child_tx_list,
         )
 
 
@@ -225,7 +236,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
     solanaCompleteInstructionIndex: int
     solanaCompleteInnerInstructionIndex: int | None
     neonRawTransaction: EthBinStrField
-    neonIsCompleted: bool
+    neonIsCompleted: bool = True  # TODO: remove, because it is always True
     neonIsCanceled: bool
     solanaTransactions: list[_RpcSolReceiptModel]
     neonCosts: list[_RpcNeonCostModel]
@@ -257,7 +268,6 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
             solanaCompleteInstructionIndex=rcpt.sol_ix_idx,
             solanaCompleteInnerInstructionIndex=rcpt.sol_inner_ix_idx,
             neonRawTransaction=tx.to_rlp_tx(),
-            neonIsCompleted=rcpt.is_completed,
             neonIsCanceled=rcpt.is_canceled,
             logs=log_list,
             solanaTransactions=sol_tx_list,
@@ -395,11 +405,46 @@ class _RpcBlockResp(BaseJsonRpcModel):
         )
 
 
+class _RpcNeonTxStatus(StrEnum):
+    HighNonce = "HighNonce"
+    InsufficientBalance = "InsufficientBalance"
+    LowGasPrice = "LowGasPrice"
+    NoTxBody = "NoTransactionBody"
+    WaitForParentTx = "WaitForParentTransactions"
+    NotStarted = "NotStarted"
+    InProgress = "InProgress"
+    Skipped = "Skipped"
+    Done = "Done"
+
+    @classmethod
+    def from_raw(cls, value: str | _RpcNeonTxStatus) -> Self:
+        if isinstance(value, cls):
+            return value
+
+        try:
+            return cls(value)
+        except (BaseException,):
+            raise ValueError(f"Wrong _RpcMpNeonTxStatusField {value}")
+
+
+_RpcNeonTxStatusField = Annotated[_RpcNeonTxStatus, PlainValidator(_RpcNeonTxStatus.from_raw)]
+
+
+class _RpcNeonTxStatusModel(BaseJsonRpcModel):
+    txHash: EthTxHashField = Field(serialization_alias="hash")
+    status: _RpcNeonTxStatusField
+    executionPercentage: HexUIntField
+    age: HexUIntField
+
+
 class NpBlockTxApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::BlockTransaction"
 
     @NeonProxyApi.method(name="eth_getTransactionByHash")
-    async def get_tx_by_hash(self, ctx: HttpRequestCtx, tx_hash: EthTxHashField) -> RpcEthTxResp | None:
+    async def get_tx_by_hash(self, ctx: HttpRequestCtx, tx_hash: EthTxHashField | SolTxSigField) -> RpcEthTxResp | None:
+        if not (tx_hash := await self._get_neon_tx_hash(tx_hash)):
+            return None
+
         if not (meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             if not (meta := await self._mp_client.get_tx_by_hash(self._get_ctx_id(ctx), tx_hash)):
                 return None
@@ -409,18 +454,25 @@ class NpBlockTxApi(NeonProxyApi):
     async def get_tx_by_sender_nonce(
         self,
         ctx: HttpRequestCtx,
-        sender: EthNotNoneAddressField,
+        sender: EthNotNoneAddressField | SolNotNonePubKeyField,
         nonce: HexUInt64Field,
+        index: HexUInt64Field = 0,
     ) -> RpcEthTxResp | None:
-        neon_acct = NeonAccount.from_raw(sender, self._get_chain_id(ctx))
+        if isinstance(sender, SolPubKey):
+            self._validate_layer0_chain_id(ctx)
+
+        neon_addr = NeonAddress.from_raw(sender, self._get_chain_id(ctx))
         inc_no_chain_id = True if self._is_default_chain_id(ctx) else False
-        if not (meta := await self._db.get_tx_by_sender_nonce(neon_acct, nonce, inc_no_chain_id)):
-            if not (meta := await self._mp_client.get_tx_by_sender_nonce(self._get_ctx_id(ctx), neon_acct, nonce)):
+        if not (meta := await self._db.get_tx_by_sender_nonce(neon_addr, nonce, index, inc_no_chain_id)):
+            if not (meta := await self._mp_client.get_tx_by_sender_nonce(self._get_ctx_id(ctx), neon_addr, nonce)):
                 return None
         return RpcEthTxResp.from_raw(meta)
 
     @NeonProxyApi.method(name="eth_getTransactionReceipt")
-    async def get_tx_receipt(self, tx_hash: EthTxHashField) -> _RpcEthTxReceiptResp | None:
+    async def get_tx_receipt(self, tx_hash: EthTxHashField | SolTxSigField) -> _RpcEthTxReceiptResp | None:
+        if not (tx_hash := await self._get_neon_tx_hash(tx_hash)):
+            return None
+
         if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             return None
         return _RpcEthTxReceiptResp.from_raw(neon_tx_meta)
@@ -527,9 +579,12 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_getSolanaTransactionByNeonTransaction")
     async def get_solana_tx_list(
         self,
-        tx_hash: EthTxHashField,
+        tx_hash: EthTxHashField | SolTxSigField,
         full: bool = False,
     ) -> list[dict | SolTxSigField]:
+        if not (tx_hash := await self._get_neon_tx_hash(tx_hash)):
+            return list()
+
         if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             return list()
 
@@ -564,9 +619,12 @@ class NpBlockTxApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_getTransactionReceipt")
     async def get_neon_tx_receipt(
         self,
-        tx_hash: EthTxHashField,
+        tx_hash: EthTxHashField | SolTxSigField,
         detail: _RpcNeonTxReceiptDetailField = _RpcNeonTxReceiptDetail.SolTxList,
     ) -> _RpcNeonTxReceiptResp | _RpcEthTxReceiptResp | None:
+        if not (tx_hash := await self._get_neon_tx_hash(tx_hash)):
+            return None
+
         if not (neon_tx_meta := await self._db.get_tx_by_neon_tx_hash(tx_hash)):
             return None
 
@@ -580,10 +638,104 @@ class NpBlockTxApi(NeonProxyApi):
 
         return _RpcNeonTxReceiptResp.from_raw(neon_tx_meta, detail=detail, sol_meta_list=meta_list)
 
+    @NeonProxyApi.method(name="neon_getPendingTransactions")
+    async def get_tx_status_list(
+        self,
+        ctx: HttpRequestCtx,
+        sender: EthNotNoneAddressField | SolNotNonePubKeyField,
+    ) -> dict[HexUIntField, list[_RpcNeonTxStatusModel]]:
+        if isinstance(sender, SolPubKey):
+            self._validate_layer0_chain_id(ctx)
+
+        sender_addr = NeonAddress.from_raw(sender, self._get_chain_id(ctx))
+        sender_acct = await self._core_api_client.get_neon_account(sender_addr, None)
+        resp = await self._mp_client.get_tx_status_list_by_sender(self._get_ctx_id(ctx), sender_acct)
+
+        tree_dict: dict[int, NeonSkdTreeModel] = dict()
+
+        async def _get_tree(_nonce: int) -> NeonSkdTreeModel:
+            nonlocal tree_dict
+            nonlocal sender_addr
+
+            if _tree := tree_dict.get(_nonce, None):
+                return _tree
+            _tree = await self._core_api_client.get_neon_skd_tree(sender_addr, _nonce, None)
+            tree_dict[_nonce] = _tree
+            return _tree
+
+        tx_status_list = resp.tx_status_list
+        if not tx_status_list:
+            tree = await _get_tree(sender_acct.state_tx_cnt)
+            if tree.is_exist:
+                node = tree.node_list[0]
+                tx_status = MpTxStatusModel(
+                    neon_tx_hash=node.neon_tx_hash,
+                    nonce=sender_acct.state_tx_cnt,
+                    exec_pct_list=list(),
+                )
+                tx_status_list = [tx_status]
+
+        if not tx_status_list:
+            return dict()
+
+        def _get_status(_tx: MpTxStatusModel) -> _RpcNeonTxStatus:
+            nonlocal resp
+
+            if _tx.nonce > resp.state_tx_cnt:
+                return _RpcNeonTxStatus.HighNonce
+            elif _tx.nonce < resp.state_tx_cnt:
+                return _RpcNeonTxStatus.Done
+            elif resp.in_processing:
+                return _RpcNeonTxStatus.InProgress
+            elif _tx.gas_price < resp.min_exec_gas_price:
+                return _RpcNeonTxStatus.LowGasPrice
+            elif _tx.cost < resp.balance:
+                return _RpcNeonTxStatus.InsufficientBalance
+            return _RpcNeonTxStatus.NotStarted
+
+        async def _get_status_pct(
+            _tx: MpTxStatusModel, _tree: NeonSkdTreeModel, idx: int
+        ) -> tuple[_RpcNeonTxStatus, int]:
+            if not _tree.is_exist:
+                return _get_status(_tx), _tx.get_exec_pct(_tx.neon_tx_hash)
+
+            _node = _tree.node_list[idx]
+            _status = _tree.get_neon_skd_status(idx)
+            if _status in (_status.Success, _status.Failed):
+                return _RpcNeonTxStatus.Done, 100
+            elif _status == _status.Skipped:
+                return _RpcNeonTxStatus.Skipped, 100
+            elif _status == _status.InProgress:
+                return _RpcNeonTxStatus.InProgress, _tx.get_exec_pct(_node.neon_tx_hash)
+            elif _status == _status.NotStarted:
+                return _RpcNeonTxStatus.WaitForParentTx, 0
+
+            _skd_tx = await self._db.get_neon_skd_tx_by_hash(_node.neon_tx_hash)
+
+            if (not _skd_tx) or (not _skd_tx.rlp_tx):
+                return _RpcNeonTxStatus.NoTxBody, 0
+            elif idx == 0:
+                return _get_status(_tx), _tx.get_exec_pct(_tx.neon_tx_hash)
+
+            return _RpcNeonTxStatus.NotStarted, 0
+
+        async def _new_tx_status(_tx: MpTxStatusModel, _tree: NeonSkdTreeModel, idx: int) -> _RpcNeonTxStatusModel:
+            if not _tree.is_exist:
+                status, exec_pct, tx_hash = _get_status(_tx), _tx.get_exec_pct(_tx.neon_tx_hash), _tx.neon_tx_hash
+            else:
+                tx_hash = _tree.node_list[idx].neon_tx_hash
+                status, exec_pct = await _get_status_pct(_tx, _tree, idx)
+
+            return _RpcNeonTxStatusModel(txHash=tx_hash, status=status, executionPercentage=exec_pct, age=_tx.age_sec)
+
+        async def _new_tx_status_list(_tx: MpTxStatusModel) -> list[_RpcNeonTxStatusModel]:
+            _tree = await _get_tree(_tx.nonce)
+            return [(await _new_tx_status(_tx, _tree, idx)) for idx in range(max(len(_tree.node_list), 1))]
+
+        return {tx.nonce: await _new_tx_status_list(tx) for tx in tx_status_list}
+
     @staticmethod
-    def _sort_alt_sol_tx_list(
-        alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig
-    ) -> list[Any]:
+    def _sort_alt_sol_tx_list(alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig) -> list[Any]:
         # signatures with Neon-Receipt (or Solana-Fail + Neon-Cancel) should be at the end of the list,
         #   because it simplifies the user experience
         if (pos := next((idx for idx, v in enumerate(sol_meta_list) if v.sol_tx_sig == rcpt_sol_tx_sig), -1)) == -1:
@@ -628,3 +780,9 @@ class NpBlockTxApi(NeonProxyApi):
         # Last step: add Neon-Receipt or (Solana-Fail + Neon-Cancel)
         result_list.extend(last_meta_list)
         return result_list
+
+    async def _get_neon_tx_hash(self, tx_hash: EthTxHash | SolTxSig) -> EthTxHash:
+        if isinstance(tx_hash, EthTxHash):
+            return tx_hash
+
+        return await self._db.get_neon_tx_hash_by_sol_tx_sig(tx_hash)

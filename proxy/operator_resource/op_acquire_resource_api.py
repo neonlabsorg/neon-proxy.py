@@ -47,12 +47,6 @@ class OpAcquireResourceApi(OpResourceApi):
             await self._op_resource_mng.free_resource(request.is_good, request.resource)
             return OpResourceResp(result=True)
 
-    @OpResourceApi.method(name="getOperatorTokenAddress")
-    def get_token_address(self, request: OpGetTokenSolAddressRequest) -> OpTokenSolAddressModel:
-        with logging_context(**request.req_id):
-            eth_addr, token_sol_addr = self._op_resource_mng.get_token_address(request.owner, request.chain_id)
-            return OpTokenSolAddressModel(owner=request.owner, eth_address=eth_addr, token_sol_address=token_sol_addr)
-
     @cached_property
     def _op_resource_mng(self) -> OpResourceMng:
         return self._server._op_resource_mng  # noqa

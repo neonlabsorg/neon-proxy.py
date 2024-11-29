@@ -7,7 +7,7 @@ from typing_extensions import Self
 from common.config.config import Config
 from common.ethereum.bin_str import EthBinStr
 from common.ethereum.hash import EthAddress
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EvmConfigModel, NeonAccountStatus
 from common.solana.pubkey import SolPubKey
@@ -42,10 +42,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
         self = cls(cfg)
-        self._root_parser = cmd_list_parser.add_parser(
-            self.command,
-            description="Commands on Operator balances"
-        )
+        self._root_parser = cmd_list_parser.add_parser(self.command, description="Commands on Operator balances")
         self._cmd_parser = self._root_parser.add_subparsers(
             title="command",
             dest="subcommand",
@@ -158,7 +155,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
                         break
 
                 token = self._evm_cfg.chain_dict[chain_id].name
-                total_balance = total_balance / (10 ** 18)
+                total_balance = total_balance / (10**18)
                 # fmt: off
                 print(
                     f"successfully send {total_balance:,.18} {token} " 
@@ -171,8 +168,8 @@ class OpBalanceHandler(BaseNPCmdHandler):
     async def _send_value(
         self,
         req_id: dict,
-        sender_addr: EthAddress,
-        dest_addr: EthAddress,
+        sender_eth_addr: EthAddress,
+        dest_eth_addr: EthAddress,
         chain_id: int,
         value: int,
     ) -> bool:
@@ -181,18 +178,19 @@ class OpBalanceHandler(BaseNPCmdHandler):
         mp_client = await self._get_mp_client()
         token = self._evm_cfg.chain_dict[chain_id].name
 
-        dest_acct = await core_api_client.get_neon_account(NeonAccount.from_raw(dest_addr, chain_id), None)
+        dest_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(dest_eth_addr, chain_id), None)
         if dest_acct.status == NeonAccountStatus.Empty:
             gas_limit = 2_000_000
         else:
             gas_limit = 25_000
 
-        state_tx_cnt = await core_api_client.get_state_tx_cnt(NeonAccount.from_raw(sender_addr, chain_id))
+        sender_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(sender_eth_addr, chain_id), None)
+        mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address)
         param_dict = dict(
             tx_type=NeonTxType.Legacy,
-            from_address=sender_addr,
-            to_address=dest_addr,
-            nonce=state_tx_cnt,
+            from_address=sender_eth_addr,
+            to_address=dest_eth_addr,
+            nonce=max(sender_acct.state_tx_cnt, mp_tx_cnt or 0),
             gas_price=0,
             gas_limit=gas_limit,
             value=value,
@@ -204,18 +202,18 @@ class OpBalanceHandler(BaseNPCmdHandler):
             _LOG.error("cannot sign tx: %s", resp.error)
             return False
 
-        eth_tx_rlp = resp.signed_tx.to_bytes()
-        tx = NeonTxModel.from_raw(eth_tx_rlp)
+        rlp_tx = resp.signed_tx.to_bytes()
+        tx = NeonTxModel.from_raw(rlp_tx)
 
-        value = value / (10 ** 18)
+        value = value / (10**18)
         print(
             f"send {value:,.18} {token} "
-            f"from {sender_addr.to_checksum()} "
-            f"to {dest_addr.to_checksum()}: "
+            f"from {sender_eth_addr.to_checksum()} "
+            f"to {dest_eth_addr.to_checksum()}: "
             f"{tx.neon_tx_hash.to_string()}"
         )
 
-        resp = await mp_client.send_raw_transaction(req_id, resp.signed_tx.to_bytes(), chain_id, state_tx_cnt)
+        resp = await mp_client.send_raw_transaction(req_id, sender_acct, resp.signed_tx.to_bytes())
         if resp.code != MpTxRespCode.Success:
             _LOG.error("fail to send tx: %s", resp.code.name)
             return False
@@ -275,12 +273,12 @@ class OpBalanceHandler(BaseNPCmdHandler):
         for op_addr in eth_address_list:
             token_balance_dict: dict[int, int] = dict()
             for chain_id in self._evm_cfg.chain_dict.keys():
-                neon_acct = NeonAccount.from_raw(op_addr.eth_address, chain_id)
+                neon_addr = NeonAddress.from_raw(op_addr.eth_address, chain_id)
 
-                neon_balance = await core_api_client.get_neon_account(neon_acct, None)
-                earn_balance = await core_api_client.get_earn_account(self._evm_cfg, op_addr.owner, neon_acct, None)
+                neon_acct = await core_api_client.get_neon_account(neon_addr, None)
+                earn_acct = await core_api_client.get_earn_account(self._evm_cfg, op_addr.owner, neon_addr, None)
 
-                balance = neon_balance.balance + earn_balance.balance
+                balance = neon_acct.balance + earn_acct.balance
                 token_balance_dict[chain_id] = balance
 
             balance = _OpBalance(op_addr.owner, op_addr.eth_address, token_balance_dict)

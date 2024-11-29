@@ -4,12 +4,19 @@ import logging
 from typing import ClassVar, Final
 
 from common.ethereum.hash import EthTxHash, EthAddressField
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonEvmIxCode
-from common.neon.transaction_model import NeonTxModel
+from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus, NeonSkdTxModel
 from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.utils.pydantic import BaseModel
-from .objects import BaseNeonIndexedObjInfo, NeonIndexedTxInfo, NeonIndexedHolderInfo, SolNeonDecoderCtx
+from .objects import (
+    BaseNeonIndexedObjInfo,
+    NeonIndexedTxInfo,
+    NeonIndexedHolderInfo,
+    SolNeonDecoderCtx,
+    NeonIndexedSkdTxStatusInfo,
+    NeonIndexedSkdTxRelationInfo,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -76,30 +83,34 @@ class BaseTxIxDecoder(DummyIxDecoder):
     def _decode_neon_tx(self) -> NeonTxModel | None:
         return NeonTxModel.from_raw(self.state.sol_neon_ix.neon_tx_hash)
 
-    def _get_holder_address(self) -> SolPubKey | None:
+    def _get_acct_address(self, idx: int, name: str) -> SolPubKey | None:
         ix = self.state.sol_neon_ix
-        if ix.account_key_cnt < 1:
+        if ix.account_key_cnt <= idx:
             _LOG.warning(
-                "%s: no enough SolTxIx.Accounts(len=%d) to get NeonHolder.Account",
+                "%s: no enough SolTxIx.Accounts(len=%d) to get %s.Account",
                 self._skip_hdr,
                 ix.account_key_cnt,
+                name,
             )
             return None
 
-        return ix.get_account_key(0)
+        return ix.get_account_key(idx)
+
+    def _get_holder_address(self) -> SolPubKey | None:
+        return self._get_acct_address(0, "NeonHolder")
 
     def _decode_neon_tx_from_rlp_data(
-        self, data_name: str, eth_tx_rlp: bytes, start_rlp_pos: int = 0
+        self, data_name: str, rlp_tx: bytes, start_rlp_pos: int = 0
     ) -> NeonTxModel | None:
-        if len(eth_tx_rlp) < start_rlp_pos:
-            _LOG.warning("%s: no enough %s(len=%d) to decode NeonTx", self._skip_hdr, data_name, len(eth_tx_rlp))
+        if len(rlp_tx) < start_rlp_pos:
+            _LOG.warning("%s: no enough %s(len=%d) to decode NeonTx", self._skip_hdr, data_name, len(rlp_tx))
             return None
 
         if start_rlp_pos > 0:
-            eth_tx_rlp = eth_tx_rlp[start_rlp_pos:]
+            rlp_tx = rlp_tx[start_rlp_pos:]
 
         ix = self.state.sol_neon_ix
-        neon_tx = NeonTxModel.from_raw(eth_tx_rlp)
+        neon_tx = NeonTxModel.from_raw(rlp_tx)
         if not neon_tx.is_valid:
             _LOG.warning("%s: %s.RLP.Error: '%s'", self._skip_hdr, data_name, neon_tx.error)
             return None
@@ -331,9 +342,8 @@ class CancelWithHashIxDecoder(BaseTxStepIxDecoder):
         return self._decoding_done(tx)
 
     def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
-        ix = self.state.sol_neon_ix
         self._decode_neon_tx_from_holder_account(tx)
-        tx.set_tx_cancel_return(ix)
+        tx.set_tx_cancel_return(self.state.sol_neon_ix)
         return True
 
 
@@ -474,8 +484,8 @@ class CreateOperatorBalanceIxDecoder(DummyIxDecoder):
             _LOG.warning("%s: not enough data to get Operator.NeonAddress.ChainId %d", self._skip_hdr, len(ix_data))
             return False
 
-        neon_acct = NeonAccount.from_raw(ix_data[:20], int.from_bytes(ix_data[20:8], "little"))
-        _LOG.debug("%s: create Operator Balance: %s", self._success_hdr, neon_acct)
+        neon_addr = NeonAddress.from_raw(ix_data[:20], int.from_bytes(ix_data[20:8], "little"))
+        _LOG.debug("%s: create Operator Balance: %s", self._success_hdr, neon_addr)
         return True
 
 
@@ -499,6 +509,264 @@ class WithdrawOperatorBalanceIxDecoder(DummyIxDecoder):
         return True
 
 
+class BaseSkdTxIxDecoder(BaseTxIxDecoder):
+    def _get_tree_address(self, index: int) -> SolPubKey | None:
+        return self._get_acct_address(index, "NeonTree")
+
+    def _decode_skd_tx_status(self, status: NeonSkdTxStatus) -> NeonIndexedSkdTxStatusInfo | None:
+        if self.state.sol_neon_ix.neon_tx_hash.is_empty:
+            _LOG.warning("Unknown NeonTx.Hash")
+            return None
+        elif not (tx := self._get_neon_indexed_tx()):
+            return None
+        elif not (holder_addr := self._get_holder_address()):
+            return None
+        elif not (tree_addr := self._get_tree_address(1)):
+            return None
+
+        if self._decode_neon_tx_receipt(tx):
+            _LOG.debug("%s: compete NeonSkdTx with status %s - %s", self._done_hdr, status.name, tx)
+            self._decoding_done(tx)
+
+        skd_tx = NeonIndexedSkdTxStatusInfo(
+            neon_tx_hash=self.state.sol_neon_ix.neon_tx_hash,
+            tree_address=tree_addr,
+            holder_address=holder_addr,
+            status=status,
+        )
+        self.state.neon_block.add_neon_skd_tx_status(skd_tx)
+        return skd_tx
+
+
+class SkdTxCreateDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxCreate
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (tree_addr := self._get_tree_address(3)):
+            return False
+
+        # 1 byte  - ix
+        # 4 bytes - treasury index
+        # N bytes - NeonTx
+        ix = self.state.sol_neon_ix
+        ix_data = ix.neon_ix_data
+        if not (neon_tx := self._decode_neon_tx_from_rlp_data("SolTxIx.Data", ix_data, start_rlp_pos=5)):
+            return False
+
+        if neon_tx.neon_tx_hash != ix.neon_tx_hash:
+            # failed decoding ...
+            _LOG.warning(
+                "%s: NeonTx.Hash '%s' != SolTxIx.Log.Hash '%s'",
+                self._skip_hdr,
+                neon_tx.neon_tx_hash,
+                ix.neon_tx_hash,
+            )
+            return False
+
+        skd_tx = NeonSkdTxModel(
+            slot=ix.slot,
+            neon_tx_hash=ix.neon_tx_hash,
+            sol_skd_tx_sig=ix.sol_tx_sig,
+            sol_skd_payer=ix.sol_payer,
+            neon_payer=neon_tx.payer,
+            chain_id=neon_tx.chain_id,
+            nonce=neon_tx.nonce,
+            index=0,
+            rlp_tx=neon_tx.rlp_tx.to_bytes(),
+            tree_address=tree_addr,
+        )
+        self.state.neon_block.add_neon_skd_tx(skd_tx)
+
+        _LOG.debug("%s: create NeonSkdTx %s", self._success_hdr, skd_tx)
+        return True
+
+
+class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxCreateMultiple
+    is_deprecated: ClassVar[bool] = False
+
+    _hdr_len: Final[int] = 72
+    _chunk_len: Final[int] = 100
+
+    def execute(self) -> bool:
+        if not (tree_addr := self._get_tree_address(3)):
+            return False
+
+        # 1 ix
+        # 4 treasury index
+        # N body
+        ix = self.state.sol_neon_ix
+        ix_data = ix.neon_ix_data[5:]
+        hdr_data, list_data = ix_data[: self._hdr_len], ix_data[self._hdr_len :]
+        if len(hdr_data) < self._hdr_len:
+            _LOG.warning("%s: wrong header len %s", self._skip_hdr, len(hdr_data))
+            return False
+
+        list_len = len(list_data)
+        if (not list_len) or (list_len % self._chunk_len != 0):
+            _LOG.warning("%s: wrong list len %s", self._skip_hdr, list_len)
+            return False
+
+        nonce = int.from_bytes(list_data[:8], "big")
+        # max_fee_per_gas = int.from_bytes(hdr_data[8:40], "big")
+        # max_priority_fee_per_gas = int.from_bytes(hdr_data[40:], "big")
+        # base_fee_per_gas = max_fee_per_gas - max_priority_fee_per_gas
+
+        index = 0
+        block = self.state.neon_block
+        sol_tx_sig = ix.sol_tx_sig
+        sol_payer = ix.sol_payer
+        neon_payer = NeonAddress.from_raw(ix.sol_payer, self.state.layer0_chain_id)
+
+        tx_hash_list: list[EthTxHash] = list()
+        child_idx_list: list[int] = list()
+        while list_data:
+            chunk_data, list_data = list_data[:100], list_data[100:]
+
+            # 32 bytes - gas_limit
+            # 32 bytes - value
+            # 2 bytes  - child_index
+            # 2 bytes  - success_limit
+            # 32 bytes - tx hash
+
+            child_idx = int.from_bytes(chunk_data[64:66], "little")
+            neon_tx_hash = EthTxHash.from_raw(chunk_data[68:])
+
+            tx_hash_list.append(neon_tx_hash)
+            child_idx_list.append(child_idx)
+
+            skd_tx = NeonSkdTxModel(
+                slot=ix.slot,
+                neon_tx_hash=neon_tx_hash,
+                sol_skd_tx_sig=sol_tx_sig,
+                sol_skd_payer=sol_payer,
+                neon_payer=neon_payer.eth_address,
+                chain_id=neon_payer.chain_id,
+                nonce=nonce,
+                index=index,
+                rlp_tx=bytes(),
+                tree_address=tree_addr,
+            )
+            block.add_neon_skd_tx(skd_tx)
+            index += 1
+
+            _LOG.debug("%s: create multiple NeonSkdTx %s", self._success_hdr, skd_tx)
+
+        for parent_idx, child_idx in enumerate(child_idx_list):
+            if child_idx < len(tx_hash_list):
+                skd_tx = NeonIndexedSkdTxRelationInfo(
+                    tree_address=tree_addr,
+                    parent_tx_hash=tx_hash_list[parent_idx],
+                    child_tx_hash=tx_hash_list[child_idx],
+                )
+                block.add_neon_skd_tx_relation(skd_tx)
+
+        return True
+
+
+class SkdTxStartFromAccountDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxStartFromAccount
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (skd_tx := self._decode_skd_tx_status(NeonSkdTxStatus.InProgress)):
+            return False
+
+        _LOG.debug("%s: start NeonSkdTx %s from NeonHolder.Data", self._success_hdr, skd_tx.neon_tx_hash)
+        return True
+
+
+class SkdTxStartFromDataDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxStartFromData
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (skd_tx := self._decode_skd_tx_status(NeonSkdTxStatus.InProgress)):
+            return False
+
+        _LOG.debug("%s: start NeonSkdTx %s from SolTxIx.Data", self._success_hdr, skd_tx.neon_tx_hash)
+        return True
+
+    def _decode_neon_tx(self) -> NeonTxModel | None:
+        # 1 byte  - ix
+        # 4 bytes - tx index
+        # N bytes - NeonTx
+        return self._decode_neon_tx_from_rlp_data("SolTxIx.Data", self.state.sol_neon_ix.neon_ix_data, start_rlp_pos=5)
+
+
+class SkdTxFinishDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxFinish
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (skd_tx := self._decode_skd_tx_status(NeonSkdTxStatus.Success)):
+            return False
+
+        _LOG.debug("%s: finish NeonSkdTx %s", self._success_hdr, skd_tx.neon_tx_hash)
+        return True
+
+
+class SkdTxSkipFromAccountDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxSkipFromAccount
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (skd_tx := self._decode_skd_tx_status(NeonSkdTxStatus.Skipped)):
+            return False
+
+        _LOG.debug("%s: skip NeonSkdTx %s from NeonHolder.Data", self._success_hdr, skd_tx.neon_tx_hash)
+        return True
+
+    def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
+        self._decode_neon_tx_from_holder_account(tx)
+        tx.set_tx_cancel_return(self.state.sol_neon_ix)
+        return True
+
+
+class SkdTxSkipFromDataDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTxSkipFromData
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (skd_tx := self._decode_skd_tx_status(NeonSkdTxStatus.Skipped)):
+            return False
+
+        _LOG.debug("%s: skip NeonSkdTx %s from SolTxIx.Data", self._success_hdr, skd_tx.neon_tx_hash)
+        return True
+
+    def _decode_neon_tx(self) -> NeonTxModel | None:
+        # 1 byte  - ix
+        # 4 bytes - transaction index
+        # N bytes - NeonTx
+        return self._decode_neon_tx_from_rlp_data("SolTxIx.Data", self.state.sol_neon_ix.neon_ix_data, start_rlp_pos=5)
+
+    def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
+        tx.set_tx_cancel_return(self.state.sol_neon_ix)
+        return True
+
+
+class SkdTreeDestroyDecoder(BaseSkdTxIxDecoder):
+    ix_code: ClassVar[NeonEvmIxCode] = NeonEvmIxCode.SkdTreeDestroy
+    is_deprecated: ClassVar[bool] = False
+
+    def execute(self) -> bool:
+        if not (tree_addr := self._get_tree_address(2)):
+            return False
+
+        skd_tx = NeonIndexedSkdTxStatusInfo(
+            neon_tx_hash=self.state.sol_neon_ix.neon_tx_hash,
+            tree_address=tree_addr,
+            holder_address=SolPubKey.default(),
+            status=NeonSkdTxStatus.Destroyed,
+        )
+        self.state.neon_block.add_neon_skd_tx_status(skd_tx)
+
+        self.state.neon_block.done_neon_skd_tree(tree_addr)
+        _LOG.debug("%s: destroy NeonTree.Account %s", self._success_hdr, tree_addr)
+        return True
+
+
 def get_neon_ix_decoder_list() -> list[type[DummyIxDecoder]]:
     ix_decoder_list = [
         TxExecFromDataIxDecoder,
@@ -518,6 +786,14 @@ def get_neon_ix_decoder_list() -> list[type[DummyIxDecoder]]:
         CreateOperatorBalanceIxDecoder,
         DeleteOperatorBalanceIxDecoder,
         WithdrawOperatorBalanceIxDecoder,
+        SkdTxCreateDecoder,
+        SkdTxCreateMultipleDecoder,
+        SkdTxStartFromAccountDecoder,
+        SkdTxStartFromDataDecoder,
+        SkdTxFinishDecoder,
+        SkdTxSkipFromAccountDecoder,
+        SkdTxSkipFromDataDecoder,
+        SkdTreeDestroyDecoder,
     ]
 
     for IxDecoder in ix_decoder_list:

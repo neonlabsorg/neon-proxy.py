@@ -151,6 +151,10 @@ class SolNeonTxIxMetaInfo:
 
     @property
     def operator(self) -> SolPubKey:
+        return self.sol_payer
+
+    @property
+    def sol_payer(self) -> SolPubKey:
         return self._sol_tx.sol_signer
 
     @property

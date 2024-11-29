@@ -1,24 +1,27 @@
 from __future__ import annotations
 
 import random
-from typing import Final, Annotated, Union
+from typing import Final, Annotated, Union, ClassVar
 
 import eth_account
 import eth_keys
 import eth_utils
+from eth_utils import keccak
 from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
 from typing_extensions import Self
 
 from .transaction_model import NeonTxModel
 from ..ethereum.hash import EthAddress
+from ..solana.pubkey import SolPubKey
 from ..utils.cached import cached_method, cached_property
 from ..utils.format import bytes_to_hex, hex_to_bytes, hex_to_int
 
 
-class NeonAccount:
+class NeonAddress:
     _empty_address_bytes: Final[bytes] = bytes()
     _empty_chain_id: Final[int] = 0
+    _default: ClassVar[NeonAddress | None] = None
     NullAddress: Final[str] = "0x"
 
     def __init__(
@@ -38,7 +41,7 @@ class NeonAccount:
         elif not isinstance(private_key, (type(None), eth_keys.keys.PrivateKey)):
             raise ValueError(f"Wrong input type of private key: {type(private_key).__name__}")
 
-        self._address: Final[bytes] = address
+        self._eth_address: Final[bytes] = address
         self._chain_id: Final[int] = chain_id
         self._private_key: Final[eth_keys.keys.PrivateKey | None] = private_key
 
@@ -49,7 +52,9 @@ class NeonAccount:
 
     @classmethod
     def default(cls) -> Self:
-        return cls(address=cls._empty_address_bytes, chain_id=0, private_key=None)
+        if not cls._default:
+            cls._default = cls(address=cls._empty_address_bytes, chain_id=0, private_key=None)
+        return cls._default
 
     @classmethod
     def random(cls, chain_id: int) -> Self:
@@ -57,11 +62,11 @@ class NeonAccount:
         return cls.from_raw(eth_keys.keys.PrivateKey(bytes(data)), chain_id)
 
     @classmethod
-    def from_raw(cls, data: _RawAccount, chain_id: int) -> Self:
+    def from_raw(cls, data: _RawAddress, chain_id: int) -> Self:
         if isinstance(data, cls):
             if chain_id == data.chain_id:
                 return data
-            return cls(data._address, chain_id, data._private_key)
+            return cls(data._eth_address, chain_id, data._private_key)
         elif not data:
             return cls.default()
 
@@ -75,6 +80,8 @@ class NeonAccount:
             address = data.to_canonical_address()
         elif isinstance(data, EthAddress):
             address = data.to_bytes()
+        elif isinstance(data, SolPubKey):
+            address = keccak(data.to_bytes())[-20:]
         elif isinstance(data, str):
             address = hex_to_bytes(data)
         elif isinstance(data, bytearray):
@@ -85,8 +92,8 @@ class NeonAccount:
         return cls(address=address, private_key=private_key, chain_id=chain_id)
 
     @classmethod
-    def from_dict(cls, data: _DictAccount | NeonAccount) -> Self:
-        if isinstance(data, NeonAccount):
+    def from_dict(cls, data: _DictAddress | NeonAddress) -> Self:
+        if isinstance(data, cls):
             return data
         elif not data:
             return cls.default()
@@ -108,7 +115,7 @@ class NeonAccount:
             pk_data = eth_keys.keys.PrivateKey(pk_data[:32])
         return cls.from_raw(pk_data, chain_id)
 
-    def to_dict(self: NeonAccount) -> _DictAccount:
+    def to_dict(self: NeonAddress) -> _DictAddress:
         res = dict(
             address=self._to_checksum_address(),
             chain_id=hex(self._chain_id),
@@ -119,32 +126,32 @@ class NeonAccount:
 
     @property
     def is_empty(self) -> bool:
-        return not self._address
+        return not self._eth_address
 
     def to_bytes(self, default: bytes | None = bytes()) -> bytes | None:
-        return self._address if self._address else default
+        return self._eth_address if self._eth_address else default
 
     @cached_property
     def eth_address(self) -> EthAddress:
-        return EthAddress.from_raw(self._address)
+        return EthAddress.from_raw(self._eth_address)
 
     @cached_method
     def to_string(self) -> str:
         return self._to_checksum_address() + ":" + hex(self._chain_id) if not self.is_empty else ""
 
     def to_address(self, default: str | None = NullAddress) -> str | None:
-        return self._to_address() if self._address else default
+        return self._to_address() if self._eth_address else default
 
     @cached_method
     def _to_address(self) -> str:
-        return bytes_to_hex(self._address) if self._address else self.NullAddress
+        return bytes_to_hex(self._eth_address) if self._eth_address else self.NullAddress
 
     def to_checksum_address(self, default: str | None = NullAddress) -> str | None:
-        return self._to_checksum_address() if self._address else default
+        return self._to_checksum_address() if self._eth_address else default
 
     @cached_method
     def _to_checksum_address(self) -> str:
-        return eth_utils.to_checksum_address(self._address) if self._address else self.NullAddress
+        return eth_utils.to_checksum_address(self._eth_address) if self._eth_address else self.NullAddress
 
     @property
     def chain_id(self) -> int:
@@ -190,31 +197,41 @@ class NeonAccount:
 
     @cached_method
     def __hash__(self) -> int:
-        return hash(tuple([self._address, self._chain_id]))
+        return hash(tuple([self._eth_address, self._chain_id]))
 
-    def __eq__(self, other: _RawAccount) -> bool:
+    def __eq__(self, other: _RawAddress) -> bool:
         if other is self:
             return True
         elif isinstance(other, self.__class__):
-            return (self._address, self._chain_id) == (other._address, other._chain_id)
+            return (self._eth_address, self._chain_id) == (other._eth_address, other._chain_id)
         elif isinstance(other, str):
             return self.to_address() == other.lower()
         elif isinstance(other, (bytes, bytearray)):
-            return self._address == bytes(other)
+            return self._eth_address == bytes(other)
         elif isinstance(other, EthAddress):
-            return self._address == other.to_bytes()
+            return self._eth_address == other.to_bytes()
         return False
 
 
-_DictAccount = dict[str, str]
-_RawAccount = Union[
-    None, str, bytes, bytearray, EthAddress, eth_keys.keys.PublicKey, eth_keys.keys.PrivateKey, NeonAccount
+_DictAddress = dict[str, str]
+_RawAddress = Union[
+    None,
+    str,
+    bytes,
+    bytearray,
+    SolPubKey,
+    EthAddress,
+    eth_keys.keys.PublicKey,
+    eth_keys.keys.PrivateKey,
+    NeonAddress,
 ]
 
 
 # Type for Pydantic, it doesn't do anything, only annotates rules for serialization and deserialization
 NeonAccountField = Annotated[
-    NeonAccount,
-    PlainValidator(NeonAccount.from_dict),
-    PlainSerializer(lambda v: v.to_dict(), return_type=_DictAccount),
+    NeonAddress,
+    PlainValidator(NeonAddress.from_dict),
+    PlainSerializer(lambda v: v.to_dict(), return_type=_DictAddress),
 ]
+
+NeonAddressField = NeonAccountField

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from typing import Sequence, Union, Annotated
+from typing import Sequence, Union, Annotated, ClassVar
 
 import solders.keypair as _key
 from pydantic import PlainValidator, PlainSerializer
@@ -14,8 +14,8 @@ SolKeyPair = _key.Keypair
 
 
 class SolSigner:
-    _default: SolSigner | None = None
-    _fake: SolSigner | None = None
+    _default: ClassVar[SolSigner | None] = None
+    _fake: ClassVar[SolSigner | None] = None
 
     def __init__(self, keypair: SolKeyPair) -> None:
         self._keypair = keypair
@@ -50,7 +50,7 @@ class SolSigner:
             return cls(SolKeyPair.from_seed(raw))
         elif isinstance(raw, bytes):
             return cls(SolKeyPair.from_bytes(raw))
-        elif isinstance(raw, Sequence):
+        elif isinstance(raw, (tuple, list,)):
             return cls(SolKeyPair.from_bytes(raw))
         raise ValueError(f"Wrong input type {type(raw).__name__}")
 

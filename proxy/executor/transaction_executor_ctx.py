@@ -7,9 +7,8 @@ from typing import Sequence, Final
 from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHash
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
-from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
 from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.cb_program import SolCbProg
@@ -24,8 +23,9 @@ from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
 from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent, ExecutorServerAbc
+from .skd_tree_parser import NeonSkdTreeParser
 from .transaction_list_signer import OpTxListSigner
-from ..base.ex_api import ExecTxRequest, ExecStuckTxRequest, ExecTokenModel
+from ..base.ex_api import ExecTxRequest, CompleteStuckTxRequest, ExecTokenModel
 from ..base.op_api import OpResourceModel
 
 _LOG = logging.getLogger(__name__)
@@ -51,10 +51,6 @@ class NeonExecTxCtx(ExecutorComponent):
             # Some popular addresses
             SolPubKey.from_raw("1nc1nerator11111111111111111111111111111111"),
             SolPubKey.from_raw("p1exdMJcjVao65QdewkaZRUnU6VPSXhus9n2GzWfh98"),  # metaplex
-            SolPubKey.from_raw("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),  # USDC
-            SolPubKey.from_raw("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),  # USDT
-            SolPubKey.from_raw("So11111111111111111111111111111111111111112"),  # wSOL
-            SolPubKey.from_raw("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"),  # wETH
         ]
     )
 
@@ -62,12 +58,15 @@ class NeonExecTxCtx(ExecutorComponent):
         self,
         server: ExecutorServerAbc,
         op_resource: OpResourceModel,
-        tx_request: ExecTxRequest | ExecStuckTxRequest,
+        tx_request: ExecTxRequest | CompleteStuckTxRequest,
+        token: ExecTokenModel | None,
+        skd_tree_parser: NeonSkdTreeParser | None,
     ) -> None:
         super().__init__(server)
 
         self._op_resource = op_resource
         self._tx_request = tx_request
+        self._token = token
 
         self._evm_step_cnt_per_iter: int | None = 0
 
@@ -83,6 +82,8 @@ class NeonExecTxCtx(ExecutorComponent):
         self._skip_simple_strategy = False
         self._is_test_mode = False
 
+        self._skd_tree_parser = skd_tree_parser
+
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
         NeonProg.init_prog(evm_cfg.neon_prog_cfg)
@@ -96,7 +97,9 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @cached_property
     def holder_validator(self) -> HolderAccountValidator:
-        return HolderAccountValidator(self._server, self.neon_tx_hash, self._holder_addr, self.is_stuck_tx)
+        neon_tx_hash = self.neon_tx_hash
+        base_tx_hash = self._skd_tree_parser.neon_tx_hash if self._skd_tree_parser else neon_tx_hash
+        return HolderAccountValidator(self._server, base_tx_hash, neon_tx_hash, self._holder_addr, self.is_stuck_tx)
 
     @property
     def holder(self) -> HolderAccountModel:
@@ -105,6 +108,10 @@ class NeonExecTxCtx(ExecutorComponent):
     @cached_property
     def sol_tx_list_signer(self) -> SolTxListSigner:
         return OpTxListSigner(self._tx_request.req_id, self.sol_payer, self._op_client)
+
+    @cached_property
+    def skd_tree_parser(self) -> NeonSkdTreeParser | None:
+        return self._skd_tree_parser
 
     @cached_property
     def sol_watch_session(self) -> SolWatchTxSession:
@@ -142,6 +149,8 @@ class NeonExecTxCtx(ExecutorComponent):
 
         self._emul_resp = resp
         self._update_acct_meta_list()
+
+        self.holder_validator.set_emul_step_cnt(resp.evm_step_cnt)
 
         # reset calculated cache
         self._calc_total_evm_step_cnt.reset_cache(self)
@@ -273,36 +282,42 @@ class NeonExecTxCtx(ExecutorComponent):
         prog.init_token_address(self._op_resource.token_sol_address)
 
         if not self.is_stuck_tx:
-            eth_rlp_tx = self._tx_request.tx.eth_tx_data.to_bytes()
+            rlp_tx = self._tx_request.tx.rlp_tx.to_bytes()
         else:
-            eth_rlp_tx = bytes()
-        prog.init_neon_tx(self.neon_tx_hash, eth_rlp_tx)
+            rlp_tx = bytes()
+        prog.init_neon_tx(self.neon_tx_hash, rlp_tx)
         prog.init_tx_sol_address(self._base_tx_acct_set)
+
+        if self.is_scheduled_tx:
+            prog.init_skd_tree_address(self._skd_tree_parser.address)
 
         return prog
 
     @cached_property
     def is_stuck_tx(self) -> bool:
-        return isinstance(self._tx_request, ExecStuckTxRequest)
+        return isinstance(self._tx_request, CompleteStuckTxRequest)
 
     @cached_property
+    def is_scheduled_tx(self) -> bool:
+        if self._skd_tree_parser:
+            return True
+        elif self.is_stuck_tx:
+            return self.holder.is_scheduled_tx
+        return self._tx_request.tx.neon_tx.is_scheduled_tx
+
+    @property
     def sol_payer(self) -> SolPubKey:
         return self._op_resource.owner
 
-    @cached_property
+    @property
     def token(self) -> ExecTokenModel:
-        return self._tx_request.token
+        return self._token
 
     @cached_property
     def holder_tx(self) -> CoreApiTxModel:
         if self.is_stuck_tx:
             return self.holder.tx
         return CoreApiTxModel.from_neon_tx(self._tx_request.tx.neon_tx, self.chain_id)
-
-    @cached_property
-    def neon_tx(self) -> NeonTxModel:
-        assert not self.is_stuck_tx
-        return self._tx_request.tx.neon_tx
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:
@@ -314,7 +329,6 @@ class NeonExecTxCtx(ExecutorComponent):
     def has_chain_id(self) -> bool:
         if self.is_stuck_tx:
             return True
-
         return self._tx_request.tx.neon_tx.has_chain_id
 
     @cached_property
@@ -324,20 +338,26 @@ class NeonExecTxCtx(ExecutorComponent):
         return self._tx_request.tx.chain_id
 
     @cached_property
-    def sender(self) -> NeonAccount:
+    def payer(self) -> NeonAddress:
+        if self.is_scheduled_tx:
+            return self._skd_tree_parser.payer
+        return self.sender
+
+    @cached_property
+    def sender(self) -> NeonAddress:
         if self.is_stuck_tx:
             return self.holder.sender
 
         tx = self._tx_request.tx
-        return NeonAccount.from_raw(tx.sender, tx.chain_id)
+        return NeonAddress.from_raw(tx.sender, tx.chain_id)
 
     @cached_property
-    def receiver(self) -> NeonAccount:
+    def receiver(self) -> NeonAddress:
         if self.is_stuck_tx:
             return self.holder.receiver
 
         tx = self._tx_request.tx
-        return NeonAccount.from_raw(tx.receiver, tx.chain_id)
+        return NeonAddress.from_raw(tx.receiver, tx.chain_id)
 
     def next_uniq_idx(self) -> int:
         return next(self._uniq_idx)

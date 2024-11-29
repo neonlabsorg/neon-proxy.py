@@ -14,6 +14,8 @@ from ..base.mp_api import (
     MpGetTxBySenderNonceRequest,
     MpRequest,
     MpTxPoolContentResp,
+    MpGetTxStatusListBySender,
+    MpTxStatusListResp,
 )
 
 
@@ -39,7 +41,7 @@ class MpTxApi(MempoolApi):
     @MempoolApi.method(name="sendRawTransaction")
     async def send_raw_transaction(self, request: MpTxRequest) -> MpTxResp:
         with logging_context(**request.ctx_id, tx=request.tx.tx_id):
-            return await self._tx_executor.schedule_tx_request(request.tx, request.state_tx_cnt)
+            return await self._tx_executor.schedule_tx_request(request.tx, request.state_tx_cnt, request.balance)
 
     @MempoolApi.method(name="getPendingTransactionByHash")
     def get_tx_by_hash(self, request: MpGetTxByHashRequest) -> MpGetTxResp:
@@ -52,6 +54,12 @@ class MpTxApi(MempoolApi):
         with logging_context(**request.ctx_id):
             tx = self._tx_executor.get_tx_by_sender_nonce(request.sender, request.tx_nonce)
             return MpGetTxResp(tx=tx)
+
+    @MempoolApi.method(name="getPendingTransactionStatusesBySender")
+    def get_tx_list_by_sender(self, request: MpGetTxStatusListBySender) -> MpTxStatusListResp:
+        with logging_context(**request.ctx_id):
+            resp = self._tx_executor.get_tx_list_by_sender(request.sender, request.state_tx_cnt, request.balance)
+            return resp or MpTxStatusListResp.default()
 
     @MempoolApi.method(name="getMempoolContent")
     async def _get_content(self, request: MpRequest) -> MpTxPoolContentResp:

@@ -4,7 +4,7 @@ from common.ethereum.errors import EthError, EthNonceTooLowError, EthNonceTooHig
 from common.ethereum.hash import EthTxHashField, EthTxHash
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.errors import InvalidParamError
-from common.neon.account import NeonAccount
+from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import NeonAccountModel, NeonContractModel
 from common.utils.json_logger import logging_context
@@ -18,9 +18,10 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
     _max_u64 = 2**64 - 1
     _max_u256 = 2**256 - 1
 
-    async def send_neon_tx(self, ctx: HttpRequestCtx, eth_tx_rlp: bytes) -> EthTxHashField:
+    @staticmethod
+    def parse_neon_tx(rlp_tx: bytes) -> NeonTxModel:
         try:
-            neon_tx = NeonTxModel.from_raw(eth_tx_rlp, raise_exception=True)
+            return NeonTxModel.from_raw(rlp_tx, raise_exception=True)
         except EthError:
             raise
         except ValueError:
@@ -29,30 +30,34 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         except (BaseException,):
             raise InvalidParamError(message="wrong transaction format")
 
+    async def send_neon_tx(self, ctx: HttpRequestCtx, rlp_tx: bytes) -> EthTxHashField:
+        neon_tx = self.parse_neon_tx(rlp_tx)
+        if neon_tx.is_scheduled_tx:
+            raise EthError(message="scheduled transaction")
+
         tx_id = neon_tx.neon_tx_hash.ident
         with logging_context(tx=tx_id):
             _LOG.debug("sendEthTransaction %s: %s", neon_tx.neon_tx_hash, neon_tx)
-            return await self._send_neon_tx_impl(ctx, neon_tx, eth_tx_rlp)
+            return await self._send_neon_tx_impl(ctx, neon_tx, rlp_tx)
 
-    async def _send_neon_tx_impl(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel, eth_tx_rlp: bytes) -> EthTxHashField:
+    async def _send_neon_tx_impl(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel, rlp_tx: bytes) -> EthTxHashField:
         try:
             if await self._is_neon_tx_exist(neon_tx.neon_tx_hash):
                 return neon_tx.neon_tx_hash
 
             ctx_id = self._get_ctx_id(ctx)
-            sender = await self._validate(ctx, neon_tx)
-            chain_id = sender.chain_id
+            sender_acct = await self._validate(ctx, neon_tx)
 
-            resp = await self._mp_client.send_raw_transaction(ctx_id, eth_tx_rlp, chain_id, sender.state_tx_cnt)
+            resp = await self._mp_client.send_raw_transaction(ctx_id, sender_acct, rlp_tx)
 
             if resp.code in (MpTxRespCode.Success, MpTxRespCode.AlreadyKnown):
                 return neon_tx.neon_tx_hash
             elif resp.code == MpTxRespCode.NonceTooLow:
-                EthNonceTooLowError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender.address)
+                EthNonceTooLowError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender_acct.eth_address)
             elif resp.code == MpTxRespCode.Underprice:
                 raise EthError(message="replacement transaction underpriced")
             elif resp.code == MpTxRespCode.NonceTooHigh:
-                raise EthNonceTooHighError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender.address)
+                raise EthNonceTooHighError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender_acct.eth_address)
             elif resp.code == MpTxRespCode.UnknownChainID:
                 raise EthWrongChainIdError()
             else:
@@ -79,7 +84,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         chain_id = self._validate_chain_id(ctx, neon_tx)
         tx_gas_limit = await self._get_tx_gas_limit(neon_tx)
 
-        sender = NeonAccount.from_raw(neon_tx.from_address, chain_id)
+        sender = NeonAddress.from_raw(neon_tx.from_address, chain_id)
         neon_acct = await self._core_api_client.get_neon_account(sender, None)
         neon_contract = await self._core_api_client.get_neon_contract(sender, None)
 
@@ -176,7 +181,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         else:
             message = "insufficient funds for gas * price + value"
 
-        raise EthError(f"{message}: address {neon_account.address} have {user_balance} want {required_balance}")
+        raise EthError(f"{message}: address {neon_account.eth_address} have {user_balance} want {required_balance}")
 
     def _validate_nonce(self, neon_tx: NeonTxModel, state_tx_cnt: int) -> None:
         tx_sender = neon_tx.from_address

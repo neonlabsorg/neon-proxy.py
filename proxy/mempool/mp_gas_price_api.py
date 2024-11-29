@@ -9,4 +9,4 @@ class MpGasPriceApi(MempoolApi):
 
     @MempoolApi.method(name="getGasPrice")
     def get_gas_price(self) -> MpGasPriceModel:
-        return self._server.get_gas_price()
+        return self._gas_price

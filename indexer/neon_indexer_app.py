@@ -64,6 +64,7 @@ class NeonIndexerApp:
 
             evm_cfg = await self._core_api_client.get_evm_cfg()
             self._def_chain_id = evm_cfg.default_chain_id
+            self._layer0_chain_id = evm_cfg.layer0_chain_id
 
             db_conn = DbConnection(self._cfg, self._stat_client)
             db_conn.enable_debug_query()
@@ -103,6 +104,7 @@ class NeonIndexerApp:
 
         indexer = Indexer(
             self._cfg,
+            self._layer0_chain_id,
             self._sol_client,
             self._core_api_client,
             tracer_api_client,
@@ -459,7 +461,7 @@ class NeonIndexerApp:
             if not slot_range_list:
                 break
 
-            reindexer = _ReIndexer(idx, self._cfg, self._def_chain_id, slot_range_list)
+            reindexer = _ReIndexer(idx, self._cfg, self._def_chain_id, self._layer0_chain_id, slot_range_list)
             self._reindex_process_list.append(reindexer)
             reindexer.start()
 
@@ -470,11 +472,13 @@ class _ReIndexer:
         idx: int,
         cfg: Config,
         def_chain_id: int,
+        layer0_chain_id: int,
         slot_range_list: Sequence[IndexerDbSlotRange],
     ):
         self._idx = idx
         self._cfg = cfg
         self._def_chain_id = def_chain_id
+        self._layer0_chain_id = layer0_chain_id
         self._slot_range_list = slot_range_list
         self._process: mp.Process | None = None
 
@@ -524,7 +528,15 @@ class _ReIndexer:
                     )
 
                     db.set_slot_range(slot_range)
-                    indexer = Indexer(self._cfg, sol_client, core_api_client, None, stat_client, db)
+                    indexer = Indexer(
+                        self._cfg,
+                        self._layer0_chain_id,
+                        sol_client,
+                        core_api_client,
+                        None,
+                        stat_client,
+                        db,
+                    )
                     await indexer.run()
                     await _done_slot_range(db, slot_range)
 

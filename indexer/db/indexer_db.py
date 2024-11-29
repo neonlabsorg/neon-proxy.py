@@ -11,6 +11,10 @@ from common.db.db_connect import DbConnection, DbTxCtx
 from common.utils.cached import cached_property, cached_method
 from .gas_less_usage_db import GasLessUsageDb
 from .neon_block_fee_db import NeonBlockFeeDB
+from .neon_skd_tx_db import NeonSkdTxDb
+from .neon_skd_tx_relation_db import NeonSkdTxRelationDb
+from .neon_skd_tx_sig_db import NeonSkdTxSigDb
+from .neon_skd_tx_status_db import NeonSkdTxStatusDb
 from .neon_tx_db import NeonTxDb
 from .neon_tx_log_db import NeonTxLogDb
 from .solana_alt_tx_db import SolAltTxDb
@@ -100,7 +104,11 @@ class IndexerDb:
         self._sol_block_db = SolBlockDb(db_conn)
         self._neon_block_fee_db = NeonBlockFeeDB(db_conn, def_chain_id)
         self._sol_tx_cost_db = SolTxCostDb(db_conn)
-        self._neon_tx_db = NeonTxDb(db_conn)
+        self._neon_skd_tx_db = NeonSkdTxDb(db_conn)
+        self._neon_skd_tx_sig_db = NeonSkdTxSigDb(db_conn)
+        self._neon_skd_tx_status_db = NeonSkdTxStatusDb(db_conn)
+        self._neon_skd_tx_relation_db = NeonSkdTxRelationDb(db_conn)
+        self._neon_tx_db = NeonTxDb(db_conn, self._neon_skd_tx_sig_db, self._neon_skd_tx_relation_db)
         self._sol_neon_tx_db = SolNeonTxDb(db_conn)
         self._neon_tx_log_db = NeonTxLogDb(db_conn)
         self._sol_alt_tx_db = SolAltTxDb(db_conn)
@@ -115,6 +123,10 @@ class IndexerDb:
             self._neon_block_fee_db,
             self._sol_tx_cost_db,
             self._neon_tx_db,
+            self._neon_skd_tx_db,
+            self._neon_skd_tx_sig_db,
+            self._neon_skd_tx_status_db,
+            self._neon_skd_tx_relation_db,
             self._sol_neon_tx_db,
             self._neon_tx_log_db,
             self._sol_alt_tx_db,
@@ -128,6 +140,10 @@ class IndexerDb:
             self._sol_tx_cost_db,
             self._neon_block_fee_db,
             self._neon_tx_db,
+            self._neon_skd_tx_db,
+            self._neon_skd_tx_sig_db,
+            self._neon_skd_tx_status_db,
+            self._neon_skd_tx_relation_db,
             self._sol_neon_tx_db,
             self._neon_tx_log_db,
             self._sol_alt_tx_db,
@@ -229,7 +245,7 @@ class IndexerDb:
 
     async def _drop_not_finalized_history(self) -> None:
         async def _db_tx(ctx: DbTxCtx) -> None:
-            await self._finalize_slot_list(ctx, self._latest_slot + 1, (self._finalized_slot,))
+            await self._finalize_slot_list(ctx, self._latest_slot + 1, tuple(), (self._finalized_slot,))
 
         await self._db_conn.run_tx(_db_tx)
 
@@ -259,12 +275,19 @@ class IndexerDb:
         for db in self._stuck_db_list:
             await db.set_obj_list(ctx, last_block)
 
-        slot_list = tuple([b.slot for b in block_queue if b.is_done and (b.slot > self._finalized_slot)])
+        block_list = tuple([b for b in block_queue if b.is_done and (b.slot > self._finalized_slot)])
+        slot_list = tuple([b.slot for b in block_list])
         if slot_list:
-            await self._finalize_slot_list(ctx, last_block.slot, slot_list)
+            await self._finalize_slot_list(ctx, last_block.slot, block_list, slot_list)
 
-    async def _finalize_slot_list(self, ctx, last_slot: int, slot_list: Sequence[int]) -> None:
-        block_range = self._finalized_slot, last_slot, slot_list
+    async def _finalize_slot_list(
+        self,
+        ctx,
+        last_slot: int,
+        block_list: Sequence[NeonIndexedBlockInfo],
+        slot_list: Sequence[int],
+    ) -> None:
+        block_range = self._finalized_slot, last_slot, block_list, slot_list
         for db_table in self._history_db_list:
             # it doesn't matter in which order will be removed old records from secondary tables,
             #   so do it on the independent db connections
