@@ -234,7 +234,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     return_code, stdout, stderr = terraform.init(backend_config=backend_config)
     if return_code != 0:
         print("Terraform init failed:", stderr)
-    return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=False)
+    return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=True)
     click.echo(f"stdout: {stdout}")
     with open(f"terraform.log", "w") as file:
         if stdout:
