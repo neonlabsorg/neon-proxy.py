@@ -148,7 +148,7 @@ class HttpClient:
         request.path = path
         request.header_dict = self._header_dict
 
-        _LOG.info("_send_client_request, self._header_dict = %v", self._header_dict)
+        _LOG.info("_send_client_request, self._header_dict = %s", self._header_dict)
         return await _send_client_request(self, base_url_list, request)
 
     def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
@@ -187,19 +187,19 @@ async def _send_client_request(self: HttpClient, base_url_list: Sequence[HttpURL
         try:
             if request.data:
                 resp = await self.session.post(request_url.value, data=request.data, headers=request.header_dict)
-                _LOG.info("self.session.post, request_url.value = %v", request_url.value)
-                _LOG.info("self.session.post, request.data = %v", request.data)
-                _LOG.info("self.session.post, request.header_dict = %v", request.header_dict)
+                _LOG.info("self.session.post, request_url.value = %s", request_url.value)
+                _LOG.info("self.session.post, request.data = %s", request.data)
+                _LOG.info("self.session.post, request.header_dict = %s", request.header_dict)
             else:
                 resp = await self.session.get(request_url.value, headers=request.header_dict)
 
-            _LOG.info("_send_client_request, resp.content  = %v", resp.content)
+            _LOG.info("_send_client_request, resp.content  = %s", resp.content)
 
             if self._raise_for_status:
                 resp.raise_for_status()
 
             respjson = await resp.json()
-            _LOG.info("_send_client_request, resp.json = %v", respjson)
+            _LOG.info("_send_client_request, resp.json = %s", respjson)
             return await resp.text()
         except BaseException as exc:
             # Can reraise exception inside

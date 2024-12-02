@@ -174,8 +174,8 @@ class NeonContractModel(_BaseRespModel):
         if not account:
             return super().from_dict(data)
 
-        _LOG.info("api from_dict, data = %v", data)
-        _LOG.info("api from_dict, account = %v", account)
+        _LOG.info("api from_dict, data = %s", data)
+        _LOG.info("api from_dict, account = %s", account)
         return cls._from_acct(account, data)
 
     @classmethod

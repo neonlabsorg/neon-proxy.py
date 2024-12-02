@@ -182,7 +182,7 @@ class CoreApiClient(HttpClient):
     async def get_neon_contract(self, account: NeonAccount, block: NeonBlockHdrModel | None) -> NeonContractModel:
         req = NeonContractRequest(contract=account.eth_address, slot=self._get_slot(block))
         resp: CoreApiResp = await self._send_request("contract", req)
-        _LOG.info("emulate_neon_call, resp = %v", resp)
+        _LOG.info("emulate_neon_call, resp = %s", resp)
         return NeonContractModel.from_dict(resp.value[0], account=account)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
@@ -274,10 +274,10 @@ class CoreApiClient(HttpClient):
             sol_account_dict=emul_sol_acct_dict,
             slot=self._get_slot(block),
         )
-        _LOG.info("emulate_neon_call, req = %+v", req)
+        _LOG.info("emulate_neon_call, req = %s", req)
 
         resp: EmulNeonCallResp = await self._send_request("emulate", req, EmulNeonCallResp)
-        _LOG.info("emulate_neon_call, resp = %v", resp)
+        _LOG.info("emulate_neon_call, resp = %s", resp)
 
         if check_result:
             self._check_emulator_result(resp)
@@ -314,7 +314,7 @@ class CoreApiClient(HttpClient):
             method=method,
         )
 
-        _LOG.info("_send_request, request = %v", request)
+        _LOG.info("_send_request, request = %s", request)
 
         with request:
             for retry in itertools.count():
@@ -325,10 +325,10 @@ class CoreApiClient(HttpClient):
 
                 request.start_timer()
                 resp_json = await self._send_client_request(request, path=HttpURL(method))
-                _LOG.info("_send_request, resp_json = %v", resp_json)
+                _LOG.info("_send_request, resp_json = %s", resp_json)
                 try:
                     resp = CoreApiResp.from_json(resp_json)
-                    _LOG.info("_send_request, CoreApiResp.from_json resp.result = %v", resp.result)
+                    _LOG.info("_send_request, CoreApiResp.from_json resp.result = %s", resp.result)
 
                 except PydanticValidationError as exc:
                     _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
@@ -346,15 +346,15 @@ class CoreApiClient(HttpClient):
                 elif resp.error:
                     raise EthError(resp.error)
 
-                _LOG.info("_send_request, resp.value = %v", resp.value)
-                _LOG.info("_send_request, resp.result = %v", resp.result) #0x
-                _LOG.info("_send_request, resp.error = %v", resp.error)
-                _LOG.info("_send_request, resp.error_code = %v", resp.error_code)
-                _LOG.info("_send_request, resp.logs = %v", resp.logs)
+                _LOG.info("_send_request, resp.value = %s", resp.value)
+                _LOG.info("_send_request, resp.result = %s", resp.result) #0x
+                _LOG.info("_send_request, resp.error = %s", resp.error)
+                _LOG.info("_send_request, resp.error_code = %s", resp.error_code)
+                _LOG.info("_send_request, resp.logs = %s", resp.logs)
 
-                _LOG.info("_send_request, resp_type = %v", resp_type)
+                _LOG.info("_send_request, resp_type = %s", resp_type)
                 result = resp_type.from_dict(resp.value)
-                _LOG.info("_send_request, resp_type.from_dict(resp.value) = %v", result)
+                _LOG.info("_send_request, resp_type.from_dict(resp.value) = %s", result)
                 return result
 
     @ttl_cached_method(ttl_sec=60)

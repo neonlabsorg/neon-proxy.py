@@ -34,12 +34,12 @@ class BaseModel(_PydanticBaseModel):
 
     @classmethod
     def from_json(cls, json_data: str) -> Self:
-        _LOG.info("BaseModel, from_json = %v", json_data)
+        _LOG.info("BaseModel, from_json = %s", json_data)
         return cls.model_validate_json(json_data)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        _LOG.info("BaseModel, from_dict = %v", data)
+        _LOG.info("BaseModel, from_dict = %s", data)
         return cls.model_validate(data)
 
     def to_json(self) -> str:
