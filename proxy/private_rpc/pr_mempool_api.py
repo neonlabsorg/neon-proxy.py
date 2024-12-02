@@ -18,9 +18,8 @@ class PrMempoolApi(PrivateRpcApi):
 
     @PrivateRpcApi.method(name="txpool_content")
     async def txpool_content(self, ctx: HttpRequestCtx) -> _RpcTxPoolResp:
-        ctx_id = self._get_ctx_id(ctx)
         chain_id = self._get_chain_id(ctx)
-        txpool_content = await self._mp_client.get_content(ctx_id, chain_id)
+        txpool_content = await self._mp_client.get_content(self._get_ctx_id(ctx), chain_id)
         return _RpcTxPoolResp(
             pending=self._get_queue(txpool_content.pending_list),
             queued=self._get_queue(txpool_content.queued_list),

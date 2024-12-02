@@ -40,11 +40,11 @@ class SolAltTxSet:
         self._extend_alt_tx_list.clear()
 
     @property
-    def tx_list_list(self) -> list[list[SolTx]]:
+    def tx_list_list(self) -> Sequence[Sequence[SolTx]]:
         return self._built_tx_list_list()
 
     @reset_cached_method
-    def _built_tx_list_list(self) -> list[list[SolTx]]:
+    def _built_tx_list_list(self) -> Sequence[Sequence[SolTx]]:
         tx_list_list: list[list[SolTx]] = list()
 
         if self._create_alt_tx_list:
@@ -109,13 +109,13 @@ class SolAltTxBuilder:
         # Tx to create an Address Lookup Table
         create_alt_tx_list: list[SolLegacyTx] = list()
         if not is_alt_exist:
-            ix_list = list()
-            if self._cu_price:
-                ix_list.append(self._cb_prog.make_cu_price_ix(self._cu_price))
-            ix_list.append(self._cb_prog.make_cu_limit_ix(3_400))
-            ix_list.append(self._alt_prog.make_create_alt_ix(alt.ident))
+            ix_list = tuple([
+                self._cb_prog.make_cu_price_ix(self._cu_price),
+                self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitCreate),
+                self._alt_prog.make_create_alt_ix(alt.ident),
 
-            create_alt_tx = SolLegacyTx(name=self._create_name, ix_list=tuple(ix_list))
+            ])
+            create_alt_tx = SolLegacyTx(name=self._create_name, ix_list=ix_list)
             create_alt_tx_list.append(create_alt_tx)
 
         # List of accounts to write to the Address Lookup Table
@@ -126,11 +126,11 @@ class SolAltTxBuilder:
         max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
-            ix_list = list()
-            if self._cu_price:
-                ix_list.append(self._cb_prog.make_cu_price_ix(self._cu_price))
-            ix_list.append(self._cb_prog.make_cu_limit_ix(2_200))
-            ix_list.append(self._alt_prog.make_extend_alt_ix(alt.ident, acct_list_part))
+            ix_list = tuple([
+                self._cb_prog.make_cu_price_ix(self._cu_price),
+                self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitExtend),
+                self._alt_prog.make_extend_alt_ix(alt.ident, acct_list_part),
+            ])
             tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
             extend_alt_tx_list.append(tx)
 

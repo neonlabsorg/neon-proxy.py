@@ -17,10 +17,14 @@ class SolCuIxCode(IntEnum):
 
 class SolCbProg:
     ID: Final[SolPubKey] = SolPubKey.from_raw(_cb.ID)
+    # CUs limit
     MaxCuLimit: Final[int] = SOLANA_MAX_CU_LIMIT
     DefCuLimit: Final[int] = SOLANA_DEFAULT_CU_LIMIT
+    # HEAP size
     MaxHeapSize: Final[int] = SOLANA_MAX_HEAP_SIZE
+    # CU prices less than 10_000 doesn't work
     BaseCuPrice: Final[int] = 10_500
+    # Base unit
     MicroLamport: Final[int] = (10 ** 6)
 
     @classmethod

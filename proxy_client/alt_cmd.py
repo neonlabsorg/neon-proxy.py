@@ -142,19 +142,23 @@ class AltHandler(BaseNPCmdHandler):
         cb_prog = SolCbProg()
 
         cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(10_000)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(SolAltProg.CuLimitDeactivate)
 
-        ix_list: list[SolTxIx] = [cu_price_ix, cu_limit_ix]
         alt_id = SolAltID(address=alt.address, owner=alt.owner, recent_slot=0, nonce=0)
         if not alt.is_deactivated:
-            name = SolAltIxCode.Deactivate.name + "LookupTable"
-            ix_list.append(SolAltProg(alt.owner).make_deactivate_alt_ix(alt_id))
+            ix_code = SolAltIxCode.Deactivate
+            cu_limit =  SolAltProg.CuLimitDeactivate
+            alt_ix = SolAltProg(alt.owner).make_deactivate_alt_ix(alt_id)
             _LOG.debug("deactivate Address Lookup Table %s", address)
         else:
-            name = SolAltIxCode.Close.name + "LookupTable"
-            ix_list.append(SolAltProg(alt.owner).make_close_alt_ix(alt_id))
+            ix_code = SolAltIxCode.Close
+            cu_limit = SolAltProg.CuLimitClose
+            alt_ix = SolAltProg(alt.owner).make_close_alt_ix(alt_id)
             _LOG.debug("close Address Lookup Table %s", address)
 
+        name = ix_code.name + "LookupTable"
+
+        ix_list: Sequence[SolTxIx] = tuple([cu_price_ix, cu_limit_ix, alt_ix])
         blockhash, _ = await sol_client.get_recent_blockhash(SolCommit.Finalized)
         tx = SolLegacyTx(name=name, ix_list=ix_list, blockhash=blockhash)
 

@@ -50,7 +50,7 @@ class PrEthTxApi(PrivateRpcApi):
         data = hex_to_bytes(data)
         msg = str.encode(f"\x19Ethereum Signed Message:\n{len(data)}") + data
 
-        resp = await self._op_client.sign_eth_msg(dict(ctx_id=self._get_ctx_id(ctx)), eth_address, msg)
+        resp = await self._op_client.sign_eth_msg(self._get_ctx_id(ctx), eth_address, msg)
         if resp.error:
             raise EthError(message=resp.error)
 
@@ -75,8 +75,7 @@ class PrEthTxApi(PrivateRpcApi):
             nonce = await self._core_api_client.get_state_tx_cnt(sender_acct)
             object.__setattr__(neon_tx, "nonce", nonce)
 
-        ctx_id = self._get_ctx_id(ctx)
-        resp = await self._op_client.sign_eth_tx(dict(ctx=ctx_id), neon_tx, chain_id)
+        resp = await self._op_client.sign_eth_tx(self._get_ctx_id(ctx), neon_tx, chain_id)
         if resp.error:
             raise EthError(message=resp.error)
         return resp.signed_tx.to_bytes()

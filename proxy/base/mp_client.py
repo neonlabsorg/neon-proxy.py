@@ -32,17 +32,17 @@ class MempoolClient(AppDataClient):
     async def get_gas_price(self) -> MpGasPriceModel:
         return await self._get_gas_price()
 
-    async def get_pending_tx_cnt(self, ctx_id: str, sender: NeonAccount) -> int | None:
+    async def get_pending_tx_cnt(self, ctx_id: dict, sender: NeonAccount) -> int | None:
         req = MpTxCntRequest(ctx_id=ctx_id, sender=sender)
         resp = await self._get_pending_tx_cnt(req)
         return resp.tx_cnt
 
-    async def get_mempool_tx_cnt(self, ctx_id: str, sender: NeonAccount) -> int | None:
+    async def get_mempool_tx_cnt(self, ctx_id: dict, sender: NeonAccount) -> int | None:
         req = MpTxCntRequest(ctx_id=ctx_id, sender=sender)
         resp = await self._get_mempool_tx_cnt(req)
         return resp.tx_cnt
 
-    async def send_raw_transaction(self, ctx_id: str, eth_tx_rlp: bytes, chain_id: int, state_tx_cnt: int) -> MpTxResp:
+    async def send_raw_transaction(self, ctx_id: dict, eth_tx_rlp: bytes, chain_id: int, state_tx_cnt: int) -> MpTxResp:
         req = MpTxRequest(
             ctx_id=ctx_id,
             tx=MpTxModel.from_raw(eth_tx_rlp, chain_id),
@@ -50,17 +50,17 @@ class MempoolClient(AppDataClient):
         )
         return await self._send_raw_transaction(req)
 
-    async def get_tx_by_hash(self, ctx_id: str, neon_tx_hash: EthTxHash) -> NeonTxModel:
+    async def get_tx_by_hash(self, ctx_id: dict, neon_tx_hash: EthTxHash) -> NeonTxModel:
         req = MpGetTxByHashRequest(ctx_id=ctx_id, neon_tx_hash=neon_tx_hash)
         resp = await self._get_tx_by_hash(req)
         return resp.tx
 
-    async def get_tx_by_sender_nonce(self, ctx_id: str, sender: NeonAccount, tx_nonce: int) -> NeonTxModel:
+    async def get_tx_by_sender_nonce(self, ctx_id: dict, sender: NeonAccount, tx_nonce: int) -> NeonTxModel:
         req = MpGetTxBySenderNonceRequest(ctx_id=ctx_id, sender=sender, tx_nonce=tx_nonce)
         resp = await self._get_tx_by_sender_nonce(req)
         return resp.tx
 
-    async def get_content(self, ctx_id: str, chain_id: int) -> MpTxPoolContentResp:
+    async def get_content(self, ctx_id: dict, chain_id: int) -> MpTxPoolContentResp:
         return await self._get_content(MpRequest(ctx_id=ctx_id, chain_id=chain_id))
 
     @AppDataClient.method(name="getGasPrice")

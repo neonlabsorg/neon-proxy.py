@@ -63,7 +63,7 @@ class BaseRpcServerComponent:
     def _is_default_chain_id(self, ctx: HttpRequestCtx) -> bool:
         return self._server.is_default_chain_id(ctx)
 
-    def _get_ctx_id(self, ctx: HttpRequestCtx) -> str:
+    def _get_ctx_id(self, ctx: HttpRequestCtx) -> dict:
         return self._server.get_ctx_id(ctx)
 
     def _get_chain_id(self, ctx: HttpRequestCtx) -> int:
@@ -129,14 +129,17 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
     def stop(self) -> None:
         self._process_pool.stop()
 
-    @staticmethod
-    def get_ctx_id(ctx: HttpRequestCtx) -> str:
+    @classmethod
+    def get_ctx_id(cls, ctx: HttpRequestCtx) -> dict:
         if ctx_id := ctx.get_property_value("ctx_id", None):
             return ctx_id
 
         size = len(ctx.request.body)
         raw_value = f"{ctx.ip_addr}:{size}:{ctx.start_time_nsec}"
-        ctx_id = hashlib.md5(bytes(raw_value, "utf-8")).hexdigest()[:8]
+        req_id = hashlib.md5(bytes(raw_value, "utf-8")).hexdigest()[:8]
+        chain_id = cls.get_chain_id(ctx)
+        ctx_id = dict(ctx=req_id, chain_id=chain_id)
+
         ctx.set_property_value("ctx_id", ctx_id)
         return ctx_id
 
@@ -159,12 +162,12 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         return evm_cfg
 
     async def on_request_list(self, ctx: HttpRequestCtx, request: JsonRpcListRequest) -> None:
-        chain_id = await self._validate_chain_id(ctx)
-        with logging_context(ctx=self.get_ctx_id(ctx), chain_id=chain_id):
+        await self._validate_chain_id(ctx)
+        with logging_context(**self.get_ctx_id(ctx)):
             _LOG.info(log_msg("handle BIG request <<< {IP} size={Size}", IP=ctx.ip_addr, Size=len(request.root)))
 
     def on_response_list(self, ctx: HttpRequestCtx, resp: JsonRpcListResp) -> None:
-        with logging_context(ctx=self.get_ctx_id(ctx), chain_id=self.get_chain_id(ctx)):
+        with logging_context(**self.get_ctx_id(ctx)):
             msg = log_msg(
                 "done BIG request >>> {IP} size={Size} resp_time={TimeMS} msec",
                 IP=ctx.ip_addr,
@@ -188,10 +191,10 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         request: JsonRpcRequest,
         handler: Callable,
     ) -> JsonRpcResp:
-        chain_id = await self._validate_chain_id(ctx)
+        await self._validate_chain_id(ctx)
 
         info = dict(IP=ctx.ip_addr, ReqID=request.id, Method=request.method)
-        with logging_context(ctx=self.get_ctx_id(ctx), chain_id=chain_id):
+        with logging_context(**self.get_ctx_id(ctx)):
             _LOG.info(log_msg("handle request <<< {IP} req={ReqID} {Method} {Params}", Params=request.params, **info))
 
             resp = await handler(ctx, request)

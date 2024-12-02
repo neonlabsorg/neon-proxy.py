@@ -57,7 +57,8 @@ class MpTxDict:
             self._tx_queue.append(item)
 
     def pop_tx(self, neon_tx_hash: EthTxHash) -> None:
-        self._tx_hash_dict.pop(neon_tx_hash, None)
+        if tx := self._tx_hash_dict.pop(neon_tx_hash, None):
+            self._sender_nonce_dict.pop(SenderNonce.from_raw(tx), None)
 
     def get_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonTxModel | None:
         if tx := self._tx_hash_dict.get(neon_tx_hash, None):
