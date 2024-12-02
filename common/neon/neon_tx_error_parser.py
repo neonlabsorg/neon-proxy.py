@@ -19,6 +19,7 @@ from common.neon.evm_log_decoder import SolTxIdx, NeonTxErrorLogInfo
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.solana.signature import SolTxSig
 from ..neon.neon_program import NeonProg
+from common.solana.transaction_decoder import SolTxIxMetaInfo
 
 _LOG = logging.getLogger(__name__)
 
@@ -94,15 +95,21 @@ class NeonTxErrorParser(SolTxErrorParser):
 
         log_list: list[str] = list()
         log_state = SolTxLogTreeDecoder.decode(self._tx.message, rpc_meta, self._tx.account_key_list)
-        sol_tx_idx = SolTxIdx (sol_tx_sig=SolTxSig.default(),
-                               sol_ix_idx = 1,
-                               sol_inner_ix_idx = None)
+
+        sol_tx_ix_meta_info = SolTxIxMetaInfo(
+            sol_tx_sig=SolTxSig.default(),
+            slot=0,
+            sol_ix_idx=1,
+            sol_inner_ix_idx=None,
+            is_success=False,
+            _rpc_tx_ix=None,
+            _tx_acct_key_list=None)
 
         error_log_list: list[NeonTxErrorLogInfo] = list()
         for log_info in log_state.log_list:
             if log_info.prog_id == NeonProg.ID:
                 log_list.extend(log_info.log_msg_list())
-            neon_log = NeonEvmLogDecoder().decode(sol_tx_idx, log_list)
+            neon_log = NeonEvmLogDecoder().decode(sol_tx_ix_meta_info, log_list)
             for error_item in neon_log.tx_error_list:
                 error_log_list.append(error_item)
 

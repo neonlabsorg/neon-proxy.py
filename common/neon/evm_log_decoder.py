@@ -296,30 +296,6 @@ class _NeonTxLogDraft:
             is_already_finalized=False,
         )
 
-    @classmethod
-    def from_raw(cls, sol_tx_idx: SolTxIdx) -> Self:
-        return cls(
-            sol_tx_ix=SolTxIxMetaInfo(
-                slot=0,
-                sol_tx_sig=sol_tx_idx.sol_tx_sig,
-                sol_ix_idx=sol_tx_idx.sol_ix_idx,
-                sol_inner_ix_idx=sol_tx_idx.sol_inner_ix_idx,
-                is_success=False,
-                _rpc_tx_ix=None,
-                _tx_acct_key_list=None
-            ),
-            neon_tx_hash=EthTxHash.default(),
-            tx_ix_miner=EthAddress.default(),
-            tx_ix_step=NeonTxIxStepInfo.default(),
-            tx_ix_gas=NeonTxIxLogGasInfo.default(),
-            tx_ix_priority_fee=NeonTxIxPriorityFeeInfo.default(),
-            tx_return=NeonTxLogReturnInfo.default(),
-            tx_event_list=list(),
-            tx_error_list=list(),
-            is_truncated=False,
-            is_already_finalized=False,
-        )
-
     def to_clean_copy(self) -> NeonTxLogInfo:
         if self.tx_event_list:
             if self.neon_tx_hash.is_empty:
@@ -767,30 +743,6 @@ class NeonEvmLogDecoder:
             return "", tuple()
 
         return mnemonic, data_list[1:]
-
-    def decode(self, sol_tx_idx: SolTxIdx, log_iter: Sequence[str]) -> NeonTxLogInfo:
-        """Extracts Neon transaction events from Solana transaction receipt"""
-
-        log = _NeonTxLogDraft.from_raw(sol_tx_idx)
-        for msg in log_iter:
-            if msg == self._log_truncated_msg:
-                log.is_truncated = True
-                continue
-            elif msg == self._is_already_finalized_msg:
-                log.is_already_finalized = True
-                continue
-
-            name, data_list = self._decode_mnemonic(msg)
-            if not name:
-                continue
-
-            _LogDecoder: type[_NeonEvmLogDecoder] | None = self._log_decoder_dict.get(name, None)
-            if _LogDecoder is not None:
-                _LogDecoder.decode(log, name, data_list)
-            elif _LogDecoder is None:
-                _LOG.warning("no decoder for %s %s", name, len(data_list))
-
-        return log.to_clean_copy()
 
     def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
         """Extracts Neon transaction events from Solana transaction receipt"""
