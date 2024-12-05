@@ -234,17 +234,29 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     return_code, stdout, stderr = terraform.init(backend_config=backend_config)
     if return_code != 0:
         print("Terraform init failed:", stderr)
-    return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=False)
-    click.echo(f"stdout: {stdout}")
-    with open(f"terraform.log", "w") as file:
-        if stdout:
-            file.write(stdout)
-        if stderr:
-            file.write(stderr)
-    if return_code != 0:
-        print("Terraform apply failed:", stderr)
-        print("Terraform infrastructure is not built correctly")
-        sys.exit(1)
+
+    instance_types = ["cx52", "cpx51"]
+    locations = ["nbg1", "fsn1"]
+    instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
+
+    print("Possible instance options: ", instances)
+
+    for i in instances:
+        return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=True, var={'server_type':i["server_type"], 'location':i["location"]})
+        click.echo(f"stdout: {stdout}")
+        with open(f"terraform.log", "w") as file:
+            if stdout:
+                file.write(stdout)
+            if stderr:
+                file.write(stderr)
+        if return_code == 0:
+            break
+        elif return_code != 0:
+            if not "error during placement (resource_unavailable)" in stderr:
+                print("Terraform apply failed:", stderr)
+                print("Terraform infrastructure is not built correctly")
+                sys.exit(1)
+        print("Resource_unavailable; ",i ," Trying to recreate instances with another region / another instance type...")
     output = terraform.output(json=True)
     click.echo(f"output: {output}")
     proxy_ip = output["proxy_ip"]["value"]
