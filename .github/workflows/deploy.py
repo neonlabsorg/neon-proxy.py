@@ -250,6 +250,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
             if stderr:
                 file.write(stderr)
         print("stderr: ", stderr)
+        print("stdout: ", stderr)
         if return_code == 0:
             break
         elif return_code != 0:
