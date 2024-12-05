@@ -249,8 +249,6 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
                 file.write(stdout)
             if stderr:
                 file.write(stderr)
-        print("stderr: ", stderr)
-        print("stdout: ", stdout)
         if return_code == 0:
             break
         elif return_code != 0:
@@ -258,6 +256,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
                 print("Terraform apply failed:", stderr)
                 print("Terraform infrastructure is not built correctly")
                 sys.exit(1)
+        print("Resource_unavailable; ",i ," Trying to recreate instances with another region / another instance type...")
     output = terraform.output(json=True)
     click.echo(f"output: {output}")
     proxy_ip = output["proxy_ip"]["value"]
