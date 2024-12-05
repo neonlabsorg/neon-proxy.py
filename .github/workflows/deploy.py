@@ -250,11 +250,11 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
             if stderr:
                 file.write(stderr)
         print("stderr: ", stderr)
-        print("stdout: ", stderr)
+        print("stdout: ", stdout)
         if return_code == 0:
             break
         elif return_code != 0:
-            if stderr != "error during placement (resource_unavailable)":
+            if not stderr.contains("error during placement (resource_unavailable)"):
                 print("Terraform apply failed:", stderr)
                 print("Terraform infrastructure is not built correctly")
                 sys.exit(1)
