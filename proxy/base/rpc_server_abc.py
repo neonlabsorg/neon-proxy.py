@@ -18,6 +18,7 @@ from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcReque
 from common.jsonrpc.server import JsonRpcApi, JsonRpcServer
 from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonProg
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.cb_program import SolCbProg
@@ -189,6 +190,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         # forwarding request to mempool allows to limit the number of requests to Solana to maximum 1 time per second
         # for details, see the mempool_server::get_evm_cfg() implementation
         evm_cfg = await self._mp_client.get_evm_cfg()
+        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
         NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         return evm_cfg
 

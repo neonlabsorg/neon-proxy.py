@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from common.db.db_connect import DbConnection, DbTxCtx, DbSql, DbSqlParam, DbQueryBody
 from common.ethereum.hash import EthTxHash
-from common.neon.transaction_model import NeonSkdTxModel, NeonSkdTxStatus
+from common.neon.transaction_model import NeonSkdTxModel, NeonSkdTxStatus, NeonTxModel
 from common.solana.pubkey import SolPubKey
 from common.solana.signature import SolTxSig
 from ..base.history_skd_db import SkdTxDbTable
@@ -124,6 +124,10 @@ class NeonSkdTxSigDb(SkdTxDbTable):
 
         await asyncio.gather(*task_list)
 
+    async def commit_tx(self, ctx: DbTxCtx, slot: int, tree_address: SolPubKey, neon_tx: NeonTxModel) -> None:
+        rec = _Record.from_neon_tx(slot, tree_address, neon_tx)
+        await self._insert_row(ctx, rec)
+
     async def get_skd_tx_sig_dict(
         self,
         ctx: DbTxCtx,
@@ -156,6 +160,19 @@ class _Record:
             sol_sig=tx.sol_skd_tx_sig.to_string(),
             sol_payer=tx.sol_skd_payer.to_string(),
             neon_payer=tx.neon_payer.to_string(),
+            chain_id=tx.chain_id,
+        )
+
+    @classmethod
+    def from_neon_tx(cls, slot: int, tree_address: SolPubKey, tx: NeonTxModel) -> Self:
+        return cls(
+            block_slot=slot,
+            tree_address=tree_address.to_string(),
+            is_active=False,
+            neon_sig=tx.neon_tx_hash.to_string(),
+            sol_sig=tx.sol_skd_tx_sig.to_string(),
+            sol_payer=tx.sol_skd_payer.to_string(),
+            neon_payer=tx.payer.to_string(),
             chain_id=tx.chain_id,
         )
 
