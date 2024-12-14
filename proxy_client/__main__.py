@@ -5,10 +5,13 @@ import sys
 
 from common.cmd_client.cmd_executor import BaseCmdExecutor
 from common.config.config import Config
-from proxy_client.holder_cmd import HolderHandler
+from common.neon.neon_program import NeonProg
+from common.solana.pubkey import SolPubKey
 from .alt_cmd import AltHandler
+from .holder_cmd import HolderHandler
 from .operator_balance_cmd import OpBalanceHandler
 from .operator_info_cmd import OpInfoHandler
+from .tree_account_cmd import TreeAccountHandler
 
 
 class CmdExecutor(BaseCmdExecutor):
@@ -18,6 +21,7 @@ class CmdExecutor(BaseCmdExecutor):
         self._handler_type_list.append(OpBalanceHandler)
         self._handler_type_list.append(AltHandler)
         self._handler_type_list.append(HolderHandler)
+        self._handler_type_list.append(TreeAccountHandler)
 
         self._parser.add_argument(
             "-i",
@@ -42,6 +46,13 @@ class CmdExecutor(BaseCmdExecutor):
             dest="solana_url",
             help="Solana URL",
         )
+        self._parser.add_argument(
+            "-e",
+            "--neon-evm",
+            type=str,
+            dest="neon_evm",
+            help="Neon EVM address",
+        )
 
     async def _before_exec_handler(self, arg_space) -> None:
         if arg_space.core_api_ip:
@@ -52,6 +63,8 @@ class CmdExecutor(BaseCmdExecutor):
             os.environ[self._cfg.neon_core_api_server_cnt_name] = str(1)
         if arg_space.solana_url:
             os.environ[self._cfg.sol_url_name] = arg_space.solana_url
+        if arg_space.neon_evm:
+            NeonProg.ID = SolPubKey.from_raw(arg_space.neon_evm)
 
         self._cfg = Config()
 

@@ -807,7 +807,7 @@ class NeonSkdTreeModel(_BaseRespModel):
 
     node_list: list[NeonSkdTreeNodeModel] = Field(
         default_factory=list,
-        validation_alias=AliasChoices("tx_list", "transactions"),
+        validation_alias=AliasChoices("node_list", "transactions"),
     )
 
     @classmethod
@@ -838,10 +838,15 @@ class NeonSkdTreeModel(_BaseRespModel):
 
     @cached_property
     def active_status(self) -> NeonSkdTxStatus:
+        if not self.is_exist:
+            return NeonSkdTxStatus.Destroyed
+
+        last_status = NeonSkdTxStatus.Success
         for node in self.node_list:
             if (status := node.status) in (status.InProgress, status.NotStarted):
                 return status
-        return NeonSkdTxStatus.Success
+            last_status = status
+        return last_status
 
     def is_destroyable(self, current_slot: int, slot_out: int) -> bool:
         return current_slot - self.last_slot > slot_out

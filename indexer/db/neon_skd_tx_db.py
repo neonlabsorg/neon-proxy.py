@@ -19,6 +19,7 @@ _LOG = logging.getLogger(__name__)
 class NeonSkdTxDb(SkdTxDbTable):
     def __init__(self, db: DbConnection):
         super().__init__(db, "neon_scheduled_transactions", _Record, key_list=("neon_sig", "block_slot"))
+        self._select_by_tree_idx_query = DbQueryBody()
         self._select_by_tx_hash_query = DbQueryBody()
         self._select_by_new_slot_query = DbQueryBody()
         self._select_by_old_slot_query = DbQueryBody()
@@ -123,11 +124,40 @@ class NeonSkdTxDb(SkdTxDbTable):
             neon_tx_hash=DbSqlParam("neon_tx_hash"),
         )
 
+        select_by_tree_idx_sql = DbSql(
+            """;
+            SELECT 
+              {column_list},
+              c.sol_sig,
+              c.sol_payer,
+              c.neon_payer,
+              c.chain_id
+            FROM 
+              {table_name} AS a
+            LEFT OUTER JOIN
+              {skd_sig_table_name} AS c
+              ON c.tree_address = a.tree_address
+              AND c.neon_sig = a.neon_sig
+              AND c.is_active = False
+            WHERE 
+              a.tree_address = {tree_address}
+              AND a.index = {index}
+            """
+        ).format(
+            column_list=self._column_list,
+            table_name=self._table_name,
+            skd_sig_table_name=self._skd_sig_table_name,
+            tree_address=DbSqlParam("tree_address"),
+            index=DbSqlParam("index"),
+        )
+
         (
+            self._select_by_tree_idx_query,
             self._select_by_tx_hash_query,
             self._select_by_new_slot_query,
             self._select_by_old_slot_query,
         ) = await self._db.sql_to_query(
+            select_by_tree_idx_sql,
             select_by_tx_hash_sql,
             select_by_new_slot_sql,
             select_by_old_slot_sql,
@@ -168,6 +198,15 @@ class NeonSkdTxDb(SkdTxDbTable):
             ctx,
             self._select_by_tx_hash_query,
             _ByNeonTxHash(neon_tx_hash=neon_tx_hash.to_string()),
+            record_type=_RecordWithPayer,
+        )
+        return rec.to_neon_skd_tx() if rec else None
+
+    async def get_tx_by_tree_index(self, ctx: DbTxCtx, tree_address: SolPubKey, index: int) -> NeonSkdTxModel:
+        rec = await self._fetch_one(
+            ctx,
+            self._select_by_tree_idx_query,
+            _ByTreeIndex(tree_address=tree_address.to_string(), index=index),
             record_type=_RecordWithPayer,
         )
         return rec.to_neon_skd_tx() if rec else None
@@ -233,3 +272,9 @@ class _BySlot:
 @dataclass(frozen=True)
 class _ByNeonTxHash:
     neon_tx_hash: str
+
+
+@dataclass(frozen=True)
+class _ByTreeIndex:
+    tree_address: str
+    index: int

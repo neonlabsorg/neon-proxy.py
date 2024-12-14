@@ -1,6 +1,5 @@
-import asyncio
 import logging
-from typing import Final, Sequence
+from typing import Final
 
 from typing_extensions import Self
 
@@ -10,10 +9,8 @@ from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.alt_info import SolAltInfo
 from common.solana.cb_program import SolCbProg
-from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolAccountMeta
 from common.solana.pubkey import SolPubKey
-from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
 from common.solana_rpc.alt_builder import SolAltTxBuilder
@@ -257,15 +254,3 @@ class HolderHandler(BaseNPCmdHandler):
                 return None
 
         return alt
-
-    async def _send_tx_list(self, req_id: dict, payer: SolPubKey, tx_list: Sequence[SolTx], timeout_sec: int) -> None:
-        sol_client: SolClient = await self._get_sol_client()
-        op_client: OpResourceClient = await self._get_op_client()
-        blockhash, _ = await sol_client.get_recent_blockhash(commit=SolCommit.Finalized)
-
-        for tx in tx_list:
-            tx.set_recent_blockhash(blockhash)
-
-        tx_list = await op_client.sign_sol_tx_list(req_id, payer, tx_list)
-        await sol_client.send_tx_list(tx_list, skip_preflight=True, max_retry_cnt=None)
-        await asyncio.sleep(timeout_sec)

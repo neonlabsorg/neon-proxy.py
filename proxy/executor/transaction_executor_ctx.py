@@ -9,6 +9,7 @@ from typing_extensions import Self
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
 from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.cb_program import SolCbProg
@@ -86,6 +87,7 @@ class NeonExecTxCtx(ExecutorComponent):
 
     def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
         self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
+        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
         NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         return self
 

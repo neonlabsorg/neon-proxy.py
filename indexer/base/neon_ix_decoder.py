@@ -608,7 +608,7 @@ class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
             _LOG.warning("%s: wrong list len %s", self._skip_hdr, list_len)
             return False
 
-        nonce = int.from_bytes(list_data[:8], "big")
+        nonce = int.from_bytes(hdr_data[:8], "big")
         # max_fee_per_gas = int.from_bytes(hdr_data[8:40], "big")
         # max_priority_fee_per_gas = int.from_bytes(hdr_data[40:], "big")
         # base_fee_per_gas = max_fee_per_gas - max_priority_fee_per_gas
