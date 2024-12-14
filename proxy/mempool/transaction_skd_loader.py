@@ -7,6 +7,7 @@ from typing import Final
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_BLOCK
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.transaction_model import NeonTxModel
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
@@ -91,6 +92,7 @@ class MpSkdTxLoader(MempoolComponent):
         if (token_gas_price := self._token_gas_price) is None:
             return
 
+        min_exec_gas_price = token_gas_price.min_executable_gas_price
         token = ExecTokenModel.from_raw(self._gas_price, token_gas_price)
 
         slot_out = await self._get_slot_out()
@@ -99,7 +101,7 @@ class MpSkdTxLoader(MempoolComponent):
         skd_tx_list = await self._db.get_old_neon_skd_tx_list_by_slot(min_slot, 100)
 
         for skd_tx in skd_tx_list:
-            if skd_tx.rlp_tx:
+            if skd_tx.rlp_tx and NeonTxModel.from_raw(skd_tx).base_fee_per_gas > min_exec_gas_price:
                 mp_tx = MpTxModel.from_skd_tx(skd_tx, self._layer0_chain_id)
                 await self._exec_client.exec_tx(mp_tx, token)
             else:
