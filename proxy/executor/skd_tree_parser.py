@@ -3,6 +3,7 @@ from typing import Generator
 
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonSkdTxModel, NeonSkdTxStatus
 from common.neon_rpc.api import NeonSkdTreeModel, NeonSkdTreeNodeModel
 from common.solana.pubkey import SolPubKey
@@ -35,7 +36,7 @@ class NeonSkdTreeParser(ExecutorComponent):
 
     @cached_property
     def address(self) -> SolPubKey:
-        return self._tree.address
+        return NeonSkdTreeAddress.from_raw(self._payer, self._nonce).address
 
     @ttl_cached_method(ttl_msec=10)
     async def _refresh(self) -> None:
@@ -50,6 +51,9 @@ class NeonSkdTreeParser(ExecutorComponent):
             self._tree.status,
             len(self._tree.node_list),
         )
+
+    async def refresh(self) -> None:
+        await self._refresh()
 
     @cached_method
     async def _get_slot_out(self) -> int:
