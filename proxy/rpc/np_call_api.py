@@ -13,6 +13,7 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.jsonrpc.errors import InvalidParamError
 from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
 from common.solana.pubkey import SolPubKeyField, SolPubKey
@@ -243,7 +244,6 @@ class NpCallApi(NeonProxyApi):
         chain_id = self._get_chain_id(ctx)
         call.validate_chain_id(chain_id)
 
-        evm_cfg = await self._get_evm_cfg()
         block = await self.get_block_by_tag(block_tag)
 
         sender_addr = NeonAddress.from_raw(call.scheduledSolanaPayer, chain_id)
@@ -253,7 +253,7 @@ class NpCallApi(NeonProxyApi):
 
         _, gas_price = await self._get_token_gas_price(ctx)
         max_priority_fee_per_gas = await self._get_max_priority_fee_per_gas(ctx)
-        skd_tree_acct = await self._core_api_client.get_neon_skd_tree(sender_addr, sender_acct.state_tx_cnt, block)
+        # skd_tree_acct = await self._core_api_client.get_neon_skd_tree(sender_addr, sender_acct.state_tx_cnt, block)
 
         base_index = sender_acct.state_tx_cnt + int.from_bytes(sender_addr.to_bytes()[:4], "little")
         treasury_index, _, treasury_addr = NeonProg.calc_treasury_address(base_index)
@@ -263,16 +263,7 @@ class NpCallApi(NeonProxyApi):
             for tx in call.to_core_tx_list(chain_id)
         ]
 
-        skd_tree_addr, _ = SolPubKey.find_program_address(
-            [
-                evm_cfg.account_seed_version.to_bytes(1, "little"),
-                b"Tree",
-                sender_addr.to_bytes(),
-                chain_id.to_bytes(8, "little"),
-                sender_acct.state_tx_cnt.to_bytes(8, "little"),
-            ],
-            NeonProg.ID,
-        )
+        skd_tree_addr = NeonSkdTreeAddress.from_raw(sender_addr, sender_acct.state_tx_cnt)
 
         return _RpcSkdTxEstimateResp(
             chainId=chain_id,
@@ -284,7 +275,7 @@ class NpCallApi(NeonProxyApi):
                 call.scheduledSolanaPayer,
                 sender_acct.sol_address,
                 treasury_addr,
-                skd_tree_addr,
+                skd_tree_addr.address,
                 NeonProg.DepositAddress,
                 SolSysProg.ID,
             ],

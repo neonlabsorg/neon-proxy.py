@@ -202,6 +202,14 @@ class IndexerDbClient:
 
     async def commit_neon_skd_tx(self, slot: int, tree_address: SolPubKey, neon_tx: NeonTxModel) -> None:
         await self._neon_skd_tx_db.commit_tx(None, slot, tree_address, neon_tx)
+        if await self._neon_skd_tx_db.get_tx_by_tree_index(None, tree_address, 0):
+            return
+
+        # if not top transaction -> insert it -> for correct destroying tree accounts
+        idx_info = dict(neon_tx_hash=neon_tx.neon_tx_hash, index=0, rlp_tx=bytes())
+        top_neon_tx = neon_tx.model_copy(update=idx_info)
+        await self._neon_skd_tx_db.commit_tx(None, slot, tree_address, top_neon_tx)
+        await self._neon_skd_tx_sig_db.commit_tx(None, slot, tree_address, top_neon_tx)
 
     async def destroy_tree_account(self, tree_address: SolPubKey) -> None:
         tree_addr_list = [tree_address]

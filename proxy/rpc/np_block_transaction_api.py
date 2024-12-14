@@ -26,9 +26,10 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonEvmIxCode
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
-from common.neon_rpc.api import NeonSkdTreeModel
+from common.neon_rpc.api import NeonSkdTreeModel, NeonSkdTreeNodeModel
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey, SolNotNonePubKeyField
 from common.solana.signature import SolTxSigField, SolTxSig, SolTxSigSlotInfo
@@ -437,6 +438,61 @@ class _RpcNeonTxStatusModel(BaseJsonRpcModel):
     age: HexUIntField
 
 
+class _RpcNeonTreeNodeModel(BaseJsonRpcModel):
+    transactionHash: EthTxHashField
+    status: str
+    resultHash: EthHash32Field
+    gasLimit: HexUIntField
+    value: HexUIntField
+    childTransactionIndex: HexUIntField
+    successExecutionLimit: HexUIntField
+    parentCount: HexUIntField
+
+    @classmethod
+    def from_raw(cls, tree_node: NeonSkdTreeNodeModel) -> Self:
+        return cls(
+            transactionHash=tree_node.neon_tx_hash,
+            status=tree_node.status.name,
+            resultHash=tree_node.result_hash,
+            gasLimit=tree_node.gas_limit,
+            value=tree_node.value,
+            childTransactionIndex=tree_node.child_tx_idx,
+            successExecutionLimit=tree_node.success_exec_limit,
+            parentCount=tree_node.parent_cnt,
+        )
+
+
+class _RpcNeonTreeAccountResp(BaseJsonRpcModel):
+    address: SolPubKeyField
+    status: str
+    activeStatus: str
+    payer: EthNotNoneAddressField
+    chainId: HexUIntField
+    nonce: HexUIntField
+    lastSlot: HexUIntField
+    maxFeePerGas: HexUIntField
+    maxPriorityFeePerGas: HexUIntField
+    balance: HexUIntField
+    lastIndex: HexUIntField
+    transactions: list[_RpcNeonTreeNodeModel]
+
+    @classmethod
+    def from_raw(cls, tree: NeonSkdTreeModel, nonce: int) -> Self:
+        return cls(
+            address=tree.address,
+            status=tree.status.value,
+            activeStatus=tree.active_status.name,
+            payer=tree.payer,
+            chainId=tree.chain_id,
+            nonce=nonce,
+            lastSlot=tree.last_slot,
+            maxFeePerGas=tree.max_fee_per_gas,
+            maxPriorityFeePerGas=tree.max_priority_fee_per_gas,
+            balance=tree.balance,
+            lastIndex=tree.last_index,
+            transactions=[_RpcNeonTreeNodeModel.from_raw(n) for n in tree.node_list],
+        )
+
 class NpBlockTxApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::BlockTransaction"
 
@@ -733,6 +789,27 @@ class NpBlockTxApi(NeonProxyApi):
             return [(await _new_tx_status(_tx, _tree, idx)) for idx in range(max(len(_tree.node_list), 1))]
 
         return {tx.nonce: await _new_tx_status_list(tx) for tx in tx_status_list}
+
+    @NeonProxyApi.method(name="neon_getScheduledTreeAccount")
+    async def get_neon_skd_tree(
+            self,
+            ctx: HttpRequestCtx,
+            address: EthNotNoneAddressField | SolNotNonePubKeyField,
+            nonce: HexUIntField,
+            block_tag: RpcBlockRequest,
+    ) -> _RpcNeonTreeAccountResp | None:
+        if isinstance(address, SolPubKey):
+            self._validate_layer0_chain_id(ctx)
+
+        block = await self.get_block_by_tag(block_tag)
+
+        chain_id = self._get_chain_id(ctx)
+        addr = NeonAddress.from_raw(address, chain_id)
+
+        tree_acct = await self._core_api_client.get_neon_skd_tree(addr, nonce, block)
+        if not tree_acct.is_exist:
+            return None
+        return _RpcNeonTreeAccountResp.from_raw(tree_acct, nonce)
 
     @staticmethod
     def _sort_alt_sol_tx_list(alt_meta_list: Sequence, sol_meta_list: Sequence, rcpt_sol_tx_sig: SolTxSig) -> list[Any]:
