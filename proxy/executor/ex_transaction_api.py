@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import time
 from typing import ClassVar, Final, Sequence
 
-from common.config.constants import ONE_BLOCK_SEC
+from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
 from common.neon.neon_program import NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon.transaction_model import NeonSkdTxModel
@@ -185,10 +186,15 @@ class NeonTxExecApi(ExecutorApi):
 
                 await self._complete_stuck_neon_tx_retry_loop(stuck_req, skd_tree_parser)
 
+        last_good_time = time.monotonic()
         for retry in itertools.count():
             if await skd_tree_parser.can_be_destroyed():
-                await self._destroy_tree_account(skd_tree_parser)
-                break
+                now = time.monotonic()
+                if (now - last_good_time) > MIN_FINALIZE_SEC:
+                    await self._destroy_tree_account(skd_tree_parser)
+                    break
+            else:
+                last_good_time = time.monotonic()
 
             if retry > 0:
                 _LOG.debug("retry %d to execute NeonSkdTx %s", retry, skd_tree_parser.neon_tx_hash)
@@ -277,6 +283,8 @@ class NeonTxExecApi(ExecutorApi):
             await asyncio.gather(*task_list)
 
     async def _destroy_tree_account(self, skd_tree_parser: NeonSkdTreeParser) -> None:
+        await skd_tree_parser.refresh()
+
         stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.neon_tx_hash, SolPubKey.default())
         stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
         op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
