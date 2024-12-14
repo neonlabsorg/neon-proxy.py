@@ -64,8 +64,10 @@ class _TxDict:
         self._global_tx_dict.add_tx(tx)
 
         if is_gapped_tx:
+            _LOG.debug("add %s to gapped", tx)
             self._tx_gapped_gas_price_queue.add(tx)
         else:
+            _LOG.debug("add %s to priced", tx)
             self._tx_gas_price_queue.add(tx)
             self.queue_tx(tx.sender, tx.nonce + 1)
 
@@ -77,8 +79,10 @@ class _TxDict:
 
         # tx may be removed from the gas price queue on processing
         if (pos := self._tx_gapped_gas_price_queue.find(tx)) is not None:
+            _LOG.debug("remove %s from gapped", tx)
             self._tx_gapped_gas_price_queue.pop(pos)
         else:
+            _LOG.debug("remove %s from queued", tx)
             self._tx_gas_price_queue.pop(tx)
             self.dequeue_tx(tx.sender, tx.nonce + 1)
 
@@ -92,8 +96,10 @@ class _TxDict:
             self._global_tx_dict.pop_tx(tx.neon_tx_hash)
 
             if (pos := self._tx_gapped_gas_price_queue.find(tx)) is not None:
+                _LOG.debug("remove %s from gapped", tx)
                 self._tx_gapped_gas_price_queue.pop(pos)
             else:
+                _LOG.debug("remove %s from priced", tx)
                 self._tx_gas_price_queue.pop(tx)
 
     def done_tx(self, tx: MpTxModel) -> MpTxModel:
@@ -107,12 +113,15 @@ class _TxDict:
 
     def _move_between_gas_price_queues(
         self,
+        hdr1: str,
+        hdr2: str,
         src: SortedQueue[MpTxModel, int, str],
         dst: SortedQueue[MpTxModel, int, str],
         sender: EthAddress,
         nonce: int,
     ) -> None:
         while tx := self._tx_dict.get(SenderNonce.from_raw((sender, self._chain_id, nonce)), None):
+            _LOG.debug("move tx %s from % to %s", tx, hdr1, hdr2)
             if (pos := src.find(tx)) is None:
                 break
             dst.add(src.pop(pos))
@@ -123,13 +132,17 @@ class _TxDict:
         return self._tx_dict.get(sender_nonce, None)
 
     def acquire_tx(self, tx: MpTxModel) -> None:
+        _LOG.debug("acquire tx %s", tx)
         self._tx_gas_price_queue.pop(tx)
 
     def cancel_process_tx(self, tx: MpTxModel) -> None:
+        _LOG.debug("cancel tx %s", tx)
         self._tx_gas_price_queue.add(tx)
 
     def queue_tx(self, sender: EthAddress, start_nonce: int) -> None:
         self._move_between_gas_price_queues(
+            "gapped",
+            "priced",
             self._tx_gapped_gas_price_queue,
             self._tx_gas_price_queue,
             sender,
@@ -138,6 +151,8 @@ class _TxDict:
 
     def dequeue_tx(self, sender: EthAddress, start_nonce: int) -> None:
         self._move_between_gas_price_queues(
+            "priced",
+            "gapped",
             self._tx_gas_price_queue,
             self._tx_gapped_gas_price_queue,
             sender,
@@ -652,7 +667,7 @@ class MpTxSchedule:
         if not (is_new_pool := pool.state == pool.State.Empty):  # use old state, before remove old tx
             self._sender_pool_heartbeat_queue.pop(pool)
 
-        is_gapped_tx = (pool.state in (pool.State.Suspended, pool.state.Empty)) or (pool.pending_tx_cnt < tx.nonce)
+        is_gapped_tx = (pool.state in (pool.State.Suspended, pool.State.Empty)) or (pool.pending_tx_cnt < tx.nonce)
         pool.add_tx(tx)
         self._tx_dict.add_tx(tx, is_gapped_tx)
 
@@ -725,6 +740,7 @@ class MpTxSchedule:
 
     def _done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
         if not (pool := self._find_sender_pool(tx.sender)):
+            _LOG.debug("not found! %s", tx.sender)
             return
 
         pool.done_tx(tx)
