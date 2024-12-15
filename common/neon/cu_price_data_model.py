@@ -35,21 +35,15 @@ class CuPricePercentileModel(BaseModel):
 
     @classmethod
     def from_sol_block(cls, sol_block: SolRpcBlockInfo) -> Self:
-        # Build a full list of compute unit prices in the solana block.
-        price_list: list[int] = list()
-        for sol_tx in sol_block.tx_list:
-            sol_tx_meta = SolTxMetaInfo.from_raw(sol_block.slot, sol_tx)
-            # Filter out transactions to Vote program from the block, as they spoil cu_price stats.
-            if SolSysProg.VoteProgram not in sol_tx_meta.account_key_list:
-                price_list.append(sol_tx_meta.sol_tx_cu.cu_price)
-
-        if not price_list:
+        # Get a full list of compute unit prices in the solana block.
+        if not sol_block.cu_price_list:
             return cls.default()
-        price_list.sort()
+
+        cu_price_list: list[int] = sorted(sol_block.cu_price_list)
         # Take every i * PercentileStep percentile in a sorted list.
         return cls.from_raw(
             [
-                price_list[math.floor((len(price_list) - 1) * p * cls._PercentileStep / 100)]
+                cu_price_list[math.floor((len(cu_price_list) - 1) * p * cls._PercentileStep / 100)]
                 for p in range(cls._PercentileCount)
             ]
         )

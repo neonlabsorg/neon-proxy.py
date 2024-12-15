@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from typing import Union, Sequence
+from typing import Union, Sequence, ClassVar
 
 import solders.transaction_status as _tx
 from typing_extensions import Self
@@ -10,6 +10,7 @@ from typing_extensions import Self
 from .commit_level import SolCommit
 from .hash import SolBlockHash
 from .transaction_meta import SolRpcTxInfo
+from ..config.constants import SOL_SIG_COST
 
 _SoldersRpcBlockInfo = _tx.UiConfirmedBlock
 
@@ -24,6 +25,9 @@ class SolRpcBlockInfo:
     parent_slot: int | None
     parent_block_hash: SolBlockHash
     tx_list: list[SolRpcTxInfo]
+    cu_price_list: list[int]
+
+    SolSigCost: ClassVar[int] = SOL_SIG_COST
 
     @classmethod
     def default(cls) -> Self:
@@ -40,11 +44,18 @@ class SolRpcBlockInfo:
             parent_slot=None,
             parent_block_hash=SolBlockHash.default(),
             tx_list=list(),
+            cu_price_list=list(),
         )
 
     @classmethod
     def from_raw(
-        cls, raw: _RawBlock, *, slot: int | None = None, rpc_tx_list: Sequence[SolRpcTxInfo], commit=SolCommit.Processed
+        cls,
+        raw: _RawBlock,
+        *,
+        slot: int | None = None,
+        rpc_tx_list: Sequence[SolRpcTxInfo],
+        rpc_cu_price_list: Sequence[int],
+        commit=SolCommit.Processed,
     ) -> Self:
         if raw is None:
             return cls.new_empty(slot, commit=commit)
@@ -60,12 +71,17 @@ class SolRpcBlockInfo:
             assert slot is None, "The block slot is already passed in the raw parameter"
             return cls.new_empty(raw, commit=commit)
         elif isinstance(raw, _SoldersRpcBlockInfo):
-            return cls._from_rpc_block(slot, raw, rpc_tx_list, commit)
+            return cls._from_rpc_block(slot, raw, rpc_tx_list, rpc_cu_price_list, commit)
         raise ValueError(f"Wrong input type {type(raw).__name__}")
 
     @classmethod
     def _from_rpc_block(
-        cls, slot: int, rpc_block: _SoldersRpcBlockInfo, rpc_tx_list: Sequence[SolRpcTxInfo], commit: SolCommit
+        cls,
+        slot: int,
+        rpc_block: _SoldersRpcBlockInfo,
+        rpc_tx_list: Sequence[SolRpcTxInfo],
+        rpc_cu_price_list: Sequence[int],
+        commit: SolCommit,
     ) -> Self:
         assert slot is not None, "The block slot should be defined"
         assert commit != SolCommit.Processed, "The commitment should be defined"
@@ -78,6 +94,7 @@ class SolRpcBlockInfo:
             parent_slot=rpc_block.parent_slot,
             parent_block_hash=SolBlockHash.from_raw(rpc_block.previous_blockhash),
             tx_list=list(rpc_tx_list),
+            cu_price_list=list(rpc_cu_price_list),
         )
 
     @property
