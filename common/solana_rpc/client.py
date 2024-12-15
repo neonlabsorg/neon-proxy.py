@@ -24,12 +24,15 @@ from ..neon.neon_program import NeonProg
 from ..solana.account import SolAccountModel
 from ..solana.alt_program import SolAltAccountInfo
 from ..solana.block import SolRpcBlockInfo
+from ..solana.cb_program import SolCbProg
 from ..solana.commit_level import SolCommit
 from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
 from ..solana.signature import SolTxSig, SolRpcTxSigInfo
+from ..solana.vote_program import SolVoteProg
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
+    SolRpcTxInfo,
     SolRpcTxSlotInfo,
     SolRpcErrorInfo,
     SolRpcExtErrorInfo,
@@ -40,6 +43,7 @@ from ..solana.transaction_meta import (
 )
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import ttl_cached_method
+from ..utils.format import if_none
 
 _SolRpcResp = TypeVar("_SolRpcResp", bound=_resp.RPCResult)
 
@@ -279,22 +283,54 @@ class SolClient(HttpClient):
             _LOG.debug("fail on get block %s: %s", slot, exc.message, extra=self._msg_filter)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)
 
+        rpc_tx_list: list[SolRpcTxInfo] = list()
+        rpc_cu_price_list: list[int] = list()
+
+        def _new_block() -> SolRpcBlockInfo:
+            nonlocal rpc_cu_price_list
+            nonlocal rpc_tx_list
+            nonlocal slot
+            nonlocal commit
+            return SolRpcBlockInfo.from_raw(
+                resp.value,
+                rpc_tx_list=rpc_tx_list,
+                rpc_cu_price_list=rpc_cu_price_list,
+                slot=slot,
+                commit=commit
+            )
+
         if not with_tx_list:
-            return SolRpcBlockInfo.from_raw(resp.value, rpc_tx_list=list(), slot=slot, commit=commit)
+            return _new_block()
 
         # Second step - load transactions without vote program
         tx_sig_list: list[SolTxSig] = list()
-        for tx_meta in resp.value.transactions:
-            if not tx_meta.transaction.signatures:
+        for tx_status in resp.value.transactions:
+            tx_msg = tx_status.transaction
+            if not tx_msg.signatures:
                 continue
 
-            for acct_meta in tx_meta.transaction.account_keys:
-                if SolPubKey.from_raw(acct_meta.pubkey) == NeonProg.ID:
-                    tx_sig_list.append(SolTxSig.from_raw(tx_meta.transaction.signatures[0]))
+            skip_cu_price = False
+            for acct_meta in tx_msg.account_keys:
+                acct_key = SolPubKey.from_raw(acct_meta.pubkey)
+                if acct_key == SolVoteProg.ID:
+                    skip_cu_price = True
+                    break
+                elif acct_key == NeonProg.ID:
+                    tx_sig_list.append(SolTxSig.from_raw(tx_msg.signatures[0]))
                     break
 
+            if skip_cu_price:
+                continue
+
+            tx_meta = tx_status.meta
+            base_fee = SolRpcBlockInfo.SolSigCost * len(tx_msg.signatures)
+            priority_fee = tx_meta.fee - base_fee
+            cu_limit = if_none(tx_meta.compute_units_consumed, SolCbProg.DefCuLimit)
+            cu_price = priority_fee * SolCbProg.MicroLamport // cu_limit
+            rpc_cu_price_list.append(cu_price)
+
         if not tx_sig_list:
-            return SolRpcBlockInfo.from_raw(resp.value, rpc_tx_list=list(), slot=slot, commit=commit)
+            return _new_block()
 
         rpc_tx_meta_list = await self.get_tx_list(tx_sig_list, commit)
         rpc_tx_list = [tx_meta.transaction for tx_meta in rpc_tx_meta_list if tx_meta]
@@ -302,7 +338,7 @@ class SolClient(HttpClient):
             _LOG.debug("fail on get transactions for block %s", slot)
             return SolRpcBlockInfo.new_empty(slot, commit=commit)
 
-        return SolRpcBlockInfo.from_raw(resp.value, rpc_tx_list=rpc_tx_list, slot=slot, commit=commit)
+        return _new_block()
 
     async def get_blockhash(self, slot: int) -> SolBlockHash:
         block = await self.get_block(slot)

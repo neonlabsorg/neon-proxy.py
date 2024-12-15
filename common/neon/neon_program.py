@@ -8,7 +8,7 @@ from typing import ClassVar, Final, Sequence
 from typing_extensions import Self
 
 from .address import NeonAddress
-from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER
+from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER, SOL_SIG_COST
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
@@ -168,7 +168,7 @@ class NeonProg:
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
     DepositAddress: ClassVar[SolPubKey] = SolPubKey.find_program_address(tuple([_deposit_seed]), ID)[0]
     #
-    SignatureGas: Final[int] = 5_000
+    SignatureGas: Final[int] = SOL_SIG_COST
     TreasuryGas: ClassVar[int] = 0
     BaseGas: ClassVar[int] = SignatureGas + 0
 
