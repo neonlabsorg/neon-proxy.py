@@ -670,9 +670,11 @@ class NeonProg:
         if (not self._addr_set) or (self._base_tx_acct_set.receiver in self._addr_set):
             _LOG.debug("add receiver: %s", self._base_tx_acct_set.receiver)
             meta_list.append(SolAccountMeta(self._base_tx_acct_set.receiver, is_signer=False, is_writable=False))
-        if (not self._addr_set) or ((addr := self._base_tx_acct_set.receiver_contract) in self._addr_set):
-            _LOG.debug("add receiver contract: %s", addr)
-            meta_list.append(SolAccountMeta(addr, is_signer=False, is_writable=False))
+
+        contract_addr = self._base_tx_acct_set.receiver_contract
+        if (not self._addr_set) or (contract_addr in self._addr_set):
+            _LOG.debug("add receiver contract: %s", contract_addr)
+            meta_list.append(SolAccountMeta(contract_addr, is_signer=False, is_writable=False))
         return meta_list
 
     @property
