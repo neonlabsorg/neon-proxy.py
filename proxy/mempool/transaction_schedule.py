@@ -121,7 +121,7 @@ class _TxDict:
         nonce: int,
     ) -> None:
         while tx := self._tx_dict.get(SenderNonce.from_raw((sender, self._chain_id, nonce)), None):
-            _LOG.debug("move tx %s from % to %s", tx, hdr1, hdr2)
+            _LOG.debug("move tx %s from %s to %s", tx, hdr1, hdr2)
             if (pos := src.find(tx)) is None:
                 break
             dst.add(src.pop(pos))
