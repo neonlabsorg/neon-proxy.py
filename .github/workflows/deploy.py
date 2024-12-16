@@ -262,11 +262,11 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
                 instance_iterator += 1
                 print("Resource_unavailable; ",instances[instance_iterator] ," Trying to recreate instances with another region / another instance type...")
             else:
-                print("Retry because ", stderr, "; Retries left: ", retry_amount - j)
+                print("Retry because ", stderr, "; Retries left: ", retry_amount - retry_iterator)
             time.sleep(3)
 
     if retry_iterator >= retry_amount:
-        print("Retries left: ", retry_amount - j)
+        print("Retries left: ", retry_amount - retry_iterator)
         print("Terraform apply failed:", stderr)
         print("Terraform infrastructure is not built correctly")
         sys.exit(1)
