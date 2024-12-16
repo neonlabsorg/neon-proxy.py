@@ -82,9 +82,7 @@ class NeonSkdTxModel(BaseModel):
     neon_payer: EthAddressField
     chain_id: DecUIntField
     nonce: DecUIntField
-    index: DecUIntField
     rlp_tx: EthBinStrField
-    status: NeonSkdTxStatusField = NeonSkdTxStatus.NotStarted
 
     @cached_method
     def to_string(self) -> str:

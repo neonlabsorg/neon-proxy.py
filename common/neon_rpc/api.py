@@ -383,6 +383,7 @@ class EvmConfigModel(_BaseRespModel):
             treasury_pool_seed=self.treasury_pool_seed,
             treasury_payment=self.treasury_payment,
             evm_version=self.version,
+            evm_step_cnt=self.evm_step_cnt,
         )
 
     @classmethod

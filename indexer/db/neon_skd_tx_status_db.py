@@ -48,7 +48,14 @@ class NeonSkdTxStatusDb(SkdTxDbTable):
         self._select_by_tx_hash_query = await self._db.sql_to_query(select_by_tx_hash_sql)
 
     async def set_block_list(self, ctx: DbTxCtx, block_list: Sequence[NeonIndexedBlockInfo]) -> None:
-        rec_list = [_Record.from_tx(b, tx) for b in block_list for tx in b.iter_neon_skd_tx_status()]
+        # fmt: off
+        rec_list = [
+            _Record.from_tx(b, tx)
+            for b in block_list
+            for tx in b.iter_neon_skd_tx_status()
+            if not tx.holder_address.is_empty
+        ]
+        # fmt: on
         await self._insert_row_list(ctx, rec_list)
 
     async def get_holder_address(self, ctx: DbTxCtx, neon_tx_hash: EthTxHash) -> SolPubKey | None:
@@ -58,8 +65,7 @@ class NeonSkdTxStatusDb(SkdTxDbTable):
             _ByNeonTxHash(neon_tx_hash=neon_tx_hash.to_string()),
         )
         for rec in rec_list:
-            if not (holder_address := SolPubKey.from_raw(rec.holder_address)).is_empty:
-                return holder_address
+            return SolPubKey.from_raw(rec.holder_address)
         return None
 
 

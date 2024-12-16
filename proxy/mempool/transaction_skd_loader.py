@@ -79,8 +79,10 @@ class MpSkdTxLoader(MempoolComponent):
         start_slot = 0
         for skd_tx in skd_tx_list:
             start_slot = max(start_slot, skd_tx.slot)
+            if self._tx_executor.get_tx_by_hash(skd_tx.neon_tx_hash):
+                continue
 
-            mp_tx = MpTxModel.from_skd_tx(skd_tx, self._layer0_chain_id)
+            mp_tx = MpTxModel.from_skd_tx(skd_tx)
             payer = NeonAddress.from_raw(mp_tx.payer, mp_tx.chain_id)
             neon_acct = await self._core_api_client.get_neon_account(payer, None)
 
@@ -102,7 +104,7 @@ class MpSkdTxLoader(MempoolComponent):
 
         for skd_tx in skd_tx_list:
             if skd_tx.rlp_tx and NeonTxModel.from_raw(skd_tx).base_fee_per_gas > min_exec_gas_price:
-                mp_tx = MpTxModel.from_skd_tx(skd_tx, self._layer0_chain_id)
+                mp_tx = MpTxModel.from_skd_tx(skd_tx)
                 await self._exec_client.exec_tx(mp_tx, token)
             else:
                 await self._exec_client.destroy_tree_account(skd_tx, token)

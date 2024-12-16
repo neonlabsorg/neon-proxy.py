@@ -165,7 +165,7 @@ class NeonTxExecApi(ExecutorApi):
             nonlocal token
             nonlocal resp_code
 
-            mp_tx = MpTxModel.from_skd_tx(_skd_tx, skd_tree_parser.chain_id)
+            mp_tx = MpTxModel.from_skd_tx(_skd_tx)
             request = ExecTxRequest(tx=mp_tx, token=token)
 
             with logging_context(**request.req_id, skd_tree=_skd_tx.tree_address.ident):
@@ -289,10 +289,8 @@ class NeonTxExecApi(ExecutorApi):
         stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
         op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
         payer_acct = await self._core_api_client.get_neon_account(skd_tree_parser.payer, None)
-        evm_cfg = await self._get_evm_cfg()
 
         ctx = NeonExecTxCtx(self._server, op_res, stuck_req, None, skd_tree_parser)
-        ctx.init_neon_prog(evm_cfg)
 
         base_acct_set = NeonBaseTxAccountSet(
             payer=payer_acct.sol_address,

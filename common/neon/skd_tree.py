@@ -1,4 +1,3 @@
-import logging
 from typing import ClassVar
 
 from typing_extensions import Self
@@ -8,8 +7,6 @@ from .neon_program import NeonProg
 from ..ethereum.hash import EthAddress
 from ..solana.pubkey import SolPubKey
 from ..utils.cached import cached_property, cached_method
-
-_LOG = logging.getLogger(__name__)
 
 
 class NeonSkdTreeAddress:
@@ -43,8 +40,6 @@ class NeonSkdTreeAddress:
             self._address.chain_id.to_bytes(8, "little"),
             self._nonce.to_bytes(8, "little"),
         ]
-        _LOG.debug("seed list: %s", seed_list)
-
         addr, _ = SolPubKey.find_program_address(seed_list, NeonProg.ID)
 
         return addr
