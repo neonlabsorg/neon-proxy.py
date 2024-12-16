@@ -7,6 +7,8 @@ from typing_extensions import Self
 from common.app_data.server import AppDataApi
 from common.cu_price.client import CuPriceClient
 from common.config.config import Config
+from common.neon.neon_program import NeonProg
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
@@ -75,7 +77,10 @@ class ExecutorServerAbc(BaseIntlProxyServer):
 
     @ttl_cached_method(ttl_sec=1)
     async def get_evm_cfg(self) -> EvmConfigModel:
-        return await self._mp_client.get_evm_cfg()
+        evm_cfg = await self._mp_client.get_evm_cfg()
+        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
+        return evm_cfg
 
     def _add_api(self, api: ExecutorApi) -> Self:
         return self.add_api(api, endpoint=EXECUTOR_ENDPOINT)
@@ -88,6 +93,7 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._cu_price_client.start(),
             self._db.start(),
         )
+        await self.get_evm_cfg()
 
     async def _on_server_stop(self) -> None:
         await asyncio.gather(

@@ -18,7 +18,7 @@ from common.neon.block import NeonBlockHdrModel
 from common.neon.evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
 from common.neon.receipt_model import NeonTxReceiptModel
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo, SolNeonAltTxIxModel
-from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus, NeonSkdTxModel
+from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus
 from common.solana.block import SolRpcBlockInfo
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey, SolPubKeyField
@@ -962,6 +962,29 @@ class SolIndexedAltInfo:
 
 
 @dataclass(frozen=True)
+class NeonIndexedSkdTxInfo:
+    neon_tx_hash: EthTxHash
+    tree_address: SolPubKey
+    sol_skd_tx_sig: SolTxSig
+    sol_skd_payer: SolPubKey
+    neon_payer: EthAddress
+    chain_id: int
+    nonce: int
+    index: int
+    rlp_tx: bytes
+
+    @cached_method
+    def to_string(self) -> str:
+        return str_fmt_object(self, skip_key_list=tuple(["rlp_tx"]))
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
+
+
+@dataclass(frozen=True)
 class NeonIndexedSkdTxStatusInfo:
     neon_tx_hash: EthTxHash
     tree_address: SolPubKey
@@ -997,7 +1020,7 @@ class NeonIndexedBlockInfo:
         self._stuck_neon_tx_list: list[NeonIndexedTxInfo] = list()
         self._failed_neon_tx_set: set[NeonIndexedTxInfo.Key] = set()
 
-        self._neon_skd_tx_list: list[NeonSkdTxModel] = list()
+        self._neon_skd_tx_list: list[NeonIndexedSkdTxInfo] = list()
         self._neon_skd_tx_status_list: list[NeonIndexedSkdTxStatusInfo] = list()
         self._neon_skd_tx_relation_list: list[NeonIndexedSkdTxRelationInfo] = list()
         self._neon_skd_tree_done_list: list[SolPubKey] = list()
@@ -1179,7 +1202,7 @@ class NeonIndexedBlockInfo:
         self._sol_alt_ix_list.append(alt_ix)
         alt.set_last_ix_slot(alt_ix.slot, alt_ix.sol_tx_cost.sol_signer)
 
-    def add_neon_skd_tx(self, tx: NeonSkdTxModel) -> None:
+    def add_neon_skd_tx(self, tx: NeonIndexedSkdTxInfo) -> None:
         self._neon_skd_tx_list.append(tx)
 
     def add_neon_skd_tx_status(self, tx: NeonIndexedSkdTxStatusInfo) -> None:
@@ -1262,7 +1285,7 @@ class NeonIndexedBlockInfo:
             return iter(())
         return iter(self._done_neon_tx_list)
 
-    def iter_neon_skd_tx(self) -> Iterator[NeonSkdTxModel]:
+    def iter_neon_skd_tx(self) -> Iterator[NeonIndexedSkdTxInfo]:
         return iter(self._neon_skd_tx_list)
 
     def iter_neon_skd_tx_status(self) -> Iterator[NeonIndexedSkdTxStatusInfo]:

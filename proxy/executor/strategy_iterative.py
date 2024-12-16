@@ -278,7 +278,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return await self._emulate_and_send_single_tx("single", ix, base_cfg)
 
     async def _get_iter_list_cfg(self) -> SolIterListCfg | None:
-        evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
+        evm_step_cnt_per_iter: Final[int] = self._ctx.neon_prog.EvmStepPerIter
 
         # 7? attempts looks enough for evm steps calculations:
         #   1 step:
@@ -344,7 +344,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return await self._get_def_iter_list_cfg()
 
     async def _calc_cu_budget(self, hdr: str, base_cfg: SolIterListCfg) -> SolIterListCfg:
-        evm_step_cnt_per_iter: Final[int] = self._ctx.evm_step_cnt_per_iter
+        evm_step_cnt_per_iter: Final[int] = self._ctx.neon_prog.EvmStepPerIter
 
         tx_list = tuple(self._build_cu_tx(self._build_tx_ix(base_cfg), base_cfg) for _ in range(base_cfg.iter_cnt))
         # emulate
@@ -399,7 +399,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     async def _get_def_iter_list_cfg(self) -> SolIterListCfg:
         cu_limit: Final[int] = SolCbProg.MaxCuLimit // 2
-        evm_step_cnt: Final[int] = self._ctx.evm_step_cnt_per_iter
+        evm_step_cnt: Final[int] = self._ctx.neon_prog.EvmStepPerIter
         total_evm_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
 
         if self._cfg.mp_send_batch_tx:
@@ -441,7 +441,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         tx_cfg = super()._init_sol_tx_cfg(ix_mode=ix_mode, cu_limit=cu_limit, **kwargs)
 
-        evm_step_cnt = max(evm_step_cnt, self._ctx.evm_step_cnt_per_iter)
+        evm_step_cnt = max(evm_step_cnt, self._ctx.neon_prog.EvmStepPerIter)
         iter_cnt = max(iter_cnt, 1)
 
         return SolIterListCfg(**tx_cfg.to_dict(), evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)

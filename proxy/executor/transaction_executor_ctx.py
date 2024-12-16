@@ -69,8 +69,6 @@ class NeonExecTxCtx(ExecutorComponent):
         self._tx_request = tx_request
         self._token = token
 
-        self._evm_step_cnt_per_iter: int | None = 0
-
         self._uniq_idx = itertools.count()
         self._alt_id_set: set[SolAltID] = set()
         self._sol_tx_list_dict: dict[str, list[tuple[SolTx, bool]]] = dict()
@@ -84,12 +82,6 @@ class NeonExecTxCtx(ExecutorComponent):
         self._is_test_mode = False
 
         self._skd_tree_parser = skd_tree_parser
-
-    def init_neon_prog(self, evm_cfg: EvmConfigModel) -> Self:
-        self._evm_step_cnt_per_iter = evm_cfg.evm_step_cnt
-        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
-        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
-        return self
 
     @cached_property
     def _holder_addr(self) -> SolPubKey:
@@ -365,10 +357,6 @@ class NeonExecTxCtx(ExecutorComponent):
         return next(self._uniq_idx)
 
     @property
-    def evm_step_cnt_per_iter(self) -> int:
-        return self._evm_step_cnt_per_iter
-
-    @property
     def total_evm_step_cnt(self) -> int:
         return self._calc_total_evm_step_cnt()
 
@@ -391,7 +379,7 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @reset_cached_method
     def _calc_wrap_iter_cnt(self) -> int:
-        evm_step_cnt = self._evm_step_cnt_per_iter
+        evm_step_cnt = self.neon_prog.EvmStepPerIter
         exec_iter_cnt = (self.total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt
         iter_cnt = self.total_iter_cnt - exec_iter_cnt
         assert iter_cnt >= 0
