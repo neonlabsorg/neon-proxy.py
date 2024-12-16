@@ -1,7 +1,7 @@
 
 resource "hcloud_server" "proxy" {
   name        = "proxy-${var.run_number}-${var.proxy_image_tag}"
-  image       = "123" # Non existing label # data.hcloud_image.ci-image.id
+  image       = data.hcloud_image.ci-image.id
   server_type = var.server_type
   location    = var.location
   ssh_keys = [
