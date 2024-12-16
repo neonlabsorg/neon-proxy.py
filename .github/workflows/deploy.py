@@ -3,6 +3,7 @@ import os
 import re
 import statistics
 import sys
+import time
 from collections import defaultdict
 
 import docker
@@ -239,10 +240,15 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     locations = ["nbg1", "fsn1"]
     instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
 
+    retry_amount = 10
+    retry_amount = len(instances) if len(instances) > retry_amount else retry_amount # Verify that we can try all regions and locations
+
     print("Possible instance options: ", instances)
 
-    for i in instances:
-        return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=True, var={'server_type':i["server_type"], 'location':i["location"]})
+    instance_iterator = 0
+    retry_iterator = 0
+    while (retry_iterator < retry_amount):
+        return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=True, var={'server_type':instances[instance_iterator]["server_type"], 'location':instances[instance_iterator]["location"]})
         click.echo(f"stdout: {stdout}")
         with open(f"terraform.log", "w") as file:
             if stdout:
@@ -252,11 +258,20 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
         if return_code == 0:
             break
         elif return_code != 0:
-            if not "error during placement (resource_unavailable)" in stderr:
-                print("Terraform apply failed:", stderr)
-                print("Terraform infrastructure is not built correctly")
-                sys.exit(1)
-        print("Resource_unavailable; ",i ," Trying to recreate instances with another region / another instance type...")
+            retry_iterator += 1
+            if "error during placement (resource_unavailable)" in stderr:
+                instance_iterator += 1
+                print("Resource_unavailable; ",instances[instance_iterator] ," Trying to recreate instances with another region / another instance type...")
+            else:
+                print("Retry because ", stderr, "; Retries left: ", retry_amount - retry_iterator)
+            time.sleep(3)
+
+    if retry_iterator >= retry_amount:
+        print("Retries left: ", retry_amount - retry_iterator)
+        print("Terraform apply failed:", stderr)
+        print("Terraform infrastructure is not built correctly")
+        sys.exit(1)
+        
     output = terraform.output(json=True)
     click.echo(f"output: {output}")
     proxy_ip = output["proxy_ip"]["value"]
