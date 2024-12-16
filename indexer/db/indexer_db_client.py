@@ -7,7 +7,7 @@ from typing_extensions import Final
 
 from common.config.config import Config
 from common.db.constant_db import ConstantDb
-from common.db.db_connect import DbConnection
+from common.db.db_connect import DbConnection, DbTxCtx
 from common.ethereum.hash import EthBlockHash, EthAddress, EthHash32, EthTxHash
 from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockHdrModel, NeonBlockCuPriceInfo, NeonBlockBaseFeeInfo
@@ -19,6 +19,7 @@ from common.solana.pubkey import SolPubKey
 from common.solana.signature import SolTxSigSlotInfo, SolTxSig
 from .indexer_db import IndexerDbSlotRange
 from .neon_block_fee_db import NeonBlockFeeDB
+from .neon_skd_tx_body_db import NeonSkdTxBodyDb
 from .neon_skd_tx_db import NeonSkdTxDb
 from .neon_skd_tx_relation_db import NeonSkdTxRelationDb
 from .neon_skd_tx_sig_db import NeonSkdTxSigDb
@@ -47,6 +48,7 @@ class IndexerDbClient:
         self._neon_block_fee_db = NeonBlockFeeDB(db_conn)
         self._sol_tx_cost_db = SolTxCostDb(db_conn)
         self._neon_skd_tx_db = NeonSkdTxDb(db_conn)
+        self._neon_skd_tx_body_db = NeonSkdTxBodyDb(db_conn)
         self._neon_skd_tx_sig_db = NeonSkdTxSigDb(db_conn)
         self._neon_skd_tx_status_db = NeonSkdTxStatusDb(db_conn)
         self._neon_skd_tx_relation_db = NeonSkdTxRelationDb(db_conn)
@@ -63,6 +65,7 @@ class IndexerDbClient:
             self._neon_block_fee_db,
             self._sol_tx_cost_db,
             self._neon_skd_tx_db,
+            self._neon_skd_tx_body_db,
             self._neon_skd_tx_sig_db,
             self._neon_skd_tx_status_db,
             self._neon_skd_tx_relation_db,
@@ -76,6 +79,7 @@ class IndexerDbClient:
 
         self._skd_tree_db_list = (
             self._neon_skd_tx_db,
+            self._neon_skd_tx_body_db,
             self._neon_skd_tx_sig_db,
             self._neon_skd_tx_status_db,
             self._neon_skd_tx_relation_db,
@@ -201,15 +205,27 @@ class IndexerDbClient:
         return await self._neon_skd_tx_status_db.get_holder_address(None, neon_tx_hash)
 
     async def commit_neon_skd_tx(self, slot: int, tree_address: SolPubKey, neon_tx: NeonTxModel) -> None:
-        await self._neon_skd_tx_db.commit_tx(None, slot, tree_address, neon_tx)
-        if await self._neon_skd_tx_db.get_tx_by_tree_index(None, tree_address, 0):
-            return
+        async def _tx(ctx: DbTxCtx) -> None:
+            await self._neon_skd_tx_body_db.commit_tx(ctx, slot, tree_address, neon_tx)
+            await self._neon_skd_tx_sig_db.commit_tx(ctx, slot, tree_address, neon_tx)
+            await self._neon_skd_tx_db.commit_tx(ctx, slot, tree_address, neon_tx)
+            if (neon_tx.index != 0) and (await self._neon_skd_tx_db.get_top_tx(ctx, tree_address)):
+                return
 
-        # if not top transaction -> insert it -> for correct destroying tree accounts
-        idx_info = dict(neon_tx_hash=neon_tx.neon_tx_hash, index=0, rlp_tx=bytes())
-        top_neon_tx = neon_tx.model_copy(update=idx_info)
-        await self._neon_skd_tx_db.commit_tx(None, slot, tree_address, top_neon_tx)
-        await self._neon_skd_tx_sig_db.commit_tx(None, slot, tree_address, top_neon_tx)
+            # if no a top transaction -> insert it -> for correct destroying of tree accounts
+            rand_tx_hash = bytes().join(
+                [
+                    b"\xff\xff\xff\xff\xff\xff",
+                    neon_tx.neon_tx_hash.to_bytes()[6:]
+                ]
+            )
+            idx_info = dict(neon_tx_hash=EthTxHash.from_raw(rand_tx_hash), index=0, rlp_tx=bytes())
+            top_neon_tx = neon_tx.model_copy(update=idx_info)
+
+            await self._neon_skd_tx_db.commit_tx(ctx, slot, tree_address, top_neon_tx)
+            await self._neon_skd_tx_sig_db.commit_tx(ctx, slot, tree_address, top_neon_tx)
+
+        await self._db_conn.run_tx(_tx)
 
     async def destroy_tree_account(self, tree_address: SolPubKey) -> None:
         tree_addr_list = [tree_address]

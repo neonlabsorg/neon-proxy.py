@@ -9,11 +9,11 @@ from typing_extensions import Self
 
 from common.db.db_connect import DbConnection, DbTxCtx, DbSql, DbSqlParam, DbQueryBody
 from common.ethereum.hash import EthTxHash
-from common.neon.transaction_model import NeonSkdTxModel, NeonSkdTxStatus, NeonTxModel
+from common.neon.transaction_model import NeonSkdTxStatus, NeonTxModel
 from common.solana.pubkey import SolPubKey
 from common.solana.signature import SolTxSig
 from ..base.history_skd_db import SkdTxDbTable
-from ..base.objects import NeonIndexedBlockInfo, NeonIndexedSkdTxStatusInfo
+from ..base.objects import NeonIndexedBlockInfo, NeonIndexedSkdTxStatusInfo, NeonIndexedSkdTxInfo
 
 _LOG = logging.getLogger(__name__)
 
@@ -76,9 +76,9 @@ class NeonSkdTxSigDb(SkdTxDbTable):
         activate_sql = DbSql(
             """;
             INSERT INTO {table_name}
-               (sol_sig, sol_payer, neon_payer, chain_id, tree_address, neon_sig, block_slot, is_active) 
+               (sol_sig, sol_payer, neon_payer, nonce, chain_id, tree_address, neon_sig, block_slot, is_active) 
             SELECT DISTINCT
-               a.sol_sig, a.sol_payer, neon_payer, chain_id, a.tree_address, a.neon_sig, {block_slot}, True
+               a.sol_sig, a.sol_payer, a.neon_payer, a.nonce, a.chain_id, a.tree_address, a.neon_sig, {block_slot}, True
             FROM 
                {table_name} AS a
             INNER JOIN
@@ -147,11 +147,12 @@ class _Record:
     sol_sig: str
     sol_payer: str
     neon_payer: str
+    nonce: int
     chain_id: int
     is_active: bool
 
     @classmethod
-    def from_tx(cls, slot: int, tx: NeonSkdTxModel) -> Self:
+    def from_tx(cls, slot: int, tx: NeonIndexedSkdTxInfo) -> Self:
         return cls(
             block_slot=slot,
             tree_address=tx.tree_address.to_string(),
@@ -160,6 +161,7 @@ class _Record:
             sol_sig=tx.sol_skd_tx_sig.to_string(),
             sol_payer=tx.sol_skd_payer.to_string(),
             neon_payer=tx.neon_payer.to_string(),
+            nonce=tx.nonce,
             chain_id=tx.chain_id,
         )
 
@@ -173,6 +175,7 @@ class _Record:
             sol_sig=tx.sol_skd_tx_sig.to_string(),
             sol_payer=tx.sol_skd_payer.to_string(),
             neon_payer=tx.payer.to_string(),
+            nonce=tx.nonce,
             chain_id=tx.chain_id,
         )
 

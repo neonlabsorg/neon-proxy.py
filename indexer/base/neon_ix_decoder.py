@@ -6,7 +6,7 @@ from typing import ClassVar, Final
 from common.ethereum.hash import EthTxHash, EthAddressField
 from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonEvmIxCode
-from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus, NeonSkdTxModel
+from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus
 from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.utils.pydantic import BaseModel
 from .objects import (
@@ -16,6 +16,7 @@ from .objects import (
     SolNeonDecoderCtx,
     NeonIndexedSkdTxStatusInfo,
     NeonIndexedSkdTxRelationInfo,
+    NeonIndexedSkdTxInfo,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -564,8 +565,7 @@ class SkdTxCreateDecoder(BaseSkdTxIxDecoder):
             )
             return False
 
-        skd_tx = NeonSkdTxModel(
-            slot=ix.slot,
+        skd_tx = NeonIndexedSkdTxInfo(
             neon_tx_hash=ix.neon_tx_hash,
             sol_skd_tx_sig=ix.sol_tx_sig,
             sol_skd_payer=ix.sol_payer,
@@ -636,8 +636,7 @@ class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
             tx_hash_list.append(neon_tx_hash)
             child_idx_list.append(child_idx)
 
-            skd_tx = NeonSkdTxModel(
-                slot=ix.slot,
+            skd_tx = NeonIndexedSkdTxInfo(
                 neon_tx_hash=neon_tx_hash,
                 sol_skd_tx_sig=sol_tx_sig,
                 sol_skd_payer=sol_payer,

@@ -41,10 +41,10 @@ class MpTxModel(BaseModel):
         )
 
     @classmethod
-    def from_skd_tx(cls, skd_tx: NeonSkdTxModel, chain_id: int) -> Self:
+    def from_skd_tx(cls, skd_tx: NeonSkdTxModel) -> Self:
         return cls.from_param(
             rlp_tx=skd_tx.rlp_tx.to_bytes(),
-            chain_id=chain_id,
+            chain_id=skd_tx.chain_id,
             sol_skd_tx_sig=skd_tx.sol_skd_tx_sig,
             sol_skd_payer=skd_tx.sol_skd_payer,
         )

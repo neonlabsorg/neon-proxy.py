@@ -17,6 +17,7 @@ class SkdTxDbTable(HistoryDbTable):
         super().__init__(*args, **kwargs)
 
         self._skd_sig_table_name = DbSqlIdent("neon_scheduled_transactions_signature")
+        self._skd_body_table_name = DbSqlIdent("neon_scheduled_transactions_body")
         self._delete_by_tree_addr_query = DbQueryBody()
 
     async def start(self) -> None:
