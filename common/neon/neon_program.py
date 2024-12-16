@@ -139,6 +139,7 @@ class NeonProgCfg:
     treasury_pool_seed: bytes
     treasury_payment: int
     evm_version: str
+    evm_step_cnt: int
 
     @cached_property
     def protocol_version(self) -> NeonEvmProtocol:
@@ -163,13 +164,15 @@ class NeonProg:
     _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.Unknown
     _evm_version: ClassVar[str] = "0.0.0"
     _deposit_seed: Final[bytes] = b"Deposit"
-
+    #
     ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
     DepositAddress: ClassVar[SolPubKey] = SolPubKey.find_program_address(tuple([_deposit_seed]), ID)[0]
     #
     SignatureGas: Final[int] = SOL_SIG_COST
     TreasuryGas: ClassVar[int] = 0
     BaseGas: ClassVar[int] = SignatureGas + 0
+    #
+    EvmStepPerIter: ClassVar[int] = 0
 
     # Holder IX CUs limit
     CuLimitHolderWrite: Final[int] = 25_000
@@ -218,6 +221,7 @@ class NeonProg:
 
         cls.TreasuryGas = cfg.treasury_payment
         cls.BaseGas = cls.SignatureGas + cfg.treasury_payment
+        cls.EvmStepPerIter = cfg.evm_step_cnt
 
     @classmethod
     def is_init(cls) -> bool:

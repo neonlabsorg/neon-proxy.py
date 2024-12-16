@@ -239,7 +239,6 @@ class NeonTxExecutor(ExecutorComponent):
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
-        ctx.init_neon_prog(evm_cfg)
 
         sender_balance = await self._get_sender_balance(ctx)
 

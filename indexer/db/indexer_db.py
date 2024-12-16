@@ -11,6 +11,7 @@ from common.db.db_connect import DbConnection, DbTxCtx
 from common.utils.cached import cached_property, cached_method
 from .gas_less_usage_db import GasLessUsageDb
 from .neon_block_fee_db import NeonBlockFeeDB
+from .neon_skd_tx_body_db import NeonSkdTxBodyDb
 from .neon_skd_tx_db import NeonSkdTxDb
 from .neon_skd_tx_relation_db import NeonSkdTxRelationDb
 from .neon_skd_tx_sig_db import NeonSkdTxSigDb
@@ -105,6 +106,7 @@ class IndexerDb:
         self._neon_block_fee_db = NeonBlockFeeDB(db_conn, def_chain_id)
         self._sol_tx_cost_db = SolTxCostDb(db_conn)
         self._neon_skd_tx_db = NeonSkdTxDb(db_conn)
+        self._neon_skd_tx_body_db = NeonSkdTxBodyDb(db_conn)
         self._neon_skd_tx_sig_db = NeonSkdTxSigDb(db_conn)
         self._neon_skd_tx_status_db = NeonSkdTxStatusDb(db_conn)
         self._neon_skd_tx_relation_db = NeonSkdTxRelationDb(db_conn)
@@ -124,6 +126,7 @@ class IndexerDb:
             self._sol_tx_cost_db,
             self._neon_tx_db,
             self._neon_skd_tx_db,
+            self._neon_skd_tx_body_db,
             self._neon_skd_tx_sig_db,
             self._neon_skd_tx_status_db,
             self._neon_skd_tx_relation_db,
@@ -141,6 +144,7 @@ class IndexerDb:
             self._neon_block_fee_db,
             self._neon_tx_db,
             self._neon_skd_tx_db,
+            self._neon_skd_tx_body_db,
             self._neon_skd_tx_sig_db,
             self._neon_skd_tx_status_db,
             self._neon_skd_tx_relation_db,
