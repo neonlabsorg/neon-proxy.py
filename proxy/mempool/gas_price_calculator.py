@@ -243,16 +243,21 @@ class MpGasPriceCalculator(MempoolComponent):
                 _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
 
     async def _get_price_account(self, token: str) -> PythPriceAccount:
-        if not self._watch_session:
-            return PythPriceAccount.default()
+        # if not self._watch_session:
+        #     return PythPriceAccount.default()
 
         if not (price_acct := self._price_acct_dict.get(token, None)):
             _LOG.error(log_msg("Pyth doesn't have information about the token: {Token}", Token=token))
             return PythPriceAccount.default()
 
-        elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
-            await self._watch_session.subscribe_account(price_acct.address)
-            raw_acct = self._watch_session.get_account(price_acct.address)
+        # elif not self._watch_session:
+        #     raw_acct = await self._watch_session.get_account(price_acct.address)
+        #
+        # elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
+        #     await self._watch_session.subscribe_account(price_acct.address)
+        #     raw_acct = self._watch_session.get_account(price_acct.address)
+
+        raw_acct = await self._sol_client.get_account(price_acct.address)
 
         price_acct.update_data(raw_acct)
         return price_acct
