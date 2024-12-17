@@ -2,14 +2,14 @@ import logging
 
 from .api import PriorityFeeCfg
 from .dynamic_cfg_api import PriorityFeeCfgResp
+from ..http.client import HttpClient
 from ..http.utils import HttpURL
-from ..jsonrpc.client import JsonRpcClient
 from ..utils.cached import ttl_cached_method
 
 _LOG = logging.getLogger(__name__)
 
 
-class DynamicFeeCfgClient(JsonRpcClient):
+class DynamicFeeCfgClient(HttpClient):
     def __init__(self, *args, **kwargs) -> None:
         # solders doesn't have implementation for priority fee
         super().__init__(*args, **kwargs)
@@ -38,23 +38,25 @@ class DynamicFeeCfgClient(JsonRpcClient):
             return self._base_cfg
 
         try:
-            resp = await self._get_cfg()
-            return PriorityFeeCfg(
+            resp_json = await self._send_raw_data_request(data="")
+            resp = PriorityFeeCfgResp.from_json(resp_json)
+            cfg = PriorityFeeCfg(
                 operator_fee=resp.operator_fee,
                 priority_fee=resp.priority_fee,
-                const_gas_price=resp.const_gas_price * (10**9),
-                min_gas_price=resp.min_gas_price * (10**9),
+                const_gas_price=(
+                    resp.const_gas_price * (10**9) if resp.const_gas_price is not None else self._cfg.const_gas_price
+                ),
+                min_gas_price=(
+                    resp.min_gas_price * (10**9) if resp.min_gas_price is not None else self._cfg.min_gas_price
+                ),
                 cu_price_mode=resp.cu_price_mode,
                 cu_price_level=resp.cu_price_level,
-                def_cu_price=resp.def_cu_price,
-                def_simple_cu_price=resp.def_simple_cu_price,
+                def_cu_price=resp.def_cu_price or self._cfg.def_cu_price,
+                def_simple_cu_price=resp.def_simple_cu_price or self._cfg.def_simple_cu_price,
             )
+            return cfg
 
         except BaseException as exc:
             _LOG.warning("fail to get priority fee config", exc_info=exc, extra=self._msg_filter)
 
         return self._base_cfg
-
-    @JsonRpcClient.method(name="getPriorityFeeCfg")
-    async def _get_cfg(self) -> PriorityFeeCfgResp: ...
-

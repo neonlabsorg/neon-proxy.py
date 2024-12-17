@@ -122,8 +122,11 @@ class MpGasPriceCalculator(MempoolComponent):
 
             with logging_context(ctx="mp-update-gas-price"):
                 try:
+                    _LOG.debug("get evm cfg")
                     evm_cfg = await self._get_evm_cfg()
+                    _LOG.debug("get fee cfg")
                     fee_cfg = await self._cu_price_client.get_fee_cfg()
+                    _LOG.debug("calc gas price")
                     if gas_price := await self._calc_gas_price(evm_cfg, fee_cfg):
                         self._gas_price_cache = gas_price
                 except BaseException as exc:
@@ -260,7 +263,7 @@ class MpGasPriceCalculator(MempoolComponent):
         #     await self._watch_session.subscribe_account(price_acct.address)
         #     raw_acct = self._watch_session.get_account(price_acct.address)
 
-        raw_acct = await self._sol_client.get_account(price_acct.address)
+        raw_acct = await self._sol_client.get_account(price_acct.address, size=1024)
 
         price_acct.update_data(raw_acct)
         return price_acct

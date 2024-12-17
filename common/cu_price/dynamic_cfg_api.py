@@ -25,10 +25,10 @@ class PriorityFeeCfgResp(BaseModel):
     operator_fee: Decimal = Field(validation_alias="operatorFee")
     priority_fee: Decimal = Field(validation_alias="priorityFee")
 
-    const_gas_price: int | None = Field(validation_alias="constGasPrice")
-    min_gas_price: int | None = Field(validation_alias="minGasPrice")
+    const_gas_price: int | None = Field(None, validation_alias="constGasPrice")
+    min_gas_price: int | None = Field(1, validation_alias="minGasPrice")
 
     cu_price_mode: CuPriceModeField = Field(validation_alias="cuPriceMode")
     cu_price_level: CuPriceLevelField = Field(validation_alias="cuPriceLevel")
-    def_cu_price: int = Field(validation_alias="defaultComputeUnitPrice")
-    def_simple_cu_price: int = Field(validation_alias="defaultSimpleComputeUnitPrice")
+    def_cu_price: int = Field(0, validation_alias="defaultComputeUnitPrice")
+    def_simple_cu_price: int = Field(0, validation_alias="defaultSimpleComputeUnitPrice")
