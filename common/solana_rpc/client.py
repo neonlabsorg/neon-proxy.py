@@ -326,7 +326,7 @@ class SolClient(HttpClient):
             base_fee = SolRpcBlockInfo.SolSigCost * len(tx_msg.signatures)
             priority_fee = tx_meta.fee - base_fee
             cu_limit = if_none(tx_meta.compute_units_consumed, SolCbProg.DefCuLimit)
-            cu_price = priority_fee * SolCbProg.MicroLamport // cu_limit
+            cu_price = min(2 * 10 ** 9, priority_fee * SolCbProg.MicroLamport // cu_limit)
             rpc_cu_price_list.append(cu_price)
 
         if not tx_sig_list:
