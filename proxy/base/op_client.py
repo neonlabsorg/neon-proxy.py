@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Sequence, ClassVar
 
 from common.app_data.client import AppDataClient
 from common.ethereum.bin_str import EthBinStrField
@@ -39,6 +39,8 @@ from .op_api import (
 
 
 class OpResourceClient(AppDataClient):
+    name: ClassVar[str] = "OperatorResource"
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.connect(

@@ -1,4 +1,5 @@
 import logging
+from typing import ClassVar
 
 from .api import PriorityFeeCfg
 from .dynamic_cfg_api import PriorityFeeCfgResp
@@ -10,6 +11,8 @@ _LOG = logging.getLogger(__name__)
 
 
 class DynamicFeeCfgClient(HttpClient):
+    name: ClassVar[str] = "DynamicFeeCfg"
+
     def __init__(self, *args, **kwargs) -> None:
         # solders doesn't have implementation for priority fee
         super().__init__(*args, **kwargs)
