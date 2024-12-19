@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, ClassVar
 
 from common.app_data.client import AppDataClient
 from common.neon.address import NeonAddress
@@ -20,6 +20,8 @@ from .mp_api import MpTxModel, MpStuckTxModel
 
 
 class ExecutorClient(AppDataClient):
+    name: ClassVar[str] = "Executor"
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.connect(host=self._cfg.exec_ip, port=self._cfg.exec_port, path=EXECUTOR_ENDPOINT)

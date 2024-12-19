@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from common.app_data.client import AppDataClient
 from common.config.config import Config
 from common.stat.api import RpcCallData
@@ -9,6 +11,8 @@ from .api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat, STATI
 
 
 class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
+    name: ClassVar[str] = "IndexerStatistic"
+
     def __init__(self, cfg: Config) -> None:
         AppDataClient.__init__(self, cfg)
         BaseStatClient.__init__(self, cfg)

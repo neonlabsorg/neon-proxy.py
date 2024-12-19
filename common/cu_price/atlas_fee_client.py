@@ -1,4 +1,5 @@
 import logging
+from typing import ClassVar
 
 from .api import CuPriceRequest
 from .atlas_fee_api import AtlasFeeResp, AtlasFeeRequest, AtlasFeeCfg
@@ -10,6 +11,8 @@ _LOG = logging.getLogger(__name__)
 
 
 class AtlasFeeClient(JsonRpcClient):
+    name: ClassVar[str] = "Atlas"
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if self._cfg.atlas_fee_url_list:

@@ -5,7 +5,7 @@ import itertools
 import logging
 import random
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Sequence, ClassVar
 
 import aiohttp.client as _cl
 from typing_extensions import Self
@@ -39,6 +39,8 @@ class HttpClientRequest:
 
 
 class HttpClient:
+    name: ClassVar[str] = "Unknown"
+
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(self._cfg)
@@ -118,7 +120,7 @@ class HttpClient:
     def _connect_to_url(self, base_url: HttpURL):
         assert base_url.is_absolute(), "'base_url' must be absolute"
 
-        _LOG.debug("connect to the URL: %s", str(base_url), extra=self._msg_filter)
+        _LOG.debug("connect %s to the URL: %s", self.name, str(base_url), extra=self._msg_filter)
         self._base_url_list.append(base_url)
 
     async def _send_raw_data_request(
@@ -157,15 +159,16 @@ class HttpClient:
         """
 
         msg = dict(
-            message="error on retry {Retry} on request to {Path}: {Error}",
+            message="error on retry {Retry} on request to {Name} ({Path}): {Error}",
             Retry=retry,
+            Name=self.name,
             Path=str(url),
             Error=str(exc),
         )
         _LOG.warning(msg, extra=self._msg_filter)
 
         if 0 < self._max_retry_cnt <= retry:
-            _LOG.error("reach maximum %d retries, force to stop...", self._max_retry_cnt)
+            _LOG.error("reach maximum %d retries on %s, force to stop...", self._max_retry_cnt, self.name)
             raise
 
 
@@ -197,7 +200,7 @@ async def _send_client_request(self: HttpClient, base_url_list: Sequence[HttpURL
 
         await asyncio.sleep(1)
         if retry > 0:
-            _LOG.debug("attempt %d to repeat...", retry + 1)
+            _LOG.debug("attempt %d on %s to repeat...", retry + 1, self.name)
 
 
 @dataclass

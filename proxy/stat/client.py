@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from common.app_data.client import AppDataClient
 from common.config.config import Config
 from common.solana_rpc.transaction_list_sender_stat import SolTxStatClient, SolTxFailData, SolTxDoneData
@@ -18,6 +20,8 @@ from .api import (
 
 
 class StatClient(AppDataClient, BaseStatClient, RpcStatClient, SolTxStatClient):
+    name: ClassVar[str] = "ProxyStatistic"
+
     def __init__(self, cfg: Config) -> None:
         AppDataClient.__init__(self, cfg)
         BaseStatClient.__init__(self, cfg)

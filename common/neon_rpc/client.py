@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-from typing import Sequence, Final, TypeVar
+from typing import Sequence, Final, TypeVar, ClassVar
 
 from .api import (
     CoreApiResp,
@@ -60,7 +60,7 @@ _RespType = TypeVar("_RespType", bound=BaseModel)
 
 
 class CoreApiClient(HttpClient):
-    _stat_name: Final[str] = "NeonCoreApi"
+    name: ClassVar[str] = "NeonCoreApi"
 
     def __init__(self, cfg: Config, sol_client: SolClient, stat_client: RpcStatClient) -> None:
         super().__init__(cfg)
@@ -126,7 +126,7 @@ class CoreApiClient(HttpClient):
         request = RpcClientRequest.from_raw(
             data="",
             stat_client=self._stat_client,
-            stat_name=self._stat_name,
+            stat_name=self.name,
             method=method,
         )
 
@@ -317,7 +317,7 @@ class CoreApiClient(HttpClient):
         request = RpcClientRequest.from_raw(
             data=request.to_json() if request else "",
             stat_client=self._stat_client,
-            stat_name=self._stat_name,
+            stat_name=self.name,
             method=method,
         )
 
