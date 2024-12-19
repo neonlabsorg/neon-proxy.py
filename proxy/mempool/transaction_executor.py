@@ -43,6 +43,7 @@ class MpTxExecutor(MempoolComponent):
         self._exec_event = asyncio.Event()
         self._tx_exec_task: asyncio.Task | None = None
         self._exec_task_dict: dict[EthTxHash, asyncio.Task] = dict()
+        self._exec_tx_set: set[EthTxHash] = set()
         self._completed_task_list: list[asyncio.Task] = list()
 
     async def start(self) -> None:
@@ -208,7 +209,7 @@ class MpTxExecutor(MempoolComponent):
         )
         data = NeonTxPoolData(
             scheduling_queue=queue,
-            processing_queue_len=len(self._exec_task_dict),
+            processing_queue_len=len(self._exec_tx_set),
             stuck_queue_len=self._stuck_tx_dict.tx_cnt,
             processing_stuck_queue_len=self._stuck_tx_dict.processing_tx_cnt,
         )
@@ -222,7 +223,7 @@ class MpTxExecutor(MempoolComponent):
             return False
 
         with logging_context(tx=stuck_tx.tx_id):
-            if stuck_tx.neon_tx_hash in self._exec_task_dict:
+            if stuck_tx.neon_tx_hash in self._exec_tx_set:
                 self._stuck_tx_dict.skip_tx(stuck_tx)
                 return True
 
@@ -233,19 +234,27 @@ class MpTxExecutor(MempoolComponent):
                     return True
 
             self._stuck_tx_dict.acquire_tx(stuck_tx)
+            self._exec_tx_set.add(stuck_tx.neon_tx_hash)
             self._exec_task_dict[stuck_tx.neon_tx_hash] = asyncio.create_task(self._complete_stuck_tx(stuck_tx))
 
         return True
 
     async def _complete_stuck_tx(self, stuck_tx: MpStuckTxModel) -> None:
+        def _fail_tx():
+            result = ExecTxDoneStuckRequest(neon_tx_hash=stuck_tx.neon_tx_hash, code=ExecTxDoneCode.Failed)
+            self._done_complete_stuck_tx(stuck_tx, result)
+
         with logging_context(tx=stuck_tx.tx_id):
             try:
-                await self._exec_client.complete_stuck_tx(stuck_tx)
+                resp = await self._exec_client.complete_stuck_tx(stuck_tx)
+                if not resp.result:
+                    _fail_tx()
             except BaseException as exc:
                 _LOG.error("error on executor", exc_info=exc)
-
-                result = ExecTxDoneStuckRequest(neon_tx_hash=stuck_tx.neon_tx_hash, code=ExecTxDoneCode.Failed)
-                self._done_complete_stuck_tx(stuck_tx, result)
+                _fail_tx()
+            finally:
+                if task := self._exec_task_dict.pop(stuck_tx.neon_tx_hash, None):
+                    self._completed_task_list.append(task)
 
     def _done_complete_stuck_tx(self, stuck_tx: MpStuckTxModel, result: ExecTxDoneStuckRequest) -> bool:
         msg = log_msg(
@@ -265,10 +274,10 @@ class MpTxExecutor(MempoolComponent):
             _LOG.error("unknown exec response code %s", result.code)
             self._stuck_tx_dict.fail_tx(stuck_tx)
 
-        if task := self._exec_task_dict.pop(stuck_tx.neon_tx_hash, None):
-            self._completed_task_list.append(task)
+        if stuck_tx.neon_tx_hash in self._exec_tx_set:
+            self._exec_tx_set.discard(stuck_tx.neon_tx_hash)
         else:
-            _LOG.error("unknown task %s", stuck_tx.neon_tx_hash)
+            _LOG.error("unknown stuck tx %s", stuck_tx.neon_tx_hash)
         self._exec_event.set()
 
         return True
@@ -293,9 +302,11 @@ class MpTxExecutor(MempoolComponent):
                 continue
 
             with logging_context(tx=tx.neon_tx_hash.ident):
-                assert tx.neon_tx_hash not in self._exec_task_dict
+                assert tx.neon_tx_hash not in self._exec_tx_set
+                _LOG.debug("got tx %s", tx.neon_tx_hash)
 
                 tx_schedule.acquire_tx(tx)
+                self._exec_tx_set.add(tx.neon_tx_hash)
                 self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(
                     self._exec_scheduled_tx(tx, gas_price, token)
                 )
@@ -304,12 +315,20 @@ class MpTxExecutor(MempoolComponent):
         return False
 
     async def _exec_scheduled_tx(self, tx: MpTxModel, gas_price: MpGasPriceModel, token: MpTokenGasPriceModel) -> None:
+        def _fail_tx():
+            self._done_exec_tx(tx, ExecTxDoneRequest(neon_tx_hash=tx.neon_tx_hash, code=ExecTxDoneCode.Failed))
+
         with logging_context(tx=tx.tx_id):
             try:
-                await self._exec_client.exec_tx(tx, ExecTokenModel.from_raw(gas_price, token))
+                resp = await self._exec_client.exec_tx(tx, ExecTokenModel.from_raw(gas_price, token))
+                if not resp.result:
+                    _fail_tx()
             except BaseException as exc:
                 _LOG.error("error on send NeonTx to executor", exc_info=exc)
-                self._done_exec_tx(tx, ExecTxDoneRequest(neon_tx_hash=tx.neon_tx_hash, code=ExecTxDoneCode.Failed))
+                _fail_tx()
+            finally:
+                if task := self._exec_task_dict.pop(tx.neon_tx_hash, None):
+                    self._completed_task_list.append(task)
 
     def _done_exec_tx(self, tx: MpTxModel, result: ExecTxDoneRequest) -> bool:
         msg = log_msg(
@@ -340,10 +359,10 @@ class MpTxExecutor(MempoolComponent):
 
         self._call_tx_schedule(tx.chain_id, action, tx, result.state_tx_cnt, result.balance)
 
-        if task := self._exec_task_dict.pop(tx.neon_tx_hash, None):
-            self._completed_task_list.append(task)
+        if tx.neon_tx_hash in self._exec_tx_set:
+            self._exec_tx_set.discard(tx.neon_tx_hash)
         else:
-            _LOG.error("unknown task %s", tx.neon_tx_hash)
+            _LOG.error("unknown tx %s", tx.neon_tx_hash)
         self._exec_event.set()
 
         return True
