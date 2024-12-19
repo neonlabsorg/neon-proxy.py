@@ -574,10 +574,10 @@ class NeonProg:
         assert mode != NeonIxMode.Unknown
         if mode == NeonIxMode.Readable:
             return self._make_holder_ix(ix_data, self._ro_acct_meta_list)
-        elif mode == NeonIxMode.Writable:
+        elif mode in (NeonIxMode.BaseTx, NeonIxMode.Writable):
             return self._make_holder_ix(ix_data, self._acct_meta_list)
-        elif mode == NeonIxMode.BaseTx:
-            return self._make_holder_ix(ix_data, self._base_tx_acct_meta_list)
+        # elif mode == NeonIxMode.BaseTx:
+        #     return self._make_holder_ix(ix_data, self._base_tx_acct_meta_list)
 
         return self._make_holder_ix(ix_data, self._rw_acct_meta_list)
 
