@@ -30,7 +30,7 @@ class MpGasPriceCalculator(MempoolComponent):
     def __init__(self, server: MempoolServerAbc) -> None:
         super().__init__(server)
 
-        # self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, commit=SolCommit.Confirmed)
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, commit=SolCommit.Confirmed)
 
         self._stop_event = asyncio.Event()
         self._update_pyth_acct_task: asyncio.Task | None = None
@@ -90,19 +90,19 @@ class MpGasPriceCalculator(MempoolComponent):
         self._recent_gas_price_dict: dict[int, deque[MpSlotGasPriceModel]] = dict()
 
     async def start(self) -> None:
-        # await self._watch_session.connect()
-        # self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
+        await self._watch_session.connect()
+        self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
         self._update_gas_price_task = asyncio.create_task(self._update_gas_price_loop())
 
     async def stop(self) -> None:
         self._stop_event.set()
-        # if self._update_pyth_acct_task:
-        #     await self._update_pyth_acct_task
+        if self._update_pyth_acct_task:
+            await self._update_pyth_acct_task
         if self._update_gas_price_task:
             await self._update_gas_price_task
 
-        # if self._watch_session:
-        #     await self._watch_session.disconnect()
+        if self._watch_session:
+            await self._watch_session.disconnect()
 
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price_cache
@@ -122,18 +122,14 @@ class MpGasPriceCalculator(MempoolComponent):
 
             with logging_context(ctx="mp-update-gas-price"):
                 try:
-                    _LOG.debug("get evm cfg")
                     evm_cfg = await self._get_evm_cfg()
-                    _LOG.debug("get fee cfg")
                     fee_cfg = await self._cu_price_client.get_fee_cfg()
-                    _LOG.debug("calc gas price")
                     if gas_price := await self._calc_gas_price(evm_cfg, fee_cfg):
                         self._gas_price_cache = gas_price
                 except BaseException as exc:
                     _LOG.error("error on update gas-price", exc_info=exc)
 
     async def _calc_gas_price(self, evm_cfg: EvmConfigModel, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
-        _LOG.debug("calc_gas_price: %s", LAYER0_TOKEN_NAME)
         base_price_acct = await self._get_price_account(LAYER0_TOKEN_NAME)
         base_price_usd = base_price_acct.price
 
@@ -142,7 +138,6 @@ class MpGasPriceCalculator(MempoolComponent):
         layer0_token: MpTokenGasPriceModel | None = None
 
         for token in evm_cfg.token_dict.values():
-            _LOG.debug("calc_gas_price: %s", token.name)
             price_acct = await self._get_price_account(token.name)
             token_gas_price = await self._calc_token_gas_price(fee_cfg, token, base_price_usd, price_acct)
             if token_gas_price:
@@ -152,7 +147,6 @@ class MpGasPriceCalculator(MempoolComponent):
                 elif token_gas_price.is_layer0_token:
                     layer0_token = token_gas_price
             else:
-                _LOG.debug("calc_gas_price: %s fail", token.name)
                 return None
 
         assert default_token is not None, "DEFAULT TOKEN NOT FOUND!"
@@ -236,34 +230,29 @@ class MpGasPriceCalculator(MempoolComponent):
             gas_price_list=list(gas_price_deque),
         )
 
-    # async def _update_pyth_acct_loop(self) -> None:
-    #     stop_task = asyncio.create_task(self._stop_event.wait())
-    #     while not self._stop_event.is_set():
-    #         try:
-    #             if self._watch_session:
-    #                 update_task = asyncio.create_task(self._watch_session.update())
-    #                 await asyncio.wait({update_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
-    #             else:
-    #                 await asyncio.wait({stop_task}, timeout=1.0)
-    #         except BaseException as exc:
-    #             _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
+    async def _update_pyth_acct_loop(self) -> None:
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
+            try:
+                if self._watch_session:
+                    update_task = asyncio.create_task(self._watch_session.update())
+                    await asyncio.wait({update_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+                else:
+                    await asyncio.wait({stop_task}, timeout=1.0)
+            except BaseException as exc:
+                _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
 
     async def _get_price_account(self, token: str) -> PythPriceAccount:
-        # if not self._watch_session:
-        #     return PythPriceAccount.default()
+        if not self._watch_session:
+            return PythPriceAccount.default()
 
         if not (price_acct := self._price_acct_dict.get(token, None)):
             _LOG.error(log_msg("Pyth doesn't have information about the token: {Token}", Token=token))
             return PythPriceAccount.default()
 
-        # elif not self._watch_session:
-        #     raw_acct = await self._watch_session.get_account(price_acct.address)
-        #
-        # elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
-        #     await self._watch_session.subscribe_account(price_acct.address)
-        #     raw_acct = self._watch_session.get_account(price_acct.address)
-
-        raw_acct = await self._sol_client.get_account(price_acct.address, size=1024)
+        elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
+            await self._watch_session.subscribe_account(price_acct.address)
+            raw_acct = self._watch_session.get_account(price_acct.address)
 
         price_acct.update_data(raw_acct)
         return price_acct

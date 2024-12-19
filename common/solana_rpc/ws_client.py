@@ -5,7 +5,7 @@ import itertools
 import logging
 import time
 from dataclasses import dataclass
-from typing import Union, Sequence, Literal, Generic, TypeVar, Final
+from typing import Union, Sequence, Literal, Generic, TypeVar, Final, Any
 
 import aiohttp as _ws
 import pydantic as _pyd
@@ -116,13 +116,13 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
     async def disconnect(self) -> Self:
         if not self.is_connected:
-            await self._on_close()
+            self._clear()
             return self
 
         _LOG.debug("closing WebSocket connection...")
         ws_session, self._ws_session = self._ws_session, None
 
-        await self._on_close()
+        self._clear()
         await ws_session.close()
         _LOG.debug("closed WebSocket connection")
         return self
@@ -135,7 +135,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
     async def _ws_receive_data(self, timeout_sec: float | None) -> Sequence[_SoldersWsMsg]:
         if not self._ws_session:
-            raise SolError("WebSocket is not connected")
+            return tuple()
 
         # aiohttp's receive_str throws a very cryptic error when the
         # connection is closed while we are waiting
@@ -231,6 +231,11 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 # _LOG.error("ERROR unsubscribe %s", str(e), exc_info=e)
                 pass
 
+    def _clear(self) -> None:
+        self._sub_dict.clear()
+        self._req_dict.clear()
+        self._obj_dict.clear()
+
     # fmt: off
     async def _on_close(self) -> None: ...
     def _on_sub_error(self, key: _SolWsObjKey, obj: _SolWsObj) -> None: ...
@@ -252,13 +257,12 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
         try:
             await self.connect()
             await asyncio.gather(*[self._sub_obj(tx.sig, tx, commit) for tx in tx_list])
-
             return await self._wait(timeout_sec)
         except BaseException as exc:
             _LOG.error("error on waiting statuses for txs", exc_info=exc)
             return False
         finally:
-            await asyncio.gather(*[self._unsub_obj(tx.sig) for tx in tx_list])
+            await self.disconnect()
 
     async def _on_close(self) -> None:
         if not self._obj_dict:
@@ -292,6 +296,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         commit = kwargs.pop("commit", SolCommit.Confirmed)
         super().__init__(*args, **kwargs)
         self._commit = commit
+        self._reconnect_future: asyncio.Future[Any] | None = None
 
     async def update(self) -> None:
         await self._wait(None)
@@ -307,23 +312,26 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         info = self._obj_dict.get(addr, None)
         return info.obj if info else None
 
-    async def disconnect(self) -> Self:
-        self._clear()
-        return await self.disconnect()
-
-    def _clear(self) -> None:
-        self._sub_dict.clear()
-        self._req_dict.clear()
-        self._obj_dict.clear()
-
     async def _on_close(self) -> None:
-        if not self._obj_dict:
+        if self._reconnect_future:
+            await self._reconnect_future
             return
 
-        acct_list = tuple([info.obj for info in self._obj_dict.values()])
-        self._clear()
+        try:
+            self._reconnect_future = asyncio.get_event_loop().create_future()
 
-        await asyncio.gather(*[self._sub_obj(acct.address, acct, self._commit) for acct in acct_list])
+            acct_list = tuple([info.obj for info in self._obj_dict.values()])
+            self._clear()
+
+            await self.disconnect()
+            await self.connect()
+
+            if acct_list:
+                await asyncio.gather(*[self._sub_obj(acct.address, acct, self._commit) for acct in acct_list])
+        finally:
+            future, self._reconnect_future = self._reconnect_future, None
+            if future:
+                future.set_result(None)
 
     def _on_sub_notif(self, info: _AcctInfo, data: _SoldersAcctNotif) -> None:
         acct = SolAccountModel.from_raw(info.key, data.result.value)
