@@ -91,6 +91,7 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._mp_client.start(),
             self._op_client.start(),
             self._cu_price_client.start(),
+            self._stat_client.start(),
             self._db.start(),
         )
         await self.get_evm_cfg()
@@ -101,5 +102,6 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._mp_client.stop(),
             self._op_client.stop(),
             self._cu_price_client.stop(),
+            self._stat_client.stop(),
             self._db.stop(),
         )
