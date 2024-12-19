@@ -138,6 +138,7 @@ class RpcEthTxResp(BaseJsonRpcModel):
 
     @classmethod
     def from_raw(cls, meta: NeonTxMetaModel | NeonTxModel) -> Self:
+        gas_price = meta.effective_gas_price
         tx = meta.neon_tx if isinstance(meta, NeonTxMetaModel) else meta
 
         return cls(
@@ -145,7 +146,7 @@ class RpcEthTxResp(BaseJsonRpcModel):
             txType=tx.tx_type,
             fromAddress=tx.from_address,
             nonce=tx.nonce,
-            gasPrice=tx.effective_gas_price,
+            gasPrice=gas_price,
             gas=tx.gas_limit,
             toAddress=tx.to_address,
             value=tx.value,
