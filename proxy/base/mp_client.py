@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from common.app_data.client import AppDataClient
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
@@ -35,6 +37,8 @@ from .mp_api import (
 
 
 class MempoolClient(AppDataClient):
+    name: ClassVar[str] = "Mempool"
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.connect(host=self._cfg.mp_ip, port=self._cfg.mp_port, path=MP_ENDPOINT)

@@ -1,4 +1,5 @@
 import logging
+from typing import ClassVar
 
 from .api import CuPriceRequest
 from .solana_fee_api import SolPriorityFeeResp
@@ -12,6 +13,8 @@ _LOG = logging.getLogger(__name__)
 
 
 class SolFeeClient(JsonRpcClient):
+    name: ClassVar[str] = "SolanaFee"
+
     def __init__(self, *args, **kwargs) -> None:
         # solders doesn't have implementation for priority fee
         super().__init__(*args, **kwargs)
