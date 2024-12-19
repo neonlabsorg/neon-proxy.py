@@ -5,7 +5,7 @@ import itertools
 import logging
 import typing as tp
 from dataclasses import dataclass
-from typing import TypeVar, Sequence, Union, Final
+from typing import TypeVar, Sequence, Union, Final, ClassVar
 
 import solders.account_decoder as _acct
 import solders.rpc.config as _cfg
@@ -129,7 +129,7 @@ class SolBlockStatus:
 
 
 class SolClient(HttpClient):
-    _stat_name: Final[str] = "Solana"
+    name: ClassVar[str] = "Solana"
 
     def __init__(self, cfg: Config, stat_client: RpcStatClient) -> None:
         super().__init__(cfg)
@@ -158,7 +158,7 @@ class SolClient(HttpClient):
         request = RpcClientRequest.from_raw(
             data=request.to_json(),
             stat_client=self._stat_client,
-            stat_name=self._stat_name,
+            stat_name=self.name,
             method=request.__class__.__name__[:1].lower() + request.__class__.__name__[1:],
         )
 
