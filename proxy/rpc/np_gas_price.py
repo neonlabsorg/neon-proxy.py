@@ -14,6 +14,7 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockCuPriceInfo, NeonBlockBaseFeeInfo
 from common.neon.cu_price_data_model import CuPricePercentileModel
+from common.neon.neon_program import NeonProg
 from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
@@ -345,7 +346,9 @@ class NpGasPriceApi(NeonProxyApi):
             math.ceil(
                 CuPricePercentileModel.from_raw(priority_fee_percentile_list).get_percentile(p)
                 * current_gas_price
+                * SolCbProg.MaxCuLimit
                 / SolCbProg.MicroLamport
+                / NeonProg.SignatureGas
             )
             for p in percentile_list
         ]

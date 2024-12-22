@@ -106,7 +106,13 @@ class BaseRpcServerComponent:
         # Convert it into ethereum world by multiplying by profitable_gas_price
         # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        return int(token_gas_price.profitable_gas_price * median_cu_price / SolCbProg.MicroLamport)
+        return int(
+            token_gas_price.profitable_gas_price
+            * median_cu_price
+            * SolCbProg.MaxCuLimit
+            / NeonProg.SignatureGas
+            / SolCbProg.MicroLamport
+        )
 
 
 class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
