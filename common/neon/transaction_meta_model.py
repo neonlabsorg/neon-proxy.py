@@ -26,5 +26,5 @@ class NeonTxMetaModel(BaseModel):
             # Effective gas price is equal to base_fee_per_gas + math.ceil(priority_fee_used / total_gas_used).
             # However, math.ceil does floating-point math and sometimes gives incorrect results due to precision.
             # So, it's better to use a little trick: ceildiv(a,b) := -(a // -b).
-            effective_gas_price -= neon_tx_rcpt.priority_fee_used // -neon_tx_rcpt.total_gas_used
+            effective_gas_price += neon_tx_rcpt.priority_fee_used // neon_tx_rcpt.total_gas_used
         return effective_gas_price
