@@ -138,6 +138,7 @@ class NeonProgCfg:
     treasury_payment: int
     evm_version: str
     evm_step_cnt: int
+    tree_account_finish_tx_gas: int
 
     @cached_property
     def protocol_version(self) -> NeonEvmProtocol:
@@ -169,6 +170,8 @@ class NeonProg:
     SignatureGas: Final[int] = SOL_SIG_COST
     TreasuryGas: ClassVar[int] = 0
     BaseGas: ClassVar[int] = SignatureGas + 0
+    # Finish Scheduled transaction Gas
+    FinishSkdTxGas: ClassVar[int] = 0
     #
     EvmStepPerIter: ClassVar[int] = 0
 
@@ -219,6 +222,7 @@ class NeonProg:
 
         cls.TreasuryGas = cfg.treasury_payment
         cls.BaseGas = cls.SignatureGas + cfg.treasury_payment
+        cls.FinishSkdTxGas = cfg.tree_account_finish_tx_gas
         cls.EvmStepPerIter = cfg.evm_step_cnt
 
     @classmethod
