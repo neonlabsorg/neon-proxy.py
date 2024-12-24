@@ -266,6 +266,7 @@ class EvmConfigModel(_BaseRespModel):
     holder_msg_size: DecIntField
     gas_limit_multiplier_wo_chain_id: DecIntField
     tree_account_slot_out: DecIntField
+    tree_account_finish_tx_gas: DecIntField
 
     evm_param_dict: dict[str, str] = Field(validation_alias=AliasChoices("config", "evm_param_dict"))
     token_list: list[TokenModel] = Field(validation_alias=AliasChoices("chains", "token_list"))
@@ -384,6 +385,7 @@ class EvmConfigModel(_BaseRespModel):
             treasury_payment=self.treasury_payment,
             evm_version=self.version,
             evm_step_cnt=self.evm_step_cnt,
+            tree_account_finish_tx_gas=self.tree_account_finish_tx_gas,
         )
 
     @classmethod
@@ -399,6 +401,7 @@ class EvmConfigModel(_BaseRespModel):
             ("NEON_ACCOUNT_SEED_VERSION", "account_seed_version", -1),
             ("NEON_GAS_LIMIT_MULTIPLIER_NO_CHAINID", "gas_limit_multiplier_wo_chain_id", -1),
             ("NEON_TREE_ACCOUNT_TIMEOUT", "tree_account_slot_out", -1),
+            ("NEON_TREE_ACCOUNT_FINISH_TRANSACTION_GAS", "tree_account_finish_tx_gas", -1),
         )
 
         for src_key, dst_key, default in key_list:
