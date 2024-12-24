@@ -301,7 +301,6 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         if tx.has_priority_fee:
             priority_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
-            gas_limit = NeonProg.SignatureGas
             _LOG.debug(
                 "use %s%% priority-fee for priority gas-price %d",
                 priority_fee,
@@ -370,19 +369,21 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             _LOG.warning("error on emulate solana tx list", exc_info=exc)
             raise SolCbExceededError()
 
-    @staticmethod
-    def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
-        fake_tx_ix = SolTxIxMetaInfo.default()
+    def _find_gas_limit(self, emul_tx: EmulSolTxInfo) -> int:
+        gas_limit = NeonProg.BaseGas
 
+        if self._ctx.holder_tx.has_priority_fee:
+            _LOG.debug("DynamicGas NeonTx, use default %s", gas_limit)
+            return NeonProg.BaseGas
+
+        fake_tx_ix = SolTxIxMetaInfo.default()
         try:
             log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
         except (BaseException,):
-            gas_limit = NeonProg.BaseGas
             _LOG.debug("exception on find GAS, use default %s", gas_limit)
             return gas_limit
 
         if log.tx_ix_gas.is_empty:
-            gas_limit = NeonProg.BaseGas
             _LOG.debug("no GAS information, use default %s", gas_limit)
         else:
             gas_limit = log.tx_ix_gas.gas_used

@@ -22,17 +22,6 @@ class SolFeeClient(JsonRpcClient):
         url_list = tuple([HttpURL(url) for url in self._cfg.sol_url_list])
         self.connect(base_url_list=url_list)
 
-        self._cu_level_dict: dict[CuPriceLevel, int] = {
-            CuPriceLevel.Min: 10,
-            CuPriceLevel.Low: 25,
-            CuPriceLevel.Medium: 50,
-            CuPriceLevel.High: 75,
-            CuPriceLevel.VeryHigh: 95,
-            CuPriceLevel.UnsafeMax: 100,
-            CuPriceLevel.Default: 50,
-            CuPriceLevel.Recommended: 50,
-        }
-
     async def get_cu_price(self, req: CuPriceRequest) -> int:
         try:
             item_list = await self._estimate_fee(list(req.account_key_list))
@@ -41,9 +30,9 @@ class SolFeeClient(JsonRpcClient):
             max_cu_price = max(map(lambda x: x.cu_price, item_list))
             avg_cu_price = sum(map(lambda x: x.cu_price, item_list)) // len(item_list)
 
-            pct = self._cu_level_dict.get(req.cu_price_level)
-            min_pct = self._cu_level_dict.get(CuPriceLevel.Min)
-            med_pct = 50
+            pct = CuPriceLevel.to_pct(req.cu_price_level)
+            min_pct = CuPriceLevel.to_pct(CuPriceLevel.Min)
+            med_pct = CuPriceLevel.to_pct(CuPriceLevel.Medium)
             max_pct = 100
 
             if pct == med_pct:
