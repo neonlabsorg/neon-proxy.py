@@ -16,7 +16,7 @@ from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
-from common.solana.pubkey import SolPubKeyField, SolPubKey
+from common.solana.pubkey import SolPubKeyField
 from common.solana.sys_program import SolSysProg
 from common.utils.cached import cached_property
 from common.utils.format import if_none
@@ -259,7 +259,7 @@ class NpCallApi(NeonProxyApi):
         treasury_index, _, treasury_addr = NeonProg.calc_treasury_address(base_index)
 
         gas_limit_list = [
-            await self._gas_limit_calc.estimate(tx, dict(), block)
+            (await self._gas_limit_calc.estimate(tx, dict(), block)) + NeonProg.FinishSkdTxGas
             for tx in call.to_core_tx_list(chain_id)
         ]
 
