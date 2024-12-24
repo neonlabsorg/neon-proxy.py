@@ -43,6 +43,7 @@ class _RpcGasPriceModel(BaseJsonRpcModel):
     priorityFee: HexUIntField
 
     solanaCUPriorityFee: HexUIntField
+    solanaCUPriorityFeePercentile: HexUIntField
     solanaSimpleCUPriorityFee: HexUIntField
 
 
@@ -74,6 +75,7 @@ class _RpcDefaultGasPriceModel(_RpcGasPriceModel):
             operatorFee=price.operator_fee,
             priorityFee=price.priority_fee,
             solanaCUPriorityFee=price.cu_price,
+            solanaCUPriorityFeePercentile=price.cu_price_pct,
             solanaSimpleCUPriorityFee=price.simple_cu_price,
         )
         if token_price.is_default_token:
@@ -347,8 +349,8 @@ class NpGasPriceApi(NeonProxyApi):
                 CuPricePercentileModel.from_raw(priority_fee_percentile_list).get_percentile(p)
                 * current_gas_price
                 * SolCbProg.MaxCuLimit
+                / NeonProg.BaseGas
                 / SolCbProg.MicroLamport
-                / NeonProg.SignatureGas
             )
             for p in percentile_list
         ]
