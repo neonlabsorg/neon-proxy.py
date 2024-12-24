@@ -94,23 +94,24 @@ class BaseRpcServerComponent:
 
     async def _get_max_priority_fee_per_gas(self, ctx: HttpRequestCtx):
         # Fetch the compute units price across last several blocks (as specified in the cfg).
-        pp = self._cfg.cu_price_estimator_percentile
+        gas_price, token_gas_price = await self._get_token_gas_price(ctx)
+
+        cu_price_pct = gas_price.cu_price_pct
         block_cnt = self._cfg.cu_price_estimator_block_cnt
 
         block_list = await self._db.get_block_cu_price_list(block_cnt)
 
         median_cu_price: float = CuPricePercentileModel.get_weighted_percentile(
-            pp, len(block_list), map(lambda v: v.cu_price_list, block_list)
+            cu_price_pct, len(block_list), map(lambda v: v.cu_price_list, block_list)
         )
 
         # Convert it into ethereum world by multiplying by profitable_gas_price
         # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
-        _, token_gas_price = await self._get_token_gas_price(ctx)
         return int(
             token_gas_price.profitable_gas_price
             * median_cu_price
             * SolCbProg.MaxCuLimit
-            / NeonProg.SignatureGas
+            / NeonProg.BaseGas
             / SolCbProg.MicroLamport
         )
 

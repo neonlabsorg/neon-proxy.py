@@ -94,9 +94,23 @@ class CuPriceLevel(StrEnum):
     def from_raw(cls, raw: str | CuPriceMode | None) -> Self:
         return _CuPriceLevelValidator.from_raw(raw)
 
+    @classmethod
+    def to_pct(cls, raw: str | CuPriceMode | None) -> int:
+        return _CuPriceLevelValidator.to_pct(raw)
+
 
 class _CuPriceLevelValidator:
     _level_dict: ClassVar[dict[str, str]] = {v.lower(): v for v in CuPriceLevel}
+    _pct_dict: ClassVar[dict[str, int]] = {
+        CuPriceLevel.Min: 10,
+        CuPriceLevel.Low: 25,
+        CuPriceLevel.Medium: 50,
+        CuPriceLevel.High: 75,
+        CuPriceLevel.VeryHigh: 95,
+        CuPriceLevel.UnsafeMax: 100,
+        CuPriceLevel.Default: 50,
+        CuPriceLevel.Recommended: 50,
+    }
 
     @classmethod
     def from_raw(cls, raw: str | CuPriceLevel | None) -> CuPriceLevel:
@@ -110,6 +124,11 @@ class _CuPriceLevelValidator:
         except (ValueError, KeyError):
             _LOG.debug("Wrong CU price level %s", raw)
             return CuPriceLevel.Default
+
+    @classmethod
+    def to_pct(cls, raw: str | CuPriceMode | None) -> int:
+        value = cls.from_raw(raw)
+        return cls._pct_dict.get(value, 50)
 
 
 def _parse_sol_ws_url(sol_url: str) -> str:
@@ -193,7 +212,6 @@ class Config:
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
     cu_price_estimator_block_cnt_name: Final[str] = "CU_PRICE_ESTIMATOR_BLOCK_COUNT"
-    cu_price_estimator_percentile_name: Final[str] = "CU_PRICE_ESTIMATOR_PERCENTILE"
     # Operator resources
     holder_size_name: Final[str] = "HOLDER_SIZE"
     min_op_balance_to_warn_name: Final[str] = "MIN_OPERATOR_BALANCE_TO_WARN"
@@ -803,10 +821,6 @@ class Config:
     def cu_price_estimator_block_cnt(self) -> int:
         return self._env_num(self.cu_price_estimator_block_cnt_name, 50, 1, 1000)
 
-    @cached_property
-    def cu_price_estimator_percentile(self) -> int:
-        return self._env_num(self.cu_price_estimator_percentile_name, 80, 1, 100)
-
     #############################
     # Operator resource settings
 
@@ -1018,7 +1032,6 @@ class Config:
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,
             self.cu_price_estimator_block_cnt_name: self.cu_price_estimator_block_cnt,
-            self.cu_price_estimator_percentile_name: self.cu_price_estimator_percentile,
             # Operator resources
             self.holder_size_name: self.holder_size,
             self.min_op_balance_to_warn_name: self.min_op_balance_to_warn,
