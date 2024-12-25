@@ -63,10 +63,13 @@ class NeonProxyComponent(BaseRpcServerComponent):
                 block = block.to_pending()
             elif block_name == EthCommit.Latest:
                 block = await self._db.get_latest_block()
+                block = block.to_latest()
             elif block_name in (EthCommit.Safe, EthCommit.Finalized):
                 block = await self._db.get_finalized_block()
+                block = block.to_finalized()
             elif block_name == EthCommit.Earliest:
                 block = await self._db.get_earliest_block()
+                block = block.to_earliest()
             else:
                 raise EthError(f"Unknown block tag {block_name}")
 
