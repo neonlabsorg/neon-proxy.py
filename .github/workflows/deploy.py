@@ -235,7 +235,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     if return_code != 0:
         print("Terraform init failed:", stderr)
 
-    instance_types = ["cx52", "cpx51"]
+    instance_types = ["cpx51", "cx52"]
     locations = ["nbg1", "fsn1"]
     instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
 
@@ -252,7 +252,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
         if return_code == 0:
             break
         elif return_code != 0:
-            if not "error during placement (resource_unavailable)" in stderr:
+            if not "(resource_unavailable)" in stderr:
                 print("Terraform apply failed:", stderr)
                 print("Terraform infrastructure is not built correctly")
                 sys.exit(1)
