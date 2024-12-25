@@ -46,17 +46,20 @@ class NeonBlockFeeDB(HistoryDbTable):
         rec_list: list[_Record] = list()
 
         for block in block_list:
-            chain_fee_dict: dict[int, int] = dict()
+            chain_fee_dict: dict[int, tuple[int, int]] = dict()
             for tx in block.iter_done_neon_tx():
-                if not (tx_base_fee := tx.neon_tx.base_fee_per_gas):
+                if not tx.neon_tx.chain_id:
+                    continue
+                elif not (tx_base_fee := tx.neon_tx.base_fee_per_gas):
                     continue
 
                 chain_id = tx.neon_tx.chain_id or self._def_chain_id
-                chain_base_fee: int = chain_fee_dict.get(chain_id, 0)
-                chain_fee_dict[chain_id] = chain_base_fee + tx_base_fee
+                chain_base_fee, tx_cnt = chain_fee_dict.get(chain_id, (0, 0,))
+                chain_fee_dict[chain_id] = chain_base_fee + tx_base_fee, tx_cnt + 1
 
-            for chain_id, base_fee in chain_fee_dict.items():
-                rec = _Record(block_slot=block.slot, chain_id=chain_id, base_fee=hex(base_fee))
+            for chain_id, tx_info in chain_fee_dict.items():
+                base_fee, tx_cnt = tx_info
+                rec = _Record(block_slot=block.slot, chain_id=chain_id, base_fee=hex(base_fee // tx_cnt))
                 rec_list.append(rec)
 
         await self._insert_row_list(ctx, rec_list)
