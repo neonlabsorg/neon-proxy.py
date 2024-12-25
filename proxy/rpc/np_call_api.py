@@ -251,9 +251,7 @@ class NpCallApi(NeonProxyApi):
         if if_none(call.nonce, sender_acct.state_tx_cnt) != sender_acct.state_tx_cnt:
             raise EthError("nonce mismatch")
 
-        _, gas_price = await self._get_token_gas_price(ctx)
-        max_priority_fee_per_gas = await self._get_max_priority_fee_per_gas(ctx)
-        # skd_tree_acct = await self._core_api_client.get_neon_skd_tree(sender_addr, sender_acct.state_tx_cnt, block)
+        _, token_gas_price = await self._get_token_gas_price(ctx)
 
         base_index = sender_acct.state_tx_cnt + int.from_bytes(sender_addr.to_bytes()[:4], "little")
         treasury_index, _, treasury_addr = NeonProg.calc_treasury_address(base_index)
@@ -267,8 +265,8 @@ class NpCallApi(NeonProxyApi):
 
         return _RpcSkdTxEstimateResp(
             chainId=chain_id,
-            maxFeePerGas=gas_price.profitable_gas_price,
-            maxPriorityFeePerGas=max_priority_fee_per_gas,
+            maxFeePerGas=token_gas_price.profitable_gas_price,
+            maxPriorityFeePerGas=token_gas_price.priority_gas_price,
             nonce=sender_acct.state_tx_cnt,
             treasuryIndex=treasury_index,
             accountList=[

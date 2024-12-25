@@ -48,26 +48,26 @@ class CuPricePercentileModel(BaseModel):
             ]
         )
 
-    def get_percentile(self, pp: int) -> float:
+    def get_percentile(self, pct: int) -> float:
         """
         Calculate a `pp` percentile of priority fee from stored cu prices.
         Because we only store values at fixed percentiles, a linear extrapolation is used in case
         the desired `pp` is missing.
         """
-        biggest_known_p_idx = bisect_left(self._PercentileList, pp)
-        if self._PercentileList[biggest_known_p_idx] == pp:
+        biggest_known_p_idx = bisect_left(self._PercentileList, pct)
+        if self._PercentileList[biggest_known_p_idx] == pct:
             return self.cu_price_list[biggest_known_p_idx]
         start_val = self.cu_price_list[biggest_known_p_idx - 1]
         end_val = self.cu_price_list[biggest_known_p_idx]
         return (
             start_val
-            + (end_val - start_val) * (pp - self._PercentileList[biggest_known_p_idx - 1]) / self._PercentileStep
+            + (end_val - start_val) * (pct - self._PercentileList[biggest_known_p_idx - 1]) / self._PercentileStep
         )
 
     @classmethod
-    def get_weighted_percentile(cls, pp: int, data_point_cnt: int, cu_price_list_seq: Iterable[Sequence[int]]) -> float:
+    def get_weighted_percentile(cls, pct: int, data_point_cnt: int, cu_price_list_seq: Iterable[Sequence[int]]) -> float:
         """
-        Returns weighted average of `pp` percentiles for each price data in `price_seq`.
+        Returns weighted average of `pct` percentiles for each price data in `price_seq`.
         The first price data is taken with the most significant weight.
         """
         if not data_point_cnt:
@@ -78,5 +78,5 @@ class CuPricePercentileModel(BaseModel):
             # Skip data for empty blocks, treat it as 0.
             if not cu_price_list:
                 continue
-            val += CuPricePercentileModel.from_raw(cu_price_list).get_percentile(pp) * (data_point_cnt - idx)
+            val += CuPricePercentileModel.from_raw(cu_price_list).get_percentile(pct) * (data_point_cnt - idx)
         return val / (data_point_cnt * (data_point_cnt + 1) / 2)
