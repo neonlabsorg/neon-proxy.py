@@ -236,7 +236,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     if return_code != 0:
         print("Terraform init failed:", stderr)
 
-    instance_types = ["cx52", "cpx51"]
+    instance_types = ["cpx51", "cx52"]
     locations = ["nbg1", "fsn1"]
     instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
 
@@ -259,7 +259,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
             break
         elif return_code != 0:
             retry_iterator += 1
-            if "error during placement (resource_unavailable)" in stderr:
+            if "(resource_unavailable)" in stderr:
                 instance_iterator += 1
                 print("Resource_unavailable; ",instances[instance_iterator] ," Trying to recreate instances with another region / another instance type...")
             else:
