@@ -102,6 +102,15 @@ class NeonBlockHdrModel(BaseModel):
             cu_price_list=self.cu_price_list,
         )
 
+    def to_latest(self) -> Self:
+        return self.model_copy(update=dict(commit=EthCommit.Latest))
+
+    def to_finalized(self) -> Self:
+        return self.model_copy(update=dict(commit=EthCommit.Finalized))
+
+    def to_earliest(self) -> Self:
+        return self.model_copy(update=dict(commit=EthCommit.Earliest))
+
     def to_genesis_child(self, genesis_hash: EthBlockHash) -> Self:
         return NeonBlockHdrModel(
             slot=self.slot,

@@ -26,7 +26,6 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonEvmIxCode
-from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
 from common.neon_rpc.api import NeonSkdTreeModel, NeonSkdTreeNodeModel
@@ -585,11 +584,10 @@ class NpBlockTxApi(NeonProxyApi):
         #   - this case is used for requesting the current gas price by clients
         # or from the transactions inside that block (for the historical block).
         #   - for the indexing purposes
-        latest_slot: int = await self._db.get_latest_slot()
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        if block.slot > latest_slot:
+        if block.commit in (EthCommit.Pending, EthCommit.Latest):
             # If block is pending, set baseFeePerGas to the current suggested token gas price.
-            base_fee = token_gas_price.profitable_gas_price
+            base_fee = token_gas_price.suggested_gas_price
         else:
             # Try recent mempool gas prices.
             base_fee = token_gas_price.find_gas_price(block.slot)
@@ -598,7 +596,7 @@ class NpBlockTxApi(NeonProxyApi):
         if base_fee is None:
             # Set base_fee as maximum from the block list before the block.
             chain_id = self._get_chain_id(ctx)
-            block_list = await self._db.get_block_base_fee_list(chain_id, 128, latest_slot)
+            block_list = await self._db.get_block_base_fee_list(chain_id, 128, block.slot)
             base_fee = max(block_list, key=lambda x: x.base_fee).base_fee if block_list else 0
 
         return _RpcBlockResp.from_raw(block, tx_list, full, base_fee)

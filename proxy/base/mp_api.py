@@ -182,6 +182,10 @@ class MpTokenGasPriceModel(BaseModel):
 
     gas_price_list: list[MpSlotGasPriceModel]
 
+    @cached_property
+    def priority_gas_price(self) -> int:
+        return self.suggested_gas_price - self.profitable_gas_price
+
     def find_gas_price(self, slot: int) -> int | None:
         if not self.gas_price_list:
             return None
