@@ -153,9 +153,11 @@ class MpTxExecutor(MempoolComponent):
 
     def _update_tx_order(self, tx: MpTxModel) -> MpTxResp | None:
         if not tx.neon_tx.has_chain_id:
-            _LOG.debug("increase gas-price for wo-chain-id-tx (for sorting in scheduling queue)")
+            # _LOG.debug("increase gas-price for wo-chain-id-tx (for sorting in scheduling queue)")
+            pass
         elif not tx.gas_price:
-            _LOG.debug("increase gas-price for fee-less-tx (for sorting in scheduling queue)")
+            # _LOG.debug("increase gas-price for fee-less-tx (for sorting in scheduling queue)")
+            pass
         else:
             return None
 
@@ -303,7 +305,6 @@ class MpTxExecutor(MempoolComponent):
 
             with logging_context(tx=tx.neon_tx_hash.ident):
                 assert tx.neon_tx_hash not in self._exec_tx_set
-                _LOG.debug("got tx %s", tx.neon_tx_hash)
 
                 tx_schedule.acquire_tx(tx)
                 self._exec_tx_set.add(tx.neon_tx_hash)

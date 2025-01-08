@@ -123,9 +123,9 @@ class NeonTxExecApi(ExecutorApi):
         ctx = NeonExecTxCtx(self._server, op_res, request, request.token, skd_tree_parser)
 
         try:
-            for retry in itertools.count():
-                if retry > 0:
-                    _LOG.debug("retry %d to execute NeonTx %s", retry, request.tx.neon_tx_hash)
+            for _retry in itertools.count():
+                # if retry > 0:
+                #     _LOG.debug("retry %d to execute NeonTx %s", retry, request.tx.neon_tx_hash)
 
                 try:
                     return await self._neon_tx_executor.exec_neon_tx(ctx)
@@ -178,7 +178,7 @@ class NeonTxExecApi(ExecutorApi):
 
             with logging_context(tx=_skd_tx.neon_tx_hash.ident, skd_tree=_skd_tx.tree_address.ident):
                 if not (holder_addr := await self._db.get_neon_skd_tx_holder_address(_skd_tx.neon_tx_hash)):
-                    _LOG.debug("no holder for NeonSkdTx %s", _skd_tx.neon_tx_hash)
+                    # _LOG.debug("no holder for NeonSkdTx %s", _skd_tx.neon_tx_hash)
                     return
 
                 stuck_tx = MpStuckTxModel.from_raw(_skd_tx.neon_tx_hash, holder_addr)
@@ -196,8 +196,8 @@ class NeonTxExecApi(ExecutorApi):
             else:
                 last_good_time = time.monotonic()
 
-            if retry > 0:
-                _LOG.debug("retry %d to execute NeonSkdTx %s", retry, skd_tree_parser.neon_tx_hash)
+            # if retry > 0:
+            #     _LOG.debug("retry %d to execute NeonSkdTx %s", retry, skd_tree_parser.neon_tx_hash)
 
             task_list: list[asyncio.Task] = list()
             async for status, skd_tx in skd_tree_parser.iter_neon_skd_tx_list():
@@ -237,9 +237,9 @@ class NeonTxExecApi(ExecutorApi):
         ctx = NeonExecTxCtx(self._server, op_res, request, exec_token, skd_tree_parser)
 
         try:
-            for retry in itertools.count():
-                if retry > 0:
-                    _LOG.debug("retry %d to complete stuck NeonTx %s", retry, request.tx.neon_tx_hash)
+            for _retry in itertools.count():
+                # if retry > 0:
+                #     _LOG.debug("retry %d to complete stuck NeonTx %s", retry, request.tx.neon_tx_hash)
 
                 try:
                     return await self._neon_tx_executor.complete_stuck_neon_tx(ctx)

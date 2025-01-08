@@ -98,7 +98,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             return
 
         if self._ctx.has_holder_block:
-            _LOG.debug("just 1 iteration to fix the block number")
+            # _LOG.debug("just 1 iteration to fix the block number")
             await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
 
     async def update_after_emulation(self) -> bool:
@@ -108,11 +108,11 @@ class IterativeTxStrategy(BaseTxStrategy):
         if self._ctx.is_scheduled_tx:
             status = await self._get_skd_tx_status()
             if status not in (status.InProgress, status.Skipped):
-                _LOG.debug("NeonSkdTx isn't started")
+                # _LOG.debug("NeonSkdTx isn't started")
                 return False
         elif self._ctx.has_holder_block:
             if not await self._ctx.holder_validator.is_active():
-                _LOG.debug("first iteration isn't completed")
+                # _LOG.debug("first iteration isn't completed")
                 return False
 
         return True
@@ -128,7 +128,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         evm_step_cnt = -1
         fail_retry_cnt = 0
 
-        for retry in itertools.count():
+        for _retry in itertools.count():
             if await self._ctx.holder_validator.is_finalized():
                 return ExecTxDoneCode.Failed
 
@@ -138,12 +138,12 @@ class IterativeTxStrategy(BaseTxStrategy):
                     raise SolNoMoreRetriesError()
 
             elif evm_step_cnt != -1:
-                _LOG.debug(
-                    "retry %d: the number of completed EVM steps has changed (%d != %d)",
-                    retry,
-                    evm_step_cnt,
-                    self._ctx.holder.evm_step_cnt,
-                )
+                # _LOG.debug(
+                #     "retry %d: the number of completed EVM steps has changed (%d != %d)",
+                #     retry,
+                #     evm_step_cnt,
+                #     self._ctx.holder.evm_step_cnt,
+                # )
                 fail_retry_cnt = 0
 
             evm_step_cnt = self._ctx.holder.evm_step_cnt
@@ -235,7 +235,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         while True:
             try:
                 if self._has_one_iter():
-                    _LOG.debug("just 1 iteration")
+                    # _LOG.debug("just 1 iteration")
                     return await self._send_single_iter()
 
                 elif not (optimal_cfg := await self._get_iter_list_cfg()):
@@ -248,10 +248,10 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             except SolUnknownReceiptError:
                 if self._def_ix_mode == NeonIxMode.Unknown:
-                    _LOG.warning("unexpected fail on iterative transaction, try to use accounts in writable mode")
+                    # _LOG.warning("unexpected fail on iterative transaction, try to use accounts in writable mode")
                     self._def_ix_mode = NeonIxMode.Writable
                 elif self._def_ix_mode == NeonIxMode.Writable:
-                    _LOG.warning("unexpected fail on iterative transaction, try to use ALL accounts in writable mode")
+                    # _LOG.warning("unexpected fail on iterative transaction, try to use ALL accounts in writable mode")
                     self._def_ix_mode = NeonIxMode.FullWritable
                 else:
                     raise
@@ -306,13 +306,13 @@ class IterativeTxStrategy(BaseTxStrategy):
             if await self._ctx.holder_validator.is_finalized():
                 return None
 
-            _LOG.debug(
-                "retry %d: %d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
-                retry,
-                self._ctx.total_evm_step_cnt,
-                self._ctx.holder.evm_step_cnt,
-                evm_step_cnt,
-            )
+            # _LOG.debug(
+            #     "retry %d: %d total EVM steps, %d completed EVM steps, %d EVM steps per iteration",
+            #     retry,
+            #     self._ctx.total_evm_step_cnt,
+            #     self._ctx.holder.evm_step_cnt,
+            #     evm_step_cnt,
+            # )
 
             total_evm_step_cnt = self._calc_total_evm_step_cnt()
             exec_iter_cnt = (total_evm_step_cnt // evm_step_cnt) + (1 if (total_evm_step_cnt % evm_step_cnt) > 1 else 0)
@@ -351,7 +351,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         try:
             emul_tx_list = await self._emulate_tx_list(tx_list)
         except SolCbExceededError:
-            _LOG.debug("%s: use default %d EVM steps")
+            # _LOG.debug("%s: use default %d EVM steps")
             return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()
 
         max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
@@ -377,7 +377,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             ratio = min(threshold_cu_limit / used_cu_limit, 0.9)  # decrease by 10% in any case
             new_evm_step_cnt = max(int(evm_step_cnt * ratio), evm_step_cnt_per_iter)
 
-            _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
+            # _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
 
         gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
@@ -477,19 +477,19 @@ class IterativeTxStrategy(BaseTxStrategy):
             return NeonIxMode.Default
         elif self._def_ix_mode != NeonIxMode.Unknown:
             ix_mode = self._def_ix_mode
-            _LOG.debug("forced ix-mode %s", self._def_ix_mode.name)
+            # _LOG.debug("forced ix-mode %s", self._def_ix_mode.name)
         elif not self._calc_total_evm_step_cnt():
             ix_mode = NeonIxMode.Writable
-            _LOG.debug("no EVM steps, ix-mode %s", ix_mode.name)
+            # _LOG.debug("no EVM steps, ix-mode %s", ix_mode.name)
         elif self._ctx.is_stuck_tx:
             ix_mode = NeonIxMode.Readable
-            _LOG.debug("stuck NeonTx, ix-mode %s", ix_mode.name)
+            # _LOG.debug("stuck NeonTx, ix-mode %s", ix_mode.name)
         elif self._ctx.resize_iter_cnt > 0:
             ix_mode = NeonIxMode.Writable
-            _LOG.debug("resize iterations, ix-mode %s", ix_mode.name)
+            # _LOG.debug("resize iterations, ix-mode %s", ix_mode.name)
         else:
             ix_mode = NeonIxMode.Readable
-            _LOG.debug("default ix-mode %s", ix_mode.name)
+            # _LOG.debug("default ix-mode %s", ix_mode.name)
         return ix_mode
 
     async def _validate(self) -> bool:

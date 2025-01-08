@@ -25,7 +25,7 @@ class SolCmdClient(AsyncCmdClient):
 
     async def get_keypair_file(self) -> str | None:
         process = await self._run_cmd_client(["config", "get"])
-        _LOG.debug("read the solana config with the length %s", len(process.stdout))
+        # _LOG.debug("read the solana config with the length %s", len(process.stdout))
 
         for line in process.stdout.splitlines():
             if line.startswith(self._keypair_prefix):
