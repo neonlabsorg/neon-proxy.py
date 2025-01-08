@@ -30,7 +30,7 @@ class MpGasPriceCalculator(MempoolComponent):
     def __init__(self, server: MempoolServerAbc) -> None:
         super().__init__(server)
 
-        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, commit=SolCommit.Confirmed)
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client)
 
         self._stop_event = asyncio.Event()
         self._update_pyth_acct_task: asyncio.Task | None = None

@@ -20,7 +20,7 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
             return tuple()
         return tuple([self.name])
 
-    async def build_tx_list(self) -> list[list[SolTx]]:
+    async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
         if self._ctx.is_stuck_tx or (self._ctx.good_sol_tx_cnt(self.name) > 0):
             return list()
 

@@ -96,12 +96,13 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
     def sol_client(self) -> SolClient:
         return self._sol_client
 
-    def _get_next_id(self) -> int:
-        return next(self._id)
+    @property
+    def is_connected(self) -> bool:
+        return self._ws_session and (not self._ws_session.closed)
 
     @property
-    def is_connected(self):
-        return self._ws_session and (not self._ws_session.closed)
+    def is_empty(self) -> bool:
+        return not self._obj_dict
 
     async def connect(self) -> Self:
         if self.is_connected:
@@ -126,6 +127,9 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         await ws_session.close()
         # _LOG.debug("closed WebSocket connection")
         return self
+
+    def _get_next_id(self) -> int:
+        return next(self._id)
 
     async def _ws_send_data(self, data: _SolWsSendData) -> None:
         if not self.is_connected:
@@ -297,6 +301,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         super().__init__(*args, **kwargs)
         self._commit = commit
         self._reconnect_future: asyncio.Future[Any] | None = None
+        self._chg_key_set: set[SolPubKey] = set()
 
     async def update(self) -> None:
         await self._wait(None)
@@ -304,13 +309,19 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
     async def subscribe_account(self, addr: SolPubKey) -> None:
         acct = await self._sol_client.get_account(addr, commit=self._commit)
         await self._sub_obj(addr, acct, self._commit)
+        self._chg_key_set.add(addr)
 
     async def unsubscribe_account(self, addr: SolPubKey) -> None:
         await self._unsub_obj(addr)
+        self._chg_key_set.discard(addr)
 
     def get_account(self, addr: SolPubKey) -> SolAccountModel | None:
         info = self._obj_dict.get(addr, None)
         return info.obj if info else None
+
+    def pop_changed_key_list(self) -> Sequence[SolPubKey]:
+        key_list, self._chg_key_set = tuple(self._chg_key_set), set()
+        return key_list
 
     async def _on_close(self) -> None:
         if self._reconnect_future:
@@ -337,6 +348,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         acct = SolAccountModel.from_raw(info.key, data.result.value)
         info = _SolWsObjInfo(req_id=info.req_id, sub_id=info.sub_id, key=info.key, obj=acct)
         self._obj_dict[info.key] = info
+        self._chg_key_set.add(info.key)
         self._sub_dict[info.sub_id] = info.key
 
     def _new_sub_request(self, info: _AcctInfo, commit: SolCommit) -> _SolWsSendData:
