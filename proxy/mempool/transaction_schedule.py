@@ -5,7 +5,7 @@ import contextlib
 import enum
 import logging
 import time
-from typing import Final, Sequence, Iterator
+from typing import Final, Sequence
 
 from common.config.config import Config
 from common.config.constants import ONE_BLOCK_SEC
@@ -158,14 +158,14 @@ class _SenderTxPool:
     _top_index: Final[int] = -1
     _bottom_index: Final[int] = 0
 
-    class State(enum.IntEnum):
+    class Status(enum.IntEnum):
         Empty = 1
         Suspended = 2
         Queued = 3
         Processing = 4
 
     def __init__(self, sender: EthAddress, chain_id: int) -> None:
-        self._state = self.State.Empty
+        self._status = self.Status.Empty
         self._sender: Final[EthAddress] = sender
         self._chain_id: Final[int] = chain_id
         self._gas_price = 0
@@ -200,19 +200,30 @@ class _SenderTxPool:
         return self._gas_price
 
     @property
-    def state(self) -> _SenderTxPool.State:
-        return self._state
+    def status(self) -> _SenderTxPool.Status:
+        return self._status
 
-    def sync_state(self) -> _SenderTxPool.State:
-        self._state = self._actual_state
+    @property
+    def actual_status(self) -> _SenderTxPool.Status:
+        if self.is_empty:
+            return self.Status.Empty
+        elif self.is_processing:
+            return self.Status.Processing
+
+        if (self._state_tx_cnt != self.top_tx.nonce) or (not self._has_sufficient_balance):
+            return self.Status.Suspended
+        return self.Status.Queued
+
+    def sync_status(self) -> _SenderTxPool.Status:
+        self._status = self.actual_status
         top_tx = self.top_tx
         self._gas_price = top_tx.gas_price if top_tx else 0
         self._get_pending_tx_cnt.reset_cache(self)
-        return self._state
+        return self._status
 
     @property
-    def has_valid_state(self) -> bool:
-        return self._actual_state == self._state
+    def has_valid_status(self) -> bool:
+        return self.actual_status == self._status
 
     @property
     def is_empty(self) -> bool:
@@ -243,7 +254,7 @@ class _SenderTxPool:
         assert tx.neon_tx_hash == self.top_tx.neon_tx_hash
 
         self._processing_tx = self.top_tx
-        self._state = self.State.Processing
+        self._status = self.Status.Processing
         return self._processing_tx
 
     @property
@@ -252,8 +263,8 @@ class _SenderTxPool:
 
     @reset_cached_method
     def _get_pending_tx_cnt(self) -> int | None:
-        if self.state in (self.State.Suspended, self.State.Empty):
-            # _LOG.debug("state = %s", self.state)
+        if self.status in (self.Status.Suspended, self.Status.Empty):
+            # _LOG.debug("status = %s", self.status)
             return None
 
         pending_tx_cnt = self._state_tx_cnt
@@ -322,7 +333,7 @@ class _SenderTxPool:
 
     @property
     def pending_stop_pos(self) -> int:
-        if self.state in (self.State.Suspended, self.State.Empty):
+        if self.status in (self.Status.Suspended, self.Status.Empty):
             return 0
 
         pending_pos, pending_nonce = 0, self._state_tx_cnt
@@ -333,8 +344,8 @@ class _SenderTxPool:
             pending_pos += 1
         return pending_pos
 
-    def iter_tx_list(self) -> Iterator[MpTxModel]:
-        return iter(self._tx_nonce_queue)
+    def tx_list(self) -> list[MpTxModel]:
+        return self._tx_nonce_queue.queue()
 
     def pop_tx_list(self) -> list[MpTxModel]:
         return self._tx_nonce_queue.pop_queue()
@@ -355,18 +366,7 @@ class _SenderTxPool:
         assert t_tx is p_tx, f"top tx {t_tx.neon_tx_hash} is not equal to processing tx {p_tx.neon_tx_hash}"
 
     @property
-    def _actual_state(self) -> _SenderTxPool.State:
-        if self.is_empty:
-            return self.State.Empty
-        elif self.is_processing:
-            return self.State.Processing
-
-        if (self._state_tx_cnt != self.top_tx.nonce) or (not self.has_sufficient_balance):
-            return self.State.Suspended
-        return self.State.Queued
-
-    @property
-    def has_sufficient_balance(self) -> bool:
+    def _has_sufficient_balance(self) -> bool:
         top_tx = self.top_tx
         if top_tx.neon_tx.is_scheduled_tx:
             return True
@@ -414,11 +414,11 @@ class MpTxSchedule:
 
         self._stop_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task | None = None
-        self._update_state_cnt_task: asyncio.Task | None = None
+        self._update_state_tx_cnt_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        self._update_state_cnt_task = asyncio.create_task(self._update_state_tx_cnt_loop())
+        self._update_state_tx_cnt_task = asyncio.create_task(self._update_state_tx_cnt_loop())
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -426,8 +426,8 @@ class MpTxSchedule:
         if self._heartbeat_task:
             await self._heartbeat_task
 
-        if self._update_state_cnt_task:
-            await self._update_state_cnt_task
+        if self._update_state_tx_cnt_task:
+            await self._update_state_tx_cnt_task
 
     @property
     def min_gas_price(self) -> int:
@@ -546,7 +546,7 @@ class MpTxSchedule:
 
     def acquire_tx(self, tx: MpTxModel) -> None:
         pool = self._get_sender_pool(tx.sender)
-        assert pool.state == pool.State.Queued
+        assert pool.status == pool.Status.Queued
 
         self._sender_pool_queue.pop(pool)
         pool.acquire_tx(tx)
@@ -587,7 +587,7 @@ class MpTxSchedule:
             if not pool.is_empty:
                 state_tx_cnt = pool.state_tx_cnt
                 in_processing = pool.is_processing
-                tx_status_list = [_new_tx_status(tx, False) for tx in pool.iter_tx_list()]
+                tx_status_list = [_new_tx_status(tx, False) for tx in pool.tx_list()]
 
         # Add last 2 processed txs from the cache
         tx_nonce = (tx_status_list[-1].nonce if tx_status_list else state_tx_cnt) - 1
@@ -632,7 +632,7 @@ class MpTxSchedule:
         queued_list: list[NeonTxModel] = list()
 
         for tx_pool in self._sender_pool_dict.values():
-            tx_list = list(map(lambda tx: tx.neon_tx, reversed(tx_pool.iter_tx_list())))
+            tx_list = list(map(lambda tx: tx.neon_tx, reversed(tx_pool.tx_list())))
             pending_stop_pos = tx_pool.pending_stop_pos
             pending_list.extend(tx_list[:pending_stop_pos])
             queued_list.extend(tx_list[pending_stop_pos:])
@@ -649,10 +649,10 @@ class MpTxSchedule:
         )
 
     def _add_tx_to_sender_pool(self, pool: _SenderTxPool, tx: MpTxModel) -> None:
-        if not (is_new_pool := pool.state == pool.State.Empty):  # use old state, before remove old tx
+        if not (is_new_pool := pool.status == pool.Status.Empty):  # use old state, before remove old tx
             self._sender_pool_heartbeat_queue.pop(pool)
 
-        is_gapped_tx = (pool.state in (pool.State.Suspended, pool.state.Empty)) or (pool.pending_tx_cnt < tx.nonce)
+        is_gapped_tx = (pool.status in (pool.Status.Suspended, pool.Status.Empty)) or (pool.pending_tx_cnt < tx.nonce)
         pool.add_tx(tx)
         self._tx_dict.add_tx(tx, is_gapped_tx)
 
@@ -685,9 +685,9 @@ class MpTxSchedule:
 
     def _schedule_sender_pool(self, pool: _SenderTxPool, state_tx_cnt: int, balance: int) -> None:
         self._drop_old_tx_list(pool, state_tx_cnt)
-        self._sync_sender_state(pool)
+        self._sync_sender_status(pool)
         pool.set_sender_state(state_tx_cnt, balance)
-        self._sync_sender_state(pool)
+        self._sync_sender_status(pool)
 
     def _drop_old_tx_list(self, pool: _SenderTxPool, state_tx_cnt: int) -> None:
         if pool.state_tx_cnt == state_tx_cnt:
@@ -700,29 +700,30 @@ class MpTxSchedule:
                 break
             self._drop_tx_from_sender_pool(pool, top_tx)
 
-    def _sync_sender_state(self, pool: _SenderTxPool) -> None:
-        if pool.has_valid_state:
-            return
+    def _sync_sender_status(self, pool: _SenderTxPool) -> _SenderTxPool.Status:
+        if pool.has_valid_status:
+            return pool.status
 
-        old_state = pool.state
-        if old_state == pool.State.Suspended:
+        old_status = pool.status
+        if old_status == pool.Status.Suspended:
             self._suspended_sender_set.remove(pool.sender)
-        elif old_state == pool.State.Queued:
+        elif old_status == pool.Status.Queued:
             self._sender_pool_queue.pop(pool)
 
-        new_state = pool.sync_state()
-        if new_state == pool.State.Empty:
+        new_status = pool.sync_status()
+        if new_status == pool.Status.Empty:
             self._sender_pool_dict.pop(pool.sender)
             self._sender_pool_heartbeat_queue.pop(pool)
             # _LOG.debug(log_msg("done sender {Sender}", Sender=pool))
-        elif new_state == pool.State.Suspended:
+        elif new_status == pool.Status.Suspended:
             self._suspended_sender_set.add(pool.sender)
             self._tx_dict.dequeue_tx(pool.sender, pool.top_tx.nonce)
             # _LOG.debug(log_msg("suspend sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
-        elif new_state == pool.State.Queued:
+        elif new_status == pool.Status.Queued:
             self._sender_pool_queue.add(pool)
             self._tx_dict.queue_tx(pool.sender, pool.top_tx.nonce)
             # _LOG.debug(log_msg("resume sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
+        return new_status
 
     def _done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
         if not (pool := self._find_sender_pool(tx.sender)):
@@ -761,7 +762,7 @@ class MpTxSchedule:
                 self._drop_tx_from_sender_pool(pool, tx)
 
         for pool in changed_pool_set:
-            self._sync_sender_state(pool)
+            self._sync_sender_status(pool)
 
         msg = log_msg(
             "done clearing mempool {ChainID}, {TxCnt}({PendingTxCnt}) txs left",
@@ -789,10 +790,10 @@ class MpTxSchedule:
         addr_list = tuple(map(lambda addr: NeonAddress.from_raw(addr, self._chain_id), self._suspended_sender_set))
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
 
-        for acct in acct_list:
-            pool = self._find_sender_pool(acct.eth_address)
-            if pool and pool.state == pool.State.Suspended:
-                self._schedule_sender_pool(pool, acct.state_tx_cnt, acct.balance)
+        for a in acct_list:
+            if p := self._find_sender_pool(a.eth_address):
+                if (p.status == p.Status.Suspended) and (p.state_tx_cnt, p.balance) != (a.state_tx_cnt, a.balance):
+                    self._schedule_sender_pool(p, a.state_tx_cnt, a.balance)
 
     async def _heartbeat_loop(self) -> None:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10
@@ -835,7 +836,7 @@ class MpTxSchedule:
                 _LOG.debug(log_msg("drop tx {Tx} by heartbeat", Tx=tx))
 
             self._tx_dict.pop_tx_list(tx_list)
-            self._sync_sender_state(pool)
+            self._sync_sender_status(pool)
 
         msg = log_msg(
             "done clearing mempool {ChainID}, {TxCnt}({PendingTxCnt}) txs left",
