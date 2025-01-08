@@ -89,7 +89,7 @@ class MpTxModel(BaseModel):
     def gas_price(self) -> int:
         # this property is used for sorting, and can be changed by the mempool logic
         #   Operator is guaranteed to receive payment from the base fee per price
-        return self.order_gas_price or self.neon_tx.base_fee_per_gas
+        return self.order_gas_price or self.neon_tx.operator_fee_per_gas
 
     @property
     def gas_limit(self) -> int:
@@ -179,25 +179,6 @@ class MpTokenGasPriceModel(BaseModel):
     is_const_gas_price: bool
     min_acceptable_gas_price: int
     min_executable_gas_price: int
-
-    gas_price_list: list[MpSlotGasPriceModel]
-
-    @cached_property
-    def priority_gas_price(self) -> int:
-        return self.suggested_gas_price - self.profitable_gas_price
-
-    def find_gas_price(self, slot: int) -> int | None:
-        if not self.gas_price_list:
-            return None
-        if self.gas_price_list[0].slot > slot:
-            return None
-        if slot >= self.gas_price_list[-1].slot:
-            return self.gas_price_list[-1].gas_price
-
-        idx: int = bisect_left(self.gas_price_list, slot, key=lambda v: v.slot)
-        if idx >= 0 and self.gas_price_list[idx].slot != slot:
-            idx -= 1
-        return self.gas_price_list[idx].gas_price
 
 
 class MpGasPriceModel(BaseModel):

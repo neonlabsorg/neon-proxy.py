@@ -6,7 +6,7 @@ import enum
 import logging
 import re
 from dataclasses import dataclass
-from typing import Final, Sequence, Annotated
+from typing import Final, Sequence, Annotated, ClassVar
 
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
@@ -111,6 +111,7 @@ class NeonTxLogInfo:
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
+    tx_ix_base_fee: NeonTxIxBaseFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
     is_truncated: bool
@@ -123,9 +124,13 @@ class NeonTxLogReturnInfo:
     total_gas_used: int
     status: int = 0
 
+    _default: ClassVar[NeonTxLogReturnInfo | None] = None
+
     @classmethod
     def default(cls) -> Self:
-        return cls(event_type=NeonTxEventModel.Type.Lost, total_gas_used=0, status=0)
+        if cls._default is None:
+            cls._default = cls(event_type=NeonTxEventModel.Type.Lost, total_gas_used=0, status=0)
+        return cls._default
 
     @property
     def is_empty(self) -> bool:
@@ -137,9 +142,13 @@ class NeonTxIxLogGasInfo:
     gas_used: int
     total_gas_used: int
 
+    _default: ClassVar[NeonTxIxLogGasInfo | None] = None
+
     @classmethod
     def default(cls) -> Self:
-        return cls(gas_used=0, total_gas_used=0)
+        if cls._default is None:
+            cls._default = cls(gas_used=0, total_gas_used=0)
+        return cls._default
 
     @property
     def is_empty(self) -> bool:
@@ -151,9 +160,13 @@ class NeonTxIxPriorityFeeInfo:
     # Denominated in gas tokens.
     priority_fee_paid: int
 
+    _default: ClassVar[NeonTxIxPriorityFeeInfo | None] = None
+
     @classmethod
     def default(cls) -> Self:
-        return cls(priority_fee_paid=0)
+        if cls._default is None:
+            cls._default = cls(priority_fee_paid=0)
+        return cls._default
 
     @property
     def is_empty(self) -> bool:
@@ -161,13 +174,35 @@ class NeonTxIxPriorityFeeInfo:
 
 
 @dataclass(frozen=True)
+class NeonTxIxBaseFeeInfo:
+    # Denominated in gas tokens.
+    base_fee_paid: int
+
+    _default: ClassVar[NeonTxIxBaseFeeInfo | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if cls._default is None:
+            cls._default = cls(base_fee_paid=0)
+        return cls._default
+
+    @property
+    def is_empty(self) -> bool:
+        return self.base_fee_paid == 0
+
+
+@dataclass(frozen=True)
 class NeonTxIxStepInfo:
     step_cnt: int
     total_step_cnt: int
 
+    _default: ClassVar[NeonTxIxStepInfo | None] = None
+
     @classmethod
     def default(cls) -> Self:
-        return cls(step_cnt=0, total_step_cnt=0)
+        if cls._default is None:
+            cls._default = cls(step_cnt=0, total_step_cnt=0)
+        return cls._default
 
     @property
     def is_empty(self) -> bool:
@@ -182,6 +217,7 @@ class _NeonTxLogDraft:
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
+    tx_ix_base_fee: NeonTxIxBaseFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
     is_truncated: bool
@@ -196,6 +232,7 @@ class _NeonTxLogDraft:
             tx_ix_step=NeonTxIxStepInfo.default(),
             tx_ix_gas=NeonTxIxLogGasInfo.default(),
             tx_ix_priority_fee=NeonTxIxPriorityFeeInfo.default(),
+            tx_ix_base_fee=NeonTxIxBaseFeeInfo.default(),
             tx_return=NeonTxLogReturnInfo.default(),
             tx_event_list=list(),
             is_truncated=False,
@@ -215,6 +252,7 @@ class _NeonTxLogDraft:
             tx_ix_step=self.tx_ix_step,
             tx_ix_gas=self.tx_ix_gas,
             tx_ix_priority_fee=self.tx_ix_priority_fee,
+            tx_ix_base_fee=self.tx_ix_base_fee,
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
             is_truncated=self.is_truncated,
@@ -344,6 +382,23 @@ class _NeonEvmPriorityFeeLogDecoder(_NeonEvmLogDecoder):
 
         bs = base64.b64decode(data_list[0])
         log.tx_ix_priority_fee = NeonTxIxPriorityFeeInfo(priority_fee_paid=int.from_bytes(bs, "little"))
+
+
+class _NeonEvmBaseFeeLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "BASEFEE"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+        """BASEFEE <32 bytes le priority fee as paid by the user>"""
+        if not log.tx_ix_base_fee.is_empty:
+            _LOG.error("%s is specified twice", cls.name)
+            return
+        if len(data_list) != 1:
+            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
+            return
+
+        bs = base64.b64decode(data_list[0])
+        log.tx_ix_base_fee = NeonTxIxBaseFeeInfo(base_fee_paid=int.from_bytes(bs, "little"))
 
 
 class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
@@ -600,6 +655,7 @@ class NeonEvmLogDecoder:
         _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
         _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
+        _NeonEvmBaseFeeLogDecoder.name: _NeonEvmBaseFeeLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,

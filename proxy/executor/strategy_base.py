@@ -301,13 +301,14 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             return 0
 
         if tx.has_priority_fee:
-            p_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
+            p_fee = tx.base_fee_per_gas * 100 / tx.max_priority_fee_per_gas
             tx_cu_price = _calc_cu_price(p_fee, NeonProg.BaseGas, cu_limit)
         else:
             tx_cu_price = 0
 
         if (not tx.has_priority_fee) or (req_cu_price > tx_cu_price):
-            p_fee = max(tx.base_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
+            gas_price = tx.operator_fee_per_gas
+            p_fee = max(tx.operator_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
             tx_cu_price += _calc_cu_price(p_fee, gas_limit, cu_limit)
 
         # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped

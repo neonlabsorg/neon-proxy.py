@@ -256,6 +256,8 @@ class _Record:
     tx_idx: int
 
     base_fee_per_gas: Decimal
+    base_fee_used: int
+    priority_fee_per_gas: Decimal
     priority_fee_used: int
     gas_used: int
     sum_gas_used: int
@@ -280,6 +282,8 @@ class _Record:
             block_slot=neon_rcpt.slot,
             tx_idx=neon_rcpt.neon_tx_idx,
             base_fee_per_gas=Decimal(neon_tx.base_fee_per_gas),
+            base_fee_used=neon_rcpt.base_fee_used,
+            priority_fee_per_gas=Decimal(neon_tx.max_priority_fee_per_gas),
             priority_fee_used=neon_rcpt.priority_fee_used,
             gas_used=neon_rcpt.total_gas_used,
             sum_gas_used=neon_rcpt.sum_gas_used,
@@ -331,6 +335,7 @@ class _RecordWithBlock(_Record):
             total_gas_used=self.gas_used,
             sum_gas_used=self.sum_gas_used,
             priority_fee_used=self.priority_fee_used,
+            base_fee_used=self.base_fee_used,
             is_canceled=self.is_canceled,
             event_list=self._decode_event_list(self.logs),
             parent_tx_list=list(skd_rel.parent_tx_hash_set),
