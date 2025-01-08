@@ -112,6 +112,7 @@ class NeonBaseTxAccountSet:
     sender: SolPubKey
     receiver: SolPubKey
     receiver_contract: SolPubKey
+    payer_balance: int
 
     _default: ClassVar[NeonBaseTxAccountSet | None] = None
 
@@ -123,6 +124,7 @@ class NeonBaseTxAccountSet:
                 sender=SolPubKey.default(),
                 receiver=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
+                payer_balance=0,
             )
         return cls._default
 

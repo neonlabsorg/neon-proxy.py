@@ -75,7 +75,7 @@ class ExecutorServerAbc(BaseIntlProxyServer):
         self._stat_client = stat_client
         self._db = db
 
-    @ttl_cached_method(ttl_sec=1)
+    @ttl_cached_method(ttl_sec=15)
     async def get_evm_cfg(self) -> EvmConfigModel:
         evm_cfg = await self._mp_client.get_evm_cfg()
         NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)

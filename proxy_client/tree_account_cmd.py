@@ -133,6 +133,7 @@ class TreeAccountHandler(BaseNPCmdHandler):
                 sender=SolPubKey.default(),
                 receiver=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
+                payer_balance=0,
             )
 
             neon_prog = NeonProg(op_res.owner)
