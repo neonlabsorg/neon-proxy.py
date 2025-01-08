@@ -66,7 +66,7 @@ class NpAccountApi(NeonProxyApi):
         mp_tx_nonce: int | None = None
         if block.commit == EthCommit.Pending:
             mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(self._get_ctx_id(ctx), addr)
-            _LOG.debug("pending tx count for %s is %s", addr, mp_tx_nonce)
+            # _LOG.debug("pending tx count for %s is %s", addr, mp_tx_nonce)
 
         tx_cnt = await self._core_api_client.get_state_tx_cnt(addr, block)
         return max(tx_cnt, mp_tx_nonce or 0)

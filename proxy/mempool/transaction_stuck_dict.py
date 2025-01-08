@@ -49,24 +49,24 @@ class MpStuckTxDict:
     def acquire_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._pop_tx(stuck_tx)
         self._processing_tx_dict[stuck_tx.neon_tx_hash] = stuck_tx
-        _LOG.debug(log_msg("start processing of stuck tx {StuckTx}", StuckTx=stuck_tx))
+        # _LOG.debug(log_msg("start processing of stuck tx {StuckTx}", StuckTx=stuck_tx))
 
     def skip_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._pop_tx(stuck_tx)
-        _LOG.debug(log_msg("skip stuck tx {StuckTx}", StuckTx=stuck_tx))
+        # _LOG.debug(log_msg("skip stuck tx {StuckTx}", StuckTx=stuck_tx))
 
     def done_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._done_tx(stuck_tx)
-        _LOG.debug(log_msg("done stuck tx {StuckTx}", StuckTx=stuck_tx))
+        # _LOG.debug(log_msg("done stuck tx {StuckTx}", StuckTx=stuck_tx))
 
     def fail_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._done_tx(stuck_tx)
-        _LOG.debug(log_msg("fail stuck tx {StuckTx}", StuckTx=stuck_tx))
+        # _LOG.debug(log_msg("fail stuck tx {StuckTx}", StuckTx=stuck_tx))
 
     def cancel_tx(self, stuck_tx: MpStuckTxModel) -> None:
         self._done_tx(stuck_tx)
         self._tx_dict[stuck_tx.neon_tx_hash] = stuck_tx
-        _LOG.debug(log_msg("cancel stuck tx {StuckTx}", StuckTx=stuck_tx))
+        # _LOG.debug(log_msg("cancel stuck tx {StuckTx}", StuckTx=stuck_tx))
 
     def _pop_tx(self, stuck_tx: MpStuckTxModel) -> MpStuckTxModel:
         popped_tx = self._tx_dict.pop(stuck_tx.neon_tx_hash, None)
@@ -103,7 +103,8 @@ class MpStuckTxDict:
             if stuck_tx.neon_tx_hash in self._processing_tx_dict:
                 continue
             elif stuck_tx.neon_tx_hash not in self._tx_dict:
-                _LOG.debug(log_msg("found external stuck tx {StuckTx}", StuckTx=stuck_tx))
+                # _LOG.debug(log_msg("found external stuck tx {StuckTx}", StuckTx=stuck_tx))
+                pass
 
             tx_dict[stuck_tx.neon_tx_hash] = stuck_tx
         self._tx_dict = tx_dict

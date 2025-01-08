@@ -32,7 +32,7 @@ class NpExecTxApi(NeonProxyApi):
         neon_tx = self._tx_executor.parse_neon_tx(raw_tx.to_bytes())
         tx_id = neon_tx.neon_tx_hash.ident
         with logging_context(tx=tx_id):
-            _LOG.debug("sendRawSkdTransaction %s: %s", neon_tx.neon_tx_hash, neon_tx)
+            _LOG.debug("sendRawSkdTransaction %s", neon_tx.neon_tx_hash)
 
             if not neon_tx.is_scheduled_tx:
                 raise EthError("not-scheduled transaction")

@@ -97,16 +97,16 @@ class NeonTxExecutor(ExecutorComponent):
 
             return await self._select_strategy(ctx, self._tx_strategy_list)
 
-        except SkdTxError as exc:
-            _LOG.debug("%s", str(exc))
+        except SkdTxError as _exc:
+            # _LOG.debug("%s", str(exc))
             return ExecTxDoneCode.Failed
 
-        except EthNonceTooLowError as exc:
-            _LOG.debug("%s", str(exc))
+        except EthNonceTooLowError as _exc:
+            # _LOG.debug("%s", str(exc))
             return ExecTxDoneCode.NonceTooLow
 
-        except EthNonceTooHighError as exc:
-            _LOG.debug("%s", str(exc))
+        except EthNonceTooHighError as _exc:
+            # _LOG.debug("%s", str(exc))
             return ExecTxDoneCode.NonceTooHigh
 
     async def complete_stuck_neon_tx(self, ctx: NeonExecTxCtx) -> ExecTxDoneCode:
@@ -128,7 +128,7 @@ class NeonTxExecutor(ExecutorComponent):
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxDoneCode:
         for _Strategy in tx_strategy_list:
             if ctx.skip_simple_strategy and _Strategy.is_simple:
-                _LOG.debug("skip simple strategy %s", _Strategy.name)
+                # _LOG.debug("skip simple strategy %s", _Strategy.name)
                 continue
 
             strategy = _Strategy(self._server, ctx)
@@ -139,16 +139,16 @@ class NeonTxExecutor(ExecutorComponent):
             _LOG.debug("use strategy %s", strategy.name)
             if (exit_code := await self._exec_neon_tx(ctx, strategy)) is not None:
                 await self._done_exec_neon_tx(strategy)
-                _LOG.debug("done strategy %s with result %s", strategy.name, exit_code.name)
+                # _LOG.debug("done strategy %s with result %s", strategy.name, exit_code.name)
                 return exit_code
 
         _LOG.warning("didn't find a strategy for execution, NeonTx is too big for execution?")
         return ExecTxDoneCode.Failed
 
     async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
-        for retry in itertools.count():
-            if retry > 0:
-                _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
+        for _retry in itertools.count():
+            # if retry > 0:
+            #     _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
 
             try:
                 if await self._is_completed(ctx):
@@ -182,9 +182,9 @@ class NeonTxExecutor(ExecutorComponent):
                 SolCbExceededError,
                 SolNeonRequireResizeIterError,
                 SolTxSizeError,
-            ) as exc:
+            ) as _exc:
                 ctx.mark_skip_simple_strategy()
-                _LOG.debug("wrong strategy error: %s", str(exc))
+                # _LOG.debug("wrong strategy error: %s", str(exc))
                 return None
 
             except (
@@ -193,24 +193,24 @@ class NeonTxExecutor(ExecutorComponent):
                 SolOutOfMemoryError,
                 SolUnknownReceiptError,
                 SolNoMoreRetriesError,
-            ) as exc:
+            ) as _exc:
                 ctx.mark_skip_simple_strategy()
-                _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
+                # _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
-            except SolError as exc:
-                _LOG.debug("simple error: %s", str(exc), extra=self._msg_filter)
+            except SolError as _exc:
+                # _LOG.debug("simple error: %s", str(exc), extra=self._msg_filter)
                 await asyncio.sleep(ONE_BLOCK_SEC / 2)
 
-            except BaseException as exc:
+            except BaseException as _exc:
                 ctx.mark_skip_simple_strategy()
-                _LOG.debug("unexpected error", extra=self._msg_filter, exc_info=exc)
+                # _LOG.debug("unexpected error", extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(strategy)
 
     async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
-        for retry in range(self._cfg.retry_on_fail):
-            if retry > 0:
-                _LOG.debug("cancel NeonTx, attempt %s...", retry + 1)
+        for _retry in range(self._cfg.retry_on_fail):
+            # if retry > 0:
+            #     _LOG.debug("cancel NeonTx, attempt %s...", retry + 1)
 
             try:
                 return await strategy.cancel()
@@ -218,23 +218,24 @@ class NeonTxExecutor(ExecutorComponent):
             except (SolNoMoreRetriesError, SolBlockhashNotFound):
                 await asyncio.sleep(ONE_BLOCK_SEC)
 
-            except BaseException as exc:
-                _LOG.error(
-                    "unexpected error on cancel NeonTx",
-                    exc_info=exc,
-                    extra=self._msg_filter,
-                )
+            except BaseException as _exc:
+                # _LOG.error(
+                #     "unexpected error on cancel NeonTx",
+                #     exc_info=exc,
+                #     extra=self._msg_filter,
+                # )
                 return None
 
     async def _done_exec_neon_tx(self, strategy: BaseTxStrategy) -> None:
         try:
             await strategy.done_execution()
-        except BaseException as exc:
-            _LOG.error(
-                "unexpected error on done exec NeonTx",
-                exc_info=exc,
-                extra=self._msg_filter,
-            )
+        except BaseException as _exc:
+            # _LOG.error(
+            #     "unexpected error on done exec NeonTx",
+            #     exc_info=exc,
+            #     extra=self._msg_filter,
+            # )
+            pass
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
         # update evm config

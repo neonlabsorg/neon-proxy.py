@@ -52,7 +52,7 @@ class MpTxDict:
         return neon_tx_hash in self._tx_hash_dict
 
     def add_tx(self, tx: MpTxModel) -> None:
-        _LOG.debug("add tx %s to tx-cache", tx)
+        # _LOG.debug("add tx %s to tx-cache", tx)
 
         item = _TxItem(tx=tx, exec_pct_list=list())
         self._tx_hash_dict[tx.neon_tx_hash] = item
@@ -111,6 +111,6 @@ class MpTxDict:
             item = self._tx_queue.popleft()
             self._tx_hash_dict.pop(item.tx.neon_tx_hash, None)
             self._sender_nonce_dict.pop(SenderNonce.from_raw(item.tx), None)
-            _LOG.debug("remove %s from tx-cache", item.tx)
+            # _LOG.debug("remove %s from tx-cache", item.tx)
 
         return self._tx_queue[0].start_time_sec + self._clear_time_sec + 1 if self._tx_queue else 0

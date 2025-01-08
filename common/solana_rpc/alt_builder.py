@@ -160,8 +160,8 @@ class SolAltTxBuilder:
 
                 await asyncio.sleep(self._wait_sec)
 
-            if not alt_acct.is_exist:
-                _LOG.debug("ALT %s doesn't exist", alt.address)
-            else:
-                _LOG.debug("ALT %s contains %s accounts", alt.address, len(alt_acct.account_key_list))
+            # if not alt_acct.is_exist:
+            #     _LOG.debug("ALT %s doesn't exist", alt.address)
+            # else:
+            #     _LOG.debug("ALT %s contains %s accounts", alt.address, len(alt_acct.account_key_list))
             alt.update_from_account(alt_acct)

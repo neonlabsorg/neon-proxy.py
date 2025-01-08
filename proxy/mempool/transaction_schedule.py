@@ -64,10 +64,8 @@ class _TxDict:
         self._global_tx_dict.add_tx(tx)
 
         if is_gapped_tx:
-            _LOG.debug("add %s to gapped", tx)
             self._tx_gapped_gas_price_queue.add(tx)
         else:
-            _LOG.debug("add %s to priced", tx)
             self._tx_gas_price_queue.add(tx)
             self.queue_tx(tx.sender, tx.nonce + 1)
 
@@ -79,10 +77,8 @@ class _TxDict:
 
         # tx may be removed from the gas price queue on processing
         if (pos := self._tx_gapped_gas_price_queue.find(tx)) is not None:
-            _LOG.debug("remove %s from gapped", tx)
             self._tx_gapped_gas_price_queue.pop(pos)
         else:
-            _LOG.debug("remove %s from queued", tx)
             self._tx_gas_price_queue.pop(tx)
             self.dequeue_tx(tx.sender, tx.nonce + 1)
 
@@ -96,10 +92,8 @@ class _TxDict:
             self._global_tx_dict.pop_tx(tx.neon_tx_hash)
 
             if (pos := self._tx_gapped_gas_price_queue.find(tx)) is not None:
-                _LOG.debug("remove %s from gapped", tx)
                 self._tx_gapped_gas_price_queue.pop(pos)
             else:
-                _LOG.debug("remove %s from priced", tx)
                 self._tx_gas_price_queue.pop(tx)
 
     def done_tx(self, tx: MpTxModel) -> MpTxModel:
@@ -113,15 +107,12 @@ class _TxDict:
 
     def _move_between_gas_price_queues(
         self,
-        hdr1: str,
-        hdr2: str,
         src: SortedQueue[MpTxModel, int, str],
         dst: SortedQueue[MpTxModel, int, str],
         sender: EthAddress,
         nonce: int,
     ) -> None:
         while tx := self._tx_dict.get(SenderNonce.from_raw((sender, self._chain_id, nonce)), None):
-            _LOG.debug("move tx %s from %s to %s", tx, hdr1, hdr2)
             if (pos := src.find(tx)) is None:
                 break
             dst.add(src.pop(pos))
@@ -132,17 +123,13 @@ class _TxDict:
         return self._tx_dict.get(sender_nonce, None)
 
     def acquire_tx(self, tx: MpTxModel) -> None:
-        _LOG.debug("acquire tx %s", tx)
         self._tx_gas_price_queue.pop(tx)
 
     def cancel_process_tx(self, tx: MpTxModel) -> None:
-        _LOG.debug("cancel tx %s", tx)
         self._tx_gas_price_queue.add(tx)
 
     def queue_tx(self, sender: EthAddress, start_nonce: int) -> None:
         self._move_between_gas_price_queues(
-            "gapped",
-            "priced",
             self._tx_gapped_gas_price_queue,
             self._tx_gas_price_queue,
             sender,
@@ -151,8 +138,6 @@ class _TxDict:
 
     def dequeue_tx(self, sender: EthAddress, start_nonce: int) -> None:
         self._move_between_gas_price_queues(
-            "priced",
-            "gapped",
             self._tx_gas_price_queue,
             self._tx_gapped_gas_price_queue,
             sender,
@@ -247,7 +232,7 @@ class _SenderTxPool:
         ), f"Tx {tx.neon_tx_hash} has nonce {tx.nonce} less than {self._state_tx_cnt}"
         self._tx_nonce_queue.add(tx)
         self._heartbeat_sec = int(time.monotonic())
-        _LOG.debug(self._log_action("add tx", tx))
+        # _LOG.debug(self._log_action("add tx", tx))
 
     @property
     def top_tx(self) -> MpTxModel | None:
@@ -321,7 +306,7 @@ class _SenderTxPool:
 
         self._tx_nonce_queue.pop(self._top_index)
         self._processing_tx = None
-        _LOG.debug(self._log_action("done tx", tx))
+        # _LOG.debug(self._log_action("done tx", tx))
 
     def drop_tx(self, tx: MpTxModel) -> None:
         assert (
@@ -329,7 +314,7 @@ class _SenderTxPool:
         ), f"cannot drop processing tx {tx.neon_tx_hash}"
 
         self._tx_nonce_queue.pop(tx)
-        _LOG.debug(self._log_action("drop tx", tx))
+        # _LOG.debug(self._log_action("drop tx", tx))
 
     def cancel_process_tx(self, tx: MpTxModel) -> None:
         self._validate_processing_tx(tx)
@@ -463,7 +448,7 @@ class MpTxSchedule:
         return self._token
 
     def add_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> MpTxResp:
-        _LOG.debug(log_msg("add tx {Tx} to mempool {ChainID} with {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info()))
+        # _LOG.debug(log_msg("add tx {Tx} to mempool {ChainID} with {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info()))
 
         def _is_higher_gas_price(_hdr: str, _old_tx: MpTxModel | None) -> MpTxResp | None:
             if not _old_tx:
@@ -529,7 +514,7 @@ class MpTxSchedule:
         self._add_tx_to_sender_pool(pool, tx)
         self._schedule_sender_pool(pool, state_tx_cnt, balance)
 
-        msg = log_msg("done add tx {Tx}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info())
+        msg = log_msg("add tx {Tx}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info())
         _LOG.debug(msg)
         return MpTxResp(code=MpTxRespCode.Success, state_tx_cnt=None)
 
@@ -539,7 +524,7 @@ class MpTxSchedule:
 
         pool = self._get_sender_pool(tx.sender)
         if pool.is_processing:
-            _LOG.debug(log_msg("cannot drop processing tx {Tx}", Tx=tx))
+            # _LOG.debug(log_msg("cannot drop processing tx {Tx}", Tx=tx))
             return False
 
         self._drop_tx_from_sender_pool(pool, tx)
@@ -624,15 +609,15 @@ class MpTxSchedule:
         )
 
     def done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
-        _LOG.debug(log_msg("done tx {Tx}", Tx=tx))
+        # _LOG.debug(log_msg("done tx {Tx}", Tx=tx))
         self._done_tx(tx, state_tx_cnt, balance)
 
     def fail_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
-        _LOG.debug(log_msg("fail tx {Tx}", Tx=tx))
+        # _LOG.debug(log_msg("fail tx {Tx}", Tx=tx))
         self._done_tx(tx, state_tx_cnt, balance)
 
     def cancel_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> bool:
-        _LOG.debug(log_msg("cancel tx {Tx}", Tx=tx))
+        # _LOG.debug(log_msg("cancel tx {Tx}", Tx=tx))
         if not (pool := self._find_sender_pool(tx.sender)):
             return False
 
@@ -686,10 +671,11 @@ class MpTxSchedule:
 
     def _get_or_create_sender_pool(self, sender: EthAddress) -> _SenderTxPool:
         if pool := self._find_sender_pool(sender):
-            _LOG.debug(log_msg("find pool {Sender} with {TxCnt} txs", Sender=pool, TxCnt=pool.tx_cnt))
+            # _LOG.debug(log_msg("find pool {Sender} with {TxCnt} txs", Sender=pool, TxCnt=pool.tx_cnt))
+            pass
         else:
             pool = _SenderTxPool(sender, self._chain_id)
-            _LOG.debug(log_msg("create new pool {Sender}", Sender=pool))
+            # _LOG.debug(log_msg("create new pool {Sender}", Sender=pool))
         return pool
 
     def _get_sender_pool(self, sender: EthAddress) -> _SenderTxPool:
@@ -728,26 +714,26 @@ class MpTxSchedule:
         if new_state == pool.State.Empty:
             self._sender_pool_dict.pop(pool.sender)
             self._sender_pool_heartbeat_queue.pop(pool)
-            _LOG.debug(log_msg("done sender {Sender}", Sender=pool))
+            # _LOG.debug(log_msg("done sender {Sender}", Sender=pool))
         elif new_state == pool.State.Suspended:
             self._suspended_sender_set.add(pool.sender)
             self._tx_dict.dequeue_tx(pool.sender, pool.top_tx.nonce)
-            _LOG.debug(log_msg("suspend sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
+            # _LOG.debug(log_msg("suspend sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
         elif new_state == pool.State.Queued:
             self._sender_pool_queue.add(pool)
             self._tx_dict.queue_tx(pool.sender, pool.top_tx.nonce)
-            _LOG.debug(log_msg("resume sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
+            # _LOG.debug(log_msg("resume sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
 
     def _done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
         if not (pool := self._find_sender_pool(tx.sender)):
-            _LOG.debug("not found! %s", tx.sender)
+            # _LOG.debug("not found! %s", tx.sender)
             return
 
         pool.done_tx(tx)
         self._tx_dict.done_tx(tx)
 
         self._schedule_sender_pool(pool, state_tx_cnt, balance)
-        _LOG.debug(log_msg("mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", **self._info()))
+        # _LOG.debug(log_msg("mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", **self._info()))
 
     def _check_oversized_and_reduce(self) -> None:
         tx_cnt_to_remove: Final[int] = self.tx_cnt - self._capacity - 1  # +1 for new tx, see add_tx()
