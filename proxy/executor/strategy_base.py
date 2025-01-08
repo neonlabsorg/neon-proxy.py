@@ -290,23 +290,21 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx = self._ctx.holder_tx
         assert tx.base_fee_per_gas >= 0
 
-        if tx.has_priority_fee:
-            priority_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
-            # _LOG.debug(
-            #     "use %s%% priority-fee for priority gas-price %d",
-            #     priority_fee,
-            #     tx.max_priority_fee_per_gas,
-            # )
-        else:
-            # calculate a transaction cu-price based on the tx gas-price
-            priority_fee = max(tx.base_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
-            # _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, tx.base_fee_per_gas)
+        def _calc_cu_price(_p_fee: float, _gas_limit: int, _cu_limit: int) -> int:
+            if _p_fee > 0.0:
+                # see gas-price-calculator for details
+                return int(_p_fee * gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
+            return 0
 
-        if priority_fee > 0.0:
-            # see gas-price-calculator for details
-            tx_cu_price = int(priority_fee * gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
+        if tx.has_priority_fee:
+            p_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
+            tx_cu_price = _calc_cu_price(p_fee, NeonProg.BaseGas, cu_limit)
         else:
             tx_cu_price = 0
+
+        if (not tx.has_priority_fee) or (req_cu_price > tx_cu_price):
+            p_fee = max(tx.base_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
+            tx_cu_price += _calc_cu_price(p_fee, gas_limit, cu_limit)
 
         # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
         # and neon-evm does not digest it.
@@ -358,12 +356,9 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             _LOG.warning("error on emulate solana tx list")
             raise SolCbExceededError()
 
-    def _find_gas_limit(self, emul_tx: EmulSolTxInfo) -> int:
+    @staticmethod
+    def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
         gas_limit = NeonProg.BaseGas
-
-        if self._ctx.holder_tx.has_priority_fee:
-            # _LOG.debug("DynamicGas NeonTx, use default %s", gas_limit)
-            return gas_limit
 
         fake_tx_ix = SolTxIxMetaInfo.default()
         try:
