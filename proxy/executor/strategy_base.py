@@ -43,7 +43,7 @@ class BaseTxPrepStage(ExecutorComponent, abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def build_tx_list(self) -> list[list[SolTx]]:
+    async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
         pass
 
     @abc.abstractmethod
