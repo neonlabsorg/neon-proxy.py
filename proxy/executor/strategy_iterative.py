@@ -276,12 +276,8 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             total_evm_step_cnt = self._calc_total_evm_step_cnt()
             exec_iter_cnt = (total_evm_step_cnt // evm_step_cnt) + (1 if (total_evm_step_cnt % evm_step_cnt) > 1 else 0)
-
-            if self._cfg.mp_send_batch_tx:
-                # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
-                iter_cnt = max(exec_iter_cnt + self._calc_wrap_iter_cnt(), 1)
-            else:
-                iter_cnt = 1
+            # and as a result, the total number of iterations = the execution iterations + begin + resize iterations
+            iter_cnt = max(exec_iter_cnt + self._calc_wrap_iter_cnt(), 1)
 
             # the possible case:
             #    1 iteration: 17'000 steps
@@ -315,35 +311,37 @@ class IterativeTxStrategy(BaseTxStrategy):
             return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()
 
         max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
-        # decrease the available CU limit in Neon iteration, because Solana decreases it by default
+        # decrease the available CU limit in Neon iteration, because it is used for Compute Budget calls
         threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)  # 95% of the maximum
+        round_coeff: Final[int] = 10_000
+        inc_coeff: Final[int] = 50_000
         evm_step_cnt: Final[int] = base_cfg.evm_step_cnt
 
-        iter_cnt = max(next((idx for idx, x in enumerate(emul_tx_list) if x.meta.error), len(emul_tx_list)), 1)
-        emul_tx_list = emul_tx_list[:iter_cnt]
-        used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
+        iter_cnt, used_cu_limit = 0, 0
+        for tx in emul_tx_list:
+            if tx.meta.error:
+                if not iter_cnt:
+                    return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()
+                break
+            elif tx.meta.used_cu_limit > threshold_cu_limit:
+                break
+            elif iter_cnt and abs(tx.meta.used_cu_limit - used_cu_limit) > inc_coeff:
+                break
 
-        _LOG.debug(
-            "%s: %d EVM steps, %d CUs, %d executed iterations, %d success iterations",
-            hdr,
-            evm_step_cnt,
-            used_cu_limit,
-            base_cfg.iter_cnt,
-            iter_cnt,
-        )
+            used_cu_limit = max(used_cu_limit, tx.meta.used_cu_limit)
+            iter_cnt += 1
 
         # not enough CU limit
-        if used_cu_limit > threshold_cu_limit:
-            ratio = min(threshold_cu_limit / used_cu_limit, 0.9)  # decrease by 10% in any case
+        if not iter_cnt:
+            max_used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
+            ratio = min(threshold_cu_limit / max_used_cu_limit, 0.9)  # decrease by 10% in any case
             new_evm_step_cnt = max(int(evm_step_cnt * ratio), evm_step_cnt_per_iter)
 
-            # _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
+            _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
 
+        emul_tx_list = emul_tx_list[:iter_cnt]
         gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
-
-        round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 100_000
         round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
         _LOG.debug(
             "%s: %d EVM steps, %d CUs, %d GAS, %d iterations",
@@ -362,11 +360,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         evm_step_cnt: Final[int] = self._ctx.neon_prog.EvmStepPerIter
         total_evm_step_cnt: Final[int] = self._calc_total_evm_step_cnt()
 
-        if self._cfg.mp_send_batch_tx:
-            exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt, 1)
-            iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt()
-        else:
-            iter_cnt = 1
+        exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt, 1)
+        iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt()
 
         base_cfg = self._init_sol_tx_cfg(iter_cnt=iter_cnt, evm_step_cnt=evm_step_cnt)
         def_cfg = await self._update_cu_price(base_cfg, cu_limit=cu_limit)
