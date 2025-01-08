@@ -324,12 +324,7 @@ class NeonTxExecApi(ExecutorApi):
         cu_limit_ix = SolCbProg.make_cu_limit_ix(ctx.neon_prog.CuLimitSkdTreeAccountDestroy)
         ix_list: Sequence[SolTxIx] = tuple([cu_price_ix, cu_limit_ix, destroy_ix])
 
-        tx_list_sender = SolTxListSender(
-            self._cfg,
-            self._stat_client,
-            ctx.sol_watch_session,
-            ctx.sol_tx_list_signer,
-        )
+        tx_list_sender = ctx.sol_tx_list_sender
 
         for _ in itertools.count():
             if not (await ctx.skd_tree_parser.is_exist()):

@@ -30,7 +30,7 @@ class SimpleTxStrategy(BaseTxStrategy):
             ix = self._build_tx_ix(base_cfg)
             await self._emulate_and_send_single_tx("simple", ix, base_cfg)
 
-        tx_send_state_list = self._sol_tx_list_sender.tx_state_list
+        tx_send_state_list = self._ctx.sol_tx_list_sender.tx_state_list
         status = SolTxSendState.Status
 
         for tx_state in tx_send_state_list:
