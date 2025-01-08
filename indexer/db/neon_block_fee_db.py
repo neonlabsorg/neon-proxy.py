@@ -50,7 +50,7 @@ class NeonBlockFeeDB(HistoryDbTable):
             for tx in block.iter_done_neon_tx():
                 if not tx.neon_tx.chain_id:
                     continue
-                elif not (tx_base_fee := tx.neon_tx.base_fee_per_gas):
+                elif not (tx_base_fee := tx.neon_tx_rcpt.base_fee_per_gas or tx.neon_tx.base_fee_per_gas):
                     continue
 
                 chain_id = tx.neon_tx.chain_id or self._def_chain_id

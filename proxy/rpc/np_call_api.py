@@ -265,8 +265,8 @@ class NpCallApi(NeonProxyApi):
 
         return _RpcSkdTxEstimateResp(
             chainId=chain_id,
-            maxFeePerGas=token_gas_price.profitable_gas_price,
-            maxPriorityFeePerGas=token_gas_price.priority_gas_price,
+            maxFeePerGas=token_gas_price.suggested_gas_price,
+            maxPriorityFeePerGas=token_gas_price.profitable_gas_price,
             nonce=sender_acct.state_tx_cnt,
             treasuryIndex=treasury_index,
             accountList=[

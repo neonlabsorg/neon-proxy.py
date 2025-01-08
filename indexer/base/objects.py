@@ -336,6 +336,7 @@ class _NeonTxReceiptDraft:
     total_gas_used: int
     sum_gas_used: int
     priority_fee_used: int
+    base_fee_used: int
 
     event_list: list[NeonTxEventModel]
 
@@ -377,6 +378,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         gas_used: int
         total_gas_used: int
         total_priority_fee: int = 0
+        total_base_fee: int = 0
         has_truncated_log: bool
         has_good_ix: bool = Field(default=False)
         is_completed: bool = Field(default=False)
@@ -396,6 +398,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         gas_used: int,
         total_gas_used: int,
         total_priority_fee: int,
+        total_base_fee: int,
         has_truncated_log: bool,
         has_good_ix: bool,
         is_completed: bool,
@@ -413,6 +416,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._gas_used = gas_used
         self._total_gas_used = total_gas_used
         self._total_priority_fee = total_priority_fee
+        self._total_base_fee = total_base_fee
         self._has_truncated_log = has_truncated_log
         self._has_good_ix = has_good_ix
         self._is_completed = is_completed
@@ -453,6 +457,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             gas_used=0,
             total_gas_used=0,
             total_priority_fee=0,
+            total_base_fee=0,
             has_truncated_log=False,
             has_good_ix=False,
             is_completed=False,
@@ -461,20 +466,6 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
-        # TODO: remove after upgrade
-        neon_tx: dict = data.get("neon_tx")
-        if "gas_price_legacy" in neon_tx:
-            neon_tx["gas_price"] = neon_tx.pop("gas_price_legacy")
-        if "tx_chain_id" in neon_tx:
-            neon_tx["chain_id"] = neon_tx.pop("tx_chain_id", None)
-
-        neon_tx_rcpt: dict = data.get("neon_tx_rcpt")
-        if "priority_fee_used" not in neon_tx_rcpt:
-            neon_tx_rcpt["priority_fee_used"] = data.pop("priority_fee_spent", 0)
-
-        if "is_completed" not in data:
-            data["is_completed"] = neon_tx_rcpt.get("is_completed", False)
-        #
         init = cls.InitData.from_dict(data)
 
         self = cls(
@@ -487,6 +478,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             gas_used=init.gas_used,
             total_gas_used=init.total_gas_used,
             total_priority_fee=init.total_priority_fee,
+            total_base_fee=init.total_base_fee,
             has_truncated_log=init.has_truncated_log,
             has_good_ix=init.has_good_ix,
             is_completed=init.is_completed,
@@ -512,6 +504,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             gas_used=self._gas_used,
             total_gas_used=self._total_gas_used,
             total_priority_fee=self._total_priority_fee,
+            total_base_fee=self._total_base_fee,
             has_truncated_log=self._has_truncated_log,
             has_good_ix=self._has_good_ix,
             is_completed=self._is_completed,
@@ -632,6 +625,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             self._total_gas_used = sol_neon_ix.neon_total_gas_used
 
         self._total_priority_fee += sol_neon_ix.neon_tx_ix_priority_fee
+        self._total_base_fee += sol_neon_ix.neon_tx_ix_base_fee
 
         if self._operator.is_empty:
             self._operator = sol_neon_ix.operator
@@ -671,7 +665,24 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         rcpt.block_hash = neon_block_hdr.block_hash
         rcpt.neon_tx_idx = neon_tx_idx
         rcpt.sum_gas_used = sum_gas_used
+
         rcpt.priority_fee_used = self._total_priority_fee
+        if self._total_priority_fee % self._total_gas_used:
+            _LOG.warning(
+                "%d priority_fee_used is not divisible by %d total_gas_used in %s",
+                self._total_priority_fee,
+                self._total_gas_used,
+                self.neon_tx_hash,
+            )
+
+        rcpt.base_fee_used = self._total_base_fee
+        if self._total_base_fee % self._total_gas_used:
+            _LOG.warning(
+                "%d base_fee_used is not divisible by %d total_gas_used in %s",
+                self._total_base_fee,
+                self._total_gas_used,
+                self.neon_tx_hash,
+            )
 
         neon_tx_event_list = self._get_sorted_tx_event_list()
         self._fill_tx_event_order_nums(neon_tx_event_list)

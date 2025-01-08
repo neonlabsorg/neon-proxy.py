@@ -212,8 +212,11 @@ CREATE TABLE IF NOT EXISTS neon_compact_transactions (
     tx_idx INT,
 
     base_fee_per_gas NUMERIC(80, 0),
+    base_fee_used BIGINT,
 
+    priority_fee_per_gas NUMERIC(80, 0),
     priority_fee_used BIGINT,
+
     gas_used BIGINT,
     sum_gas_used BIGINT,
 
@@ -223,6 +226,9 @@ CREATE TABLE IF NOT EXISTS neon_compact_transactions (
     rlp_body BYTEA,
     logs TEXT
 );
+
+ALTER TABLE neon_compact_transactions ADD COLUMN IF NOT EXISTS base_fee_used BIGINT DEFAULT 0;
+ALTER TABLE neon_compact_transactions ADD COLUMN IF NOT EXISTS priority_fee_per_gas BIGINT DEFAULT 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_neon_txs_neon_sig_slot ON neon_compact_transactions(neon_sig, block_slot);
 CREATE INDEX IF NOT EXISTS idx_neon_txs_payer_nonce_chain_slot ON neon_compact_transactions(payer, nonce, index, chain_id, block_slot);

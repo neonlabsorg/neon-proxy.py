@@ -65,7 +65,6 @@ class MpGasPriceCalculator(MempoolComponent):
                 pct_gas_price=1,
                 min_acceptable_gas_price=0,
                 min_executable_gas_price=0,
-                gas_price_list=list(),
             ),
             layer0_token=MpTokenGasPriceModel(
                 chain_id=0,
@@ -80,7 +79,6 @@ class MpGasPriceCalculator(MempoolComponent):
                 pct_gas_price=1,
                 min_acceptable_gas_price=0,
                 min_executable_gas_price=0,
-                gas_price_list=list(),
             ),
             token_dict=dict(),
         )
@@ -229,7 +227,6 @@ class MpGasPriceCalculator(MempoolComponent):
             pct_gas_price=max(net_price // 100, 1),
             min_acceptable_gas_price=fee_cfg.min_gas_price or 0,
             min_executable_gas_price=min_price,
-            gas_price_list=list(gas_price_deque),
         )
 
     async def _update_pyth_acct_loop(self) -> None:

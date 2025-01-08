@@ -384,6 +384,10 @@ class NeonTxModel(BaseModel):
         return EthTx.calc_base_fee_per_gas(self)
 
     @cached_property
+    def operator_fee_per_gas(self) -> int:
+        return EthTx.calc_operator_fee_per_gas(self)
+
+    @cached_property
     def effective_gas_price(self) -> int:
         return self.gas_price if self.is_legacy_tx else self.max_fee_per_gas
 

@@ -182,7 +182,7 @@ class NpGasPriceApi(NeonProxyApi):
     @NeonProxyApi.method(name="eth_maxPriorityFeePerGas")
     async def get_max_priority_fee_per_gas(self, ctx: HttpRequestCtx) -> HexUIntField:
         _, token_gas_price = await self._get_token_gas_price(ctx)
-        return token_gas_price.priority_gas_price
+        return token_gas_price.profitable_gas_price
 
     @NeonProxyApi.method(name="eth_feeHistory")
     async def get_fee_history(
@@ -205,19 +205,19 @@ class NpGasPriceApi(NeonProxyApi):
         # Ethereum clients don't take into account the actual baseFeePerGas
         #   instead they increase this value on some blocks (12.5% per block)
         #   and use it as maxFeePerGas
-        base_fee_per_gas: int = token_gas_price.suggested_gas_price
-        max_priority_fee_per_gas: int = token_gas_price.priority_gas_price
+        suggested_gas_price: int = token_gas_price.suggested_gas_price
+        profitable_gas_price: int = token_gas_price.profitable_gas_price
 
         block_cnt = min(block_cnt, _FEE_HISTORY_MAX_BLOCK_CNT)
         if block_cnt == 0:
-            return _RpcFeeHistoryResp.from_raw([base_fee_per_gas], [], 0, [])
+            return _RpcFeeHistoryResp.from_raw([suggested_gas_price], [], 0, [])
 
         block = await self.get_block_by_tag(block_tag)
         latest_slot = block.slot if not block.is_empty else await self._db.get_latest_slot()
         earliest_slot = max(latest_slot - block_cnt + 1, await self._db.get_earliest_slot())
 
         # Ethereum sets the base_fee_per_gas for the next block, so adding the current gas price.
-        base_fee_list: list[int] = [base_fee_per_gas for _ in range(earliest_slot, latest_slot + 2)]
+        base_fee_list: list[int] = [suggested_gas_price for _ in range(earliest_slot, latest_slot + 2)]
 
         # Filling in the random high number in [0.95, 1] range.
         gas_used_ratio_list: list[float] = [
@@ -229,7 +229,7 @@ class NpGasPriceApi(NeonProxyApi):
         reward_list: list[list[int]] | None = None
         if has_reward_list:
             reward_list: list[list[int]] = [
-                [max_priority_fee_per_gas * pct // 100  for pct in priority_fee_pct_list]
+                [profitable_gas_price for _ in priority_fee_pct_list]
                 for _ in range(earliest_slot, latest_slot + 1)
             ]
 

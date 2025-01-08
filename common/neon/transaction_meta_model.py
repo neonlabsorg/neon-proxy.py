@@ -21,10 +21,11 @@ class NeonTxMetaModel(BaseModel):
 
     @classmethod
     def calc_effective_gas_price(cls, neon_tx: NeonTxModel, neon_tx_rcpt: NeonTxReceiptModel) -> int:
-        effective_gas_price = neon_tx.base_fee_per_gas
-        if neon_tx.has_priority_fee:
-            # Effective gas price is equal to base_fee_per_gas + math.ceil(priority_fee_used / total_gas_used).
-            # However, math.ceil does floating-point math and sometimes gives incorrect results due to precision.
-            # So, it's better to use a little trick: ceildiv(a,b) := -(a // -b).
-            effective_gas_price += neon_tx_rcpt.priority_fee_used // neon_tx_rcpt.total_gas_used
+        if neon_tx_rcpt.priority_fee_used:
+            effective_gas_price = neon_tx.base_fee_per_gas + neon_tx_rcpt.priority_fee_per_gas
+        elif neon_tx_rcpt.base_fee_used:
+            effective_gas_price = neon_tx.max_priority_fee_per_gas + neon_tx_rcpt.base_fee_per_gas
+        else:
+            effective_gas_price = neon_tx.effective_gas_price
+
         return effective_gas_price
