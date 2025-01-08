@@ -106,7 +106,8 @@ class NeonTxExecApi(ExecutorApi):
         async def _new_task() -> None:
             with logging_context(**request.req_id):
                 skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce)
-                await self._destroy_tree_account(skd_tree_parser)
+                with logging_context(skd_tree=skd_tree_parser.address.ident):
+                    await self._destroy_tree_account(skd_tree_parser)
 
                 if task := self._task_dict.pop(tx_hash, None):
                     self._completed_task_list.append(task)
@@ -187,7 +188,7 @@ class NeonTxExecApi(ExecutorApi):
                 await self._complete_stuck_neon_tx_retry_loop(stuck_req, skd_tree_parser)
 
         last_good_time = time.monotonic()
-        for retry in itertools.count():
+        for _retry in itertools.count():
             if await skd_tree_parser.can_be_destroyed():
                 now = time.monotonic()
                 if (now - last_good_time) > MIN_FINALIZE_SEC:
@@ -292,13 +293,14 @@ class NeonTxExecApi(ExecutorApi):
 
         ctx = NeonExecTxCtx(self._server, op_res, stuck_req, None, skd_tree_parser)
 
-        base_acct_set = NeonBaseTxAccountSet(
+        base_tx_acct_set = NeonBaseTxAccountSet(
             payer=payer_acct.sol_address,
             sender=payer_acct.sol_address,
             receiver=SolPubKey.default(),
             receiver_contract=SolPubKey.default(),
+            payer_balance=payer_acct.balance,
         )
-        ctx.set_tx_sol_address(base_acct_set)
+        ctx.set_tx_sol_address(base_tx_acct_set)
 
         try:
             for _ in itertools.count():
@@ -311,7 +313,7 @@ class NeonTxExecApi(ExecutorApi):
                     break
 
         except BaseException as exc:
-            _LOG.error("error on destroy tree account: %s", str(exc), exc_info=exc)
+            _LOG.error("error on destroy tree account: %s", str(exc))
 
     async def _destroy_tree_account_retry_loop(self, ctx: NeonExecTxCtx) -> None:
         if not (await ctx.skd_tree_parser.is_exist()):

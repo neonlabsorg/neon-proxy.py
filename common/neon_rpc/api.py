@@ -39,7 +39,7 @@ class _BaseRespModel(_BaseModel):
 
 def _gen_unique_id() -> str:
     value = str(uuid.uuid4())
-    _LOG.debug("generate ID %s for core-api", value)
+    # _LOG.debug("generate ID %s for core-api", value)
     return value
 
 
