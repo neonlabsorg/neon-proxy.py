@@ -8,5 +8,5 @@ class MpGasPriceApi(MempoolApi):
     name: ClassVar[str] = "Mempool::GasPrice"
 
     @MempoolApi.method(name="getGasPrice")
-    def get_gas_price(self) -> MpGasPriceModel:
+    async def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price
