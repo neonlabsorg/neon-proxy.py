@@ -19,7 +19,7 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
         return tuple([self.name])
 
     async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
-        if await self._is_account_exist():
+        if self._is_account_exist():
             return list()
 
         prog = self._ctx.neon_prog
@@ -33,17 +33,16 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
         return [[SolLegacyTx(self.name, tuple([ix]))]]
 
     async def update_after_emulation(self) -> bool:
-        if not await self._is_account_exist():
+        if not self._is_account_exist():
             raise SolNoMoreRetriesError()
         return True
 
-    async def _is_account_exist(self) -> bool:
+    def _is_account_exist(self) -> bool:
         if self._ctx.is_stuck_tx or self._ctx.is_scheduled_tx:
             return True
 
         # valid only for less-fee transactions
-        neon_acct = await self._get_neon_account()
-        if not neon_acct.balance:
+        if not self._ctx.has_payer_balance:
             if self._ctx.holder_tx.base_fee_per_gas:
                 raise EthError("insufficient funds")
             return False

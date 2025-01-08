@@ -160,6 +160,10 @@ class NeonExecTxCtx(ExecutorComponent):
         self._calc_wrap_iter_cnt.reset_cache(self)
         self._calc_resize_iter_cnt.reset_cache(self)
 
+    @property
+    def has_emulator_result(self) -> bool:
+        return self._emul_resp is not None
+
     def _update_acct_meta_list(self) -> None:
         acct_meta_dict: dict[SolPubKey, SolAccountMeta]
         if not self._emul_resp.sol_account_meta_list:
@@ -345,6 +349,10 @@ class NeonExecTxCtx(ExecutorComponent):
         if self.is_scheduled_tx:
             return self._skd_tree_parser.payer
         return self.sender
+
+    @property
+    def has_payer_balance(self) -> bool:
+        return self._base_tx_acct_set.payer_balance > 0
 
     @cached_property
     def sender(self) -> NeonAddress:

@@ -68,7 +68,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             return
 
         if self._ctx.has_holder_block:
-            # _LOG.debug("just 1 iteration to fix the block number")
+            _LOG.debug("just 1 iteration to fix the block number")
             await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
 
     async def update_after_emulation(self) -> bool:
@@ -150,6 +150,9 @@ class IterativeTxStrategy(BaseTxStrategy):
         await self._finish_skd_tx()
 
     async def _start_skd_tx(self) -> bool:
+        if self._ctx.good_sol_tx_cnt(self._start_skd_tx_name) or self._ctx.good_sol_tx_cnt(self._skip_skd_tx_name):
+            return True
+
         status = await self._get_skd_tx_status()
 
         if status in (status.InProgress, status.Skipped):

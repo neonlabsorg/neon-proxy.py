@@ -116,7 +116,7 @@ class NeonTxExecutor(ExecutorComponent):
         # get solana address of the sender and receiver
         await self._init_base_sol_tx(ctx)
 
-        await self._emulate_neon_tx(ctx)
+        await self._emulate_neon_tx(ctx, re_emulate=True)
 
         acct_list = await self._sol_client.get_account_list(ctx.stuck_alt_address_list)
         for acct in acct_list:
@@ -155,13 +155,12 @@ class NeonTxExecutor(ExecutorComponent):
                     return ExecTxDoneCode.Done
 
                 await strategy.prep_before_emulation()
-                if not ctx.is_stuck_tx:
-                    await self._emulate_neon_tx(ctx)
-
+                if ctx.has_holder_block:
+                    await self._emulate_neon_tx(ctx, re_emulate=True)
                 if not await strategy.update_after_emulation():
                     continue
 
-                await self._validate_nonce(ctx)
+                # await self._validate_nonce(ctx)
 
                 # NeonTx is prepared for the execution
                 ctx.holder_validator.mark_complete_prepare()
@@ -193,18 +192,18 @@ class NeonTxExecutor(ExecutorComponent):
                 SolOutOfMemoryError,
                 SolUnknownReceiptError,
                 SolNoMoreRetriesError,
-            ) as _exc:
+            ) as exc:
                 ctx.mark_skip_simple_strategy()
-                # _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
+                _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
             except SolError as _exc:
                 # _LOG.debug("simple error: %s", str(exc), extra=self._msg_filter)
                 await asyncio.sleep(ONE_BLOCK_SEC / 2)
 
-            except BaseException as _exc:
+            except BaseException as exc:
                 ctx.mark_skip_simple_strategy()
-                # _LOG.debug("unexpected error", extra=self._msg_filter, exc_info=exc)
+                _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
     async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
@@ -237,11 +236,11 @@ class NeonTxExecutor(ExecutorComponent):
             # )
             pass
 
-    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx) -> None:
+    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, *, re_emulate: bool = False) -> None:
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
 
-        sender_balance = await self._get_sender_balance(ctx)
+        sender_balance = await self._get_sender_balance(ctx, re_emulate)
 
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
@@ -254,21 +253,18 @@ class NeonTxExecutor(ExecutorComponent):
 
         ctx.set_emulator_result(emul_resp)
 
-        # get executable accounts
-        acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)
-        ro_addr_list = [acct.address for acct in acct_list if acct.executable]
-        ctx.set_ro_address_list(ro_addr_list)
+        # # get executable accounts
+        # acct_list = await self._sol_client.get_account_list(ctx.account_key_list, 1)
+        # ro_addr_list = [acct.address for acct in acct_list if acct.executable]
+        # ctx.set_ro_address_list(ro_addr_list)
 
     async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
-        if await self._is_started(ctx):
-            return
-
         state_tx_cnt = await self._core_api_client.get_state_tx_cnt(ctx.sender, None)
         EthNonceTooHighError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
-        EthNonceTooLowError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+        # EthNonceTooLowError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
 
-    async def _get_sender_balance(self, ctx: NeonExecTxCtx) -> int | None:
-        if not await self._is_started(ctx):
+    async def _get_sender_balance(self, ctx: NeonExecTxCtx, re_emulate: bool) -> int | None:
+        if not re_emulate:
             return None
 
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
@@ -302,5 +298,6 @@ class NeonTxExecutor(ExecutorComponent):
             sender=acct_list[1].sol_address,
             receiver=acct_list[2].sol_address,
             receiver_contract=acct_list[2].contract_sol_address,
+            payer_balance=acct_list[0].balance,
         )
         ctx.set_tx_sol_address(base_tx_acct_set)
