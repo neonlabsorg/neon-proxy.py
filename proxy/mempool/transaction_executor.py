@@ -77,7 +77,14 @@ class MpTxExecutor(MempoolComponent):
             if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id, None)):
                 evm_cfg = await self._get_evm_cfg()
                 token = evm_cfg.chain_dict.get(tx.chain_id).name
-                tx_schedule = MpTxSchedule(self._cfg, self._core_api_client, token, tx.chain_id, self._tx_dict)
+                tx_schedule = MpTxSchedule(
+                    self._cfg,
+                    self._sol_client,
+                    self._core_api_client,
+                    token,
+                    tx.chain_id,
+                    self._tx_dict,
+                )
                 self._tx_schedule_dict[tx.chain_id] = tx_schedule
                 await tx_schedule.start()
 

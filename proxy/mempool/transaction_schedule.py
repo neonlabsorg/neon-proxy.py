@@ -13,6 +13,9 @@ from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.client import CoreApiClient
+from common.solana.pubkey import SolPubKey
+from common.solana_rpc.client import SolClient
+from common.solana_rpc.ws_client import SolWatchAccountSession
 from common.utils.cached import cached_method, reset_cached_method
 from common.utils.json_logger import logging_context, log_msg
 from .sender_nonce import SenderNonce
@@ -168,6 +171,7 @@ class _SenderTxPool:
         self._status = self.Status.Empty
         self._sender: Final[EthAddress] = sender
         self._chain_id: Final[int] = chain_id
+        self._sol_addr = SolPubKey.default()
         self._gas_price = 0
         self._heartbeat_sec = int(time.monotonic())
         self._state_tx_cnt = 0
@@ -191,9 +195,19 @@ class _SenderTxPool:
     def __hash__(self) -> int:
         return hash(self._sender)
 
+    def __eq__(self, other: _SenderTxPool) -> bool:
+        return other._sender == self._sender
+
     @property
     def sender(self) -> EthAddress:
         return self._sender
+
+    @property
+    def sol_address(self) -> SolPubKey:
+        return self._sol_addr
+
+    def set_sol_address(self, sol_addr: SolPubKey) -> None:
+        self._sol_addr = sol_addr
 
     @property
     def gas_price(self) -> int:
@@ -203,19 +217,8 @@ class _SenderTxPool:
     def status(self) -> _SenderTxPool.Status:
         return self._status
 
-    @property
-    def actual_status(self) -> _SenderTxPool.Status:
-        if self.is_empty:
-            return self.Status.Empty
-        elif self.is_processing:
-            return self.Status.Processing
-
-        if (self._state_tx_cnt != self.top_tx.nonce) or (not self._has_sufficient_balance):
-            return self.Status.Suspended
-        return self.Status.Queued
-
     def sync_status(self) -> _SenderTxPool.Status:
-        self._status = self.actual_status
+        self._status = self._actual_status
         top_tx = self.top_tx
         self._gas_price = top_tx.gas_price if top_tx else 0
         self._get_pending_tx_cnt.reset_cache(self)
@@ -223,7 +226,7 @@ class _SenderTxPool:
 
     @property
     def has_valid_status(self) -> bool:
-        return self.actual_status == self._status
+        return self._actual_status == self._status
 
     @property
     def is_empty(self) -> bool:
@@ -366,6 +369,17 @@ class _SenderTxPool:
         assert t_tx is p_tx, f"top tx {t_tx.neon_tx_hash} is not equal to processing tx {p_tx.neon_tx_hash}"
 
     @property
+    def _actual_status(self) -> _SenderTxPool.Status:
+        if self.is_empty:
+            return self.Status.Empty
+        elif self.is_processing:
+            return self.Status.Processing
+
+        if (self._state_tx_cnt != self.top_tx.nonce) or (not self._has_sufficient_balance):
+            return self.Status.Suspended
+        return self.Status.Queued
+
+    @property
     def _has_sufficient_balance(self) -> bool:
         top_tx = self.top_tx
         if top_tx.neon_tx.is_scheduled_tx:
@@ -386,12 +400,14 @@ class MpTxSchedule:
     def __init__(
         self,
         cfg: Config,
+        sol_client: SolClient,
         core_api_client: CoreApiClient,
         token: str,
         chain_id: int,
         global_tx_dict: MpTxDict,
     ) -> None:
         self._core_api_client = core_api_client
+        self._watch_session = SolWatchAccountSession(cfg, sol_client)
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
@@ -402,6 +418,7 @@ class MpTxSchedule:
         self._chain_id: Final[int] = chain_id
 
         self._sender_pool_dict: dict[EthAddress, _SenderTxPool] = dict()
+        self._sol_sender_pool_dict: dict[SolPubKey, _SenderTxPool] = dict()
         self._sender_pool_heartbeat_queue = SortedQueue[_SenderTxPool, int, str](
             lt_key_func=lambda a: -a.heartbeat_sec,
             eq_key_func=lambda a: a.sender,
@@ -411,6 +428,7 @@ class MpTxSchedule:
             eq_key_func=lambda a: a.sender,
         )
         self._suspended_sender_set: set[EthAddress] = set()
+        self._sub_sender_set: set[_SenderTxPool] = set()
 
         self._stop_event = asyncio.Event()
         self._heartbeat_task: asyncio.Task | None = None
@@ -685,9 +703,13 @@ class MpTxSchedule:
 
     def _schedule_sender_pool(self, pool: _SenderTxPool, state_tx_cnt: int, balance: int) -> None:
         self._drop_old_tx_list(pool, state_tx_cnt)
+
+        old_status = pool.status
         self._sync_sender_status(pool)
         pool.set_sender_state(state_tx_cnt, balance)
         self._sync_sender_status(pool)
+
+        self._sub_update_sender(pool, old_status)
 
     def _drop_old_tx_list(self, pool: _SenderTxPool, state_tx_cnt: int) -> None:
         if pool.state_tx_cnt == state_tx_cnt:
@@ -700,9 +722,9 @@ class MpTxSchedule:
                 break
             self._drop_tx_from_sender_pool(pool, top_tx)
 
-    def _sync_sender_status(self, pool: _SenderTxPool) -> _SenderTxPool.Status:
+    def _sync_sender_status(self, pool: _SenderTxPool) -> None:
         if pool.has_valid_status:
-            return pool.status
+            return
 
         old_status = pool.status
         if old_status == pool.Status.Suspended:
@@ -714,6 +736,7 @@ class MpTxSchedule:
         if new_status == pool.Status.Empty:
             self._sender_pool_dict.pop(pool.sender)
             self._sender_pool_heartbeat_queue.pop(pool)
+            self._sol_sender_pool_dict.pop(pool.sol_address, None)
             # _LOG.debug(log_msg("done sender {Sender}", Sender=pool))
         elif new_status == pool.Status.Suspended:
             self._suspended_sender_set.add(pool.sender)
@@ -723,7 +746,6 @@ class MpTxSchedule:
             self._sender_pool_queue.add(pool)
             self._tx_dict.queue_tx(pool.sender, pool.top_tx.nonce)
             # _LOG.debug(log_msg("resume sender {Sender} with {TxCnt} txs, tx counter {StateTxCnt}", **pool.info()))
-        return new_status
 
     def _done_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> None:
         if not (pool := self._find_sender_pool(tx.sender)):
@@ -762,7 +784,9 @@ class MpTxSchedule:
                 self._drop_tx_from_sender_pool(pool, tx)
 
         for pool in changed_pool_set:
+            old_status = pool.status
             self._sync_sender_status(pool)
+            self._sub_update_sender(pool, old_status)
 
         msg = log_msg(
             "done clearing mempool {ChainID}, {TxCnt}({PendingTxCnt}) txs left",
@@ -770,8 +794,13 @@ class MpTxSchedule:
         )
         _LOG.debug(msg)
 
+    def _sub_update_sender(self, pool: _SenderTxPool, old_status: _SenderTxPool.Status) -> None:
+        new_status = pool.status
+        if (old_status != new_status) and (pool.Status.Suspended in (old_status, new_status)):
+            self._sub_sender_set.add(pool)
+
     async def _update_state_tx_cnt_loop(self) -> None:
-        sleep_sec: Final[float] = ONE_BLOCK_SEC * 3
+        sleep_sec: Final[float] = ONE_BLOCK_SEC / 2
         while True:
             with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
@@ -784,16 +813,47 @@ class MpTxSchedule:
                 _LOG.error("error on updating state tx counters", exc_info=exc)
 
     async def _update_state_tx_cnt(self) -> None:
-        if not self._suspended_sender_set:
+        if (not self._sub_sender_set) and self._watch_session.is_empty:
             return
 
-        addr_list = tuple(map(lambda addr: NeonAddress.from_raw(addr, self._chain_id), self._suspended_sender_set))
+        pool_list, self._sub_sender_set = tuple(self._sub_sender_set), set()
+        addr_list = tuple(map(lambda x: NeonAddress.from_raw(x.sender, self._chain_id), pool_list))
+        acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
+
+        if not self._watch_session.is_connected:
+            await self._watch_session.connect()
+
+        for pool, acct in zip(pool_list, acct_list):
+            if pool.sender not in self._sender_pool_dict:
+                continue
+            elif pool.sol_address.is_empty:
+                pool.set_sol_address(acct.sol_address)
+                self._sol_sender_pool_dict[acct.sol_address] = pool
+
+            if pool.sender in self._suspended_sender_set:
+                await self._watch_session.subscribe_account(acct.sol_address)
+            else:
+                await self._watch_session.unsubscribe_account(acct.sol_address)
+
+        await self._watch_session.update()
+        if not (key_list := self._watch_session.pop_changed_key_list()):
+            return
+
+        # fmt: off
+        addr_list = tuple([
+            NeonAddress.from_raw(pool.sender, self._chain_id)
+            for key in key_list
+            if (pool := self._sol_sender_pool_dict.get(key, None))
+        ])
+        # fmt: on
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
 
         for a in acct_list:
             if p := self._find_sender_pool(a.eth_address):
                 if (p.status == p.Status.Suspended) and (p.state_tx_cnt, p.balance) != (a.state_tx_cnt, a.balance):
                     self._schedule_sender_pool(p, a.state_tx_cnt, a.balance)
+            else:
+                await self._watch_session.subscribe_account(a.sol_address)
 
     async def _heartbeat_loop(self) -> None:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10

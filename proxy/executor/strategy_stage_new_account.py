@@ -18,7 +18,7 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
     def get_tx_name_list(self) -> Sequence[str]:
         return tuple([self.name])
 
-    async def build_tx_list(self) -> list[list[SolTx]]:
+    async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
         if await self._is_account_exist():
             return list()
 

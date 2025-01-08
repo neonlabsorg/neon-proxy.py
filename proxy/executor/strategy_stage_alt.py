@@ -33,7 +33,7 @@ class AltTxPrepStage(BaseTxPrepStage):
     def set_legacy_tx(self, legacy_tx: SolLegacyTx) -> None:
         self._legacy_tx = legacy_tx
 
-    async def build_tx_list(self) -> list[list[SolTx]]:
+    async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
         self._last_alt = None
         self._alt_dict.clear()
         actual_alt = await self._alt_builder.build_alt(self._legacy_tx, self._ctx.ro_address_list)
