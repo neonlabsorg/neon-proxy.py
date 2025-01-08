@@ -295,6 +295,7 @@ class _RecordWithBlock(_Record):
             total_gas_used=self.gas_used,
             sum_gas_used=self.sum_gas_used,
             priority_fee_used=self.priority_fee_spent or 0,
+            base_fee_used=0,
             is_canceled=self.is_canceled,
             event_list=self._decode_event_list(self.logs),
             parent_tx_list=list(),

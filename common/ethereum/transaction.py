@@ -580,26 +580,30 @@ class EthTx:
         return keccak(contract_addr)[-20:]
 
     @staticmethod
-    def has_priority_fee(self) -> bool:
-        max_fee_per_gas = self.max_fee_per_gas or 0
+    def has_priority_fee(tx) -> bool:
+        max_fee_per_gas = tx.max_fee_per_gas or 0
         assert max_fee_per_gas >= 0
 
-        max_priority_fee_per_gas = self.max_priority_fee_per_gas or 0
+        max_priority_fee_per_gas = tx.max_priority_fee_per_gas or 0
         assert max_priority_fee_per_gas >= 0
 
         # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
         # For the general case, we take into account the gas fee parameters set in NeonTx.
         return (max_fee_per_gas - max_priority_fee_per_gas) > 0
 
+    @classmethod
+    def calc_operator_fee_per_gas(cls, tx) -> int:
+        return tx.max_priority_fee_per_gas if cls.has_priority_fee(tx) else cls.calc_base_fee_per_gas(tx)
+
     @staticmethod
-    def calc_base_fee_per_gas(self) -> int:
-        gas_price = self.gas_price or 0
+    def calc_base_fee_per_gas(tx) -> int:
+        gas_price = tx.gas_price or 0
         assert gas_price >= 0
 
-        max_fee_per_gas = self.max_fee_per_gas or 0
+        max_fee_per_gas = tx.max_fee_per_gas or 0
         assert max_fee_per_gas >= 0
 
-        max_priority_fee_per_gas = self.max_priority_fee_per_gas or 0
+        max_priority_fee_per_gas = tx.max_priority_fee_per_gas or 0
         assert max_priority_fee_per_gas >= 0
 
         if not max_fee_per_gas:
