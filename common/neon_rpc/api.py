@@ -519,6 +519,10 @@ class CoreApiTxModel(_BaseRespModel):
     def base_fee_per_gas(self) -> int:
         return EthTx.calc_base_fee_per_gas(self)
 
+    @cached_property
+    def operator_fee_per_gas(self) -> int:
+        return EthTx.calc_operator_fee_per_gas(self)
+
 
 class CoreApiBlockModel(_BaseModel):
     timestamp: DecUIntField | None = Field(default=None, serialization_alias="time")

@@ -29,6 +29,7 @@ class NeonTxReceiptModel(BaseModel):
     total_gas_used: HexUIntField
     sum_gas_used: HexUIntField
     priority_fee_used: HexUIntField
+    base_fee_used: HexUIntField
     # Neon+Ethereum-like events
     event_list: list[NeonTxEventModel] = Field(default_factory=list)
     # if NeonTx was canceled
@@ -50,6 +51,7 @@ class NeonTxReceiptModel(BaseModel):
             total_gas_used=0,
             sum_gas_used=0,
             priority_fee_used=0,
+            base_fee_used=0,
             event_list=list(),
             is_canceled=False,
             parent_tx_list=list(),
@@ -76,6 +78,14 @@ class NeonTxReceiptModel(BaseModel):
         for event in self.event_list:
             value |= event.log_bloom
         return value
+
+    @cached_property
+    def base_fee_per_gas(self) -> int:
+        return self.base_fee_used // self.total_gas_used
+
+    @cached_property
+    def priority_fee_per_gas(self) -> int:
+        return self.priority_fee_used // self.total_gas_used
 
 
 _RawTxReceipt = Union[NeonTxReceiptModel, dict, None]
