@@ -106,8 +106,11 @@ class NeonTxExecApi(ExecutorApi):
         async def _new_task() -> None:
             with logging_context(**request.req_id):
                 skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce)
-                with logging_context(skd_tree=skd_tree_parser.address.ident):
+                try:
+                    await skd_tree_parser.start()
                     await self._destroy_tree_account(skd_tree_parser)
+                finally:
+                    await skd_tree_parser.stop()
 
                 if task := self._task_dict.pop(tx_hash, None):
                     self._completed_task_list.append(task)
@@ -151,8 +154,12 @@ class NeonTxExecApi(ExecutorApi):
     async def _exec_neon_skd_tree(self, request: ExecTxRequest) -> ExecTxDoneCode:
         tx = request.tx
         skd_tree_parser = NeonSkdTreeParser(self._server, request.sender, tx.nonce)
-        resp_code = await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request.token)
-        return resp_code
+        try:
+            await skd_tree_parser.start()
+            resp_code = await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request.token)
+            return resp_code
+        finally:
+            await skd_tree_parser.stop()
 
     async def _exec_neon_skd_tree_retry_loop(
         self,
@@ -226,7 +233,9 @@ class NeonTxExecApi(ExecutorApi):
         if holder_acct.neon_tx_hash != request.stuck_tx.neon_tx_hash:
             return ExecTxDoneCode.Failed
 
+        is_new_skd_tree_parser = False
         if (not skd_tree_parser) and holder_acct.is_scheduled_tx:
+            is_new_skd_tree_parser = True
             skd_tree_parser = NeonSkdTreeParser(self._server, holder_acct.payer, holder_acct.tx.nonce)
             if not (await skd_tree_parser.is_exist()):
                 return ExecTxDoneCode.Failed
@@ -250,6 +259,8 @@ class NeonTxExecApi(ExecutorApi):
                     return ExecTxDoneCode.Failed
         finally:
             self._destroy_alt_list(ctx)
+            if is_new_skd_tree_parser:
+                await skd_tree_parser.stop()
 
     def _destroy_alt_list(self, ctx: NeonExecTxCtx) -> None:
         if ctx.alt_id_list:
@@ -284,8 +295,6 @@ class NeonTxExecApi(ExecutorApi):
             await asyncio.gather(*task_list)
 
     async def _destroy_tree_account(self, skd_tree_parser: NeonSkdTreeParser) -> None:
-        await skd_tree_parser.refresh()
-
         stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.neon_tx_hash, SolPubKey.default())
         stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
         op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
