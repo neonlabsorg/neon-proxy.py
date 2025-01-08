@@ -37,7 +37,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
 
         tx_id = neon_tx.neon_tx_hash.ident
         with logging_context(tx=tx_id):
-            _LOG.debug("sendEthTransaction %s: %s", neon_tx.neon_tx_hash, neon_tx)
+            _LOG.debug("sendEthTransaction %s", neon_tx.neon_tx_hash)
             return await self._send_neon_tx_impl(ctx, neon_tx, rlp_tx)
 
     async def _send_neon_tx_impl(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel, rlp_tx: bytes) -> EthTxHashField:

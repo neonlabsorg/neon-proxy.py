@@ -76,8 +76,8 @@ class SolAltDestroyer(ExecutorComponent):
         for neon_alt in neon_alt_list:
             alt = _NeonAltInfo(neon_alt.sol_alt_id, neon_alt.neon_tx_hash, next_check_sec, 0)
             with logging_context(**alt.ctx_id):
-                msg = log_msg("add ALT {Address} (owner {Owner}, NeonTx {TxHash}) to the destroy queue", **alt.info)
-                _LOG.debug(msg)
+                # msg = log_msg("add ALT {Address} (owner {Owner}, NeonTx {TxHash}) to the destroy queue", **alt.info)
+                # _LOG.debug(msg)
                 self._new_alt_queue.append(alt)
 
     async def _destroy_alt_loop(self) -> None:
@@ -134,8 +134,8 @@ class SolAltDestroyer(ExecutorComponent):
 
     async def _destroy_alt(self, signer_list: Sequence[SolPubKey], alt: _NeonAltInfo, slot: int) -> int:
         if not (await self._sol_client.get_alt_account(alt.sol_alt.address, SolCommit.Confirmed)).is_exist:
-            msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
-            _LOG.debug(msg)
+            # msg = log_msg("done destroy ALT {Address} (owner {Owner}, NeonTx {TxHash})", **alt.info)
+            # _LOG.debug(msg)
             return 0
 
         if alt.attempt_cnt >= 1024:
@@ -149,12 +149,12 @@ class SolAltDestroyer(ExecutorComponent):
             return 0
 
         if not acct.is_deactivated:
-            _LOG.debug("deactivate ALT")
+            # _LOG.debug("deactivate ALT")
             if await self._deactivate_alt(alt.sol_alt):
                 return self._get_now() + self._deactivate_sec
 
         elif (slot - acct.deactivation_slot) > self._deactivate_slot_cnt:
-            _LOG.debug("close ALT")
+            # _LOG.debug("close ALT")
             await self._close_alt(alt.sol_alt)
 
         return self._get_now() + self._finalize_sec

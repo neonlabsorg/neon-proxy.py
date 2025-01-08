@@ -9,8 +9,7 @@ from typing_extensions import Self
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
-from common.neon.skd_tree import NeonSkdTreeAddress
-from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, EvmConfigModel, CoreApiTxModel
+from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, CoreApiTxModel
 from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolAccountMeta
@@ -183,12 +182,13 @@ class NeonExecTxCtx(ExecutorComponent):
             len(self._emul_resp.sol_account_meta_list),
             self._FmtAcctMeta(self._emul_resp.sol_account_meta_list),
         )
-        _LOG.debug(
-            "holder contains %d accounts, total %d accounts: %s",
-            len(self.holder.account_key_list),
-            len(acct_meta_list),
-            self._FmtAcctMeta(acct_meta_list),
-        )
+        if self.holder.account_key_list:
+            _LOG.debug(
+                "holder contains %d accounts, total %d accounts: %s",
+                len(self.holder.account_key_list),
+                len(acct_meta_list),
+                self._FmtAcctMeta(acct_meta_list),
+            )
 
         acct_meta_cnt = NeonProg.BaseAccountCnt + len(acct_meta_list)
         if acct_meta_cnt > self._cfg.max_tx_account_cnt:
@@ -211,7 +211,7 @@ class NeonExecTxCtx(ExecutorComponent):
     def set_ro_address_list(self, addr_list: Sequence[SolPubKey]) -> None:
         addr_set = set(addr_list).union(self._global_ro_addr_set)
         addr_list = tuple(addr_set)
-        _LOG.debug("readonly accounts %s: %s", len(addr_list), addr_list)
+        # _LOG.debug("readonly accounts %s: %s", len(addr_list), addr_list)
 
         self._ro_addr_list = addr_list
         self._neon_prog.init_ro_address_list(addr_list)

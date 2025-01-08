@@ -137,7 +137,7 @@ class SolTxListSender:
         assert not self._tx_list
         if not tx_list:
             return False
-        _LOG.debug("recheck txs: %s", tx_list)
+        # _LOG.debug("recheck txs: %s", tx_list)
 
         # The Sender should check all (failed too) txs again, because the state may have changed
         tx_sig_list = tuple(map(lambda tx: tx.sig, tx_list))
@@ -169,7 +169,7 @@ class SolTxListSender:
         for tx_state_list in self._tx_state_list_dict.values():
             for tx_state in tx_state_list:
                 if tx_state.error:
-                    _LOG.debug("clear error for %s with the status %s", tx_state.tx, tx_state.status.name)
+                    # _LOG.debug("clear error for %s with the status %s", tx_state.tx, tx_state.status.name)
                     tx_state.clear_error()
 
     async def _is_done(self) -> bool:
@@ -231,7 +231,7 @@ class SolTxListSender:
         # find maximum block slot
         max_slot = max([tx_state.slot for tx_state in self._tx_state_dict.values() if tx_state.slot] or [0])
         if not max_slot:
-            _LOG.debug("tx list does not contain a block - skip validating of the commit level")
+            # _LOG.debug("tx list does not contain a block - skip validating of the commit level")
             return True
 
         max_block_status = await self._sol_client.get_block_status(max_slot)
@@ -293,14 +293,14 @@ class SolTxListSender:
                 self._commit_tx_stat_time(tx, now, is_fail=True)
                 self._tx_state_dict.pop(tx.sig, None)
                 if tx.recent_blockhash != blockhash:
-                    _LOG.debug("flash old blockhash: %s for tx %s", tx.recent_blockhash, tx)
+                    # _LOG.debug("flash old blockhash: %s for tx %s", tx.recent_blockhash, tx)
                     tx.set_recent_blockhash(None)
                 elif tx.recent_blockhash in self._bad_blockhash_set:
-                    _LOG.debug("flash bad blockhash: %s for tx %s", tx.recent_blockhash, tx)
+                    # _LOG.debug("flash bad blockhash: %s for tx %s", tx.recent_blockhash, tx)
                     tx.set_recent_blockhash(None)
 
             if tx.is_signed:
-                _LOG.debug("skip signing for %s", tx)
+                # _LOG.debug("skip signing for %s", tx)
                 signed_tx_list.append(tx)
                 continue
 
@@ -377,7 +377,8 @@ class SolTxListSender:
     def _is_already_finalized(self) -> bool:
         """The NeonTx is finalized"""
         if result := SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict:
-            _LOG.debug("NeonTx is already finalized")
+            # _LOG.debug("NeonTx is already finalized")
+            pass
         return result
 
     def _get_tx_list_for_send(self) -> None:
@@ -404,7 +405,7 @@ class SolTxListSender:
 
     async def _wait_for_tx_receipt_list(self) -> None:
         if not (tx_state_list := self._tx_state_list_dict.pop(SolTxSendState.Status.WaitForReceipt, None)):
-            _LOG.debug("no new receipts, because the transaction list is empty")
+            # _LOG.debug("no new receipts, because the transaction list is empty")
             return
 
         tx_sig_list: list[SolTxSig] = list()
@@ -504,7 +505,7 @@ class SolTxListSender:
         )
 
         status = SolTxSendState.Status
-        if tx_state.status not in (status.WaitForReceipt, status.UnknownError):
+        if tx_state.status not in (status.WaitForReceipt, status.UnknownError, status.GoodReceipt):
             _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
 
         self._tx_state_dict[tx_state.tx.sig] = tx_state

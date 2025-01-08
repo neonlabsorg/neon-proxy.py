@@ -54,7 +54,7 @@ class AltTxPrepStage(BaseTxPrepStage):
     async def update_after_emulation(self) -> bool:
         await self._alt_builder.update_alt(self._alt_list)
         if not self._tx_has_valid_size(self._legacy_tx):
-            _LOG.debug("ALT %s isn't synced yet")
+            # _LOG.debug("ALT %s isn't synced yet")
             return False
         return True
 
@@ -90,15 +90,16 @@ class AltTxPrepStage(BaseTxPrepStage):
                 # update one by one, if one of ALTs has problems it shouldn't affect others
                 await self._alt_builder.update_alt(alt)
                 if not alt.is_exist:
-                    _LOG.debug("skip not-exist ALT %s", alt.address)
+                    # _LOG.debug("skip not-exist ALT %s", alt.address)
                     continue
 
                 alt_list.append(alt)
                 if actual_alt.remove_account_key_list(alt.account_key_list):
                     self._add_alt(alt)
 
-            except BaseException as exc:
-                _LOG.debug("skip ALT %s", alt_id.address, exc_info=exc)
+            except BaseException as _exc:
+                # _LOG.debug("skip ALT %s", alt_id.address, exc_info=exc)
+                pass
 
         return alt_list
 
@@ -107,10 +108,10 @@ class AltTxPrepStage(BaseTxPrepStage):
             return
 
         self._alt_dict[alt.address] = alt
-        if alt.is_exist:
-            _LOG.debug("use existing ALT %s", alt.address)
-        else:
-            _LOG.debug("create new ALT %s", alt.address)
+        # if alt.is_exist:
+        #     _LOG.debug("use existing ALT %s", alt.address)
+        # else:
+        #     _LOG.debug("create new ALT %s", alt.address)
 
     def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
         for alt in alt_list:

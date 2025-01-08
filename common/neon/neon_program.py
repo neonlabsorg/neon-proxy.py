@@ -274,16 +274,16 @@ class NeonProg:
         return index, index_buf, addr
 
     def init_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> Self:
-        _LOG.debug(
-            "set payer solana address %s, "
-            "set sender solana address %s, "
-            "receiver solana address %s, "
-            "receiver contract address %s",
-            base_tx_account_set.payer,
-            base_tx_account_set.sender,
-            base_tx_account_set.receiver,
-            base_tx_account_set.receiver_contract,
-        )
+        # _LOG.debug(
+        #     "set payer solana address %s, "
+        #     "set sender solana address %s, "
+        #     "receiver solana address %s, "
+        #     "receiver contract address %s",
+        #     base_tx_account_set.payer,
+        #     base_tx_account_set.sender,
+        #     base_tx_account_set.receiver,
+        #     base_tx_account_set.receiver_contract,
+        # )
         self._base_tx_acct_set = base_tx_account_set
         return self
 
@@ -326,7 +326,7 @@ class NeonProg:
     def make_delete_holder_ix(self) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("deleteHolderIx %s with the refund to the account %s", self._holder_addr, self._payer)
+        # _LOG.debug("deleteHolderIx %s with the refund to the account %s", self._holder_addr, self._payer)
         ix_data = NeonEvmIxCode.HolderDelete.value.to_bytes(1, byteorder="little")
         return SolTxIx(
             accounts=(
@@ -340,7 +340,7 @@ class NeonProg:
     def make_create_holder_ix(self, seed: str) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("createHolderIx %s by the payer account %s", self._holder_addr, self._payer)
+        # _LOG.debug("createHolderIx %s by the payer account %s", self._holder_addr, self._payer)
 
         seed = bytes(seed, "utf-8")
         ix_data_list = (
@@ -365,12 +365,12 @@ class NeonProg:
     ) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug(
-            "Create neon address: %s, solana address: %s, contract solana address: %s",
-            neon_address,
-            sol_address,
-            contract_sol_address,
-        )
+        # _LOG.debug(
+        #     "Create neon address: %s, solana address: %s, contract solana address: %s",
+        #     neon_address,
+        #     sol_address,
+        #     contract_sol_address,
+        # )
 
         ix_data_list = (
             NeonEvmIxCode.CreateAccountBalance.value.to_bytes(1, byteorder="little"),
@@ -392,7 +392,7 @@ class NeonProg:
     def make_create_operator_balance_ix(self, neon_address: NeonAddress) -> SolTxIx:
         self.validate_protocol()
 
-        _LOG.debug("Create operator token account: %s, solana address: %s", neon_address, self._token_sol_addr)
+        # _LOG.debug("Create operator token account: %s, solana address: %s", neon_address, self._token_sol_addr)
 
         ix_data_list = (
             NeonEvmIxCode.CreateOperatorBalance.value.to_bytes(1, byteorder="little"),
@@ -411,7 +411,7 @@ class NeonProg:
         )
 
     def make_delete_operator_balance_ix(self) -> SolTxIx:
-        _LOG.debug("Delete operator token account, solana address: %s", self._token_sol_addr)
+        # _LOG.debug("Delete operator token account, solana address: %s", self._token_sol_addr)
 
         ix_data = NeonEvmIxCode.DeleteOperatorBalance.value.to_bytes(1, byteorder="little")
 
@@ -425,7 +425,7 @@ class NeonProg:
         )
 
     def make_withdraw_operator_balance_ix(self, neon_token_address: SolPubKey) -> SolTxIx:
-        _LOG.debug("Withdraw from operator balance %s to neon balance %s", self._token_sol_addr, neon_token_address)
+        # _LOG.debug("Withdraw from operator balance %s to neon balance %s", self._token_sol_addr, neon_token_address)
 
         ix_data = NeonEvmIxCode.WithdrawOperatorBalance.value.to_bytes(1, byteorder="little")
 
@@ -502,10 +502,10 @@ class NeonProg:
         ]
 
         if self._base_tx_acct_set.is_empty:
-            _LOG.debug("Cancel uses normal address list")
+            # _LOG.debug("Cancel uses normal address list")
             acct_meta_list.extend(self._acct_meta_list)
         else:
-            _LOG.debug("Cancel uses readonly address list")
+            # _LOG.debug("Cancel uses readonly address list")
             acct_meta_list.extend(self._ro_acct_meta_list)
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
@@ -668,17 +668,17 @@ class NeonProg:
     @reset_cached_method
     def _get_base_tx_acct_meta_list(self) -> list[SolAccountMeta]:
         meta_list = [SolAccountMeta(self._base_tx_acct_set.sender, is_signer=False, is_writable=True)]
-        _LOG.debug("add sender: %s", self._base_tx_acct_set.sender)
+        # _LOG.debug("add sender: %s", self._base_tx_acct_set.sender)
         if self._base_tx_acct_set.payer != self._base_tx_acct_set.sender:
-            _LOG.debug("add payer: %s", self._base_tx_acct_set.payer)
+            # _LOG.debug("add payer: %s", self._base_tx_acct_set.payer)
             meta_list.append(SolAccountMeta(self._base_tx_acct_set.payer, is_signer=False, is_writable=True))
         if (not self._addr_set) or (self._base_tx_acct_set.receiver in self._addr_set):
-            _LOG.debug("add receiver: %s", self._base_tx_acct_set.receiver)
+            # _LOG.debug("add receiver: %s", self._base_tx_acct_set.receiver)
             meta_list.append(SolAccountMeta(self._base_tx_acct_set.receiver, is_signer=False, is_writable=False))
 
         contract_addr = self._base_tx_acct_set.receiver_contract
         if (not self._addr_set) or (contract_addr in self._addr_set):
-            _LOG.debug("add receiver contract: %s", contract_addr)
+            # _LOG.debug("add receiver contract: %s", contract_addr)
             meta_list.append(SolAccountMeta(contract_addr, is_signer=False, is_writable=False))
         return meta_list
 
