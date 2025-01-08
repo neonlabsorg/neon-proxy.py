@@ -78,6 +78,9 @@ class SortedQueue(Generic[SortedQueueItem, SortedQueueLtKey, SortedQueueEqKey]):
     def clear(self) -> None:
         self._impl.queue.clear()
 
+    def queue(self) -> list[SortedQueueItem]:
+        return self._impl.queue
+
     def pop_queue(self) -> list[SortedQueueItem]:
         queue, self._impl.queue = self._impl.queue, list()
         return queue
