@@ -399,7 +399,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             raise SolCbExceededError()
 
         round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 100_000
+        inc_coeff: Final[int] = 50_000
         round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
         # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
 
