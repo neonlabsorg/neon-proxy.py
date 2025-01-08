@@ -22,19 +22,19 @@ class MpTxExecStatusApi(MempoolApi):
         return self._server._tx_executor  # noqa
 
     @MempoolApi.method(name="notifyExecuteTransactionStatus")
-    def notify_exec_tx_status(self, request: ExecTxNotifyStatusRequest) -> ExecTxNotifyStatusResp:
+    async def notify_exec_tx_status(self, request: ExecTxNotifyStatusRequest) -> ExecTxNotifyStatusResp:
         with logging_context(**request.req_id):
             res = self._tx_executor.notify_exec_tx_status(request.base_tx_hash, request.neon_tx_hash, request.exec_pct)
             return ExecTxNotifyStatusResp(result=res)
 
     @MempoolApi.method(name="doneExecuteTransaction")
-    def done_exec_tx(self, request: ExecTxDoneRequest) -> ExecTxDoneResp:
+    async def done_exec_tx(self, request: ExecTxDoneRequest) -> ExecTxDoneResp:
         with logging_context(**request.req_id):
             res = self._tx_executor.done_exec_tx(request)
             return ExecTxDoneResp(result=res)
 
     @MempoolApi.method(name="doneCompleteStuckTransaction")
-    def done_complete_stuck_tx(self, request: ExecTxDoneStuckRequest) -> ExecTxDoneStuckResp:
+    async def done_complete_stuck_tx(self, request: ExecTxDoneStuckRequest) -> ExecTxDoneStuckResp:
         with logging_context(**request.req_id):
             res = self._tx_executor.done_complete_stuck_tx(request)
             return ExecTxDoneStuckResp(result=res)

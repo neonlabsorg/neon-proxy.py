@@ -11,7 +11,7 @@ class OpBalanceApi(OpResourceApi):
     name: ClassVar[str] = "OpResource::Balance"
 
     @OpResourceApi.method(name="getEthAddressList")
-    def get_eth_balance_list(self, request: OpGetEthAddressListRequest) -> OpEthAddressListResp:
+    async def get_eth_balance_list(self, request: OpGetEthAddressListRequest) -> OpEthAddressListResp:
         with logging_context(**request.req_id):
             eth_address_list = self._op_resource_mng.get_eth_address_list()
             return OpEthAddressListResp(eth_address_list=list(eth_address_list))
