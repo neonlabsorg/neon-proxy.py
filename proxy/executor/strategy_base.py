@@ -301,15 +301,15 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         if tx.has_priority_fee:
             priority_fee = tx.max_priority_fee_per_gas * 100 / tx.base_fee_per_gas
-            _LOG.debug(
-                "use %s%% priority-fee for priority gas-price %d",
-                priority_fee,
-                tx.max_priority_fee_per_gas,
-            )
+            # _LOG.debug(
+            #     "use %s%% priority-fee for priority gas-price %d",
+            #     priority_fee,
+            #     tx.max_priority_fee_per_gas,
+            # )
         else:
             # calculate a transaction cu-price based on the tx gas-price
             priority_fee = max(tx.base_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
-            _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, tx.base_fee_per_gas)
+            # _LOG.debug("use %s%% priority-fee for legacy gas-price %d", priority_fee, tx.base_fee_per_gas)
 
         if priority_fee > 0.0:
             # see gas-price-calculator for details
@@ -321,13 +321,13 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         # and neon-evm does not digest it.
         cu_price = max(min(req_cu_price, tx_cu_price), 1)
 
-        _LOG.debug(
-            "use %s CU-price for %s CU-limit, %s Gas-limit, %s accounts",
-            cu_price,
-            cu_limit,
-            gas_limit,
-            len(self._ctx.rw_account_key_list),
-        )
+        # _LOG.debug(
+        #     "use %s CU-price for %s CU-limit, %s Gas-limit, %s accounts",
+        #     cu_price,
+        #     cu_limit,
+        #     gas_limit,
+        #     len(self._ctx.rw_account_key_list),
+        # )
         return cu_price
 
     @staticmethod
@@ -366,28 +366,29 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             emul_tx_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, acct_cnt_limit, blockhash, tx_list)
             return emul_tx_list[0] if is_single_tx else emul_tx_list
         except BaseException as exc:
-            _LOG.warning("error on emulate solana tx list", exc_info=exc)
+            _LOG.warning("error on emulate solana tx list")
             raise SolCbExceededError()
 
     def _find_gas_limit(self, emul_tx: EmulSolTxInfo) -> int:
         gas_limit = NeonProg.BaseGas
 
         if self._ctx.holder_tx.has_priority_fee:
-            _LOG.debug("DynamicGas NeonTx, use default %s", gas_limit)
-            return NeonProg.BaseGas
+            # _LOG.debug("DynamicGas NeonTx, use default %s", gas_limit)
+            return gas_limit
 
         fake_tx_ix = SolTxIxMetaInfo.default()
         try:
             log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
         except (BaseException,):
-            _LOG.debug("exception on find GAS, use default %s", gas_limit)
+            # _LOG.debug("exception on find GAS, use default %s", gas_limit)
             return gas_limit
 
         if log.tx_ix_gas.is_empty:
-            _LOG.debug("no GAS information, use default %s", gas_limit)
+            # _LOG.debug("no GAS information, use default %s", gas_limit)
+            pass
         else:
             gas_limit = log.tx_ix_gas.gas_used
-            _LOG.debug("found GAS %s", gas_limit)
+            # _LOG.debug("found GAS %s", gas_limit)
         return gas_limit
 
     async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
@@ -411,7 +412,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 100_000
         round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
-        _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
+        # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
 
         gas_limit = self._find_gas_limit(emul_tx)
 
@@ -425,7 +426,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             except SolCbExceededError:
                 if cu_limit == max_cu_limit:
                     raise
-                _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
+                # _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
 
     @staticmethod
     def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:

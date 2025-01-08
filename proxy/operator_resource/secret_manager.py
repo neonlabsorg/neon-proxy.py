@@ -31,12 +31,12 @@ class OpSecretMng(OpResourceComponent):
 
         if not secret_list:
             _LOG.warning("no signer")
-        else:
-            _LOG.debug("got signer list of: %s - keys", len(secret_list))
+        # else:
+        #     _LOG.debug("got signer list of: %s - keys", len(secret_list))
         return secret_list
 
     async def _read_secret_list_from_hvac(self) -> Sequence[SolSigner]:
-        _LOG.debug("read secret keys from HashiCorp Vault...")
+        # _LOG.debug("read secret keys from HashiCorp Vault...")
 
         client = hvac.Client(url=self._cfg.hvac_url, token=self._cfg.hvac_token)
         if not client.is_authenticated():
@@ -63,7 +63,7 @@ class OpSecretMng(OpResourceComponent):
 
                 sol_account = SolSigner.from_raw(secret)
                 secret_list.append(sol_account)
-                _LOG.debug("got secret for %s", sol_account.pubkey)
+                # _LOG.debug("got secret for %s", sol_account.pubkey)
 
             except (BaseException,):
                 _LOG.error("error on read secret from %s", key_path)
@@ -71,7 +71,7 @@ class OpSecretMng(OpResourceComponent):
         return tuple(secret_list)
 
     async def _read_secret_list_from_fs(self) -> Sequence[SolSigner]:
-        _LOG.debug("read secret keys from filesystem...")
+        # _LOG.debug("read secret keys from filesystem...")
 
         keypair_file = await SolCmdClient(self._cfg).get_keypair_file()
         if not keypair_file:
@@ -89,19 +89,19 @@ class OpSecretMng(OpResourceComponent):
             if not sol_account:
                 continue
             secret_list.append(sol_account)
-            _LOG.debug("got secret for %s", sol_account.pubkey)
+            # _LOG.debug("got secret for %s", sol_account.pubkey)
 
         return tuple(secret_list)
 
     @staticmethod
     def _read_secret_file(file_name: str) -> SolSigner | None:
         try:
-            _LOG.debug("open a secret file: %s", file_name)
+            # _LOG.debug("open a secret file: %s", file_name)
             with open(file_name.strip(), mode="r") as src:
                 line = src.read()
                 raw_key = [int(v) for v in line.strip("[] \n").split(",") if 0 <= int(v) <= 255]
                 if len(raw_key) < 32:
-                    _LOG.debug("wrong content in the file %s", file_name)
+                    _LOG.warning("wrong content in the file %s", file_name)
                     return None
                 return SolSigner.from_raw(raw_key)
         except (BaseException,):

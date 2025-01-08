@@ -97,5 +97,5 @@ class NeonSkdTreeParser(ExecutorComponent):
     async def get_neon_skd_status(self, index: int) -> NeonSkdTxStatus:
         await self._refresh()
         status = self._tree.get_neon_skd_status(index)
-        _LOG.debug("NeonSkdTx status: %s", status)
+        # _LOG.debug("NeonSkdTx status: %s", status)
         return status

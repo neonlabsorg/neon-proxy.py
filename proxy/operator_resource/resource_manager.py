@@ -141,7 +141,7 @@ class OpResourceMng(OpResourceComponent):
                 token_sol_address=owner_token_addr,
             )
 
-            _LOG.debug("got resource: %s", op_resource)
+            # _LOG.debug("got resource: %s", op_resource)
             return op_resource
 
     async def free_resource(self, is_good_resource: bool, op_res: OpResourceModel) -> None:
@@ -154,7 +154,7 @@ class OpResourceMng(OpResourceComponent):
                 return
 
             if is_good_resource:
-                _LOG.debug("free resource: %s", op_res)
+                # _LOG.debug("free resource: %s", op_res)
                 op_signer.free_holder_list.append(op_holder)
             else:
                 _LOG.debug("disable resource: %s", op_res)
@@ -204,8 +204,8 @@ class OpResourceMng(OpResourceComponent):
             token_sol_addr = op_signer.token_sol_address_dict.get(chain_id, SolPubKey.default())
             if token_sol_addr.is_empty:
                 _LOG.error("error on trying to find token address %s for absent chain_id %s", owner, chain_id)
-            else:
-                _LOG.debug("got token_address %s for %s:%s", token_sol_addr, owner, hex(chain_id))
+            # else:
+            #     _LOG.debug("got token_address %s for %s:%s", token_sol_addr, owner, hex(chain_id))
         return op_signer.eth_address, token_sol_addr
 
     async def sign_tx_list(self, payer: SolPubKey, tx_list: Sequence[SolTx]) -> Sequence[SolTx]:
@@ -216,7 +216,7 @@ class OpResourceMng(OpResourceComponent):
 
             tx_signer = OpTxListSigner(signer=op_signer.signer)
             tx_list = await tx_signer.sign_tx_list(tx_list)
-            _LOG.debug("done sign the tx-list: %s", tx_list)
+            # _LOG.debug("done sign the tx-list: %s", tx_list)
         return tx_list
 
     def get_eth_address_list(self) -> Sequence[OpEthAddressModel]:

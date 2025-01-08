@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import ClassVar, Sequence
+from typing import ClassVar
 
 from pydantic import Field, AliasChoices
 from typing_extensions import Final, Self
@@ -11,8 +11,6 @@ from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
-from common.neon.block import NeonBlockCuPriceInfo
-from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
 from proxy.rpc.api import RpcBlockRequest

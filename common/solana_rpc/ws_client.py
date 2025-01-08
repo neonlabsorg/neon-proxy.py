@@ -109,9 +109,9 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
         ws_endpoint = HttpURL(self._ws_endpoint or self._cfg.random_sol_ws_url)
 
-        _LOG.debug("connecting to WebSocket %s...", ws_endpoint, extra=self._msg_filter)
+        # _LOG.debug("connecting to WebSocket %s...", ws_endpoint, extra=self._msg_filter)
         self._ws_session = await self._sol_client.session.ws_connect(ws_endpoint)
-        _LOG.debug("connected to WebSocket")
+        # _LOG.debug("connected to WebSocket")
         return self
 
     async def disconnect(self) -> Self:
@@ -119,12 +119,12 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
             self._clear()
             return self
 
-        _LOG.debug("closing WebSocket connection...")
+        # _LOG.debug("closing WebSocket connection...")
         ws_session, self._ws_session = self._ws_session, None
 
         self._clear()
         await ws_session.close()
-        _LOG.debug("closed WebSocket connection")
+        # _LOG.debug("closed WebSocket connection")
         return self
 
     async def _ws_send_data(self, data: _SolWsSendData) -> None:
@@ -147,7 +147,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
         msg_type = msg.type
         if msg_type in (_WsMsgType.CLOSED, _WsMsgType.CLOSING):
-            _LOG.debug("WebSocket closed while waiting for message")
+            # _LOG.debug("WebSocket closed while waiting for message")
             await self._on_close()
             return tuple()
         elif msg_type != _WsMsgType.TEXT:
@@ -191,7 +191,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 if key := self._sub_dict.pop(item.subscription, None):
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.req_id not in self._req_dict, f"request {info.req_id} for {key} still exists?"
-                    # _LOG.debug("GOT NOTIF %s", key)
+                    # _LOG.debug("got notification %s", key)
                     self._on_sub_notif(info, item)
                 else:
                     _LOG.warning("unknown subscription %s on notification", item.subscription)
