@@ -68,7 +68,7 @@ class NpVersionApi(NeonProxyApi):
         )
 
     @NeonProxyApi.method(name="eth_chainId")
-    def get_eth_chain_id(self, ctx: HttpRequestCtx) -> HexUIntField:
+    async def get_eth_chain_id(self, ctx: HttpRequestCtx) -> HexUIntField:
         return self._get_chain_id(ctx)
 
     @NeonProxyApi.method(name="net_version")

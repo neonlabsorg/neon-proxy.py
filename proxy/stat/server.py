@@ -67,7 +67,7 @@ class OpResourceStatApi(AppDataApi):
         )
 
     @AppDataApi.method(name="commitOpEarnedTokensBalance")
-    def on_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None:
+    async def on_op_earned_tokens_balance(self, data: OpEarnedTokenBalanceData) -> None:
         if data.token_name not in self._earned_token_balance:
             self._earned_token_balance[data.token_name] = {}
 
@@ -81,7 +81,7 @@ class OpResourceStatApi(AppDataApi):
         self._earned_token_balance_stat.set(label, total_balance)
 
     @AppDataApi.method(name="commitOpResourceHolderStatus")
-    def on_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
+    async def on_op_resource_holder_status(self, data: OpResourceHolderStatusData) -> None:
         self._holder_free_cnt[data.owner] = data.free_holder_cnt
         self._holder_used_cnt[data.owner] = data.used_holder_cnt
         self._holder_disabled_cnt[data.owner] = data.disabled_holder_cnt
@@ -112,7 +112,7 @@ class OpResourceStatApi(AppDataApi):
         )
 
     @AppDataApi.method(name="commitOpExecutionTokenBalance")
-    def on_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
+    async def on_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
         self._execution_token_balance[data.owner] = data.balance
 
         label = dict(owner=data.owner.to_string())
@@ -131,7 +131,7 @@ class RpcStatApi(AppDataApi, RpcStatCollector):
         RpcStatCollector.__init__(self, registry)
 
     @AppDataApi.method(name="commitRpcCall")
-    def on_rpc_call(self, data: RpcCallData) -> None:
+    async def on_rpc_call(self, data: RpcCallData) -> None:
         RpcStatApi.commit_rpc_call(self, data)
 
 
@@ -153,11 +153,11 @@ class NeonTxPoolStatApi(AppDataApi):
         )
 
     @AppDataApi.method(name="commitNeonTransactionDone")
-    def on_tx_done(self, data: NeonTxDoneData) -> None:
+    async def on_tx_done(self, data: NeonTxDoneData) -> None:
         self._tx_done.add(self._label, data.time_nsec / (10**9))
 
     @AppDataApi.method(name="commitNeonTransactionFail")
-    def on_tx_fail(self, data: NeonTxFailData) -> None:
+    async def on_tx_fail(self, data: NeonTxFailData) -> None:
         self._tx_fail.add(self._label, data.time_nsec / (10**9))
 
     @AppDataApi.method(name="commitNeonTransactionPool")

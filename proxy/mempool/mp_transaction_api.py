@@ -27,13 +27,13 @@ class MpTxApi(MempoolApi):
         return self._server._tx_executor  # noqa
 
     @MempoolApi.method(name="getPendingTransactionCounter")
-    def get_pending_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp:
+    async def get_pending_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp:
         with logging_context(**request.ctx_id):
             tx_cnt = self._tx_executor.get_pending_tx_cnt(request.sender)
             return MpTxCntResp(tx_cnt=tx_cnt)
 
     @MempoolApi.method(name="getMempoolTransactionCounter")
-    def get_mempool_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp:
+    async def get_mempool_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp:
         with logging_context(**request.ctx_id):
             tx_cnt = self._tx_executor.get_last_tx_cnt(request.sender)
             return MpTxCntResp(tx_cnt=tx_cnt)
@@ -44,19 +44,19 @@ class MpTxApi(MempoolApi):
             return await self._tx_executor.schedule_tx_request(request.tx, request.state_tx_cnt, request.balance)
 
     @MempoolApi.method(name="getPendingTransactionByHash")
-    def get_tx_by_hash(self, request: MpGetTxByHashRequest) -> MpGetTxResp:
+    async def get_tx_by_hash(self, request: MpGetTxByHashRequest) -> MpGetTxResp:
         with logging_context(**request.ctx_id):
             tx = self._tx_executor.get_tx_by_hash(request.neon_tx_hash)
             return MpGetTxResp(tx=tx)
 
     @MempoolApi.method(name="getPendingTransactionBySenderNonce")
-    def get_tx_by_sender_nonce(self, request: MpGetTxBySenderNonceRequest) -> MpGetTxResp:
+    async def get_tx_by_sender_nonce(self, request: MpGetTxBySenderNonceRequest) -> MpGetTxResp:
         with logging_context(**request.ctx_id):
             tx = self._tx_executor.get_tx_by_sender_nonce(request.sender, request.tx_nonce)
             return MpGetTxResp(tx=tx)
 
     @MempoolApi.method(name="getPendingTransactionStatusesBySender")
-    def get_tx_list_by_sender(self, request: MpGetTxStatusListBySender) -> MpTxStatusListResp:
+    async def get_tx_list_by_sender(self, request: MpGetTxStatusListBySender) -> MpTxStatusListResp:
         with logging_context(**request.ctx_id):
             resp = self._tx_executor.get_tx_list_by_sender(request.sender, request.state_tx_cnt, request.balance)
             return resp or MpTxStatusListResp.default()
