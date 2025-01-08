@@ -133,15 +133,6 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     async def cancel(self) -> ExecTxDoneCode | None:
         pass
 
-    @cached_property
-    def _sol_tx_list_sender(self) -> SolTxListSender:
-        return SolTxListSender(
-            self._cfg,
-            self._stat_client,
-            self._ctx.sol_watch_session,
-            self._ctx.sol_tx_list_signer,
-        )
-
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
             base_cfg = self._init_sol_tx_cfg()
@@ -219,7 +210,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return tx_list_list
 
     async def _recheck_tx_list(self, tx_name_list: Sequence[str] | str) -> bool:
-        tx_list_sender = self._sol_tx_list_sender
+        tx_list_sender = self._ctx.sol_tx_list_sender
         tx_list_sender.clear()
 
         if not isinstance(tx_name_list, (tuple, list,)):
@@ -234,7 +225,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             self._store_sol_tx_list()
 
     async def _send_tx_list(self, tx_list: Sequence[SolTx] | SolTx) -> bool:
-        tx_list_sender = self._sol_tx_list_sender
+        tx_list_sender = self._ctx.sol_tx_list_sender
         tx_list_sender.clear()
 
         if not isinstance(tx_list, (tuple, list,)):
@@ -246,7 +237,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             self._store_sol_tx_list()
 
     def _store_sol_tx_list(self):
-        tx_list_sender = self._sol_tx_list_sender
+        tx_list_sender = self._ctx.sol_tx_list_sender
         self._ctx.add_sol_tx_list(
             [
                 (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
