@@ -336,9 +336,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
 
-    async def _emulate_tx_list(
-        self, tx_list: Sequence[SolTx] | SolTx, *, mult_factor: int = 0
-    ) -> Sequence[EmulSolTxInfo] | EmulSolTxInfo:
+    async def _emulate_tx_list(self, tx_list: Sequence[SolTx] | SolTx) -> Sequence[EmulSolTxInfo] | EmulSolTxInfo:
         if not isinstance(tx_list, (tuple, list,)):
             is_single_tx: Final[bool] = True
             tx_list = tuple([tx_list])
@@ -351,12 +349,12 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
 
         acct_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
-        cu_limit = SolCbProg.MaxCuLimit * (mult_factor or len(tx_list))
+        cu_limit = SolCbProg.MaxCuLimit * len(tx_list)
 
         try:
             emul_tx_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, acct_cnt_limit, blockhash, tx_list)
             return emul_tx_list[0] if is_single_tx else emul_tx_list
-        except BaseException as exc:
+        except BaseException as _exc:
             _LOG.warning("error on emulate solana tx list")
             raise SolCbExceededError()
 
