@@ -8,7 +8,9 @@ from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHashField
 from common.neon.address import NeonAddress, NeonAddressField
+from common.neon.skd_tree import NeonSkdTreeAddress
 from common.solana.alt_program import SolAltID
+from common.solana.pubkey import SolPubKey
 from common.utils.cached import cached_property
 from common.utils.pydantic import BaseModel
 from .mp_api import MpTxModel, MpStuckTxModel, MpTokenGasPriceModel, MpGasPriceModel
@@ -69,7 +71,11 @@ class DestroyTreeAccountRequest(BaseModel):
 
     @cached_property
     def req_id(self) -> dict:
-        return dict(tx=self.neon_tx_hash.ident, is_destroy=True)
+        return dict(tx=self.neon_tx_hash.ident, skd_tree=self.address.ident, is_destroy=True)
+
+    @cached_property
+    def address(self) -> SolPubKey:
+        return NeonSkdTreeAddress.from_raw(self.payer, self.nonce).address
 
 
 class DestroyTreeAccountResp(BaseModel):

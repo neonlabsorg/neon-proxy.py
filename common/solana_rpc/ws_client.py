@@ -301,10 +301,22 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         super().__init__(*args, **kwargs)
         self._commit = commit
         self._reconnect_future: asyncio.Future[Any] | None = None
+        self._update_future: asyncio.Future[Any] | None = None
         self._chg_key_set: set[SolPubKey] = set()
 
-    async def update(self) -> None:
-        await self._wait(None)
+    async def update(self, *, timeout_sec: float = 0.0001) -> None:
+        if self._update_future:
+            await self._update_future
+            return
+
+        try:
+            self._update_future = asyncio.get_event_loop().create_future()
+            await self._wait(timeout_sec)
+
+        finally:
+            future, self._update_future = self._update_future, None
+            if future:
+                future.set_result(None)
 
     async def subscribe_account(self, addr: SolPubKey) -> None:
         acct = await self._sol_client.get_account(addr, commit=self._commit)
