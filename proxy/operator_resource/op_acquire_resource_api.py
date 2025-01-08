@@ -20,12 +20,12 @@ class OpAcquireResourceApi(OpResourceApi):
     name: ClassVar[str] = "OpResource::AcquireResource"
 
     @OpResourceApi.method(name="getOperatorResource")
-    def get_resource(self, request: OpGetResourceRequest) -> OpResourceModel:
+    async def get_resource(self, request: OpGetResourceRequest) -> OpResourceModel:
         with logging_context(**request.req_id):
             return self._op_resource_mng.get_resource(request.owner, request.holder_address, request.chain_id)
 
     @OpResourceApi.method(name="getActiveOperatorKey")
-    def get_active_key(self, request: OpGetActiveOperatorKey) -> OpResourceModel:
+    async def get_active_key(self, request: OpGetActiveOperatorKey) -> OpResourceModel:
         with logging_context(**request.req_id):
             owner = self._op_resource_mng.get_active_operator()
             eth_addr, token_sol_addr = self._op_resource_mng.get_token_address(owner, request.chain_id)
