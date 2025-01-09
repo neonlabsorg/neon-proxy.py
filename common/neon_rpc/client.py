@@ -34,6 +34,7 @@ from .api import (
     CoreApiBlockModel,
     NeonSkdTreeModel,
     NeonSkdTreeRequest,
+    BaseRequestModel,
 )
 from ..config.config import Config
 from ..ethereum.commit_level import EthCommit
@@ -311,36 +312,39 @@ class CoreApiClient(HttpClient):
     async def _send_request(
         self,
         method: str,
-        request: BaseModel | None = None,
+        request: BaseRequestModel | None = None,
         resp_type: type[_RespType] | None = None,
     ) -> _RespType:
-        request = RpcClientRequest.from_raw(
+        rpc_request = RpcClientRequest.from_raw(
             data=request.to_json() if request else "",
             stat_client=self._stat_client,
             stat_name=self.name,
             method=method,
         )
 
-        with request:
+        with rpc_request:
             for retry in itertools.count():
                 if retry >= self._max_retry_cnt:
                     raise EthError("No connection to NeonCoreApi. Maximum retry count reached.")
                 if retry > 0:
                     _LOG.debug("attempt %d to repeat %s...", retry + 1, method)
 
-                request.start_timer()
-                resp_json = await self._send_client_request(request, path=HttpURL(method))
+                rpc_request.start_timer()
+                resp_json = await self._send_client_request(rpc_request, path=HttpURL(method))
                 try:
                     resp = CoreApiResp.from_json(resp_json)
 
                 except PydanticValidationError as exc:
                     _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
-                    request.commit_stat(is_error=True)
+                    rpc_request.commit_stat(is_error=True)
                     await asyncio.sleep(0.2)
                     continue
 
+                if resp.result == resp.result.Error:
+                    _LOG.debug("got error on %s (%s): %s - %s", method, request, resp.error_code, resp.error)
+
                 if (resp.error_code or 0) == 113:  # Solana client error
-                    request.commit_stat(is_error=True)
+                    rpc_request.commit_stat(is_error=True)
                     await asyncio.sleep(0.2)
                     continue
 

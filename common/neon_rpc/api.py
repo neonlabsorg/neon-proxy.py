@@ -43,12 +43,13 @@ def _gen_unique_id() -> str:
     return value
 
 
-class _BaseRequestModel(_BaseModel):
+class BaseRequestModel(_BaseModel):
     ctx_id: str = Field(serialization_alias="id", default_factory=_gen_unique_id)
 
 
 class CoreApiResultCode(StrEnum):
     Success = "success"
+    Error = "error"
     Unknown = "unknown"
 
     @classmethod
@@ -87,7 +88,7 @@ class _AccountModel(_BaseModel):
         return cls(address=raw.eth_address, chain_id=raw.chain_id)
 
 
-class NeonAccountListRequest(_BaseRequestModel):
+class NeonAccountListRequest(BaseRequestModel):
     account_list: list[_AccountModel] = Field(serialization_alias="account")
     slot: DecUIntField | None
 
@@ -159,7 +160,7 @@ class NeonAccountModel(_BaseRespModel):
         return self.neon_address.eth_address
 
 
-class NeonContractRequest(_BaseRequestModel):
+class NeonContractRequest(BaseRequestModel):
     contract: EthZeroAddressField
     slot: DecUIntField | None
 
@@ -192,7 +193,7 @@ class NeonContractModel(_BaseRespModel):
         return not self.code.is_empty
 
 
-class NeonStorageAtRequest(_BaseRequestModel):
+class NeonStorageAtRequest(BaseRequestModel):
     contract: EthZeroAddressField
     index: HexUIntField
     slot: DecUIntField | None
@@ -409,7 +410,7 @@ class EvmConfigModel(_BaseRespModel):
                 dst_dict[dst_key] = src_dict.get(src_key, default)
 
 
-class HolderAccountRequest(_BaseRequestModel):
+class HolderAccountRequest(BaseRequestModel):
     pubkey: SolPubKeyField
 
     @classmethod
@@ -665,7 +666,7 @@ class EmulTraceCfgModel(_BaseModel):
     block: CoreApiBlockModel | None = Field(default=None, serialization_alias="blockOverrides")
 
 
-class EmulNeonCallRequest(_BaseRequestModel):
+class EmulNeonCallRequest(BaseRequestModel):
     tx: CoreApiTxModel
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
@@ -728,7 +729,7 @@ class EmulNeonCallResp(_BaseRespModel):
         return tuple([a.to_sol_account_meta() for a in self.raw_meta_list])
 
 
-class EmulSolTxListRequest(_BaseRespModel):
+class EmulSolTxListRequest(BaseRequestModel):
     cu_limit: DecUIntField = Field(serialization_alias="compute_units")
     account_cnt_limit: DecUIntField = Field(serialization_alias="account_limit")
     verify: bool
@@ -752,7 +753,7 @@ class EmulSolTxInfo:
     meta: EmulSolTxMetaModel
 
 
-class NeonSkdTreeRequest(_BaseRequestModel):
+class NeonSkdTreeRequest(BaseRequestModel):
     payer: _AccountModel = Field(serialization_alias="origin")
     nonce: DecUIntField
     slot: DecUIntField | None
