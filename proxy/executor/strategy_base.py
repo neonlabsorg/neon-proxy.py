@@ -290,6 +290,10 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx = self._ctx.holder_tx
         assert tx.base_fee_per_gas >= 0
 
+        # for case of fee-less transactions
+        if not tx.base_fee_per_gas:
+            return req_cu_price
+
         def _calc_cu_price(_p_fee: float, _gas_limit: int, _cu_limit: int) -> int:
             if _p_fee > 0.0:
                 # see gas-price-calculator for details
