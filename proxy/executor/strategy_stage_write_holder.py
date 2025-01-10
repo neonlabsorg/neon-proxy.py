@@ -46,5 +46,8 @@ class WriteHolderTxPrepStage(BaseTxPrepStage):
 
         return [tx_list]
 
+    async def prep_before_emulation(self) -> bool:
+        return True
+
     async def update_after_emulation(self) -> bool:
         return True

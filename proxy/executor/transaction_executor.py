@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
@@ -38,6 +38,8 @@ _BaseTxStrategyList = list[type[BaseTxStrategy]]
 
 
 class NeonTxExecutor(ExecutorComponent):
+    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.005)
+
     _tx_strategy_list: ClassVar[_BaseTxStrategyList] = [
         # single iteration
         SimpleTxStrategy,
@@ -154,13 +156,12 @@ class NeonTxExecutor(ExecutorComponent):
                 if await self._is_completed(ctx):
                     return ExecTxDoneCode.Done
 
-                await strategy.prep_before_emulation()
-                if ctx.has_holder_block:
+                if not await strategy.prep_before_emulation():
+                    continue
+                if ctx.has_holder_block and (not ctx.holder.block.is_empty):
                     await self._emulate_neon_tx(ctx, re_emulate=True)
                 if not await strategy.update_after_emulation():
                     continue
-
-                # await self._validate_nonce(ctx)
 
                 # NeonTx is prepared for the execution
                 ctx.holder_validator.mark_complete_prepare()
@@ -197,9 +198,9 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
-            except SolError as _exc:
-                # _LOG.debug("simple error: %s", str(exc), extra=self._msg_filter)
-                await asyncio.sleep(ONE_BLOCK_SEC / 2)
+            except SolError as exc:
+                # _LOG.debug("simple retry error: %s", str(exc), extra=self._msg_filter)
+                await asyncio.sleep(self._wait_sec)
 
             except BaseException as exc:
                 ctx.mark_skip_simple_strategy()
@@ -215,9 +216,9 @@ class NeonTxExecutor(ExecutorComponent):
                 return await strategy.cancel()
 
             except (SolNoMoreRetriesError, SolBlockhashNotFound):
-                await asyncio.sleep(ONE_BLOCK_SEC)
+                await asyncio.sleep(self._wait_sec)
 
-            except BaseException as _exc:
+            except (BaseException,) as _exc:
                 # _LOG.error(
                 #     "unexpected error on cancel NeonTx",
                 #     exc_info=exc,
@@ -225,10 +226,11 @@ class NeonTxExecutor(ExecutorComponent):
                 # )
                 return None
 
-    async def _done_exec_neon_tx(self, strategy: BaseTxStrategy) -> None:
+    @staticmethod
+    async def _done_exec_neon_tx(strategy: BaseTxStrategy) -> None:
         try:
             await strategy.done_execution()
-        except BaseException as _exc:
+        except (BaseException,) as _exc:
             # _LOG.error(
             #     "unexpected error on done exec NeonTx",
             #     exc_info=exc,
@@ -269,17 +271,6 @@ class NeonTxExecutor(ExecutorComponent):
 
         acct = await self._core_api_client.get_neon_account(ctx.sender, None)
         return acct.balance
-
-    @staticmethod
-    async def _is_started(ctx: NeonExecTxCtx) -> bool:
-        if ctx.is_stuck_tx:
-            return True
-        elif await ctx.holder_validator.is_active():
-            return True
-        elif ctx.is_scheduled_tx:
-            if await ctx.skd_tree_parser.is_started():
-                return True
-        return False
 
     @staticmethod
     async def _is_completed(ctx: NeonExecTxCtx) -> bool:
