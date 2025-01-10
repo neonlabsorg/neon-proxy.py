@@ -436,13 +436,28 @@ class NeonExecTxCtx(ExecutorComponent):
     def add_alt_id(self, alt_id: SolAltID) -> None:
         self._alt_id_set.add(alt_id)
 
-    def good_sol_tx_cnt(self, name: str) -> int:
+    def good_sol_tx_cnt(self, tx_name_list: str | Sequence[str]) -> int:
+        if isinstance(tx_name_list, str):
+            tx_name_list = tuple([tx_name_list])
+
         cnt = 0
-        if tx_list := self._sol_tx_list_dict.get(name, None):
-            for _, is_success in tx_list:
-                if is_success:
-                    cnt += 1
+        for tx_name in tx_name_list:
+            if tx_list := self._sol_tx_list_dict.get(tx_name, None):
+                for _, is_success in tx_list:
+                    if is_success:
+                        cnt += 1
         return cnt
+
+    def has_good_sol_tx(self, tx_name_list: str | Sequence[str]) -> bool:
+        if isinstance(tx_name_list, str):
+            tx_name_list = tuple([tx_name_list])
+
+        for tx_name in tx_name_list:
+            if tx_list := self._sol_tx_list_dict.get(tx_name, None):
+                for _, is_success in tx_list:
+                    if is_success:
+                        return True
+        return False
 
     def pop_sol_tx_list(self, tx_name_list: Sequence[str]) -> Sequence[SolTx]:
         tx_list: list[SolTx] = list()

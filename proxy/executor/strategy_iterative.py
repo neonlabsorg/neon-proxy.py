@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import itertools
 import logging
@@ -8,6 +9,7 @@ from typing import Final, ClassVar
 
 from typing_extensions import Self
 
+from common.config.constants import ONE_BLOCK_SEC
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.solana.cb_program import SolCbProg
@@ -47,6 +49,7 @@ class IterativeTxStrategy(BaseTxStrategy):
     _start_skd_tx_name: ClassVar[str] = NeonEvmIxCode.SkdTxStartFromData.name
     _skip_skd_tx_name: ClassVar[str] = NeonEvmIxCode.SkdTxSkipFromData.name
     _finish_skd_tx_name: Final[str] = NeonEvmIxCode.SkdTxFinish.name
+    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -55,45 +58,22 @@ class IterativeTxStrategy(BaseTxStrategy):
         self._def_cu_limit = 0
         self._completed_evm_step_cnt = 0
 
-    async def prep_before_emulation(self) -> None:
-        await super().prep_before_emulation()
+    async def prep_before_emulation(self) -> bool:
+        result = await super().prep_before_emulation()
 
         if self._ctx.is_scheduled_tx:
-            if not (await self._start_skd_tx()):
-                return
-
-        if await self._ctx.holder_validator.is_active():
-            return
-        elif await self._recheck_tx_list(self.name):
-            return
+            if not await self._start_skd_tx():
+                return result
 
         if self._ctx.has_holder_block:
-            _LOG.debug("just 1 iteration to fix the block number")
-            await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
-
-    async def update_after_emulation(self) -> bool:
-        if not (result := await super().update_after_emulation()):
-            return result
-
-        if self._ctx.is_scheduled_tx:
-            status = await self._get_skd_tx_status()
-            if status not in (status.InProgress, status.Skipped):
-                # _LOG.debug("NeonSkdTx isn't started")
-                return False
-        elif self._ctx.has_holder_block:
-            if not await self._ctx.holder_validator.is_active():
-                # _LOG.debug("first iteration isn't completed")
-                return False
-
-        return True
+            await self._commit_block_number()
+        return result
 
     async def execute(self) -> ExecTxDoneCode:
         assert self.is_valid
 
-        if self._ctx.is_scheduled_tx:
-            status = await self._get_skd_tx_status()
-            if status == status.Skipped:
-                return ExecTxDoneCode.Failed
+        if await self._is_skipped_tx():
+            return ExecTxDoneCode.Failed
 
         evm_step_cnt = -1
         fail_retry_cnt = 0
@@ -144,33 +124,45 @@ class IterativeTxStrategy(BaseTxStrategy):
         return ExecTxDoneCode.Failed
 
     async def done_execution(self) -> None:
-        if not self._ctx.is_scheduled_tx:
-            return
+        if self._ctx.is_scheduled_tx:
+            await self._finish_skd_tx()
 
-        await self._finish_skd_tx()
+    async def _commit_block_number(self) -> None:
+        for _ in itertools.count():
+            if await self._ctx.holder_validator.is_active():
+                return
+            elif await self._ctx.holder_validator.is_finalized():
+                return
+            elif self._ctx.is_scheduled_tx:
+                # _LOG.debug("wait for the update of holder block number by %s", self._start_skd_tx_name)
+                await asyncio.sleep(self._wait_sec)
+
+            elif not await self._recheck_tx_list(self.name):
+                _LOG.debug("just 1 iteration to commit the block number")
+                await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
 
     async def _start_skd_tx(self) -> bool:
-        if self._ctx.good_sol_tx_cnt(self._start_skd_tx_name) or self._ctx.good_sol_tx_cnt(self._skip_skd_tx_name):
-            return True
+        name = self._start_skd_tx_name
+        for _ in itertools.count():
+            if (status := await self._get_skd_tx_status()) == status.ToStart:
+                name = self._start_skd_tx_name
+                ix = self._build_start_skd_tx_ix(self._ctx.holder_tx.index)
+            elif status == status.ToSkip:
+                name = self._skip_skd_tx_name
+                ix = self._build_skip_skd_tx_ix(self._ctx.holder_tx.index)
+            else:
+                return (status == status.Skipped) or (self._start_skd_tx_name == name)
 
-        status = await self._get_skd_tx_status()
+            if await self._recheck_tx_list(name):
+                return self._start_skd_tx_name == name
 
-        if status in (status.InProgress, status.Skipped):
-            return True
-        elif status == status.ToStart:
-            name = self._start_skd_tx_name
-            ix = self._build_start_skd_tx_ix(self._ctx.holder_tx.index)
-        elif status == status.ToSkip:
-            name = self._skip_skd_tx_name
-            ix = self._build_skip_skd_tx_ix(self._ctx.holder_tx.index)
-        else:
-            assert False
+            base_cfg = self._init_sol_tx_cfg(name=name)
+            await self._emulate_and_send_single_tx("start NeonSkdTx", ix, base_cfg)
 
-        base_cfg = self._init_sol_tx_cfg(name=name)
-        await self._emulate_and_send_single_tx("start NeonSkdTx", ix, base_cfg)
-
-        status = await self._get_skd_tx_status()
-        return status == status.InProgress
+    async def _is_skipped_tx(self) -> bool:
+        if not self._ctx.is_scheduled_tx:
+            return False
+        return (status := await self._get_skd_tx_status()) in (status.Skipped, status.ToSkip)
 
     async def _get_skd_tx_status(self) -> NeonSkdTxStatus:
         status = await self._ctx.skd_tree_parser.get_neon_skd_status(self._ctx.holder_tx.index)
@@ -180,16 +172,18 @@ class IterativeTxStrategy(BaseTxStrategy):
         raise SkdTxError(self._ctx.neon_tx_hash)
 
     async def _finish_skd_tx(self) -> None:
+        name = self._finish_skd_tx_name
+        tx_idx = self._ctx.holder_tx.index
+
         for _ in itertools.count():
-            status = await self._ctx.skd_tree_parser.get_neon_skd_status(self._ctx.holder_tx.index)
-            if status != status.InProgress:
+            if (status := await self._ctx.skd_tree_parser.get_neon_skd_status(tx_idx)) != status.InProgress:
+                return
+            elif await self._recheck_tx_list(name):
                 return
 
-            name = self._finish_skd_tx_name
-            if not await self._recheck_tx_list(name):
-                ix = self._ctx.neon_prog.make_finish_skd_tx_ix(self._ctx.holder_tx.index)
-                base_cfg = self._init_sol_tx_cfg(name=name)
-                await self._emulate_and_send_single_tx("finish NeonSkdTx", ix, base_cfg)
+            ix = self._ctx.neon_prog.make_finish_skd_tx_ix(tx_idx)
+            base_cfg = self._init_sol_tx_cfg(name=name)
+            await self._emulate_and_send_single_tx("finish NeonSkdTx", ix, base_cfg)
 
     def _reset_to_def(self) -> None:
         self._def_ix_mode = NeonIxMode.Unknown
@@ -207,9 +201,12 @@ class IterativeTxStrategy(BaseTxStrategy):
                 elif not (optimal_cfg := await self._get_iter_list_cfg()):
                     return False
 
+                # fmt: off
                 tx_list = tuple(
-                    self._build_cu_tx(self._build_tx_ix(optimal_cfg), optimal_cfg) for _ in range(optimal_cfg.iter_cnt)
+                    self._build_cu_tx(self._build_tx_ix(optimal_cfg), optimal_cfg)
+                    for _ in range(optimal_cfg.iter_cnt)
                 )
+                # fmt: on
                 return await self._send_tx_list(tx_list)
 
             except SolUnknownReceiptError:
@@ -318,17 +315,19 @@ class IterativeTxStrategy(BaseTxStrategy):
         threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)  # 95% of the maximum
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 50_000
+        max_diff: Final[int] = 250_000
         evm_step_cnt: Final[int] = base_cfg.evm_step_cnt
 
         iter_cnt, used_cu_limit = 0, 0
         for tx in emul_tx_list:
-            if tx.meta.error:
+            if tx.meta.used_cu_limit > threshold_cu_limit:
+                break
+            elif tx.meta.error:
+                # last iteration with error
                 if not iter_cnt:
-                    return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()
+                    return base_cfg.update(iter_cnt=1)
                 break
-            elif tx.meta.used_cu_limit > threshold_cu_limit:
-                break
-            elif iter_cnt and abs(tx.meta.used_cu_limit - used_cu_limit) > inc_coeff:
+            elif iter_cnt and abs(tx.meta.used_cu_limit - used_cu_limit) > max_diff:
                 break
 
             used_cu_limit = max(used_cu_limit, tx.meta.used_cu_limit)
@@ -347,8 +346,9 @@ class IterativeTxStrategy(BaseTxStrategy):
         gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
         round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
         _LOG.debug(
-            "%s: %d EVM steps, %d CUs, %d GAS, %d iterations",
+            "%s: %s mode, %d EVM steps, %d CUs, %d GAS, %d iterations",
             hdr,
+            base_cfg.ix_mode.name,
             evm_step_cnt,
             round_cu_limit,
             gas_limit,
@@ -370,7 +370,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         def_cfg = await self._update_cu_price(base_cfg, cu_limit=cu_limit)
 
         _LOG.debug(
-            "default: %s EVM steps, %s CUs, %s iterations (%s total EVM steps, %s completed EVM steps)",
+            "default: %s mode, %s EVM steps, %s CUs, %s iterations (%s total EVM steps, %s completed EVM steps)",
+            def_cfg.ix_mode.name,
             def_cfg.evm_step_cnt,
             def_cfg.cu_limit,
             def_cfg.iter_cnt,

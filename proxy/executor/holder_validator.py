@@ -36,6 +36,8 @@ class HolderAccountValidator(ExecutorComponent):
         self._emul_step_cnt = 0
         self._holder_acct: HolderAccountModel | None = None
 
+        _LOG.debug("use holder %s", self._holder_addr)
+
     def mark_complete_prepare(self) -> None:
         if self._base_tx_exec_pct < self._prepare_tx_pct:
             self._base_tx_exec_pct = self._prepare_tx_pct
@@ -49,14 +51,20 @@ class HolderAccountValidator(ExecutorComponent):
     async def _refresh(self) -> None:
         self._holder_acct = await self._core_api_client.get_holder_account(self._holder_addr)
 
-        _LOG.debug(
-            "holder %s contains NeonTx %s, status %s, accounts %d, steps %d",
-            self._holder_addr,
-            self._holder_acct.neon_tx_hash,
-            self._holder_acct.status.name.upper(),
-            len(self._holder_acct.account_key_list),
-            self._holder_acct.evm_step_cnt,
-        )
+        if (
+            self._holder_acct.is_active or
+            (self._holder_acct.is_finalized and self._holder_acct.neon_tx_hash == self._neon_tx_hash)
+        ):
+            _LOG.debug(
+                "holder %s contains NeonTx %s, status %s, slot %s, timestamp %s, accounts %d, steps %d",
+                self._holder_addr,
+                self._holder_acct.neon_tx_hash,
+                self._holder_acct.status.name.upper(),
+                self._holder_acct.block.slot,
+                self._holder_acct.block.timestamp,
+                len(self._holder_acct.account_key_list),
+                self._holder_acct.evm_step_cnt,
+            )
 
         # Inform the mempool for the current progress of the transaction execution
         if self._emul_step_cnt:
