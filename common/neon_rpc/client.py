@@ -34,9 +34,10 @@ from .api import (
     CoreApiBlockModel,
     NeonSkdTreeModel,
     NeonSkdTreeRequest,
-    BaseRequestModel,
+    CoreApiRequest,
 )
 from ..config.config import Config
+from ..config.constants import ONE_BLOCK_SEC
 from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
@@ -47,6 +48,7 @@ from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
 from ..solana.account import SolAccountModel
+from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
@@ -62,6 +64,7 @@ _RespType = TypeVar("_RespType", bound=BaseModel)
 
 class CoreApiClient(HttpClient):
     name: ClassVar[str] = "NeonCoreApi"
+    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
 
     def __init__(self, cfg: Config, sol_client: SolClient, stat_client: RpcStatClient) -> None:
         super().__init__(cfg)
@@ -312,7 +315,7 @@ class CoreApiClient(HttpClient):
     async def _send_request(
         self,
         method: str,
-        request: BaseRequestModel | None = None,
+        request: CoreApiRequest | None = None,
         resp_type: type[_RespType] | None = None,
     ) -> _RespType:
         rpc_request = RpcClientRequest.from_raw(
@@ -335,18 +338,19 @@ class CoreApiClient(HttpClient):
                     resp = CoreApiResp.from_json(resp_json)
 
                 except PydanticValidationError as exc:
-                    _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
+                    _LOG.warning("bad response from neon-core-api %s", str(exc), extra=self._msg_filter)
                     rpc_request.commit_stat(is_error=True)
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(self._wait_sec)
                     continue
 
-                if resp.result == resp.result.Error:
-                    _LOG.debug("got error on %s (%s): %s - %s", method, request, resp.error_code, resp.error)
-
-                if (resp.error_code or 0) == 113:  # Solana client error
+                if self._is_retry_error(resp):
                     rpc_request.commit_stat(is_error=True)
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(self._wait_sec)
                     continue
+                elif resp.result == resp.result.Error:
+                    # unknown error case
+                    ctx_id = request.ctx_id if request else None
+                    _LOG.warning("got error on %s (%s): %s - %s", method, ctx_id, resp.error_code, resp.error)
 
                 if resp_type is None:
                     return resp
@@ -354,6 +358,41 @@ class CoreApiClient(HttpClient):
                     raise EthError(resp.error)
 
                 return resp_type.from_dict(resp.value)
+
+    @staticmethod
+    def _is_retry_error(resp: CoreApiResp) -> bool:
+        if resp.result != resp.result.Error:
+            return False
+
+        if resp.error_code == 113:    # ClientError, Solana connection problem
+            return True
+        elif resp.error_code != 265:  # SolanaSimulatorError
+            return False
+
+        sim_error: Final[str] = "Solana Simulator error "
+        sim_error_len: Final[int] = len(sim_error)
+        rpc_error: Final[str] = "RpcClientError"  # Solana connection problem
+        tx_error: Final[str] = "TransactionError"  # Transaction body problem
+        tx_error_len: Final[int] = len(tx_error)
+
+        error = resp.error[sim_error_len:]
+        if error.startswith(rpc_error):
+            return True
+        elif not error.startswith(tx_error):
+            return False
+
+        sub_error = error[tx_error_len:]
+        alt_error_list: Final[tuple] = (
+            "(AddressLookupTableNotFound)",
+            "(InvalidAddressLookupTableOwner)",
+            "(InvalidAddressLookupTableData)",
+            "(InvalidAddressLookupTableIndex)",
+        )
+        for alt_error in alt_error_list:
+            if sub_error.startswith(alt_error):
+              raise SolAltError("Simulation error: " + alt_error)
+
+        return False
 
     @ttl_cached_method(ttl_sec=60)
     async def _get_evm_exec_addr(self) -> SolPubKey:
@@ -368,7 +407,7 @@ class CoreApiClient(HttpClient):
     def _check_emulator_result(self, resp: EmulNeonCallResp) -> None:
         if resp.exit_code == EmulNeonCallExitCode.Revert:
             revert_data = resp.result.to_string()
-            _LOG.debug("got reverted result with data: %s", revert_data)
+            # _LOG.debug("got reverted result with data: %s", revert_data)
 
             if not (result_value := self._decode_revert_message(revert_data[2:])):  # remove 0x
                 raise EthError(code=3, message="execution reverted", data=revert_data)
@@ -380,7 +419,7 @@ class CoreApiClient(HttpClient):
                 )
 
         if resp.exit_code != EmulNeonCallExitCode.Succeed:
-            _LOG.debug("got failed emulate exit code: %s", resp.exit_code)
+            # _LOG.debug("got failed emulate exit code: %s", resp.exit_code)
             raise EthError(code=3, message=resp.exit_code)
 
     @staticmethod
