@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from collections import deque
@@ -81,17 +80,14 @@ class SolAltDestroyer(ExecutorComponent):
                 self._new_alt_queue.append(alt)
 
     async def _destroy_alt_loop(self) -> None:
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="destroy-alt"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), self._finalize_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     await self._destroy_alt_queue()
                 except BaseException as exc:
                     _LOG.error("unexpected error on destroy ALTs", exc_info=exc, extra=self._msg_filter)
+                await asyncio.wait({stop_task}, timeout=self._finalize_sec)
 
     async def _destroy_alt_queue(self) -> None:
         if (not self._alt_queue) and (not self._new_alt_queue):

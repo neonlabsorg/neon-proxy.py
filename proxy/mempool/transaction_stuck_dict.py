@@ -80,17 +80,14 @@ class MpStuckTxDict:
 
     async def _scan_stuck_tx_loop(self) -> None:
         sleep_sec: Final[float] = ONE_BLOCK_SEC * 3
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="mp-scan-stuck-txs"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     await self._scan_stuck_tx()
                 except BaseException as exc:
                     _LOG.error("error on scan", exc_info=exc)
+                await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _scan_stuck_tx(self) -> None:
         _, src_tx_list = await self._db.get_stuck_neon_tx_list()

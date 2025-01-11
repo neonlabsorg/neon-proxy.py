@@ -188,14 +188,9 @@ class MpTxExecutor(MempoolComponent):
 
     async def _tx_exec_loop(self):
         sleep_sec: Final[float] = ONE_BLOCK_SEC
-        while True:
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
             try:
-                self._exec_event.clear()
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._exec_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
                 gas_price = self._gas_price
 
                 result = True
@@ -211,6 +206,10 @@ class MpTxExecutor(MempoolComponent):
 
             except BaseException as exc:
                 _LOG.error("error on process schedule", exc_info=exc)
+
+            self._exec_event.clear()
+            exec_task = asyncio.create_task(self._exec_event.wait())
+            await asyncio.wait({stop_task, exec_task}, return_when=asyncio.FIRST_COMPLETED, timeout=sleep_sec)
 
     def _commit_pool_stat(self) -> None:
         queue = list(
