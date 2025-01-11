@@ -71,7 +71,7 @@ class NeonSkdTreeParser(ExecutorComponent):
                 len(self._tree.node_list),
             )
 
-        self._last_update_sec = now
+            self._last_update_sec = now
 
     @cached_method
     async def _get_slot_out(self) -> int:
