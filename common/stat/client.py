@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from typing import Final, Callable
 
@@ -34,17 +33,14 @@ class BaseStatClient:
 
     async def _send_loop(self) -> None:
         sleep_sec: Final[float] = ONE_BLOCK_SEC / 4
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="stat-client"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     await self._send_data()
                 except BaseException as exc:
                     _LOG.warning("error on send data", exc_info=exc)
+                await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _send_data(self) -> None:
         call, data = await self._send_queue.get()

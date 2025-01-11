@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from typing import Final
 
@@ -41,17 +40,14 @@ class SolAltLoader(MempoolComponent):
 
     async def _scan_stuck_alt_loop(self) -> None:
         sleep_sec: Final[int] = 10
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="scan-stuck-alt"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     await self._scan_stuck_alt()
                 except BaseException as exc:
                     _LOG.error("unexpected error on scan stuck ALTs", exc_info=exc, extra=self._msg_filter)
+                await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _scan_stuck_alt(self) -> None:
         _, alt_data_list = await self._db.get_stuck_neon_alt_list()
@@ -105,18 +101,15 @@ class SolAltLoader(MempoolComponent):
 
     async def _scan_lost_alt_loop(self) -> None:
         sleep_sec: Final[int] = self._cfg.mp_lost_alt_timeout_sec
+        stop_task = asyncio.create_task(self._stop_event.wait())
         idx: int = 0
         with logging_context(ctx="scan-lost-alt"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     idx = await self._scan_lost_alt(idx)
                 except BaseException as exc:
                     _LOG.error("unexpected error on scan lost ALTs", exc_info=exc, extra=self._msg_filter)
+                await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _scan_lost_alt(self, idx: int) -> int:
         req_id = dict(ctx="scan-lost-alt", idx=idx)

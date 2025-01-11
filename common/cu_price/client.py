@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import dataclasses
 import logging
 import time
@@ -90,17 +89,14 @@ class CuPriceClient:
         return await self._fee_cfg_client.get_cfg()
 
     async def _clear_loop(self) -> None:
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="cu-price"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), 1)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     self._clear_cache()
                 except BaseException as exc:
                     _LOG.error("error on clearing cu-price-cache", exc_info=exc)
+                await asyncio.wait({stop_task}, timeout=1.0)
 
     def _clear_cache(self) -> None:
         if not self._cu_price_queue:

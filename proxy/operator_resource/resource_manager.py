@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import random
 from collections import deque
@@ -303,17 +302,15 @@ class OpResourceMng(OpResourceComponent):
         return op_signer
 
     async def _refresh_signer_loop(self) -> None:
-        while True:
-            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                sleep_sec = 5 * 60 if self._active_signer_dict else 5
-                await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-            if self._stop_event.is_set():
-                break
-
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
             try:
                 await self._refresh_signer_list()
             except BaseException as exc:
                 _LOG.error("error on refresh secret list", exc_info=exc)
+
+            sleep_sec = 5 * 60 if self._active_signer_dict else 5
+            await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _refresh_signer_list(self) -> None:
         signer_list = await self._server.get_signer_list()
@@ -359,18 +356,15 @@ class OpResourceMng(OpResourceComponent):
         )
 
     async def _activate_signer_loop(self) -> None:
-        while True:
-            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                await asyncio.wait_for(self._stop_event.wait(), self._activate_sleep_sec)
-            if self._stop_event.is_set():
-                break
-
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
             try:
                 await self._activate_signer_list()
                 await self._delete_signer_list()
                 await self._delete_blocked_holder_list()
             except BaseException as exc:
                 _LOG.error("error on activate operator keys", exc_info=exc)
+            await asyncio.wait({stop_task}, timeout=self._activate_sleep_sec)
 
     async def _activate_signer_list(self) -> None:
         op_signer_list = [s for s in self._active_signer_dict.values() if s.disabled_holder_list or s.warn_cnt]

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import enum
 import logging
 import time
@@ -800,17 +799,15 @@ class MpTxSchedule:
             self._sub_sender_set.add(pool)
 
     async def _update_state_tx_cnt_loop(self) -> None:
-        sleep_sec: Final[float] = ONE_BLOCK_SEC / 2
-        while True:
-            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-            if self._stop_event.is_set():
-                break
-
+        sleep_sec: Final[float] = ONE_BLOCK_SEC
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
             try:
                 await self._update_state_tx_cnt()
             except BaseException as exc:
                 _LOG.error("error on updating state tx counters", exc_info=exc)
+
+            await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _update_state_tx_cnt(self) -> None:
         if (not self._sub_sender_set) and self._watch_session.is_empty:
@@ -857,17 +854,15 @@ class MpTxSchedule:
 
     async def _heartbeat_loop(self) -> None:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="mp-heartbeat-clear-txs"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     self._check_heartbeat_and_drop(self._eviction_timeout_sec)
                 except BaseException as exc:
                     _LOG.error("error on clearing by heartbeat", exc_info=exc)
+
+                await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     def _check_heartbeat_and_drop(self, eviction_timeout_sec: int) -> None:
         threshold: Final[int] = int(time.monotonic()) - eviction_timeout_sec
