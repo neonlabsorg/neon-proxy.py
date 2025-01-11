@@ -554,7 +554,24 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
     @property
     def is_corrupted(self) -> bool:
         """Return true if indexer didn't find all instructions for the tx"""
-        return (self._neon_tx.gas_limit <= 0) or (self._gas_used != self._total_gas_used) or self._has_truncated_log
+        if self._neon_tx.gas_limit <= 0:
+            _LOG.error("corrupted tx %s: no NeonTx.Body", self.neon_tx_hash)
+            return True
+        elif self._gas_used != self._total_gas_used:
+            _LOG.error(
+                "corrupted tx %s: sum(iters.gas_used) != total_gas_used (%d != %d)",
+                self.neon_tx_hash,
+                self._gas_used,
+                self._total_gas_used,
+            )
+            return True
+        elif self._has_truncated_log:
+            _LOG.error(
+                "corrupted tx %s: truncated logs",
+                self.neon_tx_hash,
+            )
+            return True
+        return False
 
     @property
     def has_good_ix(self) -> bool:
@@ -651,13 +668,13 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx_idx: int,
         start_log_idx: int,
         sum_gas_used: int,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, bool]:
         assert not self._clean_neon_tx_rcpt
         assert not self.is_corrupted
 
         sum_gas_used += self._total_gas_used
         if not self._neon_tx_event_dict:
-            return len(self._neon_tx_rcpt.event_list), sum_gas_used
+            return len(self._neon_tx_rcpt.event_list), sum_gas_used, True
 
         self._complete_clone()
         rcpt = self._neon_tx_rcpt
@@ -687,7 +704,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         neon_tx_event_list = self._get_sorted_tx_event_list()
         self._fill_tx_event_order_nums(neon_tx_event_list)
         if self.is_corrupted:
-            return 0, 0
+            return 0, 0, False
 
         self._hide_reverted_tx_events(neon_tx_event_list)
         self._add_tx_return_event(neon_tx_event_list)
@@ -698,7 +715,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
         self._clean_neon_tx_rcpt = rcpt.to_clean_copy()
 
-        return last_log_idx, sum_gas_used
+        return last_log_idx, sum_gas_used, True
 
     # protected:
 
@@ -1369,16 +1386,19 @@ class NeonIndexedBlockInfo:
         for tx in self._done_neon_tx_list:
             self._del_neon_tx(tx)
             if tx.is_corrupted:
-                _LOG.error("corrupted tx: %s", tx)
                 self._has_corrupted_tx = True
                 continue
             elif self._has_corrupted_tx:
                 _LOG.warning("block is corrupted, skip tx: %s", tx)
                 continue
 
-            log_idx, sum_gas_used = tx.complete_neon_tx_event_list(neon_block_hdr, tx_idx, log_idx, sum_gas_used)
-            if tx.is_corrupted:
-                _LOG.error("corrupted tx: %s", tx)
+            log_idx, sum_gas_used, is_good_tx = tx.complete_neon_tx_event_list(
+                neon_block_hdr,
+                tx_idx,
+                log_idx,
+                sum_gas_used,
+            )
+            if not is_good_tx:
                 self._has_corrupted_tx = True
                 continue
 
