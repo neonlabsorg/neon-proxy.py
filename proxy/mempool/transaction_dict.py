@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from collections import deque
@@ -89,18 +88,16 @@ class MpTxDict:
     async def _clear_loop(self) -> None:
         next_item_sec = 0
         base_sleep_sec: Final[int] = self._clear_time_sec // 10
+        stop_task = asyncio.create_task(self._stop_event.wait())
         with logging_context(ctx="mp-clear-tx-cache"):
-            while True:
-                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                    sleep_sec = (next_item_sec - int(time.monotonic())) if next_item_sec else base_sleep_sec
-                    await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-                if self._stop_event.is_set():
-                    break
-
+            while not self._stop_event.is_set():
                 try:
                     next_item_sec = await self._clear()
                 except BaseException as exc:
                     _LOG.error("error on clearing tx-cache", exc_info=exc)
+
+                sleep_sec = (next_item_sec - int(time.monotonic())) if next_item_sec else base_sleep_sec
+                await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _clear(self) -> int:
         if not self._tx_queue:

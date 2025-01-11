@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from collections import deque
 from typing import Final
@@ -12,7 +11,6 @@ from common.cu_price.pyth_price_account import PythPriceAccount
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.solana.cb_program import SolCbProg
-from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.ws_client import SolWatchAccountSession
 from common.utils.json_logger import log_msg, logging_context
@@ -112,13 +110,8 @@ class MpGasPriceCalculator(MempoolComponent):
         return self._gas_price_cache
 
     async def _update_gas_price_loop(self) -> None:
-        while True:
-            sleep_sec = self._update_sec if not self._gas_price_cache.is_empty else 1
-            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
-                await asyncio.wait_for(self._stop_event.wait(), sleep_sec)
-            if self._stop_event.is_set():
-                break
-
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
             with logging_context(ctx="mp-update-gas-price"):
                 try:
                     evm_cfg = await self._get_evm_cfg()
@@ -127,6 +120,9 @@ class MpGasPriceCalculator(MempoolComponent):
                         self._gas_price_cache = gas_price
                 except BaseException as exc:
                     _LOG.error("error on update gas-price", exc_info=exc)
+
+            sleep_sec = self._update_sec if not self._gas_price_cache.is_empty else 1.0
+            await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _calc_gas_price(self, evm_cfg: EvmConfigModel, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
         base_price_acct = await self._get_price_account(LAYER0_TOKEN_NAME)
@@ -234,12 +230,10 @@ class MpGasPriceCalculator(MempoolComponent):
         while not self._stop_event.is_set():
             try:
                 if self._watch_session:
-                    update_task = asyncio.create_task(self._watch_session.update())
-                    await asyncio.wait({update_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
-                else:
-                    await asyncio.wait({stop_task}, timeout=1.0)
+                    await self._watch_session.update()
             except BaseException as exc:
                 _LOG.error("error on update gas-price accounts", exc_info=exc, extra=self._msg_filter)
+            await asyncio.wait({stop_task}, timeout=5.0)
 
     async def _get_price_account(self, token: str) -> PythPriceAccount:
         if not self._watch_session:
