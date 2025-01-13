@@ -636,6 +636,7 @@ class MpTxSchedule:
     def cancel_tx(self, tx: MpTxModel, state_tx_cnt: int, balance: int) -> bool:
         # _LOG.debug(log_msg("cancel tx {Tx}", Tx=tx))
         if not (pool := self._find_sender_pool(tx.sender)):
+            _LOG.warning("pool %s doesn't exists", tx.sender)
             return False
 
         pool.cancel_process_tx(tx)
