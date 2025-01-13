@@ -242,7 +242,7 @@ def _add_http_handler(
     param_dict = dict(wrapper_info.signature.parameters)
     func_info = _HttpFunctionInfo(_wrapper, method.is_async_def, len(param_dict), param_dict, dict())
 
-    route = _HttpRoute(route_type, endpoint.path, func_info, False)
+    route = _HttpRoute(route_type, endpoint.path, func_info, False, False, "", list())
     self._route_list.append(route)
 
     def _route_name() -> str:
