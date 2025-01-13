@@ -132,6 +132,10 @@ class NeonBaseTxAccountSet:
     def is_empty(self) -> bool:
         return self.sender.is_empty
 
+    @cached_property
+    def account_key_list(self) -> Sequence[SolPubKey]:
+        return tuple([self.payer, self.sender, self.receiver, self.receiver_contract])
+
 
 @dataclass(frozen=True)
 class NeonProgCfg:
