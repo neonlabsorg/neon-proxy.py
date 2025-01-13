@@ -12,6 +12,7 @@ from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.client import CoreApiClient
+from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.ws_client import SolWatchAccountSession
@@ -406,7 +407,7 @@ class MpTxSchedule:
         global_tx_dict: MpTxDict,
     ) -> None:
         self._core_api_client = core_api_client
-        self._watch_session = SolWatchAccountSession(cfg, sol_client)
+        self._watch_session = SolWatchAccountSession(cfg, sol_client, commit=SolCommit.Processed)
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
@@ -848,10 +849,13 @@ class MpTxSchedule:
 
         for a in acct_list:
             if p := self._find_sender_pool(a.eth_address):
-                if (p.status == p.Status.Suspended) and (p.state_tx_cnt, p.balance) != (a.state_tx_cnt, a.balance):
-                    self._schedule_sender_pool(p, a.state_tx_cnt, a.balance)
-            else:
-                await self._watch_session.subscribe_account(a.sol_address)
+                if p.status == p.Status.Suspended:
+                    if (p.state_tx_cnt, p.balance) != (a.state_tx_cnt, a.balance):
+                        self._schedule_sender_pool(p, a.state_tx_cnt, a.balance)
+                if p.status != p.Status.Suspended:
+                    continue
+
+            await self._watch_session.unsubscribe_account(a.sol_address)
 
     async def _heartbeat_loop(self) -> None:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10
