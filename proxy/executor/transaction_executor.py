@@ -92,8 +92,6 @@ class NeonTxExecutor(ExecutorComponent):
 
         try:
             await self._init_base_sol_tx(ctx)
-            # the earlier check of the nonce
-            await self._validate_nonce(ctx)
             # get the list of accounts for validation
             await self._emulate_neon_tx(ctx)
 
@@ -242,7 +240,10 @@ class NeonTxExecutor(ExecutorComponent):
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
 
-        sender_balance = await self._get_sender_balance(ctx, re_emulate)
+        if re_emulate:
+            sender_balance = (await self._core_api_client.get_neon_account(ctx.sender, None)).balance
+        else:
+            sender_balance = None
 
         emul_resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
@@ -260,18 +261,6 @@ class NeonTxExecutor(ExecutorComponent):
         # ro_addr_list = [acct.address for acct in acct_list if acct.executable]
         # ctx.set_ro_address_list(ro_addr_list)
 
-    async def _validate_nonce(self, ctx: NeonExecTxCtx) -> None:
-        state_tx_cnt = await self._core_api_client.get_state_tx_cnt(ctx.sender, None)
-        EthNonceTooHighError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
-        # EthNonceTooLowError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
-
-    async def _get_sender_balance(self, ctx: NeonExecTxCtx, re_emulate: bool) -> int | None:
-        if not re_emulate:
-            return None
-
-        acct = await self._core_api_client.get_neon_account(ctx.sender, None)
-        return acct.balance
-
     @staticmethod
     async def _is_completed(ctx: NeonExecTxCtx) -> bool:
         if not ctx.is_scheduled_tx:
@@ -282,8 +271,12 @@ class NeonTxExecutor(ExecutorComponent):
 
     async def _init_base_sol_tx(self, ctx: NeonExecTxCtx) -> None:
         addr_list = [ctx.payer, ctx.sender, ctx.receiver]
-
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
+
+        if not ctx.is_stuck_tx:
+            state_tx_cnt = acct_list[0].state_tx_cnt
+            EthNonceTooHighError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
+
         base_tx_acct_set = NeonBaseTxAccountSet(
             payer=acct_list[0].sol_address,
             sender=acct_list[1].sol_address,

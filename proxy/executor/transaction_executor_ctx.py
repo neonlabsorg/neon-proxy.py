@@ -134,7 +134,11 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @reset_cached_method
     def _get_acct_key_list(self) -> Sequence[SolPubKey]:
-        return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
+        if self._acct_meta_list:
+            return tuple([SolPubKey.from_raw(meta.pubkey) for meta in self._acct_meta_list])
+        elif not self._base_tx_acct_set.is_empty:
+            return self._base_tx_acct_set.account_key_list
+        return tuple()
 
     @property
     def skip_simple_strategy(self) -> bool:
