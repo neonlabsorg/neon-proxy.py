@@ -123,33 +123,52 @@ class NeonTxExecApi(ExecutorApi):
         request: ExecTxRequest,
         skd_tree_parser: NeonSkdTreeParser | None,
     ) -> ExecTxDoneCode:
-        op_res = await self._acquire_op_resource(request)
-        ctx = NeonExecTxCtx(self._server, op_res, request, request.token, skd_tree_parser)
 
-        try:
-            for _retry in itertools.count():
-                # if retry > 0:
-                #     _LOG.debug("retry %d to execute NeonTx %s", retry, request.tx.neon_tx_hash)
+        async def _free_res(req_id: dict, _op_res: OpResourceModel | None, _ctx: NeonExecTxCtx | None) -> None:
+            if _ctx:
+                self._destroy_alt_list(_ctx)
+            if _op_res:
+                await self._op_client.free_resource(req_id, True, _op_res)
 
-                try:
-                    return await self._neon_tx_executor.exec_neon_tx(ctx)
+        async def _complete_stuck_neon_tx(_op_res: OpResourceModel, _ctx: NeonExecTxCtx, _exc: StuckTxError) -> None:
+            stuck_tx = MpStuckTxModel.from_raw(_exc.neon_tx_hash, _exc.holder_address)
 
-                except StuckTxError as exc:
-                    _LOG.debug("switch to complete the stuck NeonTx %s", exc.neon_tx_hash)
+            stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
+            with logging_context(**stuck_req.req_id):
+                await self._complete_stuck_neon_tx_retry_loop(stuck_req, None)
+                await _free_res(stuck_req.req_id, _op_res, _ctx)
 
-                    stuck_tx = MpStuckTxModel.from_raw(exc.neon_tx_hash, exc.holder_address)
-                    stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
-                    with logging_context(**stuck_req.req_id):
-                        await self._complete_stuck_neon_tx_retry_loop(stuck_req, None)
+            if _task := self._task_dict.pop(_exc.neon_tx_hash, None):
+                self._completed_task_list.append(_task)
 
-                    _LOG.debug("return back to the execution of NeonTx %s", ctx.neon_tx_hash)
+        for _retry in itertools.count():
+            op_res = await self._acquire_op_resource(request)
+            ctx = NeonExecTxCtx(self._server, op_res, request, request.token, skd_tree_parser)
 
-                except BaseException as exc:
-                    _LOG.error("unexpected error on execute NeonTx", exc_info=exc, extra=self._msg_filter)
-                    return ExecTxDoneCode.Failed
-        finally:
-            self._destroy_alt_list(ctx)
-            await self._op_client.free_resource(request.req_id, True, op_res)
+            # if retry > 0:
+            #     _LOG.debug("retry %d to execute NeonTx %s", retry, request.tx.neon_tx_hash)
+
+            try:
+                return await self._neon_tx_executor.exec_neon_tx(ctx)
+
+            except StuckTxError as exc:
+                _LOG.debug("switch to complete the stuck NeonTx %s", exc.neon_tx_hash)
+
+                if exc.neon_tx_hash in self._task_dict:
+                    await _free_res(request.req_id, op_res, ctx)
+                else:
+                    task = asyncio.create_task(_complete_stuck_neon_tx(op_res, ctx, exc))
+                    self._task_dict[exc.neon_tx_hash] = task
+                    op_res, ctx = None, None
+
+                _LOG.debug("return back to the execution of NeonTx %s", request.neon_tx_hash)
+
+            except BaseException as exc:
+                _LOG.error("unexpected error on execute NeonTx", exc_info=exc, extra=self._msg_filter)
+                return ExecTxDoneCode.Failed
+
+            finally:
+                await _free_res(request.req_id, op_res, ctx)
 
     async def _exec_neon_skd_tree(self, request: ExecTxRequest) -> ExecTxDoneCode:
         tx = request.tx
