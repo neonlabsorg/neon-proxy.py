@@ -5,7 +5,6 @@ from common.solana.pubkey import SolPubKey
 from common.solana.signature import SolTxSig
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
-from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.solana_rpc.neon_sol_tx_list_sender import NeonSolTxListSender
 from common.solana_rpc.transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from common.utils.cached import cached_property
