@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Sequence
+from typing import Sequence, Final
 
 from ..neon.neon_program import NeonProg
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
@@ -15,24 +15,48 @@ from ..solana.transaction_meta import (
     SolRpcSendTxErrorInfo,
     SolRpcNodeUnhealthyErrorInfo,
     SolRpcTxReceiptInfo,
-    SolRpcInvalidParamErrorInfo,
 )
 from ..utils.cached import cached_method, cached_property
 
 
 class SolTxErrorParser:
-    _already_finalized_msg = "Program log: Transaction already finalized"
-    _log_truncated_msg = "Log truncated"
-    _require_resize_iter_msg = "Deployment of contract which needs more than 10kb of account space needs several"
-    _cb_exceeded_msg = "exceeded CUs meter at BPF instruction"
-    _cb_exceeded_msg_v2 = "Computational budget exceeded"
-    _out_of_memory_msg = "Program log: EVM Allocator out of memory"
-    _memory_alloc_fail_msg = "Program log: Error: memory allocation failed, out of memory"
+    _already_finalized_msg: Final[str] = "Program log: Transaction already finalized"
+    _log_truncated_msg: Final[str] = "Log truncated"
+    _require_resize_iter_msg: Final[str] = (
+        "Deployment of contract which needs more than 10kb of account space needs several"
+    )
+    _cb_exceeded_msg: Final[str] = "exceeded CUs meter at BPF instruction"
+    _cb_exceeded_msg_v2: Final[str] = "Computational budget exceeded"
+    _out_of_memory_msg: Final[str] = "Program log: EVM Allocator out of memory"
+    _memory_alloc_fail_msg: Final[str] = "Program log: Error: memory allocation failed, out of memory"
 
-    _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
-    _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
-    _nonce_re = re.compile(r"Program log: Invalid Nonce, origin \w+ nonce (\d+) != Transaction nonce (\d+)")
-    _out_of_gas_re = re.compile(r"Program log: Out of Gas, limit = (\d+), required = (\d+)")
+    # fmt: off
+    _alt_tx_error_list: Final[Sequence[SolRpcTxFieldErrorCode]] = tuple([
+        SolRpcTxFieldErrorCode.AddressLookupTableNotFound,
+        SolRpcTxFieldErrorCode.InvalidAddressLookupTableOwner,
+        SolRpcTxFieldErrorCode.InvalidAddressLookupTableData,
+        SolRpcTxFieldErrorCode.InvalidAddressLookupTableIndex,
+    ])
+    _alt_ix_error_list = tuple([
+        SolRpcTxIxFieldErrorCode.InvalidInstructionData,
+        SolRpcTxIxFieldErrorCode.InvalidAccountOwner,
+        SolRpcTxIxFieldErrorCode.InvalidArgument,
+    ])
+    # fmt: on
+    _alt_fail_msg: Final[str] = "Program AddressLookupTab1e1111111111111111111111111 failed: "
+
+    _create_acct_re: Final[re.Pattern] = re.compile(
+        r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use"
+    )
+    _create_neon_acct_re: Final[re.Pattern] = re.compile(
+        r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned"
+    )
+    _nonce_re: Final[re.Pattern] = re.compile(
+        r"Program log: Invalid Nonce, origin \w+ nonce (\d+) != Transaction nonce (\d+)"
+    )
+    _out_of_gas_re: Final[re.Pattern] = re.compile(
+        r"Program log: Out of Gas, limit = (\d+), required = (\d+)"
+    )
 
     def __init__(self, tx: SolTx, receipt: SolRpcTxReceiptInfo) -> None:
         self._tx = tx
@@ -48,16 +72,23 @@ class SolTxErrorParser:
         return False
 
     @cached_method
-    def check_if_invalid_ix_data(self) -> bool:
-        if isinstance(self._receipt, SolRpcInvalidParamErrorInfo):
+    def check_if_alt_error(self) -> bool:
+        if not (tx_error := self._get_tx_error()):
+            return False
+        elif tx_error in self._alt_tx_error_list:
             return True
-        elif self._get_tx_error() == SolRpcTxFieldErrorCode.InvalidAddressLookupTableIndex:
-            return True
-        return self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.InvalidInstructionData
+        elif tx_error not in self._alt_ix_error_list:
+            return False
+
+        log_list = self._get_log_list()
+        for log in log_list:
+            if log.startswith(self._alt_fail_msg):
+                return True
+        return False
 
     @cached_method
     def check_if_cb_exceeded(self) -> bool:
-        if self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.ComputationalBudgetExceeded:
+        if self._get_tx_error() == SolRpcTxIxFieldErrorCode.ComputationalBudgetExceeded:
             return True
 
         log_list = self._get_log_list()
@@ -87,7 +118,7 @@ class SolTxErrorParser:
     @cached_method
     def check_if_require_resize_iter(self) -> bool:
         if self.check_if_preprocessed_error():
-            if self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.ProgramFailedToComplete:
+            if self._get_tx_error() == SolRpcTxIxFieldErrorCode.ProgramFailedToComplete:
                 return True
 
         log_list = self._get_evm_log_list()
@@ -115,7 +146,7 @@ class SolTxErrorParser:
 
     @cached_method
     def check_if_sol_account_already_exists(self) -> bool:
-        return self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.AccountAlreadyInitialized
+        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.AccountAlreadyInitialized
 
     @cached_method
     def check_if_preprocessed_error(self) -> bool:
@@ -145,21 +176,16 @@ class SolTxErrorParser:
                 return int(has_gas_limit), int(req_gas_limit)
         return None
 
-    def _get_tx_error(self) -> SolRpcTxErrorInfo | None:
+    def _get_tx_error(self) -> SolRpcTxErrorInfo | SolRpcTxIxFieldErrorCode | None:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             if isinstance(self._receipt.err, SolRpcTxFieldErrorCode):
                 return self._receipt.err
+            elif isinstance(self._receipt.err, SolRpcTxIxErrorInfo):
+                return self._receipt.err.err
         elif isinstance(self._receipt, SolRpcTxSlotInfo):
             if isinstance(self._receipt.transaction.meta.err, SolRpcTxErrorInfo):
                 return self._receipt.transaction.meta.err
-        return None
-
-    def _get_tx_ix_error(self) -> SolRpcTxIxErrorInfo | None:
-        if isinstance(self._receipt, SolRpcSendTxErrorInfo):
-            if isinstance(self._receipt.err, SolRpcTxIxErrorInfo):
-                return self._receipt.err.err
-        elif isinstance(self._receipt, SolRpcTxSlotInfo):
-            if isinstance(self._receipt.transaction.meta.err, SolRpcTxIxErrorInfo):
+            elif isinstance(self._receipt.transaction.meta.err, SolRpcTxIxErrorInfo):
                 return self._receipt.transaction.meta.err.err
         return None
 

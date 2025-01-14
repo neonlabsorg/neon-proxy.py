@@ -25,6 +25,7 @@ from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
 from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError, EthOutOfGasError
 from ..solana.commit_level import SolCommit
+from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
@@ -52,7 +53,7 @@ class SolTxSendState:
 
         # Fail errors
         CbExceededError = enum.auto()
-        InvalidIxDataError = enum.auto()
+        AltError = enum.auto()
         RequireResizeIterError = enum.auto()
         OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
@@ -90,7 +91,6 @@ class SolTxListSender:
         SolTxSendState.Status.NoReceiptError,
         SolTxSendState.Status.BlockHashNotFoundError,
         SolTxSendState.Status.NodeBehindError,
-        SolTxSendState.Status.InvalidIxDataError,
     )
 
     def __init__(
@@ -454,9 +454,8 @@ class SolTxListSender:
         elif tx_error_parser.check_if_neon_account_already_exists():
             # no exception: neon account exists - the goal is reached
             return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)
-        elif tx_error_parser.check_if_invalid_ix_data():
-            _LOG.debug("invalid ix receipt %s: %s", tx, tx_receipt)
-            return self._DecodeResult(status.InvalidIxDataError, None)
+        elif tx_error_parser.check_if_alt_error():
+            return self._DecodeResult(status.AltError, SolAltError("Bad ALT on send tx"))
         elif tx_error_parser.check_if_cb_exceeded():
             if cu_consumed := tx_error_parser.cu_consumed:
                 _LOG.debug("CUs consumed: %s", cu_consumed)
