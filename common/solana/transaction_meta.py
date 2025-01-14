@@ -21,7 +21,7 @@ SolRpcExtErrorInfo = Union[
 ]
 SolRpcTxErrorInfo = _tx.TransactionErrorType
 SolRpcTxFieldErrorCode = _tx.TransactionErrorFieldless
-SolRpcTxIxErrorInfo = _tx.InstructionErrorType
+SolRpcTxIxErrorInfo = _tx.TransactionErrorInstructionError
 SolRpcTxIxFieldErrorCode = _tx.InstructionErrorFieldless
 SolRpcSendTxErrorInfo = _resp.RpcSimulateTransactionResult
 SolRpcNodeUnhealthyErrorInfo = _err.NodeUnhealthy
