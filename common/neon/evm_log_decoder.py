@@ -177,7 +177,7 @@ class NeonTxErrorLogInfo:
 
     @classmethod
     def from_raw(cls, code: int, data: bytearray, message: str):
-        return NeonTxErrorLogInfo(
+        return cls(
             code = code,
             data = data[4:],
             message = message,
