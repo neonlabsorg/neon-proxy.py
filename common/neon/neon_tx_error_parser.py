@@ -1,18 +1,10 @@
 import re
 import logging
-from common.utils.cached import cached_method, cached_property
-from common.solana.transaction_decoder import SolTxMetaInfo
+from common.utils.cached import cached_method
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 from common.solana.transaction_meta import (
     SolRpcTxSlotInfo,
-    SolRpcTxIxErrorInfo,
-    SolRpcTxIxFieldErrorCode,
-    SolRpcTxErrorInfo,
-    SolRpcTxFieldErrorCode,
     SolRpcSendTxErrorInfo,
-    SolRpcNodeUnhealthyErrorInfo,
-    SolRpcTxReceiptInfo,
-    SolRpcInvalidParamErrorInfo,
 )
 from common.solana.log_tree_decoder import SolTxLogTreeDecoder
 from common.neon.evm_log_decoder import NeonTxErrorLogInfo
@@ -61,7 +53,7 @@ class NeonTxErrorParser(SolTxErrorParser):
         for log_rec in log_list:
             if log_rec.code == NeonTxErrorLogInfo.ErrorCode.OutOfGas:
                 has_gas_limit = int.from_bytes(log_rec.data[0:31])
-                req_gas_limit = int.from_bytes(log_recdata[32:64])
+                req_gas_limit = int.from_bytes(log_rec.data[32:64])
                 return int(has_gas_limit), int(req_gas_limit)
         return None
 
