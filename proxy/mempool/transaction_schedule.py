@@ -407,7 +407,7 @@ class MpTxSchedule:
         global_tx_dict: MpTxDict,
     ) -> None:
         self._core_api_client = core_api_client
-        self._watch_session = SolWatchAccountSession(cfg, sol_client, commit=SolCommit.Processed)
+        self._watch_session = SolWatchAccountSession(cfg, sol_client)
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
