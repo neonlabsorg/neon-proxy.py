@@ -852,7 +852,7 @@ class MpTxSchedule:
                 if p.status == p.Status.Suspended:
                     if (p.state_tx_cnt, p.balance) != (a.state_tx_cnt, a.balance):
                         self._schedule_sender_pool(p, a.state_tx_cnt, a.balance)
-                if p.status != p.Status.Suspended:
+                if p.status == p.Status.Suspended:
                     continue
 
             await self._watch_session.unsubscribe_account(a.sol_address)
