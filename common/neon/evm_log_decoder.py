@@ -183,7 +183,7 @@ class NeonTxErrorLogInfo:
             message = message,
         )
 
-    def to_clean_copy(self, log: _NeonTxLogDraft) -> NeonTxErrorLogInfo:
+    def to_clean_copy(self) -> NeonTxErrorLogInfo:
         return NeonTxErrorLogInfo(
             code=self.code,
             data=self.data,
@@ -304,8 +304,8 @@ class _NeonTxLogDraft:
             tx_ix_gas=self.tx_ix_gas,
             tx_ix_priority_fee=self.tx_ix_priority_fee,
             tx_return=self.tx_return,
-            tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
-            tx_error_list=[e.to_clean_copy(self) for e in self.tx_error_list],
+            tx_event_list=[e.to_clean_copy() for e in self.tx_event_list],
+            tx_error_list=[e.to_clean_copy() for e in self.tx_error_list],
             is_truncated=self.is_truncated,
             is_already_finalized=self.is_already_finalized,
         )
