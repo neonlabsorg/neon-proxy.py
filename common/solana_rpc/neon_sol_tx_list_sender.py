@@ -1,23 +1,19 @@
-import dataclasses
 import logging
 
-from common.solana_rpc.transaction_list_sender import SolTxListSender
-from common.solana_rpc.transaction_list_sender import SolTxListSigner
-from common.solana_rpc.transaction_list_sender import SolTxStatClient
-from common.solana_rpc.transaction_list_sender import SolWatchTxSession
-from common.solana_rpc.transaction_list_sender import SolTxSendState
-from ..solana.signature import SolTxSig
-from ..solana.transaction import SolTx
-from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
+from common.solana_rpc.transaction_list_sender import (
+    SolTxListSender,
+    SolTxListSigner,
+    SolTxStatClient,
+    SolWatchTxSession,
+    SolTxSendState,
+)
 from ..solana.transaction import SolTx
 from common.neon.neon_tx_error_parser import NeonTxErrorParser
 from common.config.config import Config
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
-    SolBlockhashNotFound,
     SolNeonRequireResizeIterError,
     SolCbExceededError,
-    SolNoMoreRetriesError,
     SolOutOfMemoryError,
 )
 
