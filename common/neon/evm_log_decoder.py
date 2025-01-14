@@ -261,12 +261,6 @@ class NeonTxIxStepInfo:
         return self.step_cnt == 0
 
 @dataclass
-class SolTxIdx:
-    sol_tx_sig: SolTxSig
-    sol_ix_idx: int
-    sol_inner_ix_idx: int | None
-
-@dataclass
 class _NeonTxLogDraft:
     sol_tx_ix: SolTxIxMetaInfo
     neon_tx_hash: EthTxHash

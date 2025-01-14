@@ -15,7 +15,7 @@ from common.solana.transaction_meta import (
     SolRpcInvalidParamErrorInfo,
 )
 from common.solana.log_tree_decoder import SolTxLogTreeDecoder
-from common.neon.evm_log_decoder import SolTxIdx, NeonTxErrorLogInfo
+from common.neon.evm_log_decoder import NeonTxErrorLogInfo
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.solana.signature import SolTxSig
 from ..neon.neon_program import NeonProg
