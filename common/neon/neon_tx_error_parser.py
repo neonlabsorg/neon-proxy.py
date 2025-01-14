@@ -23,6 +23,15 @@ class NeonTxErrorParser(SolTxErrorParser):
     _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
 
     @cached_method
+    def check_if_require_resize_iter(self) -> bool:
+        if self.check_if_preprocessed_error():
+            if self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.ProgramFailedToComplete:
+                return True
+
+        log_list = self._get_evm_log_list()
+        return any(log_rec.find(self._require_resize_iter_msg) != -1 for log_rec in reversed(log_list))
+
+    @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
         evm_log_list = self._get_evm_log_list()
         if any(self._create_neon_acct_re.match(log_rec) for log_rec in evm_log_list):
