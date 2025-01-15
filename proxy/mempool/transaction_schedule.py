@@ -12,7 +12,6 @@ from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.client import CoreApiClient
-from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.ws_client import SolWatchAccountSession
@@ -184,7 +183,7 @@ class _SenderTxPool:
 
     @cached_method
     def to_string(self) -> str:
-        return f"{self._sender.to_string()}:0x{self._chain_id:x}"
+        return f"{self._sender.to_string()}:0x{self._chain_id:x}:0x{self._state_tx_cnt:x}:0x{self._balance:x}"
 
     def __str__(self) -> str:
         return self.to_string()
@@ -532,7 +531,12 @@ class MpTxSchedule:
         self._add_tx_to_sender_pool(pool, tx)
         self._schedule_sender_pool(pool, state_tx_cnt, balance)
 
-        msg = log_msg("add tx {Tx}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs", Tx=tx, **self._info())
+        msg = log_msg(
+            "add tx {Tx} to sender {Pool}, mempool {ChainID} has {TxCnt}({PendingTxCnt}) txs",
+            Tx=tx,
+            Pool=pool,
+            **self._info(),
+        )
         _LOG.debug(msg)
         return MpTxResp(code=MpTxRespCode.Success, state_tx_cnt=None)
 

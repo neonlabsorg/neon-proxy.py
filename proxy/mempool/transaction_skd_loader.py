@@ -98,7 +98,7 @@ class MpSkdTxLoader(MempoolComponent):
         skd_tx_list = await self._db.get_old_neon_skd_tx_list_by_slot(min_slot, 100)
 
         for skd_tx in skd_tx_list:
-            if skd_tx.rlp_tx and NeonTxModel.from_raw(skd_tx).base_fee_per_gas > min_exec_gas_price:
+            if skd_tx.rlp_tx and NeonTxModel.from_raw(skd_tx).operator_fee_per_gas > min_exec_gas_price:
                 mp_tx = MpTxModel.from_skd_tx(skd_tx)
                 await self._exec_client.exec_tx(mp_tx, token)
             else:
