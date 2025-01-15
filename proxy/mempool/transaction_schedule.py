@@ -406,7 +406,7 @@ class MpTxSchedule:
         global_tx_dict: MpTxDict,
     ) -> None:
         self._core_api_client = core_api_client
-        self._watch_session = SolWatchAccountSession(cfg, sol_client)
+        self._watch_session = SolWatchAccountSession(cfg, sol_client, force_update_sec=ONE_BLOCK_SEC * 40)
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
@@ -820,23 +820,16 @@ class MpTxSchedule:
             return
 
         pool_list, self._sub_sender_set = tuple(self._sub_sender_set), set()
-        addr_list = tuple(map(lambda x: NeonAddress.from_raw(x.sender, self._chain_id), pool_list))
-        acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
+        await self._update_sol_addr_list(pool_list)
 
         if not self._watch_session.is_connected:
             await self._watch_session.connect()
 
-        for pool, acct in zip(pool_list, acct_list):
-            if pool.sender not in self._sender_pool_dict:
-                continue
-            elif pool.sol_address.is_empty:
-                pool.set_sol_address(acct.sol_address)
-                self._sol_sender_pool_dict[acct.sol_address] = pool
-
+        for pool in pool_list:
             if pool.sender in self._suspended_sender_set:
-                await self._watch_session.subscribe_account(acct.sol_address)
+                await self._watch_session.subscribe_account(pool.sol_address)
             else:
-                await self._watch_session.unsubscribe_account(acct.sol_address)
+                await self._watch_session.unsubscribe_account(pool.sol_address)
 
         await self._watch_session.update()
         if not (key_list := self._watch_session.pop_changed_key_list()):
@@ -860,6 +853,19 @@ class MpTxSchedule:
                     continue
 
             await self._watch_session.unsubscribe_account(a.sol_address)
+
+    async def _update_sol_addr_list(self, pool_list: Sequence[_SenderTxPool]) -> None:
+        if not (pool_list := tuple([x for x in pool_list if x.sol_address.is_empty])):
+            return
+
+        addr_list = tuple(map(lambda x: NeonAddress.from_raw(x.sender, self._chain_id), pool_list))
+        acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
+        for pool, acct in zip(pool_list, acct_list):
+            if pool.sender not in self._sender_pool_dict:
+                continue
+            else:
+                pool.set_sol_address(acct.sol_address)
+                self._sol_sender_pool_dict[acct.sol_address] = pool
 
     async def _heartbeat_loop(self) -> None:
         sleep_sec: Final[float] = self._eviction_timeout_sec / 10
