@@ -27,8 +27,7 @@ class NeonSkdTreeParser(ExecutorComponent):
         self._tree: NeonSkdTreeModel | None = None
         self._neon_tx_hash = EthTxHash.default()
 
-        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client)
-        self._last_update_sec = 0
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_update_sec=3)
 
     async def start(self) -> None:
         await self._watch_session.connect()
@@ -56,22 +55,21 @@ class NeonSkdTreeParser(ExecutorComponent):
 
     async def _refresh(self) -> None:
         await self._watch_session.update()
-        now = int(time.monotonic())
 
-        if self._watch_session.pop_changed_key_list() or (now - self._last_update_sec > self._sleep_sec):
-            self._tree = await self._core_api_client.get_neon_skd_tree(self._payer, self._nonce)
-            if self._tree.node_list and self._neon_tx_hash.is_empty:
-                self._neon_tx_hash = self._tree.node_list[0].neon_tx_hash
+        if not self._watch_session.pop_changed_key_list():
+            return
 
-            _LOG.debug(
-                "NeonSkdTree %s for payer %s has status %s, txs %d",
-                self.address,
-                self._tree.payer,
-                self._tree.status,
-                len(self._tree.node_list),
-            )
+        self._tree = await self._core_api_client.get_neon_skd_tree(self._payer, self._nonce)
+        if self._tree.node_list and self._neon_tx_hash.is_empty:
+            self._neon_tx_hash = self._tree.node_list[0].neon_tx_hash
 
-            self._last_update_sec = now
+        _LOG.debug(
+            "NeonSkdTree %s for payer %s has status %s, txs %d",
+            self.address,
+            self._tree.payer,
+            self._tree.status,
+            len(self._tree.node_list),
+        )
 
     @cached_method
     async def _get_slot_out(self) -> int:
