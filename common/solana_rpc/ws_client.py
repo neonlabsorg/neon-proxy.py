@@ -342,12 +342,13 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 
     def pop_changed_key_list(self) -> Sequence[SolPubKey]:
         key_list, self._chg_key_set = tuple(self._chg_key_set), set()
-        now = time.monotonic_ns()
-        if (not key_list) and self._force_update_nsec:
-            check_nsec = now - self._force_update_nsec
-            key_list = tuple([x.key for x in self._obj_dict.values() if x.last_nsec < check_nsec])
-        else:
-            self._last_nsec = now
+        if self._force_update_nsec:
+            now = time.monotonic_ns()
+            if key_list:
+                self._last_nsec = now
+            elif (check_nsec := now - self._force_update_nsec) < self._last_nsec:
+                self._last_nsec = now
+                key_list = tuple([x.key for x in self._obj_dict.values() if x.last_nsec < check_nsec])
         return key_list
 
     async def _on_close(self) -> None:
