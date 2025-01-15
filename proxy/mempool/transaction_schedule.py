@@ -7,7 +7,7 @@ import time
 from typing import Final, Sequence
 
 from common.config.config import Config
-from common.config.constants import ONE_BLOCK_SEC
+from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
@@ -406,7 +406,7 @@ class MpTxSchedule:
         global_tx_dict: MpTxDict,
     ) -> None:
         self._core_api_client = core_api_client
-        self._watch_session = SolWatchAccountSession(cfg, sol_client, force_update_sec=ONE_BLOCK_SEC * 40)
+        self._watch_session = SolWatchAccountSession(cfg, sol_client, force_check_sec=MIN_FINALIZE_SEC)
         self._capacity: Final[int] = cfg.mp_capacity
         self._capacity_high_watermark: Final[int] = int(self._capacity * cfg.mp_capacity_high_watermark)
         self._eviction_timeout_sec = cfg.mp_eviction_timeout_sec
