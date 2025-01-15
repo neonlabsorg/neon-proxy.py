@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Generator, Final
 
 from common.config.constants import ONE_BLOCK_SEC
@@ -17,7 +16,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class NeonSkdTreeParser(ExecutorComponent):
-    _sleep_sec: Final[float] = ONE_BLOCK_SEC * 3
+    _recheck_sec: Final[float] = ONE_BLOCK_SEC * 3
 
     def __init__(self, server: ExecutorServerAbc, payer: NeonAddress, nonce: int) -> None:
         super().__init__(server)
@@ -27,7 +26,7 @@ class NeonSkdTreeParser(ExecutorComponent):
         self._tree: NeonSkdTreeModel | None = None
         self._neon_tx_hash = EthTxHash.default()
 
-        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_update_sec=3)
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_check_sec=self._recheck_sec)
 
     async def start(self) -> None:
         await self._watch_session.connect()
