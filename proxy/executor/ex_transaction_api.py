@@ -15,7 +15,6 @@ from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context
 from .alt_destroyer import SolAltDestroyer
@@ -152,16 +151,13 @@ class NeonTxExecApi(ExecutorApi):
                 return await self._neon_tx_executor.exec_neon_tx(ctx)
 
             except StuckTxError as exc:
-                _LOG.debug("switch to complete the stuck NeonTx %s", exc.neon_tx_hash)
-
-                if exc.neon_tx_hash in self._task_dict:
-                    await _free_res(request.req_id, op_res, ctx)
-                else:
+                if exc.neon_tx_hash not in self._task_dict:
+                    _LOG.debug("switch to complete the stuck NeonTx %s", exc.neon_tx_hash)
                     task = asyncio.create_task(_complete_stuck_neon_tx(op_res, ctx, exc))
                     self._task_dict[exc.neon_tx_hash] = task
-                    op_res, ctx = None, None
 
-                _LOG.debug("return back to the execution of NeonTx %s", request.neon_tx_hash)
+                    op_res, ctx = None, None
+                    _LOG.debug("return back to the execution of NeonTx %s", request.neon_tx_hash)
 
             except BaseException as exc:
                 _LOG.error("unexpected error on execute NeonTx", exc_info=exc, extra=self._msg_filter)
