@@ -73,11 +73,12 @@ class _SolWsObjInfo(Generic[_SolWsObjKey, _SolWsObj]):
     sub_id: int | None
     key: _SolWsObjKey | None
     obj: _SolWsObj | None
+    last_nsec: int
 
 
 class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
     _ObjInfo = _SolWsObjInfo[_SolWsObjKey, _SolWsObj]
-    _empty_info: Final[_ObjInfo] = _SolWsObjInfo(None, None, None, None)
+    _empty_info: Final[_ObjInfo] = _SolWsObjInfo(None, None, None, None, 0)
 
     def __init__(self, cfg: Config, sol_client: SolClient, *, ws_endpoint: HttpStrOrURL | None = None) -> None:
         self._cfg = cfg
@@ -171,6 +172,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
     async def _wait(self, timeout_sec: float | None) -> None:
         item_list = await self._ws_receive_data(timeout_sec)
+        now = time.monotonic_ns()
         for item in item_list:
             if isinstance(item, _SoldersSubError):
                 if key := self._req_dict.pop(item.id, None):
@@ -187,7 +189,8 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     assert item.result not in self._sub_dict, f"subscription {item.result} for {key} already exists?"
 
                     self._sub_dict[item.result] = key
-                    self._obj_dict[key] = _SolWsObjInfo(key=key, obj=info.obj, req_id=item.id, sub_id=item.result)
+                    info = _SolWsObjInfo(key=key, obj=info.obj, req_id=item.id, sub_id=item.result, last_nsec=now)
+                    self._obj_dict[key] = info
                     # _LOG.debug("got subscription %s for %s", item.result, key)
                 else:
                     _LOG.warning("unknown request %s for result %s", item.id, item.result)
@@ -196,7 +199,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.req_id not in self._req_dict, f"request {info.req_id} for {key} still exists?"
                     # _LOG.debug("got notification %s", key)
-                    self._on_sub_notif(info, item)
+                    self._on_sub_notif(info, item, now)
                 else:
                     _LOG.warning("unknown subscription %s on notification", item.subscription)
 
@@ -205,7 +208,8 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
             return
 
         req_id = self._get_next_id()
-        info = _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None)
+        now = time.monotonic_ns()
+        info = _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None, last_nsec=now)
         self._req_dict[req_id] = key
         self._obj_dict[key] = info
 
@@ -243,7 +247,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
     # fmt: off
     async def _on_close(self) -> None: ...
     def _on_sub_error(self, key: _SolWsObjKey, obj: _SolWsObj) -> None: ...
-    def _on_sub_notif(self, info: _ObjInfo, data: _SolWsSubNotif) -> None: ...
+    def _on_sub_notif(self, info: _ObjInfo, data: _SolWsSubNotif, now: int) -> None: ...
     def _new_sub_request(self, info: _ObjInfo, commit: SolCommit) -> _SolWsSendData: ...
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData: ...
     # fmt: on
@@ -298,11 +302,14 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 
     def __init__(self, *args, **kwargs) -> None:
         commit = kwargs.pop("commit", SolCommit.Confirmed)
+        update_nsec = kwargs.pop("force_update_sec", 0) * (10**9)
         super().__init__(*args, **kwargs)
         self._commit = commit
+        self._force_update_nsec = update_nsec
         self._reconnect_future: asyncio.Future[Any] | None = None
         self._update_future: asyncio.Future[Any] | None = None
         self._chg_key_set: set[SolPubKey] = set()
+        self._last_nsec: int = 0
 
     async def update(self, *, timeout_sec: float = 0.0001) -> None:
         if self._update_future:
@@ -319,6 +326,9 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
                 future.set_result(None)
 
     async def subscribe_account(self, addr: SolPubKey) -> None:
+        if addr in self._obj_dict:
+            return
+
         acct = await self._sol_client.get_account(addr, commit=self._commit)
         await self._sub_obj(addr, acct, self._commit)
         self._chg_key_set.add(addr)
@@ -328,11 +338,16 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         self._chg_key_set.discard(addr)
 
     def get_account(self, addr: SolPubKey) -> SolAccountModel | None:
-        info = self._obj_dict.get(addr, None)
-        return info.obj if info else None
+        return info.obj if (info := self._obj_dict.get(addr, None)) else None
 
     def pop_changed_key_list(self) -> Sequence[SolPubKey]:
         key_list, self._chg_key_set = tuple(self._chg_key_set), set()
+        now = time.monotonic_ns()
+        if (not key_list) and self._force_update_nsec:
+            check_nsec = now - self._force_update_nsec
+            key_list = tuple([x.key for x in self._obj_dict.values() if x.last_nsec < check_nsec])
+        else:
+            self._last_nsec = now
         return key_list
 
     async def _on_close(self) -> None:
@@ -356,9 +371,9 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
             if future:
                 future.set_result(None)
 
-    def _on_sub_notif(self, info: _AcctInfo, data: _SoldersAcctNotif) -> None:
+    def _on_sub_notif(self, info: _AcctInfo, data: _SoldersAcctNotif, now: int) -> None:
         acct = SolAccountModel.from_raw(info.key, data.result.value)
-        info = _SolWsObjInfo(req_id=info.req_id, sub_id=info.sub_id, key=info.key, obj=acct)
+        info = _SolWsObjInfo(req_id=info.req_id, sub_id=info.sub_id, key=info.key, obj=acct, last_nsec=now)
         self._obj_dict[info.key] = info
         self._chg_key_set.add(info.key)
         self._sub_dict[info.sub_id] = info.key
