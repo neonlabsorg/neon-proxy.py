@@ -488,7 +488,7 @@ class _RpcNeonTreeAccountResp(BaseJsonRpcModel):
             maxFeePerGas=tree.max_fee_per_gas,
             maxPriorityFeePerGas=tree.max_priority_fee_per_gas,
             balance=tree.balance,
-            lastIndex=tree.last_index,
+            lastIndex=tree.last_idx,
             transactions=[_RpcNeonTreeNodeModel.from_raw(n) for n in tree.node_list],
         )
 
@@ -770,7 +770,7 @@ class NpBlockTxApi(NeonProxyApi):
 
         async def _new_tx_status(_tx: MpTxStatusModel, _tree: NeonSkdTreeModel, idx: int) -> _RpcNeonTxStatusModel:
             if not _tree.is_exist:
-                status, exec_pct, tx_hash = _get_status(_tx), _tx.get_exec_pct(_tx.neon_tx_hash), _tx.neon_tx_hash
+                status, exec_pct, tx_hash = _RpcNeonTxStatus.Done, _tx.get_exec_pct(_tx.neon_tx_hash), _tx.neon_tx_hash
             else:
                 tx_hash = _tree.node_list[idx].neon_tx_hash
                 status, exec_pct = await _get_status_pct(_tx, _tree, idx)
