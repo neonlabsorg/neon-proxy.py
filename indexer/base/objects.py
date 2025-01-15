@@ -466,6 +466,11 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
 
     @classmethod
     def from_dict(cls, data: dict) -> Self:
+        # TODO: remove after upgrade
+        neon_tx_rcpt: dict = data.get("neon_tx_rcpt")
+        if "base_fee_used" not in neon_tx_rcpt:
+            neon_tx_rcpt["base_fee_used"] = data.pop("base_fee_used", 0)
+        #
         init = cls.InitData.from_dict(data)
 
         self = cls(
