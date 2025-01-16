@@ -157,7 +157,7 @@ class NeonTxExecApi(ExecutorApi):
                     self._task_dict[exc.neon_tx_hash] = task
 
                     op_res, ctx = None, None
-                    _LOG.debug("return back to the execution of NeonTx %s", request.neon_tx_hash)
+                    _LOG.debug("return back to the execution of NeonTx %s", request.tx.neon_tx_hash)
 
             except BaseException as exc:
                 _LOG.error("unexpected error on execute NeonTx", exc_info=exc, extra=self._msg_filter)
