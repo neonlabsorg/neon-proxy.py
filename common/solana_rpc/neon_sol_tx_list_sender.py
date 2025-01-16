@@ -17,6 +17,8 @@ from common.solana_rpc.errors import (
     SolOutOfMemoryError,
 )
 
+from common.solana.transaction_meta import SolRpcTxReceiptInfo
+
 _LOG = logging.getLogger(__name__)
 
 class NeonSolTxListSender(SolTxListSender):
