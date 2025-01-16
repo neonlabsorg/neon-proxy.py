@@ -201,6 +201,7 @@ class NeonTxLogInfo:
     tx_ix_base_fee: NeonTxIxBaseFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
+    tx_error_list: list[NeonTxErrorLogInfo]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -307,6 +308,7 @@ class _NeonTxLogDraft:
     tx_ix_base_fee: NeonTxIxBaseFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
+    tx_error_list: list[NeonTxErrorLogInfo]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -322,6 +324,7 @@ class _NeonTxLogDraft:
             tx_ix_base_fee=NeonTxIxBaseFeeInfo.default(),
             tx_return=NeonTxLogReturnInfo.default(),
             tx_event_list=list(),
+            tx_error_list=list(),
             is_truncated=False,
             is_already_finalized=False,
         )
@@ -342,6 +345,7 @@ class _NeonTxLogDraft:
             tx_ix_base_fee=self.tx_ix_base_fee,
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
+            tx_error_list=[e.to_clean_copy() for e in self.tx_error_list],
             is_truncated=self.is_truncated,
             is_already_finalized=self.is_already_finalized,
         )
