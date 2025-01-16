@@ -517,6 +517,31 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
         log.tx_ix_step = NeonTxIxStepInfo(step_cnt=step_cnt, total_step_cnt=total_step_cnt)
 
 
+class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "ERROR"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+        """
+        Unpacks Neon error data:
+        ERROR <32 bytes - code> <bytearray - data> <str - message>
+        """
+        if len(data_list) != 3:
+            _LOG.error("failed to decode %s: should be at least 3 element in %s", cls.name, data_list)
+            return
+
+        bs = base64.b64decode(data_list[0])
+        code = int.from_bytes(bs, "little")
+
+        bs = base64.b64decode(data_list[1])
+        data = bytearray(bs)
+
+        msg = base64.b64decode(data_list[2])
+
+        error = NeonTxErrorLogInfo.from_raw(code, data, msg)
+        log.tx_error_list.append(error)
+
+
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
 
@@ -747,6 +772,7 @@ class NeonEvmLogDecoder:
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
         _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
         _NeonEvmBaseFeeLogDecoder.name: _NeonEvmBaseFeeLogDecoder,
+        _NeonEvmErrorLogDecoder.name: _NeonEvmErrorLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,
