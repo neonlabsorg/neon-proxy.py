@@ -1,2 +1,2 @@
-server_type = "cpx51"
+server_type = "cx52"
 location = "fsn1"
