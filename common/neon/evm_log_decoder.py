@@ -7,6 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Final, Sequence, Annotated, ClassVar
+from enum import IntEnum
 
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
@@ -103,6 +104,92 @@ class NeonTxEventModel(BaseModel):
         bloom = BloomFilter.from_iterable(iter_list)
         return int(bloom)
 
+@dataclass
+class NeonTxErrorLogInfo:
+    class ErrorCode(IntEnum):
+        Custom = 0
+        ProgramError = enum.auto()
+        PubkeyError = enum.auto()
+        RlpError = enum.auto()
+        Secp256k1Error = enum.auto()
+        BincodeError = enum.auto()
+        BorshError = enum.auto()
+        FromHexError = enum.auto()
+        TryFromIntError = enum.auto()
+        TryFromSliceError = enum.auto()
+        Utf8Error = enum.auto()
+        AccountMissing = enum.auto()
+        AccountBlocked = enum.auto()
+        AccountCreatedByAnotherTransaction = enum.auto()
+        AccountInvalidTag = enum.auto()
+        AccountInvalidOwner = enum.auto()
+        AccountInvalidKey = enum.auto()
+        AccountInvalidData = enum.auto()
+        AccountNotWritable = enum.auto()
+        AccountNotSigner = enum.auto()
+        AccountNotRentExempt = enum.auto()
+        AccountAlreadyInitialized = enum.auto()
+        AccountLegacy = enum.auto()
+        UnauthorizedOperator = enum.auto()
+        StorageAccountUninitialized = enum.auto()
+        StorageAccountFinalized = enum.auto()
+        UnknownPrecompileMethodSelector = enum.auto()
+        InsufficientBalance = enum.auto()
+        InvalidTransferToken = enum.auto()
+        OutOfGas = enum.auto()
+        OutOfPriorityFee = enum.auto()
+        GasReceiverInvalidChainId = enum.auto()
+        StackOverflow = enum.auto()
+        StackUnderflow = enum.auto()
+        PushOutOfBounds = enum.auto()
+        MemoryAccessOutOfLimits = enum.auto()
+        ReturnDataCopyOverflow = enum.auto()
+        StaticModeViolation = enum.auto()
+        InvalidJump = enum.auto()
+        InvalidOpcode = enum.auto()
+        UnknownOpcode = enum.auto()
+        NonceOverflow = enum.auto()
+        InvalidTransactionNonce = enum.auto()
+        InvalidChainId = enum.auto()
+        DeployToExistingAccount = enum.auto()
+        EVMObjectFormatNotSupported = enum.auto()
+        ContractCodeSizeLimit = enum.auto()
+        SenderHasDeployedCode = enum.auto()
+        IntegerOverflow = enum.auto()
+        OutOfBounds = enum.auto()
+        HolderInvalidOwner = enum.auto()
+        HolderInsufficientSize = enum.auto()
+        HolderInvalidHash = enum.auto()
+        AccountSpaceAllocationFailure = enum.auto()
+        InvalidAccountForCall = enum.auto()
+        UnavalableExternalSolanaCall = enum.auto()
+        RecursiveCall = enum.auto()
+        ExternalCallFailed = enum.auto()
+        OperatorBalanceInvalidOwner = enum.auto()
+        OperatorBalanceMissing = enum.auto()
+        OperatorBalanceInvalidChainId = enum.auto()
+        OperatorBalanceInvalidAddress = enum.auto()
+        PriorityFeeNotSpecified = enum.auto()
+        PriorityFeeParsingError = enum.auto()
+        PriorityFeeError = enum.auto()
+    code: ErrorCode
+    data: bytearray
+    message: str
+
+    @classmethod
+    def from_raw(cls, code: int, data: bytearray, message: str):
+        return cls(
+            code = code,
+            data = data[4:],
+            message = message,
+        )
+
+    def to_clean_copy(self) -> NeonTxErrorLogInfo:
+        return NeonTxErrorLogInfo(
+            code=self.code,
+            data=self.data,
+            message=self.message,
+        )
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
