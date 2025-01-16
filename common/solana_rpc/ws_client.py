@@ -203,7 +203,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 else:
                     _LOG.warning("unknown subscription %s on notification", item.subscription)
 
-    async def _sub_obj(self, key: _SolWsObjKey, obj: _SolWsObj, commit: SolCommit) -> None:
+    async def _sub_obj(self, key: _SolWsObjKey, obj: _SolWsObj | None, commit: SolCommit) -> None:
         if key in self._obj_dict:
             return
 
@@ -330,13 +330,21 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
             if future:
                 future.set_result(None)
 
-    async def subscribe_account(self, addr: SolPubKey) -> None:
+    async def subscribe_account(self, addr: SolPubKey, *, init_account = False) -> None:
         if addr in self._obj_dict:
             return
 
-        acct = await self._sol_client.get_account(addr, commit=self._commit)
-        await self._sub_obj(addr, acct, self._commit)
-        self._chg_key_set.add(addr)
+        acct = await self._sol_client.get_account(addr, commit=self._commit) if init_account else None
+        for retry in itertools.count():
+            try:
+                await self.connect()
+                await self._sub_obj(addr, acct, self._commit)
+                self._chg_key_set.add(addr)
+
+                return
+            except (BaseException,):
+                if retry > 5:
+                    raise
 
     async def unsubscribe_account(self, addr: SolPubKey) -> None:
         await self._unsub_obj(addr)
