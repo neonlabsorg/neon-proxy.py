@@ -10,7 +10,7 @@ from common.solana.log_tree_decoder import SolTxLogTreeDecoder
 from common.neon.evm_log_decoder import NeonTxErrorLogInfo
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.solana.signature import SolTxSig
-from ..neon.neon_program import NeonProg
+from common.neon.neon_program import NeonProg
 from common.solana.transaction_decoder import SolTxIxMetaInfo
 
 _LOG = logging.getLogger(__name__)

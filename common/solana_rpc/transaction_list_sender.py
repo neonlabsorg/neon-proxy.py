@@ -30,7 +30,7 @@ from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
 
-from ..neon.neon_tx_error_parser import NeonTxErrorParser
+from ..solana_rpc.neon_tx_error_parser import NeonTxErrorParser
 
 _LOG = logging.getLogger(__name__)
 
