@@ -822,9 +822,6 @@ class MpTxSchedule:
         pool_list, self._sub_sender_set = tuple(self._sub_sender_set), set()
         await self._update_sol_addr_list(pool_list)
 
-        if not self._watch_session.is_connected:
-            await self._watch_session.connect()
-
         for pool in pool_list:
             if pool.sender in self._suspended_sender_set:
                 await self._watch_session.subscribe_account(pool.sol_address)

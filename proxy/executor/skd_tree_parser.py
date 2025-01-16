@@ -29,7 +29,6 @@ class NeonSkdTreeParser(ExecutorComponent):
         self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_check_sec=self._recheck_sec)
 
     async def start(self) -> None:
-        await self._watch_session.connect()
         await self._watch_session.subscribe_account(self.address)
         await self._refresh()
 

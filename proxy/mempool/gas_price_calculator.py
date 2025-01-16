@@ -87,7 +87,6 @@ class MpGasPriceCalculator(MempoolComponent):
         self._recent_gas_price_dict: dict[int, deque[MpSlotGasPriceModel]] = dict()
 
     async def start(self) -> None:
-        await self._watch_session.connect()
         self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
         self._update_gas_price_task = asyncio.create_task(self._update_gas_price_loop())
 
@@ -244,7 +243,7 @@ class MpGasPriceCalculator(MempoolComponent):
             return PythPriceAccount.default()
 
         elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
-            await self._watch_session.subscribe_account(price_acct.address)
+            await self._watch_session.subscribe_account(price_acct.address, init_account=True)
             raw_acct = self._watch_session.get_account(price_acct.address)
 
         price_acct.update_data(raw_acct)
