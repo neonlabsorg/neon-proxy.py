@@ -25,18 +25,6 @@ class NeonSolTxListSender(SolTxListSender):
 
     _DecodeResult = SolTxListSender._DecodeResult
 
-    def __init__(
-            self,
-            cfg: Config,
-            stat_client: SolTxStatClient,
-            sol_session: SolWatchTxSession,
-            sol_tx_signer: SolTxListSigner,
-    ) -> None:
-        super().__init__(cfg, stat_client, sol_session, sol_tx_signer)
-
-    def clear(self) -> None:
-        super().clear()
-
     def _add_tx_receipt(
         self,
         tx: SolTx,
