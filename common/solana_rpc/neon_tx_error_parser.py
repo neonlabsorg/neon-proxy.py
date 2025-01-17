@@ -1,16 +1,17 @@
+import re
 import logging
 from common.utils.cached import cached_method
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 from common.solana.transaction_meta import (
     SolRpcTxSlotInfo,
     SolRpcSendTxErrorInfo,
+    SolRpcTxIxFieldErrorCode,
 )
-
 from common.solana.log_tree_decoder import SolTxLogTreeDecoder
 from common.neon.evm_log_decoder import NeonTxErrorLogInfo
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.solana.signature import SolTxSig
-from ..neon.neon_program import NeonProg
+from common.neon.neon_program import NeonProg
 from common.solana.transaction_decoder import SolTxIxMetaInfo
 
 _LOG = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class NeonTxErrorParser(SolTxErrorParser):
         return None
 
     @cached_method
-    def get_out_of_gas_error(self) -> tuple[int, int] | None:
+    def  get_out_of_gas_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
             if log_rec.code == NeonTxErrorLogInfo.ErrorCode.OutOfGas:
@@ -103,8 +104,8 @@ class NeonTxErrorParser(SolTxErrorParser):
         for log_info in log_state.log_list:
             if log_info.prog_id == NeonProg.ID:
                 log_list.extend(log_info.log_msg_list())
-                neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, log_list)
-                for error_item in neon_log.tx_error_list:
-                    error_log_list.append(error_item)
+            neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, log_list)
+            for error_item in neon_log.tx_error_list:
+                error_log_list.append(error_item)
 
-            return tuple(error_log_list)
+        return tuple(error_log_list)

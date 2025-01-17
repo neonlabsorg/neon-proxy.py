@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Sequence, Final
+from typing import Final
 
 from ..neon.neon_program import NeonProg
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
@@ -106,16 +106,6 @@ class SolTxErrorParser:
         log_list = self._get_log_list()
         return any(log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg) for log_rec in log_list)
 
-    @cached_method
-    def check_if_require_resize_iter(self) -> bool:
-        log_list = self._get_evm_log_list()
-        return any(log_rec.find(self._require_resize_iter_msg) != -1 for log_rec in reversed(log_list))
-
-
-    @cached_method
-    def check_if_already_finalized(self) -> bool:
-        log_list = self._get_evm_log_list()
-        return any(log_rec == self._already_finalized_msg for log_rec in log_list)
 
     @cached_method
     def check_if_blockhash_notfound(self) -> bool:
@@ -151,7 +141,7 @@ class SolTxErrorParser:
         return None
 
     @cached_method
-    def _get_log_list(self) -> Sequence[str]:
+    def _get_log_list(self) -> tuple[str, ...]:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return tuple(self._receipt.logs or list())
         if isinstance(self._receipt, SolRpcTxSlotInfo):

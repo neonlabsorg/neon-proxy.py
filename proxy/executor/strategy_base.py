@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
-from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
+from common.solana_rpc.ws_client import SolWatchTxSession
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
 from common.solana.commit_level import SolCommit
@@ -377,6 +377,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         fake_tx_ix = SolTxIxMetaInfo.default()
         try:
             log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
+            _LOG.debug("_emulate_tx_list: neon_log.tx_error_list.size() = %d", len(log.tx_error_list))
         except (BaseException,):
             # _LOG.debug("exception on find GAS, use default %s", gas_limit)
             return gas_limit
