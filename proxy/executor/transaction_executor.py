@@ -202,7 +202,7 @@ class NeonTxExecutor(ExecutorComponent):
 
             except BaseException as exc:
                 ctx.mark_skip_simple_strategy()
-                _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter)
+                _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(strategy)
 
     async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
