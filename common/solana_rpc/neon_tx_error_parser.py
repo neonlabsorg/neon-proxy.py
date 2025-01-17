@@ -42,6 +42,11 @@ class NeonTxErrorParser(SolTxErrorParser):
         return any(self._create_acct_re.match(log_rec) for log_rec in raw_log_list)
 
     @cached_method
+    def check_if_out_of_memory(self) -> bool:
+        log_list = self._get_log_list()
+        return any(log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg) for log_rec in log_list)
+
+    @cached_method
     def check_if_already_finalized(self) -> bool:
         log_list = self._get_evm_error_log_list()
         return any(log_rec.code == NeonTxErrorLogInfo.ErrorCode.StorageAccountFinalized for log_rec in log_list)

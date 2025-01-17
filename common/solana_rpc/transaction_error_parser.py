@@ -102,12 +102,6 @@ class SolTxErrorParser:
         return None
 
     @cached_method
-    def check_if_out_of_memory(self) -> bool:
-        log_list = self._get_log_list()
-        return any(log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg) for log_rec in log_list)
-
-
-    @cached_method
     def check_if_blockhash_notfound(self) -> bool:
         if self._receipt is None:
             return True
