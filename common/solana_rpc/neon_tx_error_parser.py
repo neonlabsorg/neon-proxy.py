@@ -5,6 +5,7 @@ from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 from common.solana.transaction_meta import (
     SolRpcTxSlotInfo,
     SolRpcSendTxErrorInfo,
+    SolRpcTxIxFieldErrorCode,
 )
 from common.solana.log_tree_decoder import SolTxLogTreeDecoder
 from common.neon.evm_log_decoder import NeonTxErrorLogInfo
@@ -57,7 +58,7 @@ class NeonTxErrorParser(SolTxErrorParser):
         return None
 
     @cached_method
-    def get_out_of_gas_error(self) -> tuple[int, int] | None:
+    def  get_out_of_gas_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
             if log_rec.code == NeonTxErrorLogInfo.ErrorCode.OutOfGas:
