@@ -61,6 +61,8 @@ class NeonSolTxListSender(SolTxListSender):
         elif neon_tx_error_parser.check_if_neon_account_already_exists():
             # no exception: neon account exists - the goal is reached
             return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)
+        elif tx_error_parser.check_if_out_of_memory():
+            return self._DecodeResult(status.OutOfMemoryError, SolOutOfMemoryError())
 
         elif gas_limit_error := neon_tx_error_parser.get_out_of_gas_error():
             gas_limit, required_gas_limit = gas_limit_error

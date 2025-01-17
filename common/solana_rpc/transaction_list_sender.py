@@ -449,8 +449,6 @@ class SolTxListSender:
             if cu_consumed := tx_error_parser.cu_consumed:
                 _LOG.debug("CUs consumed: %s", cu_consumed)
             return self._DecodeResult(status.CbExceededError, SolCbExceededError())
-        elif tx_error_parser.check_if_out_of_memory():
-            return self._DecodeResult(status.OutOfMemoryError, SolOutOfMemoryError())
 
         elif tx_error_parser.check_if_error():
             _LOG.debug("unknown error receipt %s: %s", tx, tx_receipt)
