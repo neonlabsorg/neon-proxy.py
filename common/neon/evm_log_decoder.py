@@ -104,7 +104,7 @@ class NeonTxEventModel(BaseModel):
         bloom = BloomFilter.from_iterable(iter_list)
         return int(bloom)
 
-@dataclass
+@dataclass(frozen=True)
 class NeonTxErrorLogInfo:
     class ErrorCode(IntEnum):
         Custom = 0
