@@ -1,6 +1,6 @@
 import logging
 
-from common.solana_rpc.transaction_list_sender import (
+from .transaction_list_sender import (
     SolTxListSender,
     SolTxListSigner,
     SolTxStatClient,
@@ -8,7 +8,7 @@ from common.solana_rpc.transaction_list_sender import (
     SolTxSendState,
 )
 from ..solana.transaction import SolTx
-from common.solana_rpc.neon_tx_error_parser import NeonTxErrorParser
+from .neon_tx_error_parser import NeonTxErrorParser
 from common.config.config import Config
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
