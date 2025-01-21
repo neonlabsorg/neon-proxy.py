@@ -1,19 +1,21 @@
 import re
 import logging
-from common.utils.cached import cached_method
+from ..utils.cached import cached_method
 from typing import Sequence
-from common.solana_rpc.transaction_error_parser import SolTxErrorParser
-from common.solana.transaction_meta import (
+from .transaction_error_parser import SolTxErrorParser
+from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
     SolRpcSendTxErrorInfo,
     SolRpcTxIxFieldErrorCode,
 )
-from common.solana.log_tree_decoder import SolTxLogTreeDecoder
-from common.neon.evm_log_decoder import NeonTxErrorLogInfo
-from common.neon.evm_log_decoder import NeonEvmLogDecoder
-from common.solana.signature import SolTxSig
-from common.neon.neon_program import NeonProg
-from common.solana.transaction_decoder import SolTxIxMetaInfo
+from ..solana.log_tree_decoder import SolTxLogTreeDecoder
+from common.neon.evm_log_decoder import (
+    NeonTxErrorLogInfo,
+    NeonEvmLogDecoder,
+)
+from ..solana.signature import SolTxSig
+from ..neon.neon_program import NeonProg
+from ..solana.transaction_decoder import SolTxIxMetaInfo
 
 _LOG = logging.getLogger(__name__)
 
@@ -23,15 +25,6 @@ class NeonTxErrorParser(SolTxErrorParser):
 
     _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
     _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
-
-    @cached_method
-    def check_if_require_resize_iter(self) -> bool:
-        if self.check_if_preprocessed_error():
-            if self._get_tx_ix_error() == SolRpcTxIxFieldErrorCode.ProgramFailedToComplete:
-                return True
-
-        log_list = self._get_evm_log_list()
-        return any(log_rec.find(self._require_resize_iter_msg) != -1 for log_rec in reversed(log_list))
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
@@ -73,7 +66,7 @@ class NeonTxErrorParser(SolTxErrorParser):
         return None
 
     @cached_method
-    def _get_evm_log_list(self) -> tuple[str, ...]:
+    def _get_evm_log_list(self) -> Sequence[str]:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             rpc_meta = self._receipt
         elif isinstance(self._receipt, SolRpcTxSlotInfo):
@@ -101,7 +94,4 @@ class NeonTxErrorParser(SolTxErrorParser):
         except(BaseException,):
             return tuple()
 
-        error_log_list: list[NeonTxErrorLogInfo] = list()
-        for error_item in neon_log.tx_error_list:
-            error_log_list.append(error_item)
-        return tuple(error_log_list)
+        return tuple(neon_log.tx_error_list)
