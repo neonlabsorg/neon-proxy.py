@@ -438,7 +438,7 @@ class CoreApiClient(HttpClient):
             return None
 
         if data[:8] != "08c379a0":  # keccak256("Error(string)")
-            _LOG.debug(f"failed to decode revert_message, unknown revert signature: {data[:8]}")
+            # _LOG.debug(f"failed to decode revert_message, unknown revert signature: {data[:8]}")
             return None
 
         if data_len < 8 + 64:
