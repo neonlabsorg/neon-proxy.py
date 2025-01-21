@@ -9,7 +9,6 @@ from typing_extensions import Self
 
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
-from common.solana_rpc.ws_client import SolWatchTxSession
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
