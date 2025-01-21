@@ -23,7 +23,6 @@ from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxF
 from .ws_client import SolWatchTxSession
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
-from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError, EthOutOfGasError
 from ..solana.commit_level import SolCommit
 from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash

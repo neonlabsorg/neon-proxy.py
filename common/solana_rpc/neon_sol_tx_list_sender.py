@@ -14,6 +14,7 @@ from common.solana_rpc.errors import (
 )
 
 from common.solana.transaction_meta import SolRpcTxReceiptInfo
+from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError, EthOutOfGasError
 
 _LOG = logging.getLogger(__name__)
 
