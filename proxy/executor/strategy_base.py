@@ -398,8 +398,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         used_cu_limit: Final[int] = emul_tx.meta.used_cu_limit
 
         max_cu_limit: Final[int] = base_cfg.cu_limit
-        # let's decrease the available cu-limit on 5% percents, because Solana uses it for ComputeBudget calls
-        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)
+        # let's decrease the available cu-limit on 1% percent, because Solana uses it for ComputeBudget calls
+        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.99)
 
         if used_cu_limit > threshold_cu_limit:
             _LOG.debug(
