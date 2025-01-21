@@ -374,14 +374,23 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         try:
             self._reconnect_future = asyncio.get_event_loop().create_future()
 
-            acct_list = tuple([info.obj for info in self._obj_dict.values()])
-            self._clear()
+            acct_queue: list[_SolWsObjInfo] = list()
+            for retry in itertools.count():
+                acct_queue.extend(self._obj_dict.values())
+                self._clear()
 
-            await self.disconnect()
-            await self.connect()
+                try:
+                    await self.disconnect()
+                    await self.connect()
 
-            if acct_list:
-                await asyncio.gather(*[self._sub_obj(acct.address, acct, self._commit) for acct in acct_list])
+                    while acct_queue:
+                        info = acct_queue.pop()
+                        await self._sub_obj(info.key, info.obj, self._commit)
+                    return
+
+                except (BaseException,):
+                    if retry > 5:
+                        raise
         finally:
             future, self._reconnect_future = self._reconnect_future, None
             if future:
