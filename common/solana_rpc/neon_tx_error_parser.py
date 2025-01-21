@@ -1,6 +1,7 @@
 import re
 import logging
 from common.utils.cached import cached_method
+from typing import Sequence
 from common.solana_rpc.transaction_error_parser import SolTxErrorParser
 from common.solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -92,25 +93,16 @@ class NeonTxErrorParser(SolTxErrorParser):
         return tuple(log_list)
 
     @cached_method
-    def _get_evm_error_log_list(self) -> tuple[NeonTxErrorLogInfo, ...]:
-        if isinstance(self._receipt, SolRpcSendTxErrorInfo):
-            rpc_meta = self._receipt
-        elif isinstance(self._receipt, SolRpcTxSlotInfo):
-            rpc_meta = self._receipt.transaction.meta
-        else:
-            return tuple()
-
-        log_list: list[str] = list()
-        log_state = SolTxLogTreeDecoder.decode(self._tx.message, rpc_meta, self._tx.account_key_list)
+    def _get_evm_error_log_list(self) -> Sequence[NeonTxErrorLogInfo]:
+        evm_log_list = self._get_evm_log_list()
 
         fake_tx_ix = SolTxIxMetaInfo.default()
+        try:
+            neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, evm_log_list)
+        except(BaseException,):
+            return tuple()
 
         error_log_list: list[NeonTxErrorLogInfo] = list()
-        for log_info in log_state.log_list:
-            if log_info.prog_id == NeonProg.ID:
-                log_list.extend(log_info.log_msg_list())
-            neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, log_list)
-            for error_item in neon_log.tx_error_list:
-                error_log_list.append(error_item)
-
+        for error_item in neon_log.tx_error_list:
+            error_log_list.append(error_item)
         return tuple(error_log_list)
