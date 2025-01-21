@@ -184,13 +184,6 @@ class NeonTxErrorLogInfo:
             message = message,
         )
 
-    def to_clean_copy(self) -> NeonTxErrorLogInfo:
-        return NeonTxErrorLogInfo(
-            code=self.code,
-            data=self.data,
-            message=self.message,
-        )
-
 @dataclass(frozen=True)
 class NeonTxLogInfo:
     neon_tx_hash: EthTxHash
@@ -345,7 +338,7 @@ class _NeonTxLogDraft:
             tx_ix_base_fee=self.tx_ix_base_fee,
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
-            tx_error_list=[e.to_clean_copy() for e in self.tx_error_list],
+            tx_error_list=self.tx_error_list,
             is_truncated=self.is_truncated,
             is_already_finalized=self.is_already_finalized,
         )
