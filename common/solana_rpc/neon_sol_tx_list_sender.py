@@ -2,14 +2,10 @@ import logging
 
 from .transaction_list_sender import (
     SolTxListSender,
-    SolTxListSigner,
-    SolTxStatClient,
-    SolWatchTxSession,
     SolTxSendState,
 )
 from ..solana.transaction import SolTx
 from .neon_tx_error_parser import NeonTxErrorParser
-from common.config.config import Config
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolNeonRequireResizeIterError,
