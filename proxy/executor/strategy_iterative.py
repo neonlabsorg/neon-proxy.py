@@ -252,7 +252,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         #           - no:  go to the step 2
         #
         #   2 step:
-        #      - divide the maximum-CU-usage on 95% of CU-limit of 1 SolTx
+        #      - divide the maximum-CU-usage on 99% of CU-limit of 1 SolTx
         #           => the number of iterations
         #      - divide the total-EVM-steps on the number of iterations
         #           => the number of EVM steps in 1 iteration
@@ -312,7 +312,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
         # decrease the available CU limit in Neon iteration, because it is used for Compute Budget calls
-        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.95)  # 95% of the maximum
+        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.99)  # 99% of the maximum
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 50_000
         max_diff: Final[int] = 250_000
