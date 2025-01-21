@@ -17,6 +17,7 @@ from .errors import (
     SolCbExceededError,
     SolNoMoreRetriesError,
     SolOutOfMemoryError,
+    SolWritableError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
@@ -58,6 +59,7 @@ class SolTxSendState:
         OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
         OutOfGasError = enum.auto()
+        WritableError = enum.auto()
         UnknownError = enum.auto()
 
     status: Status
@@ -448,6 +450,8 @@ class SolTxListSender:
         elif tx_error_parser.check_if_sol_account_already_exists():
             # no exception: solana account exists - the goal is reached
             return self._DecodeResult(status.SolAccountAlreadyExistError, None)
+        elif tx_error_parser.check_if_writable_error():
+            return self._DecodeResult(status.WritableError, SolWritableError())
         elif tx_error_parser.check_if_already_finalized():
             # no exception: receipt exists - the goal is reached
             return self._DecodeResult(status.AlreadyFinalizedError, None)
@@ -504,7 +508,13 @@ class SolTxListSender:
         )
 
         status = SolTxSendState.Status
-        if tx_state.status not in (status.WaitForReceipt, status.UnknownError, status.GoodReceipt):
+        if tx_state.status not in (
+            status.WaitForReceipt,
+            status.UnknownError,
+            status.GoodReceipt,
+            status.NoReceiptError,
+            status.WritableError,
+        ):
             _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
 
         self._tx_state_dict[tx_state.tx.sig] = tx_state

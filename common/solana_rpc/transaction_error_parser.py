@@ -145,6 +145,10 @@ class SolTxErrorParser:
         return self._get_tx_error() == SolRpcTxIxFieldErrorCode.AccountAlreadyInitialized
 
     @cached_method
+    def check_if_writable_error(self) -> bool:
+        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.PrivilegeEscalation
+
+    @cached_method
     def check_if_preprocessed_error(self) -> bool:
         return isinstance(self._receipt, SolRpcSendTxErrorInfo)
 
