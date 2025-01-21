@@ -41,6 +41,11 @@ class SolOutOfMemoryError(SolError):
         super().__init__("Out of memory")
 
 
+class SolWritableError(SolError):
+    def __init__(self) -> None:
+        super().__init__("Privileges escalation error")
+
+
 class SolNoMoreRetriesError(SolError):
     def __init__(self) -> None:
         super().__init__("No more retries to commit transactions")
