@@ -57,7 +57,6 @@ class NeonTxErrorParser(SolTxErrorParser):
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
             if log_rec.code == NeonTxErrorLogInfo.ErrorCode.InvalidTransactionNonce:
-                address = log_rec.data[0:19]
                 state_tx_cnt = int.from_bytes(log_rec.data[20:27])
                 tx_nonce = int.from_bytes(log_rec.data[28:35])
                 return int(state_tx_cnt), int(tx_nonce)
