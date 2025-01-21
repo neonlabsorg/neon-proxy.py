@@ -13,6 +13,7 @@ from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaIn
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
 from common.solana.commit_level import SolCommit
+from common.solana.errors import SolError
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx, SolTxIx
@@ -20,7 +21,7 @@ from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
-from common.solana_rpc.transaction_list_sender import SolTxSendState, SolTxListSender
+from common.solana_rpc.transaction_list_sender import SolTxSendState
 from common.utils.cached import cached_property
 from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_executor_ctx import NeonExecTxCtx
@@ -366,6 +367,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         try:
             emul_tx_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, acct_cnt_limit, blockhash, tx_list)
             return emul_tx_list[0] if is_single_tx else emul_tx_list
+        except SolError:
+            raise
         except BaseException as _exc:
             _LOG.warning("error on emulate solana tx list")
             raise SolCbExceededError()
