@@ -22,7 +22,8 @@ class NeonSolTxListSender(SolTxListSender):
     _DecodeResult = SolTxListSender._DecodeResult
 
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
-        status = SolTxSendState.Status
+        
+        status = super()._decode_tx_status(tx, now, tx_receipt)
 
         neon_tx_error_parser = NeonTxErrorParser(tx, tx_receipt)
 
