@@ -8,8 +8,6 @@ from ..solana.transaction import SolTx
 from .neon_tx_error_parser import NeonTxErrorParser
 from common.solana_rpc.errors import (
     SolUnknownReceiptError,
-    SolNeonRequireResizeIterError,
-    SolCbExceededError,
     SolOutOfMemoryError,
 )
 
