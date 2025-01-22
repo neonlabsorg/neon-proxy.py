@@ -78,7 +78,7 @@ class RootModel(_PydanticRootModel):
 
 def _hex_to_n_uint(value: str | int, size: int) -> int | None:
     result = hex_to_uint(value)
-    if result and (result > (2 ** size)):
+    if result and (result > pow(2, size)):
         raise ValueError(f"hex number > {size} bits")
     return result
 

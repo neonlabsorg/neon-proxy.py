@@ -30,8 +30,8 @@ class RpcAccessItemModel(BaseJsonRpcModel):
 
 
 class BaseEthGasModel(BaseJsonRpcModel):
-    gasPrice: HexUIntField = Field(default=2 ** 64)
-    maxFeePerGas: HexUIntField = Field(default=2 ** 64)
+    gasPrice: HexUIntField = Field(default=pow(2, 64))
+    maxFeePerGas: HexUIntField = Field(default=pow(2, 64))
     maxPriorityFeePerGas: HexUIntField = Field(default=0)
 
     nonce: HexUIntField | None = Field(default=None)
@@ -50,7 +50,7 @@ class BaseEthCallModel(BaseJsonRpcModel):
     data_v1: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="data")
     data_v2: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="input")
 
-    gas: HexUIntField = Field(default=2 ** 64)
+    gas: HexUIntField = Field(default=pow(2, 64))
     value: HexUIntField = Field(default=0)
 
     @cached_property

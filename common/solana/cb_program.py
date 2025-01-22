@@ -25,7 +25,7 @@ class SolCbProg:
     # CU prices less than 10_000 doesn't work
     BaseCuPrice: Final[int] = 10_500
     # Base unit
-    MicroLamport: Final[int] = (10 ** 6)
+    MicroLamport: Final[int] = pow(10, 6)
 
     @classmethod
     def make_heap_size_ix(cls, size: int) -> SolTxIx:

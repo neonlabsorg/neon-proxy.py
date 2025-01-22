@@ -59,4 +59,4 @@ class PythPriceAccount:
         raw_exp = self._data[self._exp_offset:self._exp_offset + self._exp_len]
         exp = int.from_bytes(raw_exp, byteorder='little', signed=True)
 
-        return price * (10 ** exp)
+        return price * pow(10, exp)
