@@ -17,7 +17,7 @@ class SolAltFunc:
         else:
             owner = SolPubKey.from_raw(owner)
             balance = await self._print_alt_by_owner(sol_client, owner, False)
-            print("total: {:.9f} SOLs".format(balance / (10 ** 9)))
+            print("total: {:.9f} SOLs".format(balance / pow(10, 9)))
 
     async def _print_all_alt(self, req_id: dict, op_client: OpResourceClient, sol_client: SolClient) -> None:
         owner_list = await op_client.get_signer_key_list(req_id)
@@ -25,7 +25,7 @@ class SolAltFunc:
         for owner in owner_list:
             balance = await self._print_alt_by_owner(sol_client, owner, True)
             total_balance += balance
-        print("total: {:.9f} SOLs".format(total_balance / (10 ** 9)))
+        print("total: {:.9f} SOLs".format(total_balance / pow(10, 9)))
 
     @classmethod
     async def _print_alt_by_owner(cls, sol_client: SolClient, owner: SolPubKey, print_owner: bool) -> int:
@@ -36,7 +36,7 @@ class SolAltFunc:
             alt = SolAltAccountInfo.from_bytes(acct.address, acct.data)
             status = "deactivated" if alt.is_deactivated else "active"
             total_balance += acct.balance
-            data = "{}\t{}\t{:.9f} SOLs".format(acct.address, status, acct.balance / (10 ** 9))
+            data = "{}\t{}\t{:.9f} SOLs".format(acct.address, status, acct.balance / pow(10, 9))
             if print_owner:
                 data = f"{owner}:\t{data}"
             print(data)
@@ -49,7 +49,7 @@ class SolAltFunc:
         obj = dict(
             address=address.to_string(),
             size=len(acct.data),
-            balance=(acct.balance / (10 ** 9)),
+            balance=(acct.balance / pow(10, 9)),
             owner=alt.owner.to_string(),
             isExist=alt.is_exist,
             isDeactivated=alt.is_deactivated,

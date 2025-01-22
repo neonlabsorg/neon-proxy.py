@@ -194,11 +194,11 @@ class SolTxStatApi(AppDataApi):
 
     @AppDataApi.method(name="commitSolanaTransactionDone")
     def on_tx_done(self, data: SolTxDoneData) -> None:
-        self._tx_done.add(self._label, data.time_nsec / (10 ** 9))
+        self._tx_done.add(self._label, data.time_nsec / pow(10, 9))
 
     @AppDataApi.method(name="commitSolanaTransactionFail")
     def on_tx_fail(self, data: SolTxFailData) -> None:
-        self._tx_fail.add(self._label, data.time_nsec / (10 ** 9))
+        self._tx_fail.add(self._label, data.time_nsec / pow(10, 9))
 
 
 class MetricServer(AppDataServer):

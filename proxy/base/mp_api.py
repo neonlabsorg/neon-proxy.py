@@ -309,7 +309,7 @@ class MpTxStatusModel(BaseModel):
 
     @cached_property
     def age_sec(self) -> int:
-        return self.age_nsec // (10 ** 9)
+        return self.age_nsec // pow(10, 9)
 
 
 class MpTxStatusListResp(BaseModel):
