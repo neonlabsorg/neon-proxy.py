@@ -94,7 +94,7 @@ class TreeAccountHandler(BaseNPCmdHandler):
                 lastSlot=skd_tree_acct.last_slot,
                 maxFeePerGas=skd_tree_acct.max_fee_per_gas,
                 maxPriorityFeePerGas=skd_tree_acct.max_priority_fee_per_gas,
-                balance=skd_tree_acct.balance / (10 ** 18),
+                balance=skd_tree_acct.balance / pow(10, 18),
                 lastIndex=skd_tree_acct.last_idx,
                 transactions=[
                     dict(
