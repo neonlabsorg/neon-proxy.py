@@ -19,11 +19,15 @@ _LOG = logging.getLogger(__name__)
 class NeonSolTxListSender(SolTxListSender):
 
     _DecodeResult = SolTxListSender._DecodeResult
+    Status = SolTxSendState.Status
 
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         
         status = super()._decode_tx_status(tx, now, tx_receipt)
+        if status != _DecodeResult(SolTxSendState.Status.GoodReceipt, None):
+            return status
 
+        status = SolTxSendState.Status
         neon_tx_error_parser = NeonTxErrorParser(tx, tx_receipt)
 
         if neon_tx_error_parser.check_if_already_finalized():
