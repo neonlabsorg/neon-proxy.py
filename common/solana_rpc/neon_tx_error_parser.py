@@ -1,7 +1,7 @@
 import re
 import logging
 from ..utils.cached import cached_method
-from typing import Sequence
+from typing import Sequence, Final
 from .transaction_error_parser import SolTxErrorParser
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -23,6 +23,8 @@ class NeonTxErrorParser(SolTxErrorParser):
     code: int
     message: str
 
+    _out_of_memory_msg: Final[str] = "Program log: EVM Allocator out of memory"
+    _memory_alloc_fail_msg: Final[str] = "Program log: Error: memory allocation failed, out of memory"
     _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
     _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
 

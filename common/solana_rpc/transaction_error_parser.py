@@ -20,15 +20,9 @@ from ..utils.cached import cached_method, cached_property
 
 
 class SolTxErrorParser:
-    _already_finalized_msg: Final[str] = "Program log: Transaction already finalized"
     _log_truncated_msg: Final[str] = "Log truncated"
-    _require_resize_iter_msg: Final[str] = (
-        "Deployment of contract which needs more than 10kb of account space needs several"
-    )
     _cb_exceeded_msg: Final[str] = "exceeded CUs meter at BPF instruction"
     _cb_exceeded_msg_v2: Final[str] = "Computational budget exceeded"
-    _out_of_memory_msg: Final[str] = "Program log: EVM Allocator out of memory"
-    _memory_alloc_fail_msg: Final[str] = "Program log: Error: memory allocation failed, out of memory"
 
     # fmt: off
     _alt_tx_error_list: Final[Sequence[SolRpcTxFieldErrorCode]] = tuple([
