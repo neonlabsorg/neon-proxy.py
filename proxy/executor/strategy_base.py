@@ -304,22 +304,19 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         if not tx.base_fee_per_gas:
             return req_cu_price
 
-        def _calc_cu_price(_p_fee: float, _gas_limit: int, _cu_limit: int) -> int:
+        def _calc_cu_price(_p_fee: float, _gas_limit: int) -> int:
+            nonlocal cu_limit
             if _p_fee > 0.0:
                 # see gas-price-calculator for details
-                return int(_p_fee * gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
+                return int(_p_fee * _gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
             return 0
 
         if tx.has_priority_fee:
             p_fee = tx.base_fee_per_gas * 100 / tx.max_priority_fee_per_gas
-            tx_cu_price = _calc_cu_price(p_fee, NeonProg.BaseGas, cu_limit)
+            tx_cu_price = _calc_cu_price(p_fee, NeonProg.BaseGas)
         else:
-            tx_cu_price = 0
-
-        if (not tx.has_priority_fee) or (req_cu_price > tx_cu_price):
-            gas_price = tx.operator_fee_per_gas
             p_fee = max(tx.operator_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
-            tx_cu_price += _calc_cu_price(p_fee, gas_limit, cu_limit)
+            tx_cu_price = _calc_cu_price(p_fee, gas_limit)
 
         # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
         # and neon-evm does not digest it.
