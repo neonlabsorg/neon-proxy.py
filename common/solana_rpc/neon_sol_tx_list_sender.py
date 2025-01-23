@@ -23,10 +23,6 @@ class NeonSolTxListSender(SolTxListSender):
 
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         
-        status = super()._decode_tx_status(tx, now, tx_receipt)
-        if status != _DecodeResult(SolTxSendState.Status.GoodReceipt, None):
-            return status
-
         status = SolTxSendState.Status
         neon_tx_error_parser = NeonTxErrorParser(tx, tx_receipt)
 
@@ -51,9 +47,4 @@ class NeonSolTxListSender(SolTxListSender):
             else:
                 return self._DecodeResult(status.BadNonceError, EthNonceTooHighError(tx_nonce, state_tx_cnt))
 
-        elif neon_tx_error_parser.check_if_error():
-            _LOG.debug("unknown error receipt %s: %s", tx, tx_receipt)
-            # no exception: will be converted to DEFAULT EXCEPTION
-            return self._DecodeResult(status.UnknownError, SolUnknownReceiptError())
-
-        return self._DecodeResult(status.GoodReceipt, None)
+        return super()._decode_tx_status(tx, now, tx_receipt)
