@@ -18,7 +18,8 @@ from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.token_program import SplTokenProg
 from common.solana.transaction import SolTx
-from common.solana_rpc.transaction_list_sender import SolTxListSigner, SolTxListSender
+from common.solana_rpc.neon_sol_tx_list_sender import NeonSolTxListSender
+from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
 from .holder_validator import HolderAccountValidator
@@ -103,8 +104,8 @@ class NeonExecTxCtx(ExecutorComponent):
         return OpTxListSigner(self._tx_request.req_id, self.sol_payer, self._op_client)
 
     @cached_property
-    def sol_tx_list_sender(self) -> SolTxListSender:
-        return SolTxListSender(
+    def sol_tx_list_sender(self) -> NeonSolTxListSender:
+        return NeonSolTxListSender(
             self._cfg,
             self._stat_client,
             self._sol_watch_session,
