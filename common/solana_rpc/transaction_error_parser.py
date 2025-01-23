@@ -39,10 +39,6 @@ class SolTxErrorParser:
     # fmt: on
     _alt_fail_msg: Final[str] = "Program AddressLookupTab1e1111111111111111111111111 failed: "
 
-    _create_neon_acct_re: Final[re.Pattern] = re.compile(
-        r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned"
-    )
-
     def __init__(self, tx: SolTx, receipt: SolRpcTxReceiptInfo) -> None:
         self._tx = tx
         self._receipt = receipt

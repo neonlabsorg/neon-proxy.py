@@ -1,32 +1,32 @@
-import re
 import logging
-from ..utils.cached import cached_method
+import re
 from typing import Sequence, Final
+
 from .transaction_error_parser import SolTxErrorParser
-from ..solana.transaction_meta import (
-    SolRpcTxSlotInfo,
-    SolRpcSendTxErrorInfo,
-    SolRpcTxIxFieldErrorCode,
-)
-from ..solana.log_tree_decoder import SolTxLogTreeDecoder
-from common.neon.evm_log_decoder import (
+from ..neon.evm_log_decoder import (
     NeonTxErrorLogInfo,
     NeonEvmLogDecoder,
 )
-from ..solana.signature import SolTxSig
 from ..neon.neon_program import NeonProg
+from ..solana.log_tree_decoder import SolTxLogTreeDecoder
 from ..solana.transaction_decoder import SolTxIxMetaInfo
+from ..solana.transaction_meta import (
+    SolRpcTxSlotInfo,
+    SolRpcSendTxErrorInfo,
+)
+from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
 
 class NeonTxErrorParser(SolTxErrorParser):
-    code: int
-    message: str
-
     _out_of_memory_msg: Final[str] = "Program log: EVM Allocator out of memory"
     _memory_alloc_fail_msg: Final[str] = "Program log: Error: memory allocation failed, out of memory"
-    _create_acct_re = re.compile(r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use")
-    _create_neon_acct_re = re.compile(r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned")
+    _create_acct_re: Final[re.Pattern] = re.compile(
+        r"Create Account: account Address { address: \w+, base: Some\(\w+\) } already in use"
+    )
+    _create_neon_acct_re: Final[re.Pattern] = re.compile(
+        r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned"
+    )
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
