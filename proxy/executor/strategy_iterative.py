@@ -10,6 +10,7 @@ from typing import Final, ClassVar
 from typing_extensions import Self
 
 from common.config.constants import ONE_BLOCK_SEC
+from common.ethereum.errors import EthOutOfGasError
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.solana.cb_program import SolCbProg
@@ -496,6 +497,14 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         if has_already_finalized:
             return ExecTxDoneCode.Failed
+
+        # Check that tx has enough gas to continue the NeonTx
+        gas_limit = self._ctx.holder_tx.effective_gas_limit
+        required_gas_limit = total_gas_used + NeonProg.SignatureGas
+
+        if gas_limit < required_gas_limit:
+            _LOG.debug("not enough gas %d < %d", gas_limit, required_gas_limit)
+            raise EthOutOfGasError(gas_limit, required_gas_limit)
 
         return None
 
