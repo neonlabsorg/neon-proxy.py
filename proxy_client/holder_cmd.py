@@ -241,7 +241,7 @@ class HolderHandler(BaseNPCmdHandler):
     ) -> SolAltInfo | None:
         sol_client: SolClient = await self._get_sol_client()
 
-        alt_tx_builder = SolAltTxBuilder(sol_client, payer, self._cu_price)
+        alt_tx_builder = SolAltTxBuilder(self._cfg, sol_client, payer, self._cu_price)
         alt: SolAltInfo = await alt_tx_builder.build_alt(legacy_tx, tuple())
         alt_tx_set = alt_tx_builder.build_alt_tx_set(alt)
 

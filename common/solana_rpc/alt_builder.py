@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import Sequence, Final
+import time
+from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
 from .client import SolClient
-from ..config.constants import ONE_BLOCK_SEC
+from .ws_client import SolWatchAccountSession, SolWatchSlotSession
+from ..config.config import Config
+from ..config.constants import MIN_FINALIZE_SEC
 from ..solana.alt_info import SolAltInfo
 from ..solana.alt_program import SolAltProg, SolAltAccountInfo
 from ..solana.cb_program import SolCbProg
@@ -59,23 +61,26 @@ class SolAltTxSet:
 class SolAltTxBuilder:
     _create_name: Final[str] = "CreateLookupTable"
     _extend_name: Final[str] = "ExtendLookupTable"
-    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
-    _wait_period: Final[int] = min(int(3 * ONE_BLOCK_SEC / _wait_sec), 1)
+    _wait_nsec: Final[int] = int(MIN_FINALIZE_SEC * 1e9)
+    _recent_slot_dict: ClassVar[dict[SolPubKey, int]] = dict()
 
-    def __init__(self, sol_client: SolClient, owner: SolPubKey, cu_price: int) -> None:
+    def __init__(self, cfg: Config, sol_client: SolClient, owner: SolPubKey, cu_price: int) -> None:
+        self._cfg = cfg
         self._sol_client = sol_client
         self._alt_prog = SolAltProg(owner)
         self._cb_prog = SolCbProg()
         self._cu_price = cu_price
-        self._recent_slot: int | None = None
 
     async def _get_recent_slot(self) -> int:
-        while True:
-            recent_slot = await self._sol_client.get_slot(SolCommit.Finalized)
-            if recent_slot == self._recent_slot:
-                await asyncio.sleep(ONE_BLOCK_SEC / 4)  # To make unique address for Address Lookup Table
-                continue
-            self._recent_slot = recent_slot
+        recent_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+
+        async with SolWatchSlotSession(self._cfg, self._sol_client) as slot_session:
+            while recent_slot <= self._recent_slot_dict.get(self._alt_prog.payer, 0):
+                await slot_session.subscribe(finalized_slot=recent_slot)
+                await slot_session.update()
+                recent_slot = slot_session.get_slot(SolCommit.Finalized)
+
+            self._recent_slot_dict[self._alt_prog.payer] = recent_slot
             return recent_slot
 
     @property
@@ -146,22 +151,38 @@ class SolAltTxBuilder:
         if isinstance(alt_list, SolAltInfo):
             alt_list = tuple([alt_list])
 
-        for alt in alt_list:
-            alt_acct: SolAltAccountInfo | None = None
+        new_alt_dict = {alt.address: alt for alt in alt_list if alt.new_account_key_set}
+        if not (new_addr_set := set(new_alt_dict.keys())):
+            return
 
-            for _ in range(self._wait_period):
-                alt_acct, last_slot = await asyncio.gather(
-                    self._sol_client.get_alt_account(alt.address),
-                    self._sol_client.get_slot(SolCommit.Confirmed),
-                )
+        async with SolWatchAccountSession(self._cfg, self._sol_client) as acct_session:
+            for addr in new_addr_set:
+                await acct_session.subscribe_account(addr, init_account=True)
 
-                if alt_acct.is_exist and (alt_acct.last_extended_slot < last_slot):
-                    break
+            # wait for confirmation of all ALTs
+            #  it is required for solana simulations
+            now_nsec = time.monotonic_ns()
+            stop_time_nsec = now_nsec + self._wait_nsec
+            last_extended_slot = 0
+            while (stop_time_nsec > now_nsec) and new_addr_set:
+                await acct_session.update(timeout_nsec=(stop_time_nsec - now_nsec))
+                addr_list = acct_session.pop_changed_key_list()
 
-                await asyncio.sleep(self._wait_sec)
+                for addr in addr_list:
+                    if acct := acct_session.get_account(addr):
+                        new_addr_set.remove(addr)
+                        alt_acct = SolAltAccountInfo.from_bytes(addr, acct.data)
+                        last_extended_slot = max(last_extended_slot, alt_acct.last_extended_slot)
+                        new_alt_dict[addr].update_from_account(alt_acct)
+                        # _LOG.debug("ALT %s contains %s accounts", addr, len(alt_acct.account_key_list))
 
-            # if not alt_acct.is_exist:
-            #     _LOG.debug("ALT %s doesn't exist", alt.address)
-            # else:
-            #     _LOG.debug("ALT %s contains %s accounts", alt.address, len(alt_acct.account_key_list))
-            alt.update_from_account(alt_acct)
+                now_nsec = time.monotonic_ns()
+
+        # for addr in new_addr_set:
+        #     _LOG.debug("ALT %s doesn't exist", addr)
+
+        async with SolWatchSlotSession(self._cfg, self._sol_client) as slot_session:
+            # wait for slot update
+            await slot_session.subscribe(init_start_slot=True)
+            while last_extended_slot >= slot_session.get_slot(SolCommit.Confirmed):
+                await slot_session.update()
