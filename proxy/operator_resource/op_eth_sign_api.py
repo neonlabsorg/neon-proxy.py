@@ -19,10 +19,10 @@ class OpEthSignApi(OpResourceApi):
     async def sign_eth_message(self, request: OpSignEthMsgRequest) -> OpSignEthMsgResp:
         try:
             with logging_context(**request.req_id):
-                if not (neon_account := await self._get_neon_account(request.sender, 0)):
+                if not (neon_addr := await self._get_neon_address(request.sender, 0)):
                     return OpSignEthMsgResp(signed_msg=bytes(), error=f"Unknown sender {request.sender}")
 
-                signed_msg = neon_account.sign_msg(request.data.to_bytes())
+                signed_msg = neon_addr.sign_msg(request.data.to_bytes())
                 return OpSignEthMsgResp(signed_msg=signed_msg.to_bytes())
         except Exception as exc:
             _LOG.error("signing message failed", extra=self._msg_filter, exc_info=exc)
@@ -33,10 +33,10 @@ class OpEthSignApi(OpResourceApi):
         try:
             with logging_context(**request.req_id):
                 sender = request.neon_tx.from_address
-                if not (neon_account := await self._get_neon_account(sender, request.chain_id)):
+                if not (neon_addr := await self._get_neon_address(sender, request.chain_id)):
                     return OpSignEthTxResp(signed_tx=bytes(), error=f"Unknown sender {sender}")
 
-                signed_tx = neon_account.sign_tx(request.neon_tx)
+                signed_tx = request.neon_tx.sign(neon_addr)
                 return OpSignEthTxResp(signed_tx=signed_tx)
         except Exception as exc:
             _LOG.error("signing transaction failed", extra=self._msg_filter, exc_info=exc)
@@ -46,7 +46,7 @@ class OpEthSignApi(OpResourceApi):
     def _op_resource_mng(self) -> OpResourceMng:
         return self._server._op_resource_mng  # noqa
 
-    async def _get_neon_account(self, eth_address: EthAddress, chain_id: int) -> NeonAddress | None:
+    async def _get_neon_address(self, eth_address: EthAddress, chain_id: int) -> NeonAddress | None:
         if not (op_signer := self._op_resource_mng.get_signer_by_eth_address(eth_address)):
             return None
 

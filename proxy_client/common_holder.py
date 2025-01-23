@@ -115,7 +115,7 @@ class OpHolderFunc:
                 toAddress=holder.tx.to_address.to_string(),
                 nonce=holder.tx.nonce,
                 value=holder.tx.value,
-                input=holder.tx.data.to_string(),
+                input=holder.tx.call_data.to_string(),
                 gasLimit=holder.tx.gas_limit,
                 gasPrice=holder.tx.gas_price,
                 maxFeePerGas=holder.tx.max_fee_per_gas,

@@ -7,6 +7,8 @@ from typing import Union, Any, ClassVar, Annotated
 from pydantic import PlainValidator, PlainSerializer
 from typing_extensions import Self
 
+from .address import NeonAddress
+from .neon_program import NeonProg
 from ..ethereum.bin_str import EthBinStr, EthBinStrField
 from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddressField, EthAddress
 from ..ethereum.transaction import EthTx, EthTxType
@@ -367,6 +369,9 @@ class NeonTxModel(BaseModel):
             raise ValueError("Unknown transaction type")
         return param_dict
 
+    def sign(self, signer: NeonAddress) -> bytes:
+        return signer.sign_tx(self.to_eth_dict())
+
     @property
     def has_chain_id(self) -> bool:
         return self.chain_id is not None
@@ -394,6 +399,10 @@ class NeonTxModel(BaseModel):
     @cached_property
     def cost(self) -> int:
         return self.calc_cost()
+
+    @cached_property
+    def effective_gas_limit(self) -> int:
+        return EthTx.calc_effective_gas_limit(self, NeonProg)
 
     def calc_cost(self, *, gas_limit: int | None = None, value: int | None = None) -> int:
         return EthTx.calc_cost(self, gas_limit=gas_limit, value=value)

@@ -14,14 +14,14 @@ from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress, EthHash32Field
 from ..ethereum.transaction import EthTx
 from ..neon.address import NeonAddress, NeonAddressField
-from ..neon.neon_program import NeonProgCfg
+from ..neon.neon_program import NeonProgCfg, NeonProg
 from ..neon.transaction_model import NeonTxModel, NeonSkdTxStatusField, NeonSkdTxStatus, NeonTxType
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
-from ..utils.format import bytes_to_hex
+from ..utils.format import bytes_to_hex, if_none
 from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel, DecUIntField
 
 _LOG = logging.getLogger(__name__)
@@ -386,6 +386,7 @@ class EvmConfigModel(_BaseRespModel):
             treasury_payment=self.treasury_payment,
             evm_version=self.version,
             evm_step_cnt=self.evm_step_cnt,
+            gas_limit_multiplier_wo_chain_id=self.gas_limit_multiplier_wo_chain_id,
             tree_account_finish_tx_gas=self.tree_account_finish_tx_gas,
         )
 
@@ -482,7 +483,10 @@ class CoreApiTxModel(_BaseRespModel):
         serialization_alias="to",
     )
     value: HexUIntField
-    data: CoreApiHexStrField
+    call_data: CoreApiHexStrField = Field(
+        validation_alias=AliasChoices("data", "call_data"),
+        serialization_alias="data",
+    )
     gas_limit: HexUIntField | None
     gas_price: HexUIntField | None
     max_fee_per_gas: HexUIntField = Field(default=0)
@@ -491,7 +495,7 @@ class CoreApiTxModel(_BaseRespModel):
     chain_id: DecUIntField | None = None
 
     @classmethod
-    def from_neon_tx(cls, tx: NeonTxModel, chain_id: int | None) -> Self:
+    def from_neon_tx(cls, tx: NeonTxModel) -> Self:
         return cls(
             from_address=tx.from_address,
             payer=tx.payer,
@@ -499,13 +503,17 @@ class CoreApiTxModel(_BaseRespModel):
             index=tx.index,
             to_address=tx.to_address,
             value=tx.value,
-            data=tx.call_data.to_bytes(),
+            call_data=tx.call_data.to_bytes(),
             gas_limit=tx.gas_limit,
             gas_price=tx.gas_price or 0,
             max_fee_per_gas=tx.max_fee_per_gas or 0,
             max_priority_fee_per_gas=tx.max_priority_fee_per_gas or 0,
-            chain_id=chain_id,
+            chain_id=tx.chain_id,
         )
+
+    @property
+    def has_chain_id(self) -> bool:
+        return if_none(self.chain_id, 0) != 0
 
     @cached_property
     def cost(self) -> int:
@@ -522,6 +530,10 @@ class CoreApiTxModel(_BaseRespModel):
     @cached_property
     def operator_fee_per_gas(self) -> int:
         return EthTx.calc_operator_fee_per_gas(self)
+
+    @cached_property
+    def effective_gas_limit(self) -> int:
+        return EthTx.calc_effective_gas_limit(self, NeonProg)
 
 
 class CoreApiBlockModel(_BaseModel):
@@ -834,7 +846,6 @@ class NeonSkdTreeModel(_BaseRespModel):
             node_list=list(),
         )
 
-
     @cached_property
     def is_exist(self) -> bool:
         return len(self.node_list) > 0
@@ -876,10 +887,10 @@ class NeonSkdTreeModel(_BaseRespModel):
             (n.child_tx_idx == index) and (n.status == n.status.Success)
             for n in self.node_list[:index]
         )
-        # fmt: on
 
         return (
             NeonSkdTreeNodeModel.ToStart
             if success_exec_cnt >= node.success_exec_limit
             else NeonSkdTxStatus.ToSkip
         )
+        # fmt: on
