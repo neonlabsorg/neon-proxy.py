@@ -1,18 +1,14 @@
 import logging
 
+from .neon_tx_error_parser import NeonTxErrorParser
 from .transaction_list_sender import (
     SolTxListSender,
     SolTxSendState,
 )
-from ..solana.transaction import SolTx
-from .neon_tx_error_parser import NeonTxErrorParser
-from common.solana_rpc.errors import (
-    SolUnknownReceiptError,
-    SolOutOfMemoryError,
-)
-
-from common.solana.transaction_meta import SolRpcTxReceiptInfo
 from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError, EthOutOfGasError
+from ..solana.transaction import SolTx
+from ..solana.transaction_meta import SolRpcTxReceiptInfo
+from ..solana_rpc.errors import SolOutOfMemoryError
 
 _LOG = logging.getLogger(__name__)
 
