@@ -128,7 +128,7 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
                 to_address=tx.toAddress,
                 nonce=self.nonce,
                 value=tx.value,
-                data=tx.data.to_bytes(),
+                call_data=tx.call_data.to_bytes(),
                 gas_limit=tx.gas,
                 gas_price=(self.maxFeePerGas - self.maxPriorityFeePerGas),
                 chain_id=chain_id,
@@ -225,7 +225,7 @@ class NpCallApi(NeonProxyApi):
 
         resp = await self._core_api_client.emulate_neon_call(
             evm_cfg,
-            CoreApiTxModel.from_neon_tx(neon_tx, chain_id),
+            CoreApiTxModel.from_neon_tx(neon_tx),
             check_result=False,
             sol_account_dict=neon_call.sol_account_dict,
             block=block,

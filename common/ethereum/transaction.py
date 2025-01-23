@@ -455,6 +455,8 @@ class _NeonSkdTxPayload(rlp.Serializable):
 
 
 class EthTx:
+    _max_u64: Final[int] = pow(2, 64) - 1
+
     def __init__(self, *args, **kwargs):
         tx_type = EthTxType.from_raw(kwargs.pop("type", EthTxType.Legacy))
         self._tx_type = tx_type
@@ -618,7 +620,7 @@ class EthTx:
         if value is None:
             value = self.value
         if gas_limit is None:
-            gas_limit = self.gas_limit
+            gas_limit = self.effective_gas_limit
 
         max_fee_per_gas = self.max_fee_per_gas or 0
         gas_price = self.gas_price or 0
@@ -628,6 +630,14 @@ class EthTx:
         else:
             cost = gas_price * gas_limit
         return cost + value
+
+    @classmethod
+    def calc_effective_gas_limit(cls, self, neon_prog) -> int:
+        if self.has_chain_id or self.call_data.is_empty:
+            return self.gas_limit
+
+        gas_limit = self.gas_limit * neon_prog.GasLimitMultiplierWoChainId
+        return min(cls._max_u64, gas_limit)
 
     @property
     def from_address(self) -> bytes:

@@ -54,7 +54,7 @@ class BaseEthCallModel(BaseJsonRpcModel):
     value: HexUIntField = Field(default=0)
 
     @cached_property
-    def data(self) -> EthBinStr:
+    def call_data(self) -> EthBinStr:
         return self.data_v2 if not self.data_v2.is_empty else self.data_v1
 
 
@@ -81,7 +81,7 @@ class RpcEthTxRequest(BaseEthGasModel, BaseEthCallModel):
             to_address=self.toAddress,
             nonce=self.nonce,
             value=self.value,
-            data=self.data.to_bytes(),
+            call_data=self.call_data.to_bytes(),
             gas_limit=self.gas,
             gas_price=(
                 self.maxFeePerGas - self.maxPriorityFeePerGas
@@ -103,7 +103,7 @@ class RpcEthTxRequest(BaseEthGasModel, BaseEthCallModel):
             gas_price=self.gasPrice,
             gas_limit=self.gas,
             value=self.value,
-            call_data=self.data,
+            call_data=self.call_data,
             v=0,
             r=0,
             s=0,

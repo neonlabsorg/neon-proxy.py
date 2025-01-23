@@ -83,7 +83,6 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         global_price, token_price = await self._get_token_gas_price(ctx)
 
         chain_id = self._validate_chain_id(ctx, neon_tx)
-        tx_gas_limit = await self._get_tx_gas_limit(neon_tx)
 
         sender = NeonAddress.from_raw(neon_tx.from_address, chain_id)
         neon_acct = await self._core_api_client.get_neon_account(sender, None)
@@ -91,10 +90,10 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
 
         self._prevalidate_sender_eoa(neon_contract)
         self._prevalidate_tx_size(neon_tx)
-        self._prevalidate_tx_gas_limit(neon_tx, tx_gas_limit)
-        await self._prevalidate_tx_gas_price(ctx, token_price, neon_tx, tx_gas_limit)
+        self._prevalidate_tx_gas_limit(neon_tx)
+        await self._prevalidate_tx_gas_price(ctx, token_price, neon_tx)
         self._prevalidate_underpriced_tx_wo_chain_id(global_price, neon_tx)
-        self._prevalidate_sender_balance(neon_tx, neon_acct, tx_gas_limit)
+        self._prevalidate_sender_balance(neon_tx, neon_acct)
         self._validate_nonce(neon_tx, neon_acct.state_tx_cnt)
 
         return neon_acct
@@ -110,12 +109,11 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
             raise EthWrongChainIdError()
         return chain_id
 
-    async def _get_tx_gas_limit(self, neon_tx: NeonTxModel) -> int:
+    def _get_tx_gas_limit(self, neon_tx: NeonTxModel) -> int:
         if neon_tx.has_chain_id or neon_tx.call_data.is_empty:
             return neon_tx.gas_limit
 
-        evm_cfg = await self._get_evm_cfg()
-        tx_gas_limit = neon_tx.gas_limit * evm_cfg.gas_limit_multiplier_wo_chain_id
+        tx_gas_limit = neon_tx.effective_gas_limit
         return min(self._max_u64, tx_gas_limit)
 
     @staticmethod
@@ -128,13 +126,14 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         if len(neon_tx.call_data) > (127 * 1024):
             raise EthError(message="transaction size is too big")
 
-    def _prevalidate_tx_gas_limit(self, neon_tx: NeonTxModel, tx_gas_limit: int) -> None:
-        if tx_gas_limit < 21_000:
+    def _prevalidate_tx_gas_limit(self, neon_tx: NeonTxModel) -> None:
+        gas_limit = neon_tx.effective_gas_limit
+        if gas_limit < 21_000:
             raise EthError(message="gas limit reached")
 
-        if tx_gas_limit > self._max_u64:
+        if gas_limit > self._max_u64:
             raise EthError(message="gas uint64 overflow")
-        if neon_tx.calc_cost(gas_limit=tx_gas_limit) > self._max_u256:
+        if neon_tx.cost > self._max_u256:
             raise EthError(message="transaction cost uint256 overflow")
 
     async def _prevalidate_tx_gas_price(
@@ -142,7 +141,6 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         ctx: HttpRequestCtx,
         token_price: MpTokenGasPriceModel,
         neon_tx: NeonTxModel,
-        tx_gas_limit: int,
     ) -> None:
         # Operator can set minimum gas price to accept txs into mempool
         min_gas_price = token_price.min_acceptable_gas_price
@@ -153,7 +151,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         # Fee-less transaction
         if not op_fee_per_gas:
             has_fee_less_permit = await self._has_fee_less_tx_permit(
-                ctx, neon_tx.from_address, neon_tx.to_address, neon_tx.nonce, tx_gas_limit
+                ctx, neon_tx.from_address, neon_tx.to_address, neon_tx.nonce, neon_tx.effective_gas_limit
             )
             if has_fee_less_permit:
                 return
@@ -171,9 +169,9 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         raise EthError("proxy configuration doesn't allow underpriced transaction without chain-id")
 
     @staticmethod
-    def _prevalidate_sender_balance(neon_tx: NeonTxModel, neon_account: NeonAccountModel, tx_gas_limit: int):
+    def _prevalidate_sender_balance(neon_tx: NeonTxModel, neon_account: NeonAccountModel):
         user_balance = neon_account.balance
-        required_balance = neon_tx.calc_cost(gas_limit=tx_gas_limit)
+        required_balance = neon_tx.cost
 
         if required_balance <= user_balance:
             return
