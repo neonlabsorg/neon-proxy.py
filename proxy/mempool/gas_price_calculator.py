@@ -194,7 +194,7 @@ class MpGasPriceCalculator(MempoolComponent):
 
             # SOL token has 9 fractional digits
             # NATIVE token has 18 fractional digits
-            net_price = int((base_price_usd * (10**9)) / token_price_usd)
+            net_price = int((base_price_usd * pow(10, 9)) / token_price_usd)
 
         # Populate data regardless if const_gas_price or not.
         profitable_price = int(net_price * (1 + fee_cfg.operator_fee))

@@ -1,4 +1,5 @@
 import logging
+from typing import Final
 
 from common.ethereum.errors import EthError, EthNonceTooLowError, EthNonceTooHighError, EthWrongChainIdError
 from common.ethereum.hash import EthTxHashField, EthTxHash
@@ -15,8 +16,8 @@ _LOG = logging.getLogger(__name__)
 
 
 class RpcNeonTxExecutor(BaseRpcServerComponent):
-    _max_u64 = 2**64 - 1
-    _max_u256 = 2**256 - 1
+    _max_u64: Final[int] = pow(2, 64) - 1
+    _max_u256: Final[int] = pow(2, 256) - 1
 
     @staticmethod
     def parse_neon_tx(rlp_tx: bytes) -> NeonTxModel:
