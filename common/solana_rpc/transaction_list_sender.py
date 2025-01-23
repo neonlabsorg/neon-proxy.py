@@ -16,7 +16,7 @@ from .errors import (
     SolNeonRequireResizeIterError,
     SolCbExceededError,
     SolNoMoreRetriesError,
-    SolOutOfMemoryError,
+    NeonSolOutOfMemoryError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
