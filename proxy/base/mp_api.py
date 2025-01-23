@@ -101,7 +101,7 @@ class MpTxModel(BaseModel):
 
     @property
     def process_time_msec(self) -> float:
-        return self.process_time_nsec / (10**6)
+        return self.process_time_nsec / pow(10, 6)
 
     @cached_method
     def to_string(self) -> str:
@@ -156,7 +156,7 @@ class MpStuckTxModel(BaseModel):
 
     @property
     def process_time_msec(self) -> float:
-        return self.process_time_nsec / (10**6)
+        return self.process_time_nsec / pow(10, 6)
 
     def __str__(self) -> str:
         return self.to_string()

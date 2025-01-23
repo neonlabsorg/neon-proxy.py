@@ -96,7 +96,7 @@ class HttpRequestCtx:
 
     @property
     def process_time_msec(self) -> float:
-        return self.process_time_nsec / (10**6)
+        return self.process_time_nsec / pow(10, 6)
 
     def set_property_value(self, name: str, value) -> Self:
         object.__setattr__(self, name, value)
