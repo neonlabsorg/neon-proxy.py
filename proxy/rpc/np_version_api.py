@@ -91,7 +91,7 @@ class NpVersionApi(NeonProxyApi):
             neonMinEvmStepsInIteration=evm_cfg.evm_step_cnt,
             neonGasLimitMultiplierWithoutChainId=evm_cfg.gas_limit_multiplier_wo_chain_id,
             neonHolderMessageSize=evm_cfg.holder_msg_size,
-            neonPaymentToTreasury=_get_int_param("NEON_PAYMENT_TO_TREASURE"),
+            neonPaymentToTreasury=evm_cfg.treasury_payment,
             neonStorageEntriesInContractAccount=_get_int_param("NEON_STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT"),
             neonTreasuryPoolCount=evm_cfg.treasury_pool_cnt,
             neonTreasuryPoolSeed=str(evm_cfg.treasury_pool_seed, "utf-8"),
