@@ -13,10 +13,8 @@ from .client import SolClient
 from .errors import (
     SolUnknownReceiptError,
     SolBlockhashNotFound,
-    SolNeonRequireResizeIterError,
     SolCbExceededError,
     SolNoMoreRetriesError,
-    NeonSolOutOfMemoryError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData

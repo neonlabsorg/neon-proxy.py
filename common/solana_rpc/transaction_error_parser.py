@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import re
 from typing import Sequence, Final
 
-from ..neon.neon_program import NeonProg
-from ..solana.log_tree_decoder import SolTxLogTreeDecoder
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
