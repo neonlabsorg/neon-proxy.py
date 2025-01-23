@@ -6,11 +6,10 @@ import enum
 import logging
 import re
 from dataclasses import dataclass
-from typing import Final, Sequence, Annotated, ClassVar
 from enum import IntEnum
-
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
+from typing import Final, Sequence, Annotated, ClassVar
 from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStrField
@@ -180,10 +179,10 @@ class NeonTxErrorLogInfo:
     @classmethod
     def from_raw(cls, code: int, data: bytearray, message: str):
 
-        if code < 0 or code >= UnknownError:
-            error_code = ErrorCode.UnknownError
+        if code < cls.ErrorCode.Custom or code >= cls.ErrorCode.UnknownError:
+            error_code = cls.ErrorCode.UnknownError
         else:
-            error_code = ErrorCode(code)
+            error_code = cls.ErrorCode(code)
 
         return cls(
             code = error_code,
