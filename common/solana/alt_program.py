@@ -64,6 +64,10 @@ class SolAltProg:
     def __init__(self, payer: SolPubKey) -> None:
         self._payer = payer
 
+    @property
+    def payer(self) -> SolPubKey:
+        return self._payer
+
     def derive_alt_address(self, recent_slot: int) -> SolAltID:
         addr, nonce = SolPubKey.find_program_address(
             seed_list=(
