@@ -154,11 +154,11 @@ class NeonTxPoolStatApi(AppDataApi):
 
     @AppDataApi.method(name="commitNeonTransactionDone")
     async def on_tx_done(self, data: NeonTxDoneData) -> None:
-        self._tx_done.add(self._label, data.time_nsec / (10**9))
+        self._tx_done.add(self._label, data.time_nsec / pow(10, 9))
 
     @AppDataApi.method(name="commitNeonTransactionFail")
     async def on_tx_fail(self, data: NeonTxFailData) -> None:
-        self._tx_fail.add(self._label, data.time_nsec / (10**9))
+        self._tx_fail.add(self._label, data.time_nsec / pow(10, 9))
 
     @AppDataApi.method(name="commitNeonTransactionPool")
     def on_tx_pool(self, data: NeonTxPoolData) -> None:
