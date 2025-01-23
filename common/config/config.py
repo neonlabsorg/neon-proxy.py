@@ -581,7 +581,7 @@ class Config:
 
     @cached_property
     def mp_eviction_timeout_sec(self) -> int:
-        return self._env_num(self.mp_eviction_timeout_sec_name, 3 * self._1hour, 10)
+        return self._env_num(self.mp_eviction_timeout_sec_name, self._1hour, 10)
 
     @cached_property
     def mp_gas_price_min_window(self) -> int:
