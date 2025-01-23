@@ -95,7 +95,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             gas_limit=core_tx.gas_limit,
             to_address=core_tx.to_address.to_bytes(),
             value=core_tx.value or 1,
-            call_data=core_tx.data.to_bytes(),
+            call_data=core_tx.call_data.to_bytes(),
             v=245022934 * 1024 + 35,
             r=0x1820182018201820182018201820182018201820182018201820182018201820,
             s=0x1820182018201820182018201820182018201820182018201820182018201820,

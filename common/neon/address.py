@@ -11,7 +11,6 @@ from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
 from typing_extensions import Self
 
-from .transaction_model import NeonTxModel
 from ..ethereum.hash import EthAddress
 from ..solana.pubkey import SolPubKey
 from ..utils.cached import cached_method, cached_property
@@ -165,15 +164,13 @@ class NeonAddress:
     def sign_msg(self, data: bytes) -> eth_keys.keys.Signature:
         return self.private_key.sign_msg(data)
 
-    def sign_tx(self, tx: NeonTxModel) -> bytes:
-        raw_tx_dict = tx.to_eth_dict()
-
+    def sign_tx(self, raw_tx: dict) -> bytes:
         # chain_id => chainId
         # max_priority_fee_per_gas => maxPriorityFeePerGas
         # type => type
         tx_dict = {
             "".join([s.capitalize() if idx > 0 else s for idx, s in enumerate(k.split("_"))]): v
-            for k, v in raw_tx_dict.items()
+            for k, v in raw_tx.items()
             if k not in ("r", "s", "v")
         }
         tx_dict["chainId"] = self._chain_id

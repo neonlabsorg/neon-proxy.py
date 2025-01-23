@@ -328,7 +328,7 @@ class NeonExecTxCtx(ExecutorComponent):
     def holder_tx(self) -> CoreApiTxModel:
         if self.is_stuck_tx:
             return self.holder.tx
-        return CoreApiTxModel.from_neon_tx(self._tx_request.tx.neon_tx, self.chain_id)
+        return CoreApiTxModel.from_neon_tx(self._tx_request.tx.neon_tx)
 
     @cached_property
     def neon_tx_hash(self) -> EthTxHash:
@@ -341,12 +341,6 @@ class NeonExecTxCtx(ExecutorComponent):
         if self.is_stuck_tx:
             return True
         return self._tx_request.tx.neon_tx.has_chain_id
-
-    @cached_property
-    def chain_id(self) -> int:
-        if self.is_stuck_tx:
-            return self.holder.chain_id
-        return self._tx_request.tx.chain_id
 
     @cached_property
     def payer(self) -> NeonAddress:
