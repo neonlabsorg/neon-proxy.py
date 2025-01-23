@@ -8,7 +8,7 @@ from .transaction_list_sender import (
 from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError, EthOutOfGasError
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxReceiptInfo
-from ..solana_rpc.errors import NeonSolOutOfMemoryError
+from ..solana_rpc.errors import NeonSolOutOfMemoryError, SolNeonRequireResizeIterError
 
 _LOG = logging.getLogger(__name__)
 
@@ -28,6 +28,8 @@ class NeonSolTxListSender(SolTxListSender):
         elif neon_tx_error_parser.check_if_neon_account_already_exists():
             # no exception: neon account exists - the goal is reached
             return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)
+        elif neon_tx_error_parser.check_if_require_resize_iter():
+            return self._DecodeResult(status.RequireResizeIterError, SolNeonRequireResizeIterError())
         elif neon_tx_error_parser.check_if_out_of_memory():
             return self._DecodeResult(status.OutOfMemoryError, NeonSolOutOfMemoryError())
 

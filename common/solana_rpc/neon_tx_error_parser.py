@@ -29,6 +29,11 @@ class NeonTxErrorParser(SolTxErrorParser):
     )
 
     @cached_method
+    def check_if_require_resize_iter(self) -> bool:
+        log_list = self._get_evm_error_log_list()
+        return any(log_rec.code == NeonTxErrorLogInfo.ErrorCode.AccountSpaceAllocationFailure for log_rec in log_list)
+
+    @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
         evm_log_list = self._get_evm_log_list()
         if any(self._create_neon_acct_re.match(log_rec) for log_rec in evm_log_list):
