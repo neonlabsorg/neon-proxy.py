@@ -12,7 +12,7 @@ from ..solana_rpc.errors import SolNeonOutOfMemoryError, SolNeonRequireResizeIte
 
 _LOG = logging.getLogger(__name__)
 
-class NeonSolTxListSender(SolTxListSender):
+class SolNeonTxListSender(SolTxListSender):
 
     _DecodeResult = SolTxListSender._DecodeResult
     Status = SolTxSendState.Status
