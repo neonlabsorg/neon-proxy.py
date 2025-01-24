@@ -94,7 +94,7 @@ class SolAltDestroyer(ExecutorComponent):
             return
 
         now = self._get_now()
-        slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        slot = self._finalized_slot
         new_destroy_queue: list[_NeonAltInfo] = list()
         signer_list = await self._op_client.get_signer_key_list(dict(req_id="destroy-alt"))
 

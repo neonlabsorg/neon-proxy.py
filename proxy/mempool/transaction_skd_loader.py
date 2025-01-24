@@ -93,7 +93,7 @@ class MpSkdTxLoader(MempoolComponent):
         token = ExecTokenModel.from_raw(self._gas_price, token_gas_price)
 
         slot_out = await self._get_slot_out()
-        current_slot = await self._sol_client.get_slot()
+        current_slot = self._confirmed_slot
         min_slot = current_slot - slot_out
         skd_tx_list = await self._db.get_old_neon_skd_tx_list_by_slot(min_slot, 100)
 

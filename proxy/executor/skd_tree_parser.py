@@ -84,7 +84,7 @@ class NeonSkdTreeParser(ExecutorComponent):
         elif status != status.NotStarted:
             return True
 
-        slot = await self._sol_client.get_slot()
+        slot = self._confirmed_slot
         slot_out = await self._get_slot_out()
         return self._tree.is_destroyable(slot, slot_out)
 
