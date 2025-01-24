@@ -107,8 +107,10 @@ class SolTxListSender:
         self._sol_session = sol_session
         self._tx_signer = sol_tx_signer
         self._num_slots_behind: int | None
+
         self._blockhash: SolBlockHash | None = None
         self._valid_block_height = 0
+
         self._max_retry_cnt = int(cfg.commit_timeout_sec // ONE_BLOCK_SEC)
         self._bad_blockhash_set: set[SolBlockHash] = set()
         self._tx_list: list[SolTx] = list()
