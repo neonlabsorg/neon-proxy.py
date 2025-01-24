@@ -36,7 +36,7 @@ class SolCbExceededCriticalError(SolError):
         super().__init__("Compute Budget is critically exceeded")
 
 
-class NeonSolOutOfMemoryError(SolError):
+class SolNeonOutOfMemoryError(SolError):
     def __init__(self) -> None:
         super().__init__("Out of memory")
 

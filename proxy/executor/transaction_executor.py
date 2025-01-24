@@ -17,7 +17,7 @@ from common.solana_rpc.errors import (
     SolNoMoreRetriesError,
     SolBlockhashNotFound,
     SolCbExceededCriticalError,
-    NeonSolOutOfMemoryError,
+    SolNeonOutOfMemoryError,
 )
 from .errors import StuckTxError, WrongStrategyError, SkdTxError
 from .server_abc import ExecutorComponent
@@ -186,11 +186,11 @@ class NeonTxExecutor(ExecutorComponent):
                 return None
 
             except (
-                EthError,
-                SolCbExceededCriticalError,
-                NeonSolOutOfMemoryError,
-                SolUnknownReceiptError,
-                SolNoMoreRetriesError,
+                    EthError,
+                    SolCbExceededCriticalError,
+                    SolNeonOutOfMemoryError,
+                    SolUnknownReceiptError,
+                    SolNoMoreRetriesError,
             ) as exc:
                 ctx.mark_skip_simple_strategy()
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
