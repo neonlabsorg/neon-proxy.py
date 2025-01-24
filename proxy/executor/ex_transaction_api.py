@@ -69,7 +69,7 @@ class NeonTxExecApi(ExecutorApi):
                     code = await self._exec_neon_tx_retry_loop(request, None)
 
                 neon_acct = await self._core_api_client.get_neon_account(request.sender, None)
-                await self._mp_client.done_exec_tx(request.tx.neon_tx_hash, code, neon_acct)
+                await self._mp_client.done_exec_tx(tx_hash, code, neon_acct)
 
             if task := self._task_dict.pop(tx_hash, None):
                 self._completed_task_list.append(task)
@@ -86,12 +86,13 @@ class NeonTxExecApi(ExecutorApi):
             return CompleteStuckTxResp(result=False)
 
         async def _new_task() -> None:
+            nonlocal tx_hash
             with logging_context(**request.req_id):
                 code = await self._complete_stuck_neon_tx_retry_loop(request, None)
-                await self._mp_client.done_complete_stuck_tx(request.tx.neon_tx_hash, code)
+                await self._mp_client.done_complete_stuck_tx(tx_hash, code)
 
-                if task := self._task_dict.pop(tx_hash, None):
-                    self._completed_task_list.append(task)
+            if task := self._task_dict.pop(tx_hash, None):
+                self._completed_task_list.append(task)
 
         self._task_dict[tx_hash] = asyncio.create_task(_new_task())
         return CompleteStuckTxResp(result=True)
