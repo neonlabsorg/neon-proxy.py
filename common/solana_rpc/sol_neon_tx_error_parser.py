@@ -18,7 +18,7 @@ from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
 
-class NeonTxErrorParser(SolTxErrorParser):
+class SolNeonTxErrorParser(SolTxErrorParser):
     _out_of_memory_msg: Final[str] = "Program log: EVM Allocator out of memory"
     _memory_alloc_fail_msg: Final[str] = "Program log: Error: memory allocation failed, out of memory"
     _create_acct_re: Final[re.Pattern] = re.compile(

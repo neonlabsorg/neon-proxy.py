@@ -1,6 +1,6 @@
 import logging
 
-from .neon_tx_error_parser import NeonTxErrorParser
+from .sol_neon_tx_error_parser import SolNeonTxErrorParser
 from .transaction_list_sender import (
     SolTxListSender,
     SolTxSendState,
@@ -20,7 +20,7 @@ class SolNeonTxListSender(SolTxListSender):
     def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
         
         status = SolTxSendState.Status
-        neon_tx_error_parser = NeonTxErrorParser(tx, tx_receipt)
+        neon_tx_error_parser = SolNeonTxErrorParser(tx, tx_receipt)
 
         if neon_tx_error_parser.check_if_already_finalized():
             # no exception: receipt exists - the goal is reached
