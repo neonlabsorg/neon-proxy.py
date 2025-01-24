@@ -345,8 +345,8 @@ class SolClient(HttpClient):
         return block.block_hash
 
     async def get_block_status(self, slot: int) -> SolBlockStatus:
-        finalized_block = await self.get_block(slot, SolCommit.Finalized)
-        if not finalized_block.is_empty:
+        finalized_slot = await self.get_slot(SolCommit.Finalized)
+        if finalized_slot >= slot:
             return SolBlockStatus(slot, SolCommit.Finalized)
 
         req = _SoldersGetBlockCommit(slot, self._get_next_id())
