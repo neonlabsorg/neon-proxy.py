@@ -10,6 +10,7 @@ from common.solana.block import SolRpcBlockInfo
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.not_empty_block import SolFirstBlockFinder, SolNotEmptyBlockFinder
+from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.json_logger import logging_context, log_msg
 from common.utils.metrics_logger import MetricsLogger
 from .alt_ix_collector import SolAltTxIxCollector
@@ -21,8 +22,8 @@ from ..base.neon_ix_decoder_deprecate import get_neon_ix_decoder_deprecated_list
 from ..base.objects import NeonIndexedBlockInfo, NeonIndexedBlockDict, SolNeonDecoderCtx, SolNeonDecoderStat
 from ..base.solana_block_net_cache import SolBlockNetCache
 from ..db.indexer_db import IndexerDb
-from ..stat.client import StatClient
 from ..stat.api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat
+from ..stat.client import StatClient
 
 _LOG = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ class Indexer:
         self._cfg = cfg
         self._layer0_chain_id = layer0_chain_id
         self._sol_client = sol_client
+        self._is_done_slot_task = False
+        self._slot_session = SolWatchSlotSession(cfg, sol_client)
         self._db = db
 
         self._tracer_api_client = tracer_api_client
@@ -133,8 +136,8 @@ class Indexer:
             block_stat = NeonBlockStat(
                 start_block=self._db.start_slot,
                 parsed_block=self._last_processed_slot,
-                finalized_block=self._last_finalized_slot,
-                confirmed_block=self._last_confirmed_slot,
+                finalized_block=self._finalized_slot,
+                confirmed_block=self._confirmed_slot,
                 tracer_block=self._last_tracer_slot,
                 corrupted_block_cnt=self._decoder_stat.neon_corrupted_block_cnt_diff,
             )
@@ -157,8 +160,8 @@ class Indexer:
         self._decoder_stat.reset()
 
         if not self._db.is_reindexing_mode:
-            value_dict["confirmed block slot"] = self._last_confirmed_slot
-            value_dict["finalized block slot"] = self._last_finalized_slot
+            value_dict["confirmed block slot"] = self._confirmed_slot
+            value_dict["finalized block slot"] = self._finalized_slot
             if self._last_tracer_slot is not None:
                 value_dict["tracer block slot"] = self._last_tracer_slot
         else:
@@ -255,6 +258,12 @@ class Indexer:
     async def run(self) -> None:
         await self._check_start_slot(self._db.get_min_used_slot())
 
+        update_slot_task: asyncio.Task | None = None
+        if not self._db.is_reindexing_mode:
+            self._is_done_slot_task = False
+            await self._slot_session.subscribe(init_start_slot=True)
+            update_slot_task = asyncio.create_task(self._update_slot_loop())
+
         check_sec = float(self._cfg.indexer_check_msec) / 1000
         while not self._is_done_parsing:
             if not (await self._has_new_blocks()):
@@ -269,9 +278,29 @@ class Indexer:
             finally:
                 self._decoder_stat.commit_timer()
 
+        if update_slot_task:
+            self._is_done_slot_task = True
+            await update_slot_task
+
         if self._db.is_reindexing_mode:
             done_stat = NeonDoneReindexStat(reindex_ident=self._db.reindex_ident)
             self._stat_client.commit_done_reindex_stat(done_stat)
+
+    async def _update_slot_loop(self) -> None:
+        with logging_context(ctx="update-slot-loop"):
+            while not self._is_done_slot_task:
+                try:
+                    await self._slot_session.update()
+                except BaseException as exc:
+                    _LOG.error("error on update slots", exc_info=exc)
+
+    @property
+    def _confirmed_slot(self) -> int:
+        return self._slot_session.confirmed_slot
+
+    @property
+    def _finalized_slot(self) -> int:
+        return self._slot_session.finalized_slot
 
     async def _has_new_blocks(self) -> bool:
         if self._db.is_reindexing_mode:
@@ -283,9 +312,9 @@ class Indexer:
                 self._commit_progress_stat()
             self._last_finalized_slot = finalized_slot
         else:
-            self._last_confirmed_slot = await self._sol_client.get_slot(SolCommit.Confirmed)
+            self._last_confirmed_slot = self._confirmed_slot
             if result := self._last_processed_slot != self._last_confirmed_slot:
-                self._last_finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+                self._last_finalized_slot = self._finalized_slot
                 if self._tracer_api_client:
                     self._last_tracer_slot = await self._tracer_api_client.get_max_slot()
                     # if no connection to the tracer db, but config has a delay,
@@ -346,7 +375,7 @@ class Indexer:
         # the head of finalized blocks will go forward
         # and there are no reason to parse confirmed blocks,
         # because on next iteration there will be the next portion of finalized blocks
-        finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        finalized_slot = self._finalized_slot
         if (finalized_slot - self._last_finalized_slot) >= 5:
             _LOG.debug(
                 log_msg(
