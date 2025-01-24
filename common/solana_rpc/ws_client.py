@@ -445,7 +445,8 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._slot_info: _SoldersSlotInfo | None = None
+        self._data: _SoldersSlotInfo | None = None
+        self._prev_root: int | None = None
 
     async def subscribe(
         self, *,
@@ -453,7 +454,7 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         confirmed_slot = 0,
         finalized_slot = 0,
     ) -> None:
-        if self._slot_info:
+        if self._data:
             return
 
         if init_start_slot:
@@ -461,7 +462,7 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
                 self._sol_client.get_slot(SolCommit.Confirmed),
                 self._sol_client.get_slot(SolCommit.Finalized),
             ])
-        self._slot_info = _SoldersSlotInfo(confirmed_slot, 0, finalized_slot)
+        self._data = _SoldersSlotInfo(confirmed_slot, 0, finalized_slot)
 
         await self.connect()
         await self._sub_slot()
@@ -472,10 +473,18 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
 
     def get_slot(self, commit: SolCommit) -> int:
         if commit == SolCommit.Confirmed:
-            return self._slot_info.slot
+            return self._data.parent
         elif commit == SolCommit.Finalized:
-            return self._slot_info.root
+            return self._data.root
         assert False, f"unknown commit {commit}"
+
+    @property
+    def confirmed_slot(self) -> int:
+        return self._data.parent
+
+    @property
+    def finalized_slot(self) -> int:
+        return self._data.root
 
     async def _sub_slot(self) -> None:
         await self._sub_obj(1, None, SolCommit.Confirmed)
@@ -484,7 +493,11 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         return _SoldersSubSlot(info.req_id)
 
     def _on_sub_notif(self, info: _SlotInfo, data: _SoldersSlotNotif, now_nsec: int) -> None:
-        self._slot_info = data.result
+        new_data = data.result
+        if self._prev_root:
+            self._data = _SoldersSlotInfo(new_data.slot, new_data.parent, self._prev_root)
+
+        self._prev_root = new_data.root
         self._obj_dict[info.key] = info
         self._sub_dict[info.sub_id] = info.key
 
