@@ -29,6 +29,7 @@ from ..solana.errors import SolError
 from ..solana.pubkey import SolPubKey
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
+from ..utils.json_logger import logging_context
 from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
@@ -445,6 +446,8 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         super().__init__(*args, **kwargs)
         self._data: _SoldersSlotInfo | None = None
         self._prev_root: int | None = None
+        self._update_task: asyncio.Task | None = None
+        self._is_started = False
 
     async def subscribe(
         self, *,
@@ -465,16 +468,24 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         await self.connect()
         await self._sub_slot()
 
+    async def start(self) -> None:
+        if self._update_task:
+            return
+        self._is_started = True
+
+        await self.subscribe(init_start_slot=True)
+        self._update_task = asyncio.create_task(self._update_loop())
+
+    async def stop(self) -> None:
+        if not self._update_task:
+            return
+
+        update_task, self._update_task, self._is_started = self._update_task, None, False
+        await update_task
+
     async def update(self, *, timeout_nsec: int = int(2 * ONE_BLOCK_SEC * 1e9)) -> None:
         await self.subscribe()
         await super().update(timeout_nsec=timeout_nsec)
-
-    def get_slot(self, commit: SolCommit) -> int:
-        if commit == SolCommit.Confirmed:
-            return self._data.parent
-        elif commit == SolCommit.Finalized:
-            return self._data.root
-        assert False, f"unknown commit {commit}"
 
     @property
     def confirmed_slot(self) -> int:
@@ -483,6 +494,14 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
     @property
     def finalized_slot(self) -> int:
         return self._data.root
+
+    async def _update_loop(self) -> None:
+        with logging_context(ctx="update-slot"):
+            while self._is_started:
+                try:
+                    await self.update()
+                except BaseException as exc:
+                    _LOG.error("unexpected error on update slot", exc_info=exc, extra=self._msg_filter)
 
     async def _sub_slot(self) -> None:
         await self._sub_obj(1, None, SolCommit.Confirmed)
