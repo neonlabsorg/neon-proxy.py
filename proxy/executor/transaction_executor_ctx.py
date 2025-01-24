@@ -18,7 +18,7 @@ from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.token_program import SplTokenProg
 from common.solana.transaction import SolTx
-from common.solana_rpc.neon_sol_tx_list_sender import SolNeonTxListSender
+from common.solana_rpc.sol_neon_tx_list_sender import SolNeonTxListSender
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
