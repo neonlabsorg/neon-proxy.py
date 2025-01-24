@@ -69,6 +69,7 @@ services:
     container_name: indexer
     environment:
       SOLANA_URL: $SOLANA_URL
+      SOLANA_WS_URL: $SOLANA_WS_URL
 
   postgres:
     container_name: postgres
