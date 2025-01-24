@@ -37,11 +37,12 @@ class BaseStatClient:
         with logging_context(ctx="stat-client"):
             while not self._stop_event.is_set():
                 try:
-                    await self._send_data()
+                    while not self._send_queue.empty():
+                        await self._send_data()
                 except BaseException as exc:
                     _LOG.warning("error on send data", exc_info=exc)
                 await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _send_data(self) -> None:
-        call, data = await self._send_queue.get()
+        call, data = self._send_queue.get_nowait()
         await call(data)
