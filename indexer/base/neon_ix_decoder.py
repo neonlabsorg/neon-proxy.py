@@ -699,9 +699,19 @@ class SkdTxFinishDecoder(BaseSkdTxIxDecoder):
     is_deprecated: ClassVar[bool] = False
 
     def execute(self) -> bool:
-        if not (skd_tx := self._decode_skd_tx_status(NeonSkdTxStatus.Success)):
+        if self.state.sol_neon_ix.neon_tx_hash.is_empty:
+            _LOG.warning("Unknown NeonTx.Hash")
+            return False
+        elif not (holder_addr := self._get_holder_address()) or not (tree_addr := self._get_tree_address(1)):
             return False
 
+        skd_tx = NeonIndexedSkdTxStatusInfo(
+            neon_tx_hash=self.state.sol_neon_ix.neon_tx_hash,
+            tree_address=tree_addr,
+            holder_address=holder_addr,
+            status=NeonSkdTxStatus.Success,
+        )
+        self.state.neon_block.add_neon_skd_tx_status(skd_tx)
         _LOG.debug("%s: finish NeonSkdTx %s", self._success_hdr, skd_tx.neon_tx_hash)
         return True
 
