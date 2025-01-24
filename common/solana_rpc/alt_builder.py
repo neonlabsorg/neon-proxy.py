@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Sequence, Final, ClassVar
@@ -9,11 +10,10 @@ from typing_extensions import Self
 from .client import SolClient
 from .ws_client import SolWatchAccountSession, SolWatchSlotSession
 from ..config.config import Config
-from ..config.constants import MIN_FINALIZE_SEC
+from ..config.constants import MIN_FINALIZE_SEC, ONE_BLOCK_SEC
 from ..solana.alt_info import SolAltInfo
 from ..solana.alt_program import SolAltProg, SolAltAccountInfo
 from ..solana.cb_program import SolCbProg
-from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_legacy import SolLegacyTx
@@ -64,24 +64,27 @@ class SolAltTxBuilder:
     _wait_nsec: Final[int] = int(MIN_FINALIZE_SEC * 1e9)
     _recent_slot_dict: ClassVar[dict[SolPubKey, int]] = dict()
 
-    def __init__(self, cfg: Config, sol_client: SolClient, owner: SolPubKey, cu_price: int) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        sol_client: SolClient,
+        slot_session: SolWatchSlotSession,
+        owner: SolPubKey,
+        cu_price: int,
+    ) -> None:
         self._cfg = cfg
         self._sol_client = sol_client
+        self._slot_session = slot_session
         self._alt_prog = SolAltProg(owner)
         self._cb_prog = SolCbProg()
         self._cu_price = cu_price
 
     async def _get_recent_slot(self) -> int:
-        recent_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        while (recent_slot := self._slot_session.finalized_slot) <= self._recent_slot_dict.get(self._alt_prog.payer, 0):
+            await asyncio.sleep(ONE_BLOCK_SEC / 2)
 
-        async with SolWatchSlotSession(self._cfg, self._sol_client) as slot_session:
-            while recent_slot <= self._recent_slot_dict.get(self._alt_prog.payer, 0):
-                await slot_session.subscribe(finalized_slot=recent_slot)
-                await slot_session.update()
-                recent_slot = slot_session.finalized_slot
-
-            self._recent_slot_dict[self._alt_prog.payer] = recent_slot
-            return recent_slot
+        self._recent_slot_dict[self._alt_prog.payer] = recent_slot
+        return recent_slot
 
     @property
     def tx_name_list(self) -> Sequence[str]:
@@ -114,12 +117,13 @@ class SolAltTxBuilder:
         # Tx to create an Address Lookup Table
         create_alt_tx_list: list[SolLegacyTx] = list()
         if not is_alt_exist:
-            ix_list = tuple([
-                self._cb_prog.make_cu_price_ix(self._cu_price),
-                self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitCreate),
-                self._alt_prog.make_create_alt_ix(alt.ident),
-
-            ])
+            ix_list = tuple(
+                [
+                    self._cb_prog.make_cu_price_ix(self._cu_price),
+                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitCreate),
+                    self._alt_prog.make_create_alt_ix(alt.ident),
+                ]
+            )
             create_alt_tx = SolLegacyTx(name=self._create_name, ix_list=ix_list)
             create_alt_tx_list.append(create_alt_tx)
 
@@ -131,11 +135,13 @@ class SolAltTxBuilder:
         max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
-            ix_list = tuple([
-                self._cb_prog.make_cu_price_ix(self._cu_price),
-                self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitExtend),
-                self._alt_prog.make_extend_alt_ix(alt.ident, acct_list_part),
-            ])
+            ix_list = tuple(
+                [
+                    self._cb_prog.make_cu_price_ix(self._cu_price),
+                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitExtend),
+                    self._alt_prog.make_extend_alt_ix(alt.ident, acct_list_part),
+                ]
+            )
             tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
             extend_alt_tx_list.append(tx)
 
@@ -181,8 +187,5 @@ class SolAltTxBuilder:
         # for addr in new_addr_set:
         #     _LOG.debug("ALT %s doesn't exist", addr)
 
-        async with SolWatchSlotSession(self._cfg, self._sol_client) as slot_session:
-            # wait for slot update
-            await slot_session.subscribe(init_start_slot=True)
-            while last_extended_slot >= slot_session.confirmed_slot:
-                await slot_session.update()
+        while last_extended_slot >= self._slot_session.confirmed_slot:
+            await asyncio.sleep(ONE_BLOCK_SEC / 2)

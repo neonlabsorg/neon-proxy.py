@@ -258,11 +258,8 @@ class Indexer:
     async def run(self) -> None:
         await self._check_start_slot(self._db.get_min_used_slot())
 
-        update_slot_task: asyncio.Task | None = None
         if not self._db.is_reindexing_mode:
-            self._is_done_slot_task = False
-            await self._slot_session.subscribe(init_start_slot=True)
-            update_slot_task = asyncio.create_task(self._update_slot_loop())
+            await self._slot_session.start()
 
         check_sec = float(self._cfg.indexer_check_msec) / 1000
         while not self._is_done_parsing:
@@ -278,21 +275,10 @@ class Indexer:
             finally:
                 self._decoder_stat.commit_timer()
 
-        if update_slot_task:
-            self._is_done_slot_task = True
-            await update_slot_task
-
+        await self._slot_session.stop()
         if self._db.is_reindexing_mode:
             done_stat = NeonDoneReindexStat(reindex_ident=self._db.reindex_ident)
             self._stat_client.commit_done_reindex_stat(done_stat)
-
-    async def _update_slot_loop(self) -> None:
-        with logging_context(ctx="update-slot-loop"):
-            while not self._is_done_slot_task:
-                try:
-                    await self._slot_session.update()
-                except BaseException as exc:
-                    _LOG.error("error on update slots", exc_info=exc)
 
     @property
     def _confirmed_slot(self) -> int:
