@@ -7,6 +7,7 @@ from common.config.config import Config
 from common.config.utils import LogMsgFilter
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
+from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.cached import cached_property
 from common.utils.process_pool import ProcessPool
 
@@ -28,8 +29,20 @@ class BaseIntlProxyComponent:
         return self._server._sol_client  # noqa
 
     @cached_property
+    def _slot_session(self) -> SolWatchSlotSession:
+        return self._server._slot_session # noqa
+
+    @cached_property
     def _msg_filter(self) -> LogMsgFilter:
         return self._server._msg_filter  # noqa
+
+    @property
+    def _confirmed_slot(self) -> int:
+        return self._slot_session.confirmed_slot
+
+    @property
+    def _finalized_slot(self) -> int:
+        return self._slot_session.finalized_slot
 
 
 class BaseProxyApi(BaseIntlProxyComponent, AppDataApi):
@@ -63,6 +76,7 @@ class BaseIntlProxyServer(AppDataServer):
 
         self._core_api_client = core_api_client
         self._sol_client = sol_client
+        self._slot_session = SolWatchSlotSession(cfg, sol_client)
 
         self._process_pool = self._ProcessPool(self)
 
@@ -79,12 +93,14 @@ class BaseIntlProxyServer(AppDataServer):
             self._sol_client.start(),
             self._core_api_client.start(),
         )
+        await self._slot_session.start()
 
     async def _on_server_stop(self) -> None:
         await asyncio.gather(
             super()._on_server_stop(),
             self._core_api_client.stop(),
             self._sol_client.stop(),
+            self._slot_session.stop(),
         )
 
     def _on_process_start(self, idx: int) -> None:

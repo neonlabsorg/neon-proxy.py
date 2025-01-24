@@ -15,6 +15,7 @@ from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
 from common.solana_rpc.alt_builder import SolAltTxBuilder
 from common.solana_rpc.client import SolClient
+from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
 from proxy.base.op_api import OpResourceModel
@@ -241,7 +242,10 @@ class HolderHandler(BaseNPCmdHandler):
     ) -> SolAltInfo | None:
         sol_client: SolClient = await self._get_sol_client()
 
-        alt_tx_builder = SolAltTxBuilder(self._cfg, sol_client, payer, self._cu_price)
+        slot_session = SolWatchSlotSession(self._cfg, sol_client)
+        await slot_session.start()
+
+        alt_tx_builder = SolAltTxBuilder(self._cfg, sol_client, slot_session, payer, self._cu_price)
         alt: SolAltInfo = await alt_tx_builder.build_alt(legacy_tx, tuple())
         alt_tx_set = alt_tx_builder.build_alt_tx_set(alt)
 
@@ -253,4 +257,5 @@ class HolderHandler(BaseNPCmdHandler):
                 _LOG.error("fail to create ALT %s", alt.address)
                 return None
 
+        await slot_session.stop()
         return alt

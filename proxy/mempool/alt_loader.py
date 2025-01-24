@@ -130,7 +130,7 @@ class SolAltLoader(MempoolComponent):
             commit=SolCommit.Finalized,
         )
 
-        valid_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        valid_slot = self._finalized_slot
         valid_slot -= 10_000
 
         alt_list: list[NeonAltModel] = list()
