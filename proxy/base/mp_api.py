@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from bisect import bisect_left
 from enum import IntEnum
 from typing import Annotated, ClassVar
 
@@ -203,11 +202,6 @@ class MpGasPriceModel(BaseModel):
     @property
     def is_empty(self) -> bool:
         return not self.token_dict
-
-
-class MpSlotGasPriceModel(BaseModel):
-    slot: int
-    gas_price: int
 
 
 class MpRequest(BaseModel):

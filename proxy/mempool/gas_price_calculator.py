@@ -15,7 +15,7 @@ from common.solana.pubkey import SolPubKey
 from common.solana_rpc.ws_client import SolWatchAccountSession
 from common.utils.json_logger import log_msg, logging_context
 from .server_abc import MempoolComponent, MempoolServerAbc
-from ..base.mp_api import MpGasPriceModel, MpSlotGasPriceModel, MpTokenGasPriceModel
+from ..base.mp_api import MpGasPriceModel, MpTokenGasPriceModel
 
 _LOG = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class MpGasPriceCalculator(MempoolComponent):
         _1min: Final[int] = 60  # 60 seconds
 
         self._recent_gas_price_cnt: Final[int] = int(_1min / self._update_sec * self._cfg.mp_gas_price_min_window)
-        self._recent_gas_price_dict: dict[int, deque[MpSlotGasPriceModel]] = dict()
+        self._recent_gas_price_dict: dict[int, deque[int]] = dict()
 
     async def start(self) -> None:
         self._update_pyth_acct_task = asyncio.create_task(self._update_pyth_acct_loop())
@@ -201,13 +201,10 @@ class MpGasPriceCalculator(MempoolComponent):
         suggested_price = int(net_price * (1 + fee_cfg.priority_fee + fee_cfg.operator_fee))
 
         gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
-        recent_slot: int = await self._sol_client.get_recent_slot()
-        gas_price_deque.append(
-            MpSlotGasPriceModel(slot=recent_slot, gas_price=profitable_price)
-        )
+        gas_price_deque.append(profitable_price)
         if len(gas_price_deque) > self._recent_gas_price_cnt:
             gas_price_deque.popleft()
-        min_price = min(gas_price_deque, key=lambda x: x.gas_price).gas_price
+        min_price = min(gas_price_deque)
 
         return MpTokenGasPriceModel(
             chain_id=token.chain_id,
