@@ -78,7 +78,7 @@ class SolAltTxBuilder:
             while recent_slot <= self._recent_slot_dict.get(self._alt_prog.payer, 0):
                 await slot_session.subscribe(finalized_slot=recent_slot)
                 await slot_session.update()
-                recent_slot = slot_session.get_slot(SolCommit.Finalized)
+                recent_slot = slot_session.finalized_slot
 
             self._recent_slot_dict[self._alt_prog.payer] = recent_slot
             return recent_slot
@@ -184,5 +184,5 @@ class SolAltTxBuilder:
         async with SolWatchSlotSession(self._cfg, self._sol_client) as slot_session:
             # wait for slot update
             await slot_session.subscribe(init_start_slot=True)
-            while last_extended_slot >= slot_session.get_slot(SolCommit.Confirmed):
+            while last_extended_slot >= slot_session.confirmed_slot:
                 await slot_session.update()
