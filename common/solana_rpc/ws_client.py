@@ -488,6 +488,10 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         await super().update(timeout_nsec=timeout_nsec)
 
     @property
+    def processed_slot(self) -> int:
+        return self._data.slot
+
+    @property
     def confirmed_slot(self) -> int:
         return self._data.parent
 

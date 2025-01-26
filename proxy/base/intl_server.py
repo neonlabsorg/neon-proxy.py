@@ -37,6 +37,10 @@ class BaseIntlProxyComponent:
         return self._server._msg_filter  # noqa
 
     @property
+    def _processed_slot(self) -> int:
+        return self._slot_session.processed_slot
+
+    @property
     def _confirmed_slot(self) -> int:
         return self._slot_session.confirmed_slot
 
