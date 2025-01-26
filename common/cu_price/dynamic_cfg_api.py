@@ -4,6 +4,7 @@ from typing import Annotated
 from pydantic import ConfigDict, Field, PlainValidator
 
 from ..config.config import CuPriceMode, CuPriceLevel
+from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel as _BaseModel
 
 
@@ -22,13 +23,30 @@ CuPriceModeField = Annotated[CuPriceMode, PlainValidator(CuPriceMode.from_raw)]
 
 
 class PriorityFeeCfgResp(BaseModel):
-    operator_fee: Decimal = Field(validation_alias="operatorFee")
-    priority_fee: Decimal = Field(validation_alias="priorityFee")
+    operator_fee_value: Decimal = Field(validation_alias="operatorFee")
+
+    priority_fee_value: Decimal = Field(default=Decimal(0), validation_alias="priorityFee")
+    min_priority_fee_value: Decimal = Field(default=Decimal(0), validation_alias="minPriorityFee")
+    max_priority_fee_value: Decimal = Field(default=Decimal(0), validation_alias="maxPriorityFee")
 
     const_gas_price: int | None = Field(None, validation_alias="constGasPrice")
     min_gas_price: int | None = Field(1, validation_alias="minGasPrice")
 
     cu_price_mode: CuPriceModeField = Field(validation_alias="cuPriceMode")
     cu_price_level: CuPriceLevelField = Field(validation_alias="cuPriceLevel")
+    cu_price_block_cnt: int | None = Field(None, validation_alias="cuPriceBlockCount")
+
     def_cu_price: int = Field(0, validation_alias="defaultComputeUnitPrice")
     def_simple_cu_price: int = Field(0, validation_alias="defaultSimpleComputeUnitPrice")
+
+    @cached_property
+    def operator_fee(self) -> float:
+        return float(self.operator_fee_value)
+
+    @cached_property
+    def min_priority_fee(self) -> float:
+        return float(self.min_priority_fee_value if self.min_priority_fee_value else self.priority_fee_value)
+
+    @cached_property
+    def max_priority_fee(self) -> float:
+        return float(self.max_priority_fee_value if self.max_priority_fee_value else self.priority_fee_value)

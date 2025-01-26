@@ -199,10 +199,12 @@ class Config:
     pyth_url_name: Final[str] = "PYTH_URL"
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
     operator_fee_name: Final[str] = "OPERATOR_FEE"
-    priority_fee_name: Final[str] = "PRIORITY_FEE"
+    min_priority_fee_name: Final[str] = "MIN_PRIORITY_FEE"
+    max_priority_fee_name: Final[str] = "MAX_PRIORITY_FEE"
     cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_mode_name: Final[str] = "CU_PRICE_MODE"
     cu_price_level_name: Final[str] = "CU_PRICE_LEVEL"
+    cu_price_block_cnt_name: Final[str] = "CU_PRICE_BLOCK_COUNT"
     def_cu_price_name: Final[str] = "DEFAULT_CU_PRICE"
     def_simple_cu_price_name: Final[str] = "DEFAULT_SIMPLE_CU_PRICE"
     dynamic_fee_cfg_url_name: Final[str] = "DYNAMIC_FEE_CFG_URL"
@@ -210,7 +212,6 @@ class Config:
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
     min_wo_chain_id_gas_price_name: Final[str] = "MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE"
     const_gas_price_name: Final[str] = "CONST_GAS_PRICE"
-    cu_price_estimator_block_cnt_name: Final[str] = "CU_PRICE_ESTIMATOR_BLOCK_COUNT"
     # Operator resources
     holder_size_name: Final[str] = "HOLDER_SIZE"
     min_op_balance_to_warn_name: Final[str] = "MIN_OPERATOR_BALANCE_TO_WARN"
@@ -736,12 +737,27 @@ class Config:
         return tuple(pyth_ws_url_list)
 
     @cached_property
-    def operator_fee(self) -> Decimal:
-        return self._env_num(self.operator_fee_name, Decimal("0.25"), Decimal("0.0"), Decimal("100.0"))
+    def operator_fee(self) -> float:
+        return float(self._env_num(self.operator_fee_name, Decimal("0.25"), Decimal("0.0"), Decimal("100.0")))
 
     @cached_property
-    def priority_fee(self) -> Decimal:
-        return self._env_num(self.priority_fee_name, Decimal("0.75"), Decimal("0.0"), Decimal("100.0"))
+    def min_priority_fee(self) -> float:
+        return float(self._env_num(self.min_priority_fee_name, Decimal("0.75"), Decimal("0.0"), Decimal("100.0")))
+
+    @cached_property
+    def max_priority_fee(self) -> float:
+        value = float(self._env_num(self.min_priority_fee_name, Decimal("0.75"), Decimal("0.0"), Decimal("100.0")))
+        if value >= (min_value := self.min_priority_fee):
+            return value
+
+        _LOG.warning(
+            "%s > %s, force to use %s (%s)",
+            self.min_priority_fee_name,
+            self.max_priority_fee_name,
+            self.min_priority_fee_name,
+            min_value,
+        )
+        return min_value
 
     @cached_property
     def cu_limit(self) -> int:
@@ -759,6 +775,10 @@ class Config:
     def cu_price_level(self) -> CuPriceLevel:
         raw = os.environ.get(self.cu_price_level_name, None)
         return CuPriceLevel.from_raw(raw)
+
+    @cached_property
+    def cu_price_block_cnt(self) -> int:
+        return self._env_num(self.cu_price_block_cnt_name, 50, 1, 1000)
 
     @cached_property
     def def_cu_price(self) -> int:
@@ -811,10 +831,6 @@ class Config:
             )
             const_gas_price = min_gas_price
         return const_gas_price * (10**9)
-
-    @cached_property
-    def cu_price_estimator_block_cnt(self) -> int:
-        return self._env_num(self.cu_price_estimator_block_cnt_name, 50, 1, 1000)
 
     #############################
     # Operator resource settings
@@ -1014,7 +1030,8 @@ class Config:
             self.pyth_url_name: self.pyth_url_list,
             self.pyth_ws_url_name: self.pyth_ws_url_list,
             self.operator_fee_name: self.operator_fee,
-            self.priority_fee_name: self.priority_fee,
+            self.min_priority_fee_name: self.min_priority_fee,
+            self.max_priority_fee_name: self.max_priority_fee,
             self.cu_limit_name: self.cu_limit,
             self.cu_price_mode_name: self.cu_price_mode,
             self.cu_price_level_name: self.cu_price_level,
@@ -1025,7 +1042,7 @@ class Config:
             self.min_gas_price_name: self.min_gas_price,
             self.min_wo_chain_id_gas_price_name: self.min_wo_chain_id_gas_price,
             self.const_gas_price_name: self.const_gas_price,
-            self.cu_price_estimator_block_cnt_name: self.cu_price_estimator_block_cnt,
+            self.cu_price_block_cnt_name: self.cu_price_block_cnt,
             # Operator resources
             self.holder_size_name: self.holder_size,
             self.min_op_balance_to_warn_name: self.min_op_balance_to_warn,

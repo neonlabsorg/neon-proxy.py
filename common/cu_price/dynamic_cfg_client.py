@@ -26,11 +26,13 @@ class DynamicFeeCfgClient(HttpClient):
 
         self._base_cfg = PriorityFeeCfg(
             operator_fee=self._cfg.operator_fee,
-            priority_fee=self._cfg.priority_fee,
+            min_priority_fee=self._cfg.min_priority_fee,
+            max_priority_fee=self._cfg.max_priority_fee,
             const_gas_price=self._cfg.const_gas_price,
             min_gas_price=self._cfg.min_gas_price,
             cu_price_mode=self._cfg.cu_price_mode,
             cu_price_level=self._cfg.cu_price_level,
+            cu_price_block_cnt=self._cfg.cu_price_block_cnt,
             def_cu_price=self._cfg.def_cu_price,
             def_simple_cu_price=self._cfg.def_simple_cu_price,
         )
@@ -45,15 +47,19 @@ class DynamicFeeCfgClient(HttpClient):
             resp = PriorityFeeCfgResp.from_json(resp_json)
             cfg = PriorityFeeCfg(
                 operator_fee=resp.operator_fee,
-                priority_fee=resp.priority_fee,
+                min_priority_fee=resp.min_priority_fee,
+                max_priority_fee=resp.max_priority_fee,
                 const_gas_price=(
-                    resp.const_gas_price * (10**9) if resp.const_gas_price is not None else self._cfg.const_gas_price
+                    resp.const_gas_price * pow(10, 9) if resp.const_gas_price is not None else self._cfg.const_gas_price
                 ),
                 min_gas_price=(
-                    resp.min_gas_price * (10**9) if resp.min_gas_price is not None else self._cfg.min_gas_price
+                    resp.min_gas_price * pow(10, 9) if resp.min_gas_price is not None else self._cfg.min_gas_price
                 ),
                 cu_price_mode=resp.cu_price_mode,
                 cu_price_level=resp.cu_price_level,
+                cu_price_block_cnt=(
+                    resp.cu_price_block_cnt if resp.cu_price_block_cnt is not None else self._cfg.cu_price_block_cnt
+                ),
                 def_cu_price=resp.def_cu_price or self._cfg.def_cu_price,
                 def_simple_cu_price=resp.def_simple_cu_price or self._cfg.def_simple_cu_price,
             )

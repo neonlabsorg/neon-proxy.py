@@ -179,6 +179,23 @@ class MpTokenGasPriceModel(BaseModel):
     min_acceptable_gas_price: int
     min_executable_gas_price: int
 
+    @classmethod
+    def new_empty(cls, token_name: str, is_default_token = False, is_layer0_token = False) -> Self:
+        return cls(
+            chain_id=0,
+            token_name=token_name,
+            token_mint=SolPubKey.default(),
+            token_price_usd=0,
+            is_default_token=is_default_token,
+            is_layer0_token=is_layer0_token,
+            is_const_gas_price=True,
+            suggested_gas_price=0,
+            profitable_gas_price=0,
+            pct_gas_price=1,
+            min_acceptable_gas_price=0,
+            min_executable_gas_price=0,
+        )
+
 
 class MpGasPriceModel(BaseModel):
     chain_token_price_usd: int
