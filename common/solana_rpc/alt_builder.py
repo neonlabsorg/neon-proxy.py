@@ -187,5 +187,5 @@ class SolAltTxBuilder:
         # for addr in new_addr_set:
         #     _LOG.debug("ALT %s doesn't exist", addr)
 
-        while last_extended_slot >= self._slot_session.confirmed_slot:
+        while last_extended_slot >= self._slot_session.processed_slot:
             await asyncio.sleep(ONE_BLOCK_SEC / 2)
