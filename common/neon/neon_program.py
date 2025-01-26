@@ -184,7 +184,7 @@ class NeonProg:
     EvmStepPerIter: ClassVar[int] = 0
 
     # Holder IX CUs limit
-    CuLimitHolderWrite: Final[int] = 25_000
+    CuLimitHolderWrite: Final[int] = 10_000
     CuLimitHolderCreate: Final[int] = 7_500
     CuLimitHolderDestroy: Final[int] = 7_500
     # Operator balance CUs limit
