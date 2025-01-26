@@ -22,7 +22,7 @@ _LOG = logging.getLogger(__name__)
 class NeonEvmProtocol(IntEnum):
     Unknown = -1
     v1004 = 1004  # 1.4  -> 1.004
-    v1013 = 1013  # 1.13 -> 1.013
+    v1014 = 1014  # 1.14 -> 1.014
     v1017 = 1017  # 1.17 -> 1.017
     v1018 = 1018  # 1.18 -> 1.018
 
@@ -73,8 +73,8 @@ class NeonEvmIxCode(IntEnum):
     SkdTxSkipFromAccount = 0x4d                # 77
     SkdTxSkipFromData = 0x4e                   # 78
 
-    OldTxExecFromDataV1013 = 0x32              # 50
-    OldTxExecFromDataSolanaCallV1013 = 0x38    # 56
+    OldTxExecFromDataV1014 = 0x32              # 50
+    OldTxExecFromDataSolanaCallV1014 = 0x38    # 56
 
     OldDepositV1004 = 0x27                     # 39
     OldCreateAccountV1004 = 0x28               # 40
@@ -161,8 +161,8 @@ class NeonProgCfg:
             protocol = major + str(minor).rjust(3, "0")
             return NeonEvmProtocol(int(protocol))
 
-        except (BaseException,):
-            _LOG.error("wrong format of NeonEVM version %s", self.evm_version)
+        except BaseException as exc:
+            _LOG.error("wrong format of NeonEVM version %s: %s", self.evm_version, str(exc))
             return NeonEvmProtocol.Unknown
 
 
