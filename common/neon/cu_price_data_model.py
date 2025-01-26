@@ -7,8 +7,6 @@ from typing import ClassVar, Final, Iterable, Sequence
 from typing_extensions import Self
 
 from ..solana.block import SolRpcBlockInfo
-from ..solana.sys_program import SolSysProg
-from ..solana.transaction_decoder import SolTxMetaInfo
 from ..utils.pydantic import BaseModel
 
 
@@ -65,7 +63,12 @@ class CuPricePercentileModel(BaseModel):
         )
 
     @classmethod
-    def get_weighted_percentile(cls, pct: int, data_point_cnt: int, cu_price_list_seq: Iterable[Sequence[int]]) -> float:
+    def get_weighted_percentile(
+        cls,
+        pct: int,
+        data_point_cnt: int,
+        cu_price_list_seq: Iterable[Sequence[int]],
+    ) -> float:
         """
         Returns weighted average of `pct` percentiles for each price data in `price_seq`.
         The first price data is taken with the most significant weight.
@@ -79,4 +82,5 @@ class CuPricePercentileModel(BaseModel):
             if not cu_price_list:
                 continue
             val += CuPricePercentileModel.from_raw(cu_price_list).get_percentile(pct) * (data_point_cnt - idx)
+
         return val / (data_point_cnt * (data_point_cnt + 1) / 2)

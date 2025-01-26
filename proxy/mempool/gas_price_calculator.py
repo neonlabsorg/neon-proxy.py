@@ -8,6 +8,7 @@ from typing import Final
 from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
 from common.cu_price.api import PriorityFeeCfg
 from common.cu_price.pyth_price_account import PythPriceAccount
+from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.solana.cb_program import SolCbProg
@@ -45,39 +46,13 @@ class MpGasPriceCalculator(MempoolComponent):
         self._gas_price_cache = MpGasPriceModel(
             chain_token_price_usd=0,
             operator_fee=int(self._cfg.operator_fee * self._fee_precision),
-            priority_fee=int(self._cfg.priority_fee * self._fee_precision),
+            priority_fee=int(self._cfg.min_priority_fee * self._fee_precision),
             cu_price=self._cfg.def_cu_price,
             cu_price_pct=self._cfg.cu_price_level.to_pct(self._cfg.cu_price_level),
             simple_cu_price=self._cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
-            default_token=MpTokenGasPriceModel(
-                chain_id=0,
-                token_name=DEFAULT_TOKEN_NAME,
-                token_mint=SolPubKey.default(),
-                token_price_usd=0,
-                is_default_token=True,
-                is_layer0_token=False,
-                is_const_gas_price=True,
-                suggested_gas_price=0,
-                profitable_gas_price=0,
-                pct_gas_price=1,
-                min_acceptable_gas_price=0,
-                min_executable_gas_price=0,
-            ),
-            layer0_token=MpTokenGasPriceModel(
-                chain_id=0,
-                token_name=LAYER0_TOKEN_NAME,
-                token_mint=SolPubKey.default(),
-                token_price_usd=0,
-                is_default_token=False,
-                is_layer0_token=True,
-                is_const_gas_price=True,
-                suggested_gas_price=0,
-                profitable_gas_price=0,
-                pct_gas_price=1,
-                min_acceptable_gas_price=0,
-                min_executable_gas_price=0,
-            ),
+            default_token=MpTokenGasPriceModel.new_empty(DEFAULT_TOKEN_NAME, is_default_token=True),
+            layer0_token=MpTokenGasPriceModel.new_empty(LAYER0_TOKEN_NAME, is_layer0_token=True),
             token_dict=dict(),
         )
 
@@ -131,9 +106,11 @@ class MpGasPriceCalculator(MempoolComponent):
         default_token: MpTokenGasPriceModel | None = None
         layer0_token: MpTokenGasPriceModel | None = None
 
+        priority_fee, cu_price = await self._calc_priority_fee(fee_cfg)
+
         for token in evm_cfg.token_dict.values():
             price_acct = await self._get_price_account(token.name)
-            token_gas_price = await self._calc_token_gas_price(fee_cfg, token, base_price_usd, price_acct)
+            token_gas_price = await self._calc_token_gas_price(fee_cfg, priority_fee, token, base_price_usd, price_acct)
             if token_gas_price:
                 token_dict[token.name] = token_gas_price
                 if token_gas_price.is_default_token:
@@ -145,21 +122,10 @@ class MpGasPriceCalculator(MempoolComponent):
 
         assert default_token is not None, "DEFAULT TOKEN NOT FOUND!"
 
-        # Logic is simple:
-        #   - User pays for gas-usage
-        #   - Each gas-unit for gas-price
-        #   - Gas-price = Base-Gas-Price + (Operator-Fee * Base-Gas-Price) + (Priority-Fee * Base-GasPrice)
-        #   --- Base-Gas-Price -> covers SOLs
-        #   --- Base-Gas-Price * Operator-Fee -> brings profit to the Operator
-        #   --- Base-Gas-Price * Priority-Fee -> coverts SOLs for Solana Priority Fee (CUs price)
-        #   - It means, that Gas-Usage * Base-Gas-Price * Priority-Fee - is the cost of Solana Priority Fee in NEONs
-        #   - It means, that Gas-Usage * Priority-Fee - is the cost of Solana Priority Fee in SOLs
-        cu_price = int(fee_cfg.priority_fee * NeonProg.BaseGas * SolCbProg.MicroLamport / SolCbProg.MaxCuLimit)
-
         return MpGasPriceModel(
             chain_token_price_usd=int(base_price_usd * self._token_usd_precision),
             operator_fee=int(fee_cfg.operator_fee * self._fee_precision),
-            priority_fee=int(fee_cfg.priority_fee * self._fee_precision),
+            priority_fee=int(priority_fee * self._fee_precision),
             cu_price=cu_price,
             cu_price_pct=fee_cfg.cu_price_level.to_pct(fee_cfg.cu_price_level),
             simple_cu_price=fee_cfg.def_simple_cu_price,
@@ -172,6 +138,7 @@ class MpGasPriceCalculator(MempoolComponent):
     async def _calc_token_gas_price(
         self,
         fee_cfg: PriorityFeeCfg,
+        priority_fee: float,
         token: TokenModel,
         base_price_usd: float,
         price_acct: PythPriceAccount,
@@ -198,7 +165,7 @@ class MpGasPriceCalculator(MempoolComponent):
 
         # Populate data regardless if const_gas_price or not.
         profitable_price = int(net_price * (1 + fee_cfg.operator_fee))
-        suggested_price = int(net_price * (1 + fee_cfg.priority_fee + fee_cfg.operator_fee))
+        suggested_price = int(net_price * (1 + priority_fee + fee_cfg.operator_fee))
 
         gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
         gas_price_deque.append(profitable_price)
@@ -220,6 +187,47 @@ class MpGasPriceCalculator(MempoolComponent):
             min_acceptable_gas_price=fee_cfg.min_gas_price or 0,
             min_executable_gas_price=min_price,
         )
+
+    async def _calc_priority_fee(self, fee_cfg: PriorityFeeCfg) -> tuple[float, int]:
+        # Logic is simple:
+        #   - User pays for gas-usage
+        #   - Each gas-unit for gas-price
+        #   - Gas-price = Base-Gas-Price + (Operator-Fee * Priority-Gas-Price) + (Priority-Fee * Priority-GasPrice)
+        #   --- Priority-Gas-Price -> covers SOLs
+        #   --- Priority-Gas-Price * Operator-Fee -> brings profit to the Operator
+        #   --- Priority-Gas-Price * Priority-Fee -> coverts SOLs for Solana Priority Fee (CUs price)
+        #   - It means, that Gas-Usage * Priority-Gas-Price * Priority-Fee - is the cost of Solana Priority Fee in NEONs
+        #   - It means, that Gas-Usage * Base-Fee - is the cost of Solana Priority Fee in SOLs
+
+        min_cu_price = self._calc_base_cu_price(fee_cfg.min_priority_fee)
+        max_cu_price = self._calc_base_cu_price(fee_cfg.max_priority_fee)
+        target_cu_price = await self._calc_target_cu_price(fee_cfg)
+
+        cu_price = max(min(max(min_cu_price, target_cu_price), max_cu_price), 1)
+        priority_fee = cu_price * fee_cfg.max_priority_fee / max_cu_price
+        return priority_fee, max(int(cu_price), 1)
+
+    async def _calc_target_cu_price(self, fee_cfg: PriorityFeeCfg) -> float:
+        cu_price_pct = fee_cfg.cu_price_level.to_pct(fee_cfg.cu_price_level)
+        block_cnt = fee_cfg.cu_price_block_cnt
+        block_list = await self._db.get_block_cu_price_list(block_cnt)
+
+        return CuPricePercentileModel.get_weighted_percentile(
+            cu_price_pct, len(block_list), map(lambda v: v.cu_price_list, block_list),
+        )
+
+    @staticmethod
+    def _calc_base_cu_price(priority_fee: float) -> float:
+        # Logic is simple:
+        #   - User pays for gas-usage
+        #   - Each gas-unit for gas-price
+        #   - Gas-price = Base-Gas-Price + (Operator-Fee * Priority-Gas-Price) + (Priority-Fee * Priority-GasPrice)
+        #   --- Priority-Gas-Price -> covers SOLs
+        #   --- Priority-Gas-Price * Operator-Fee -> brings profit to the Operator
+        #   --- Priority-Gas-Price * Priority-Fee -> coverts SOLs for Solana Priority Fee (CUs price)
+        #   - It means, that Gas-Usage * Priority-Gas-Price * Priority-Fee - is the cost of Solana Priority Fee in NEONs
+        #   - It means, that Gas-Usage * Base-Fee - is the cost of Solana Priority Fee in SOLs
+        return priority_fee * NeonProg.BaseGas * SolCbProg.MicroLamport / SolCbProg.MaxCuLimit
 
     async def _update_pyth_acct_loop(self) -> None:
         stop_task = asyncio.create_task(self._stop_event.wait())
