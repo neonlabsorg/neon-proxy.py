@@ -1,5 +1,4 @@
 import dataclasses
-from decimal import Decimal
 from typing import Sequence
 
 from ..config.config import CuPriceLevel, CuPriceMode
@@ -8,14 +7,16 @@ from ..solana.pubkey import SolPubKey
 
 @dataclasses.dataclass(frozen=True)
 class PriorityFeeCfg:
-    operator_fee: Decimal
-    priority_fee: Decimal
+    operator_fee: float
+    min_priority_fee: float
+    max_priority_fee: float
 
     const_gas_price: int | None
     min_gas_price: int | None
 
     cu_price_mode: CuPriceMode
     cu_price_level: CuPriceLevel
+    cu_price_block_cnt: int
     def_cu_price: int
     def_simple_cu_price: int
 

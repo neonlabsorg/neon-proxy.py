@@ -20,7 +20,7 @@ class NeonBlockCuPriceInfo:
     cu_price_list: Sequence[int]
 
     @classmethod
-    def from_raw(cls, slot: int, cu_price_list: Sequence[int] | None) -> NeonBlockCuPriceInfo:
+    def from_raw(cls, slot: int, cu_price_list: Sequence[int] | None) -> Self:
         return cls(
             slot=slot,
             cu_price_list=CuPricePercentileModel.from_raw(cu_price_list).cu_price_list,
