@@ -16,12 +16,10 @@ from common.http.errors import HttpRouteError
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcRequest, JsonRpcResp
 from common.jsonrpc.server import JsonRpcApi, JsonRpcServer
-from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.neon_rpc.client import CoreApiClient
-from common.solana.cb_program import SolCbProg
 from common.solana_rpc.client import SolClient
 from common.stat.api import RpcCallData
 from common.utils.cached import ttl_cached_method, cached_property
@@ -91,32 +89,6 @@ class BaseRpcServerComponent:
         tx_gas_limit: int,
     ) -> bool:
         return await self._server.has_fee_less_tx_permit(ctx, sender, contract, tx_nonce, tx_gas_limit)
-
-    async def _calc_median_priority_fee_per_gas(
-        self,
-        gas_price: MpGasPriceModel,
-        token_gas_price: MpTokenGasPriceModel,
-    ) -> int:
-        cu_price_pct = gas_price.cu_price_pct
-        block_cnt = self._cfg.cu_price_estimator_block_cnt
-        block_list = await self._db.get_block_cu_price_list(block_cnt)
-
-        median_cu_price: float = CuPricePercentileModel.get_weighted_percentile(
-            cu_price_pct, len(block_list), map(lambda v: v.cu_price_list, block_list),
-        )
-        return self._calc_priority_fee_per_gas(token_gas_price.profitable_gas_price, median_cu_price)
-
-    @staticmethod
-    def _calc_priority_fee_per_gas(profitable_gas_price: int, cu_price: float | int) -> int:
-        # Convert it into ethereum world by multiplying by profitable_gas_price
-        # N.B. prices in the block are stored in microlamports, so conversion to lamports takes place.
-        return int(
-            profitable_gas_price
-            * cu_price
-            * SolCbProg.MaxCuLimit
-            / NeonProg.BaseGas
-            / SolCbProg.MicroLamport
-        )
 
 
 class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
