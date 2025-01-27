@@ -22,7 +22,7 @@ from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.transaction_list_sender import SolTxListSender
+from common.solana_rpc.sol_neon_tx_list_sender import SolNeonTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import log_msg, logging_context
@@ -735,7 +735,7 @@ class OpResourceMng(OpResourceComponent):
     async def _send_tx_list(self, signer: SolSigner, tx_list: Sequence[SolTx]) -> bool:
         tx_signer = OpTxListSigner(signer=signer)
         sol_watch = SolWatchTxSession(self._cfg, self._sol_client)
-        tx_sender = SolTxListSender(self._cfg, self._stat_client, sol_watch, tx_signer)
+        tx_sender = SolNeonTxListSender(self._cfg, self._stat_client, sol_watch, tx_signer)
         try:
             return await tx_sender.send(tx_list)
         except BaseException as exc:

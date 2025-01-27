@@ -6,10 +6,10 @@ import enum
 import logging
 import re
 from dataclasses import dataclass
-from typing import Final, Sequence, Annotated, ClassVar
-
+from enum import IntEnum
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
+from typing import Final, Sequence, Annotated, ClassVar
 from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStrField
@@ -103,6 +103,92 @@ class NeonTxEventModel(BaseModel):
         bloom = BloomFilter.from_iterable(iter_list)
         return int(bloom)
 
+@dataclass(frozen=True)
+class NeonTxErrorLogInfo:
+    class ErrorCode(IntEnum):
+        Custom = 0
+        ProgramError = enum.auto()
+        PubkeyError = enum.auto()
+        RlpError = enum.auto()
+        Secp256k1Error = enum.auto()
+        BincodeError = enum.auto()
+        BorshError = enum.auto()
+        FromHexError = enum.auto()
+        TryFromIntError = enum.auto()
+        TryFromSliceError = enum.auto()
+        Utf8Error = enum.auto()
+        AccountMissing = enum.auto()
+        AccountBlocked = enum.auto()
+        AccountCreatedByAnotherTransaction = enum.auto()
+        AccountInvalidTag = enum.auto()
+        AccountInvalidOwner = enum.auto()
+        AccountInvalidKey = enum.auto()
+        AccountInvalidData = enum.auto()
+        AccountNotWritable = enum.auto()
+        AccountNotSigner = enum.auto()
+        AccountNotRentExempt = enum.auto()
+        AccountAlreadyInitialized = enum.auto()
+        AccountLegacy = enum.auto()
+        UnauthorizedOperator = enum.auto()
+        StorageAccountUninitialized = enum.auto()
+        StorageAccountFinalized = enum.auto()
+        UnknownPrecompileMethodSelector = enum.auto()
+        InsufficientBalance = enum.auto()
+        InvalidTransferToken = enum.auto()
+        OutOfGas = enum.auto()
+        OutOfPriorityFee = enum.auto()
+        GasReceiverInvalidChainId = enum.auto()
+        StackOverflow = enum.auto()
+        StackUnderflow = enum.auto()
+        PushOutOfBounds = enum.auto()
+        MemoryAccessOutOfLimits = enum.auto()
+        ReturnDataCopyOverflow = enum.auto()
+        StaticModeViolation = enum.auto()
+        InvalidJump = enum.auto()
+        InvalidOpcode = enum.auto()
+        UnknownOpcode = enum.auto()
+        NonceOverflow = enum.auto()
+        InvalidTransactionNonce = enum.auto()
+        InvalidChainId = enum.auto()
+        DeployToExistingAccount = enum.auto()
+        EVMObjectFormatNotSupported = enum.auto()
+        ContractCodeSizeLimit = enum.auto()
+        SenderHasDeployedCode = enum.auto()
+        IntegerOverflow = enum.auto()
+        OutOfBounds = enum.auto()
+        HolderInvalidOwner = enum.auto()
+        HolderInsufficientSize = enum.auto()
+        HolderInvalidHash = enum.auto()
+        AccountSpaceAllocationFailure = enum.auto()
+        InvalidAccountForCall = enum.auto()
+        UnavalableExternalSolanaCall = enum.auto()
+        RecursiveCall = enum.auto()
+        ExternalCallFailed = enum.auto()
+        OperatorBalanceInvalidOwner = enum.auto()
+        OperatorBalanceMissing = enum.auto()
+        OperatorBalanceInvalidChainId = enum.auto()
+        OperatorBalanceInvalidAddress = enum.auto()
+        PriorityFeeNotSpecified = enum.auto()
+        PriorityFeeParsingError = enum.auto()
+        PriorityFeeError = enum.auto()
+        UnknownError = enum.auto()
+    code: ErrorCode
+    data: bytearray
+    message: str
+
+    @classmethod
+    def from_raw(cls, code: int, data: bytearray, message: str):
+
+        if code < cls.ErrorCode.Custom or code >= cls.ErrorCode.UnknownError:
+            error_code = cls.ErrorCode.UnknownError
+        else:
+            error_code = cls.ErrorCode(code)
+
+        return cls(
+            code = error_code,
+            data = data[4:],
+            message = message,
+        )
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
@@ -114,6 +200,7 @@ class NeonTxLogInfo:
     tx_ix_base_fee: NeonTxIxBaseFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
+    tx_error_list: list[NeonTxErrorLogInfo]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -220,6 +307,7 @@ class _NeonTxLogDraft:
     tx_ix_base_fee: NeonTxIxBaseFeeInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
+    tx_error_list: list[NeonTxErrorLogInfo]
     is_truncated: bool
     is_already_finalized: bool
 
@@ -235,6 +323,7 @@ class _NeonTxLogDraft:
             tx_ix_base_fee=NeonTxIxBaseFeeInfo.default(),
             tx_return=NeonTxLogReturnInfo.default(),
             tx_event_list=list(),
+            tx_error_list=list(),
             is_truncated=False,
             is_already_finalized=False,
         )
@@ -255,6 +344,7 @@ class _NeonTxLogDraft:
             tx_ix_base_fee=self.tx_ix_base_fee,
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
+            tx_error_list=self.tx_error_list,
             is_truncated=self.is_truncated,
             is_already_finalized=self.is_already_finalized,
         )
@@ -424,6 +514,32 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
         step_cnt = int.from_bytes(bs, "little")
 
         log.tx_ix_step = NeonTxIxStepInfo(step_cnt=step_cnt, total_step_cnt=total_step_cnt)
+
+
+class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "ERROR"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+        """
+        Unpacks Neon error data:
+        ERROR <32 bytes - code> <bytearray - data> <str - message>
+        """
+        if len(data_list) != 3:
+            _LOG.error("failed to decode %s: should be at least 3 element in %s", cls.name, data_list)
+            return
+
+        bs = base64.b64decode(data_list[0])
+        code = int.from_bytes(bs, "little")
+
+        bs = base64.b64decode(data_list[1])
+        data = bytearray(bs)
+
+        bs = base64.b64decode(data_list[2])
+        msg = bs.decode('utf-8')
+
+        error = NeonTxErrorLogInfo.from_raw(code, data, msg)
+        log.tx_error_list.append(error)
 
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
@@ -656,6 +772,7 @@ class NeonEvmLogDecoder:
         _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
         _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
         _NeonEvmBaseFeeLogDecoder.name: _NeonEvmBaseFeeLogDecoder,
+        _NeonEvmErrorLogDecoder.name: _NeonEvmErrorLogDecoder,
         # event logs:
         _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
         _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,
