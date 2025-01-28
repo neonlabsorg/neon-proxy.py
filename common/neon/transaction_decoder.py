@@ -6,7 +6,7 @@ from typing import Iterator, Sequence
 
 from typing_extensions import Self
 
-from .evm_log_decoder import NeonEvmLogDecoder, NeonTxLogInfo, NeonTxLogReturnInfo, NeonTxEventModel
+from .evm_log_decoder import NeonEvmLogDecoder, NeonTxLogInfo, NeonTxLogReturnInfo, NeonTxEventModel, NeonTxBlockInfo
 from .neon_program import NeonProg
 from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddress, EthAddressField
 from ..solana.alt_program import SolAltIxCode, SolAltProg
@@ -210,6 +210,10 @@ class SolNeonTxIxMetaInfo:
     @cached_property
     def req_id(self) -> str:
         return "_".join(str(s)[:10] for s in self.ident)
+
+    @property
+    def neon_tx_block(self) -> NeonTxBlockInfo:
+        return self._neon_log.tx_block
 
     @property
     def neon_tx_return(self) -> NeonTxLogReturnInfo:
