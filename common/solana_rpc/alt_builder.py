@@ -90,16 +90,18 @@ class SolAltTxBuilder:
     def tx_name_list(self) -> Sequence[str]:
         return tuple([self._create_name, self._extend_name])
 
-    async def build_alt(self, legacy_tx: SolLegacyTx) -> SolAltInfo:
-        recent_slot = await self._get_recent_slot()
-        return self._build_alt(legacy_tx, recent_slot)
-
-    def build_fake_alt(self, legacy_tx: SolLegacyTx, recent_slot=10) -> SolAltInfo:
-        return self._build_alt(legacy_tx, recent_slot)
-
-    def _build_alt(self, legacy_tx: SolLegacyTx, recent_slot: int) -> SolAltInfo:
+    def build_fake_alt(self, legacy_tx: SolLegacyTx, *, recent_slot=10) -> SolAltInfo:
         alt_ident = self._alt_prog.derive_alt_address(recent_slot)
-        return SolAltInfo.from_legacy_tx(alt_ident, legacy_tx)
+        return SolAltInfo.from_legacy_tx(alt_ident, legacy_tx, is_fake=True)
+
+    @staticmethod
+    def rebuild_to_small_alt(alt: SolAltInfo) -> SolAltInfo:
+        return alt.clone(account_limit=SolAltProg.MaxTxAccountCnt)
+
+    async def rebuild_to_real_alt(self, alt: SolAltInfo) -> SolAltInfo:
+        recent_slot = await self._get_recent_slot()
+        alt_ident = self._alt_prog.derive_alt_address(recent_slot)
+        return alt.clone(ident=alt_ident, is_fake=False)
 
     def build_alt_tx_set(self, alt: SolAltInfo) -> SolAltTxSet:
         is_alt_exist = alt.is_exist
