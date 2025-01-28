@@ -143,7 +143,6 @@ class IterativeTxStrategy(BaseTxStrategy):
                 await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
 
     async def _start_skd_tx(self) -> bool:
-        name = self._start_skd_tx_name
         for _ in itertools.count():
             if (status := await self._get_skd_tx_status()) == status.ToStart:
                 name = self._start_skd_tx_name
@@ -152,7 +151,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 name = self._skip_skd_tx_name
                 ix = self._build_skip_skd_tx_ix(self._ctx.holder_tx.index)
             else:
-                return (status == status.Skipped) or (self._start_skd_tx_name == name)
+                return status == status.InProgress
 
             if await self._recheck_tx_list(name):
                 return self._start_skd_tx_name == name
