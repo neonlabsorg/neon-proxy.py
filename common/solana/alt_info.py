@@ -20,16 +20,17 @@ class SolAltInfo:
         new_account_key_list: list[SolPubKeyField]
         is_exist: bool
 
-    def __init__(self, ident: SolAltID):
+    def __init__(self, ident: SolAltID, *, is_fake: bool = False) -> None:
         self._ident = ident
         self._owner = ident.owner
+        self._is_fake = is_fake
         self._acct_key_list: list[SolPubKey] = list()
         self._new_acct_key_set: set[SolPubKey] = set()
         self._is_exist = False
 
     @classmethod
-    def from_legacy_tx(cls, ident: SolAltID, legacy_tx: SolLegacyTx) -> Self:
-        self = cls(ident)
+    def from_legacy_tx(cls, ident: SolAltID, legacy_tx: SolLegacyTx, *, is_fake: bool = False) -> Self:
+        self = cls(ident, is_fake=is_fake)
 
         legacy_msg = legacy_tx.message
         alt_filter = SolAltListFilter(legacy_msg)
@@ -52,6 +53,21 @@ class SolAltInfo:
         self._new_acct_key_set = set(model.new_account_key_list)
         self._is_exist = model.is_exist
         return self
+
+    def clone(self, *, account_limit: int = 0, ident: SolAltID | None = None, is_fake: bool = False) -> Self:
+        if not ident:
+            ident = self._ident
+            is_fake = self._is_fake
+        new_self = self.__class__(ident, is_fake=is_fake)
+
+        if account_limit and (len(self._acct_key_list) > account_limit):
+            new_self._acct_key_list = self._acct_key_list[:account_limit]
+            new_self._new_acct_key_set = self._new_acct_key_set.intersection(new_self._acct_key_list)
+        else:
+            new_self._acct_key_list = self._acct_key_list
+            new_self._new_acct_key_set = self._new_acct_key_set
+
+        return new_self
 
     def to_dict(self) -> dict:
         return self._Model(
@@ -85,6 +101,10 @@ class SolAltInfo:
     @property
     def is_exist(self) -> bool:
         return self._is_exist
+
+    @property
+    def is_fake(self) -> bool:
+        return self._is_fake
 
     def remove_account_key_list(self, account_key_list: Sequence[SolPubKey]) -> bool:
         if self._is_exist:
