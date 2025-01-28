@@ -42,13 +42,17 @@ class AltTxPrepStage(BaseTxPrepStage):
     async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
         self._last_alt = None
         self._alt_dict.clear()
-        actual_alt = await self._alt_builder.build_alt(self._legacy_tx)
+
+        actual_alt = self._alt_builder.build_fake_alt(self._legacy_tx)
+        small_alt = self._alt_builder.rebuild_to_small_alt(actual_alt)
+        if self._tx_has_valid_size(self._legacy_tx, tuple([small_alt])):
+            actual_alt = small_alt
 
         alt_list = await self._filter_alt_list(actual_alt)
-        if self._alt_dict and self._tx_has_valid_size(self._legacy_tx):
+        if self._alt_dict and self._tx_has_valid_size(self._legacy_tx, alt_list):
             return list()
 
-        actual_alt = self._extend_alt(actual_alt, alt_list)
+        actual_alt = await self._extend_alt(actual_alt, alt_list)
         alt_tx_set = self._alt_builder.build_alt_tx_set(actual_alt)
 
         self._add_alt(actual_alt)
@@ -63,14 +67,14 @@ class AltTxPrepStage(BaseTxPrepStage):
     async def update_after_emulation(self) -> bool:
         return await self._has_valid_tx_size()
 
-    def build_tx(self, legacy_tx: SolLegacyTx, alt_list: list[SolAltInfo] = None) -> SolV0Tx:
+    def build_tx(self, legacy_tx: SolLegacyTx, alt_list: Sequence[SolAltInfo] | None = None) -> SolV0Tx:
         if not alt_list:
             alt_list = self._alt_list
         return SolV0Tx(name=legacy_tx.name, ix_list=legacy_tx.ix_list, alt_list=alt_list)
 
     def validate_v0_tx_size(self, legacy_tx: SolLegacyTx) -> bool:
         test_alt = self._alt_builder.build_fake_alt(legacy_tx)  # <- SolAltError
-        self.build_tx(legacy_tx, [test_alt]).validate(SolSigner.fake())  # <- SolTxSize?
+        self.build_tx(legacy_tx, tuple([test_alt])).validate(SolSigner.fake())  # <- SolTxSize?
         return True
 
     # protected:
@@ -86,10 +90,10 @@ class AltTxPrepStage(BaseTxPrepStage):
     def _alt_list(self) -> list[SolAltInfo]:
         return list(self._alt_dict.values())
 
-    def _tx_has_valid_size(self, legacy_tx: SolLegacyTx) -> bool:
+    def _tx_has_valid_size(self, legacy_tx: SolLegacyTx, alt_list: Sequence[SolAltInfo] | None = None) -> bool:
         try:
             with self._ctx.test_mode():
-                self.build_tx(legacy_tx).validate(SolSigner.fake())
+                self.build_tx(legacy_tx, alt_list).validate(SolSigner.fake())
             return True
         except SolTxSizeError:
             return False
@@ -116,16 +120,15 @@ class AltTxPrepStage(BaseTxPrepStage):
         return alt_list
 
     def _add_alt(self, alt: SolAltInfo) -> None:
-        if alt.address in self._alt_dict:
-            return
-
-        self._alt_dict[alt.address] = alt
         # if alt.is_exist:
         #     _LOG.debug("use existing ALT %s", alt.address)
         # else:
         #     _LOG.debug("create new ALT %s", alt.address)
 
-    def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
+        if alt.address not in self._alt_dict:
+            self._alt_dict[alt.address] = alt
+
+    async def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
         for alt in alt_list:
             if alt.owner != self._ctx.sol_payer:
                 continue
@@ -135,6 +138,8 @@ class AltTxPrepStage(BaseTxPrepStage):
             alt.add_account_key_list(actual_alt.account_key_list)
             return alt
 
+        if actual_alt.is_fake:
+            return await self._alt_builder.rebuild_to_real_alt(actual_alt)
         return actual_alt
 
 
