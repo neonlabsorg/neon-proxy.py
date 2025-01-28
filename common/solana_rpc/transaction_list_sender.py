@@ -15,6 +15,7 @@ from .errors import (
     SolBlockhashNotFound,
     SolCbExceededError,
     SolNoMoreRetriesError,
+    SolWritableError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
@@ -51,6 +52,7 @@ class SolTxSendState:
         # Fail errors
         CbExceededError = enum.auto()
         AltError = enum.auto()
+        WritableError = enum.auto()
         RequireResizeIterError = enum.auto()
         OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
@@ -446,6 +448,8 @@ class SolTxListSender:
             return self._DecodeResult(status.BlockHashNotFoundError, None)
         elif tx_error_parser.check_if_alt_error():
             return self._DecodeResult(status.AltError, SolAltError("Bad ALT on send tx"))
+        elif tx_error_parser.check_if_writable_error():
+            return self._DecodeResult(status.WritableError, SolWritableError())
         elif tx_error_parser.check_if_cb_exceeded():
             if cu_consumed := tx_error_parser.cu_consumed:
                 _LOG.debug("CUs consumed: %s", cu_consumed)
@@ -478,7 +482,13 @@ class SolTxListSender:
         )
 
         status = SolTxSendState.Status
-        if tx_state.status not in (status.WaitForReceipt, status.UnknownError, status.GoodReceipt):
+        if tx_state.status not in (
+            status.WaitForReceipt,
+            status.UnknownError,
+            status.GoodReceipt,
+            status.NoReceiptError,
+            status.WritableError,
+        ):
             _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
 
         self._tx_state_dict[tx_state.tx.sig] = tx_state

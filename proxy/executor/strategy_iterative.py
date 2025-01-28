@@ -20,6 +20,7 @@ from common.solana_rpc.errors import (
     SolCbExceededError,
     SolCbExceededCriticalError,
     SolUnknownReceiptError,
+    SolWritableError,
 )
 from .errors import SkdTxError
 from .strategy_base import BaseTxStrategy, SolTxCfg
@@ -210,7 +211,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 # fmt: on
                 return await self._send_tx_list(tx_list)
 
-            except SolUnknownReceiptError:
+            except (SolWritableError, SolUnknownReceiptError):
                 if self._def_ix_mode != NeonIxMode.Writable:
                     # _LOG.warning("unexpected fail on iterative transaction, try to use accounts in writable mode")
                     self._def_ix_mode = NeonIxMode.Writable

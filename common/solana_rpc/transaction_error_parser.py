@@ -102,6 +102,10 @@ class SolTxErrorParser:
     def check_if_preprocessed_error(self) -> bool:
         return isinstance(self._receipt, SolRpcSendTxErrorInfo)
 
+    @ cached_method
+    def check_if_writable_error(self) -> bool:
+        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.PrivilegeEscalation
+
     @cached_method
     def get_num_slots_behind(self) -> int | None:
         if isinstance(self._receipt, SolRpcNodeUnhealthyErrorInfo):
