@@ -8,8 +8,9 @@ from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
-from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, CoreApiTxModel
+from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, CoreApiTxModel, CoreApiBlockModel
 from common.solana.alt_program import SolAltID
 from common.solana.instruction import SolAccountMeta
 from common.solana.pubkey import SolPubKey
@@ -19,6 +20,7 @@ from common.solana_rpc.sol_neon_tx_list_sender import SolNeonTxListSender
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
+from common.utils.format import if_none
 from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .skd_tree_parser import NeonSkdTreeParser
@@ -51,6 +53,7 @@ class NeonExecTxCtx(ExecutorComponent):
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
         self._acct_meta_list: Sequence[SolAccountMeta] = tuple()
         self._emul_resp: EmulNeonCallResp | None = None
+        self._holder_block = CoreApiBlockModel.default()
 
         self._skip_simple_strategy = False
         self._is_test_mode = False
@@ -383,6 +386,23 @@ class NeonExecTxCtx(ExecutorComponent):
     def has_holder_block(self) -> bool:
         assert self._emul_resp
         return self._emul_resp.is_block_used
+
+    @property
+    def holder_block(self) -> CoreApiBlockModel:
+        if (not self._emul_resp) or not self.has_holder_block:
+            return CoreApiBlockModel.default()
+        if if_none(self._holder_block.slot, 0) > if_none(self.holder.block.slot, 0):
+            return self._holder_block
+        return self.holder.block
+
+    def set_holder_block(self, tx_block: NeonTxBlockInfo) -> None:
+        if tx_block.is_empty:
+            self._holder_block = CoreApiBlockModel.default()
+        else:
+            self._holder_block = CoreApiBlockModel(slot=tx_block.slot, timestamp=tx_block.timestamp)
+
+    def reset_holder_block(self) -> None:
+        self._holder_block = CoreApiBlockModel.default()
 
     @property
     def alt_id_list(self) -> Sequence[SolAltID]:

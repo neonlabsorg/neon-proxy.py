@@ -198,6 +198,7 @@ class NeonTxLogInfo:
     tx_ix_gas: NeonTxIxLogGasInfo
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_ix_base_fee: NeonTxIxBaseFeeInfo
+    tx_block: NeonTxBlockInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
     tx_error_list: list[NeonTxErrorLogInfo]
@@ -279,6 +280,23 @@ class NeonTxIxBaseFeeInfo:
 
 
 @dataclass(frozen=True)
+class NeonTxBlockInfo:
+    slot: int
+    timestamp: int
+
+    _default: ClassVar[NeonTxBlockInfo | None] = None
+    @classmethod
+    def default(cls) -> Self:
+        if cls._default is None:
+            cls._default = cls(slot=0, timestamp=0)
+        return cls._default
+
+    @property
+    def is_empty(self) -> bool:
+        return self.slot == 0
+
+
+@dataclass(frozen=True)
 class NeonTxIxStepInfo:
     step_cnt: int
     total_step_cnt: int
@@ -305,6 +323,7 @@ class _NeonTxLogDraft:
     tx_ix_gas: NeonTxIxLogGasInfo
     tx_ix_priority_fee: NeonTxIxPriorityFeeInfo
     tx_ix_base_fee: NeonTxIxBaseFeeInfo
+    tx_block: NeonTxBlockInfo
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
     tx_error_list: list[NeonTxErrorLogInfo]
@@ -321,6 +340,7 @@ class _NeonTxLogDraft:
             tx_ix_gas=NeonTxIxLogGasInfo.default(),
             tx_ix_priority_fee=NeonTxIxPriorityFeeInfo.default(),
             tx_ix_base_fee=NeonTxIxBaseFeeInfo.default(),
+            tx_block=NeonTxBlockInfo.default(),
             tx_return=NeonTxLogReturnInfo.default(),
             tx_event_list=list(),
             tx_error_list=list(),
@@ -342,6 +362,7 @@ class _NeonTxLogDraft:
             tx_ix_gas=self.tx_ix_gas,
             tx_ix_priority_fee=self.tx_ix_priority_fee,
             tx_ix_base_fee=self.tx_ix_base_fee,
+            tx_block=self.tx_block,
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
             tx_error_list=self.tx_error_list,
@@ -405,6 +426,25 @@ class _NeonEvmLogDecoder(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None: ...
+
+
+class _NeonEvmBlockLogDecoder(_NeonEvmLogDecoder):
+    name: Final[str] = "BLOCK"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None:
+        """Unpack block info"""
+        if len(data_list) < 2:
+            _LOG.error("failed to decode %s: less than 2 elements in %s", cls.name, data_list)
+            return
+
+        bs = base64.b64decode(data_list[0])
+        slot = int.from_bytes(bs, "little")
+
+        bs = base64.b64decode(data_list[1])
+        timestamp = int.from_bytes(bs, "little")
+
+        log.tx_block = NeonTxBlockInfo(slot=slot, timestamp=timestamp)
 
 
 class _NeonEvmReturnLogDecoder(_NeonEvmLogDecoder):
@@ -766,6 +806,7 @@ class NeonEvmLogDecoder:
         _NeonEvmResetLogDecoder.name: _NeonEvmResetLogDecoder,
         _NeonEvmInvalidRevisionDecoder.name: _NeonEvmInvalidRevisionDecoder,
         _NeonEvmStepLogDecoder.name: _NeonEvmStepLogDecoder,
+        _NeonEvmBlockLogDecoder.name: _NeonEvmBlockLogDecoder,
         _NeonEvmReturnLogDecoder.name: _NeonEvmReturnLogDecoder,
         _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,
         _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
