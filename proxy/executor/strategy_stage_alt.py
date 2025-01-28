@@ -48,14 +48,14 @@ class AltTxPrepStage(BaseTxPrepStage):
         if self._tx_has_valid_size(self._legacy_tx, tuple([small_alt])):
             actual_alt = small_alt
 
-        alt_list = await self._filter_alt_list(actual_alt)
+        alt_list = await self._filter_valid_alt_list(actual_alt)
         if self._alt_dict and self._tx_has_valid_size(self._legacy_tx, alt_list):
             return list()
 
         actual_alt = await self._extend_alt(actual_alt, alt_list)
         alt_tx_set = self._alt_builder.build_alt_tx_set(actual_alt)
 
-        self._add_alt(actual_alt)
+        self._alt_dict[actual_alt.address] = actual_alt
         self._ctx.add_alt_id(actual_alt.ident)
 
         self._last_alt = actual_alt
@@ -98,41 +98,24 @@ class AltTxPrepStage(BaseTxPrepStage):
         except SolTxSizeError:
             return False
 
-    async def _filter_alt_list(self, actual_alt: SolAltInfo) -> list[SolAltInfo]:
+    async def _filter_valid_alt_list(self, actual_alt: SolAltInfo) -> list[SolAltInfo]:
+        new_alt_list = tuple([SolAltInfo(ident) for ident in self._ctx.alt_id_list])
+        await self._alt_builder.update_alt(new_alt_list)
+        new_alt_list = list(filter(lambda x: x.is_exist, new_alt_list))
+
         alt_list: list[SolAltInfo] = list()
-        for alt_id in self._ctx.alt_id_list:
-            alt = SolAltInfo(alt_id)
-            try:
-                # update one by one, if one of ALTs has problems it shouldn't affect others
-                await self._alt_builder.update_alt(alt)
-                if not alt.is_exist:
-                    # _LOG.debug("skip not-exist ALT %s", alt.address)
-                    continue
-
+        for alt in new_alt_list:
+            if actual_alt.remove_account_key_list(alt.account_key_list):
+                self._alt_dict[alt.address] = alt
                 alt_list.append(alt)
-                if actual_alt.remove_account_key_list(alt.account_key_list):
-                    self._add_alt(alt)
-
-            except (BaseException,) as _exc:
-                # _LOG.debug("skip ALT %s", alt_id.address, exc_info=exc)
-                pass
 
         return alt_list
-
-    def _add_alt(self, alt: SolAltInfo) -> None:
-        # if alt.is_exist:
-        #     _LOG.debug("use existing ALT %s", alt.address)
-        # else:
-        #     _LOG.debug("create new ALT %s", alt.address)
-
-        if alt.address not in self._alt_dict:
-            self._alt_dict[alt.address] = alt
 
     async def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
         for alt in alt_list:
             if alt.owner != self._ctx.sol_payer:
                 continue
-            elif len(actual_alt.account_key_list) + len(alt.account_key_list) >= SolAltProg.MaxAltAccountCnt:
+            elif not self._alt_builder.can_merge_alt(alt, actual_alt):
                 continue
 
             alt.add_account_key_list(actual_alt.account_key_list)

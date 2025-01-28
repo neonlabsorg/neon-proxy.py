@@ -135,7 +135,7 @@ class SolAltLoader(MempoolComponent):
 
         alt_list: list[NeonAltModel] = list()
         for acct in acct_list:
-            alt_acct = SolAltAccountInfo.from_bytes(acct.address, acct.data)
+            alt_acct = SolAltAccountInfo.from_account_nothrow(acct)
             if alt_acct.last_extended_slot < valid_slot:
                 _LOG.debug("found lost ALT %s (owner %s)", acct.address, owner)
                 alt_list.append(NeonAltModel(neon_tx_hash=EthTxHash.default(), sol_alt_id=alt_acct.ident))

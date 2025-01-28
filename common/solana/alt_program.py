@@ -8,6 +8,8 @@ import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
 from typing_extensions import Self
 
+from .account import SolAccountModel
+from .errors import SolAltContentError
 from .instruction import SolTxIx
 from .pubkey import SolPubKey, SolPubKeyField
 from ..utils.cached import cached_property
@@ -124,7 +126,7 @@ class SolAltProg:
 
 
 class SolAltAccountInfo:
-    _max_u64: Final[int] = 2**64 - 1
+    _max_u64: Final[int] = pow(2, 64) - 1
     MetaSize: Final[int] = _alt.LOOKUP_TABLE_META_SIZE
     OwnerOffset: Final[int] = 22
 
@@ -149,8 +151,16 @@ class SolAltAccountInfo:
         self._addr_list_data = data[self.MetaSize :]
 
     @classmethod
-    def from_bytes(cls, address: SolPubKey, data: bytes | None) -> Self:
-        return cls(address, data)
+    def from_account(cls, account: SolAccountModel) -> Self:
+        if account.owner != SolAltProg.ID:
+            raise SolAltContentError(account.address, "wrong program owner")
+        return cls(account.address, account.data)
+
+    @classmethod
+    def from_account_nothrow(cls, account: SolAccountModel) -> Self:
+        if account.owner != SolAltProg.ID:
+            return cls(account.address, bytes())
+        return cls(account.address, account.data)
 
     @property
     def is_empty(self) -> bool:
