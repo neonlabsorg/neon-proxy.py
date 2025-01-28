@@ -103,6 +103,10 @@ class SolAltTxBuilder:
         alt_ident = self._alt_prog.derive_alt_address(recent_slot)
         return alt.clone(ident=alt_ident, is_fake=False)
 
+    @staticmethod
+    def can_merge_alt(dst_alt: SolAltInfo, src_alt: SolAltInfo) -> bool:
+        return len(dst_alt.account_key_list) + len(src_alt.account_key_list) < SolAltProg.MaxAltAccountCnt
+
     def build_alt_tx_set(self, alt: SolAltInfo) -> SolAltTxSet:
         is_alt_exist = alt.is_exist
 
@@ -150,6 +154,12 @@ class SolAltTxBuilder:
             alt_list = tuple([alt_list])
 
         new_alt_dict = {alt.address: alt for alt in alt_list if alt.new_account_key_set}
+        await self._update_new_alt(new_alt_dict)
+
+        old_alt_dict = {alt.address: alt for alt in alt_list if not alt.new_account_key_set}
+        await self._update_old_alt(old_alt_dict)
+
+    async def _update_new_alt(self, new_alt_dict: dict[SolPubKey, SolAltInfo]) -> None:
         if not (new_addr_set := set(new_alt_dict.keys())):
             return
 
@@ -169,7 +179,7 @@ class SolAltTxBuilder:
                 for addr in addr_list:
                     if acct := acct_session.get_account(addr):
                         new_addr_set.remove(addr)
-                        alt_acct = SolAltAccountInfo.from_bytes(addr, acct.data)
+                        alt_acct = SolAltAccountInfo.from_account_nothrow(acct)
                         last_extended_slot = max(last_extended_slot, alt_acct.last_extended_slot)
                         new_alt_dict[addr].update_from_account(alt_acct)
                         # _LOG.debug("ALT %s contains %s accounts", addr, len(alt_acct.account_key_list))
@@ -181,3 +191,12 @@ class SolAltTxBuilder:
 
         while last_extended_slot >= self._slot_session.processed_slot:
             await asyncio.sleep(ONE_BLOCK_SEC / 2)
+
+    async def _update_old_alt(self, old_alt_dict: dict[SolPubKey, SolAltInfo]) -> None:
+        if not (addr_list := tuple(old_alt_dict.keys())):
+            return
+
+        acct_list = await self._sol_client.get_account_list(addr_list)
+        for acct in acct_list:
+            alt_acct = SolAltAccountInfo.from_account_nothrow(acct)
+            old_alt_dict[alt_acct.address].update_from_account(alt_acct)

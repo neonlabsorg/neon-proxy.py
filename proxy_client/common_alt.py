@@ -33,7 +33,7 @@ class SolAltFunc:
 
         total_balance = 0
         for acct in acct_list:
-            alt = SolAltAccountInfo.from_bytes(acct.address, acct.data)
+            alt = SolAltAccountInfo.from_account_nothrow(acct)
             status = "deactivated" if alt.is_deactivated else "active"
             total_balance += acct.balance
             data = "{}\t{}\t{:.9f} SOLs".format(acct.address, status, acct.balance / pow(10, 9))
@@ -45,7 +45,7 @@ class SolAltFunc:
     @classmethod
     async def print_alt(cls, sol_client: SolClient, address: SolPubKey) -> None:
         acct = await sol_client.get_account(address)
-        alt = SolAltAccountInfo.from_bytes(address, acct.data)
+        alt = SolAltAccountInfo.from_account_nothrow(acct)
         obj = dict(
             address=address.to_string(),
             size=len(acct.data),
