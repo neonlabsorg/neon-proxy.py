@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Sequence, Final
+from typing import Sequence
 
 from typing_extensions import Self
 
@@ -10,13 +10,10 @@ from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, CoreApiTxModel
-from common.solana.alt_program import SolAltID, SolAltProg
-from common.solana.cb_program import SolCbProg
+from common.solana.alt_program import SolAltID
 from common.solana.instruction import SolAccountMeta
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
-from common.solana.sys_program import SolSysProg
-from common.solana.token_program import SplTokenProg
 from common.solana.transaction import SolTx
 from common.solana_rpc.sol_neon_tx_list_sender import SolNeonTxListSender
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
@@ -33,28 +30,6 @@ _LOG = logging.getLogger(__name__)
 
 
 class NeonExecTxCtx(ExecutorComponent):
-    # TODO: remove after re-emulate implementation
-    _global_ro_addr_set: Final[frozenset[SolPubKey]] = frozenset(
-        [
-            NeonProg.ID,
-            SolCbProg.ID,
-            SolAltProg.ID,
-            SplTokenProg.ID,
-            SolSysProg.ID,
-            SolSysProg.ClockVar,
-            SolSysProg.RecentBlockHashVar,
-            SolSysProg.RentVar,
-            SolSysProg.RewardVar,
-            SolSysProg.StakeHistoryVar,
-            SolSysProg.EpochScheduleVar,
-            SolSysProg.IxListVar,
-            SolSysProg.SlotHashVar,
-            # Some popular addresses
-            SolPubKey.from_raw("1nc1nerator11111111111111111111111111111111"),
-            SolPubKey.from_raw("p1exdMJcjVao65QdewkaZRUnU6VPSXhus9n2GzWfh98"),  # metaplex
-        ]
-    )
-
     def __init__(
         self,
         server: ExecutorServerAbc,
@@ -74,7 +49,6 @@ class NeonExecTxCtx(ExecutorComponent):
         self._sol_tx_list_dict: dict[str, list[tuple[SolTx, bool]]] = dict()
 
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
-        self._ro_addr_list: Sequence[SolPubKey] = tuple()
         self._acct_meta_list: Sequence[SolAccountMeta] = tuple()
         self._emul_resp: EmulNeonCallResp | None = None
 
@@ -221,19 +195,6 @@ class NeonExecTxCtx(ExecutorComponent):
         self._acct_meta_list = acct_meta_list
         self._neon_prog.init_account_meta_list(acct_meta_list)
         self._test_neon_prog.init_account_meta_list(acct_meta_list)
-
-    @property
-    def ro_address_list(self) -> Sequence[SolPubKey]:
-        return self._ro_addr_list
-
-    def set_ro_address_list(self, addr_list: Sequence[SolPubKey]) -> None:
-        addr_set = set(addr_list).union(self._global_ro_addr_set)
-        addr_list = tuple(addr_set)
-        # _LOG.debug("readonly accounts %s: %s", len(addr_list), addr_list)
-
-        self._ro_addr_list = addr_list
-        self._neon_prog.init_ro_address_list(addr_list)
-        self._test_neon_prog.init_ro_address_list(addr_list)
 
     class _FmtAcctMeta:
         def __init__(self, acct_meta_list: Sequence[SolAccountMeta]) -> None:
