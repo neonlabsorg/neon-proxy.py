@@ -101,9 +101,7 @@ class NeonIxMode(IntEnum):
 
     Readable = 1
     Writable = 2
-    FullWritable = 3
-
-    BaseTx = 4
+    BaseTx = 3
 
     Default = Readable
 
@@ -215,7 +213,6 @@ class NeonProg:
         self._holder_addr = SolPubKey.default()
         self._acct_meta_list: list[SolAccountMeta] = list()
         self._addr_set: set[SolPubKey] = set()
-        self._ro_addr_set: set[SolPubKey] = set()
         self._rlp_tx = bytes()
         self._neon_tx_hash = EthTxHash.default()
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
@@ -301,28 +298,9 @@ class NeonProg:
     def init_account_meta_list(self, account_meta_list: Sequence[SolAccountMeta]) -> Self:
         self._acct_meta_list = list(account_meta_list)
         self._addr_set = set(map(lambda x: SolPubKey.from_raw(x.pubkey), account_meta_list))
-        self._ro_addr_set.clear()
         self._get_ro_acct_meta_list.reset_cache(self)
-        self._get_rw_acct_meta_list.reset_cache(self)
         self._get_rw_acct_key_list.reset_cache(self)
         self._get_base_tx_acct_meta_list.reset_cache(self)
-        return self
-
-    def init_ro_address_list(self, address_list: Sequence[SolPubKey]) -> Self:
-        self._ro_addr_set = set(address_list)
-
-        self._get_ro_acct_meta_list.reset_cache(self)
-        self._get_rw_acct_meta_list.reset_cache(self)
-        self._get_base_tx_acct_meta_list.reset_cache(self)
-
-        for idx, acct in enumerate(self._acct_meta_list):
-            if SolPubKey.from_raw(acct.pubkey) in self._ro_addr_set:
-                self._acct_meta_list[idx] = SolAccountMeta(
-                    acct.pubkey,
-                    acct.is_signer,
-                    is_writable=False,
-                )
-
         return self
 
     @property
@@ -589,12 +567,9 @@ class NeonProg:
         assert mode != NeonIxMode.Unknown
         if mode == NeonIxMode.Readable:
             return self._make_holder_ix(ix_data, self._ro_acct_meta_list)
-        elif mode in (NeonIxMode.BaseTx, NeonIxMode.Writable):
-            return self._make_holder_ix(ix_data, self._acct_meta_list)
-        # elif mode == NeonIxMode.BaseTx:
-        #     return self._make_holder_ix(ix_data, self._base_tx_acct_meta_list)
 
-        return self._make_holder_ix(ix_data, self._rw_acct_meta_list)
+        return self._make_holder_ix(ix_data, self._acct_meta_list)
+        #     return self._make_holder_ix(ix_data, self._base_tx_acct_meta_list)
 
     def _make_holder_ix(self, ix_data: bytes, acct_meta_list: list[SolAccountMeta]) -> SolTxIx:
         self.validate_protocol()
@@ -692,23 +667,6 @@ class NeonProg:
             # _LOG.debug("add receiver contract: %s", contract_addr)
             meta_list.append(SolAccountMeta(contract_addr, is_signer=False, is_writable=False))
         return meta_list
-
-    @property
-    def _rw_acct_meta_list(self) -> list[SolAccountMeta]:
-        return self._get_rw_acct_meta_list()
-
-    @reset_cached_method
-    def _get_rw_acct_meta_list(self) -> list[SolAccountMeta]:
-        return list(
-            map(
-                lambda x: SolAccountMeta(
-                    x.pubkey,
-                    x.is_signer,
-                    is_writable=(SolPubKey.from_raw(x.pubkey) not in self._ro_addr_set),
-                ),
-                self._acct_meta_list,
-            )
-        )
 
     @reset_cached_method
     def _get_rw_acct_key_list(self) -> Sequence[SolPubKey]:
