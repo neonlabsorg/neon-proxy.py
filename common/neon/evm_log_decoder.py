@@ -422,17 +422,29 @@ class _NeonTxEventDraft:
         )
 
 
+def _to_b64(s: str) -> str:
+    return base64.b64encode(s.encode("utf-8")).decode("utf-8")
+
+
 class _NeonEvmLogDecoder(abc.ABC):
+    _key: ClassVar[str | None] = None
+
     @classmethod
     @abc.abstractmethod
-    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None: ...
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None: ...
+
+    @classmethod
+    def get_key(cls) -> str:
+        if not cls._key:
+            cls._key = _to_b64(cls.name)  # noqa
+        return cls._key
 
 
 class _NeonEvmBlockLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "BLOCK"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """Unpack block info"""
         if len(data_list) < 2:
             _LOG.error("failed to decode %s: less than 2 elements in %s", cls.name, data_list)
@@ -451,7 +463,7 @@ class _NeonEvmReturnLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RETURN"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """Unpacks base64-encoded return data"""
         if not log.tx_return.is_empty:
             _LOG.error("%s is already exist!", cls.name)
@@ -479,7 +491,7 @@ class _NeonEvmGasLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "GAS"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """GAS <32 bytes le iteration gas> <32 bytes le total gas>"""
         if not log.tx_ix_gas.is_empty:
             _LOG.warning("%s is already exist!", cls.name)
@@ -501,7 +513,7 @@ class _NeonEvmPriorityFeeLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "PRIORITYFEE"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """PRIORITYFEE <32 bytes le priority fee as paid by the user>"""
         if not log.tx_ix_priority_fee.is_empty:
             _LOG.error("%s is specified twice", cls.name)
@@ -518,7 +530,7 @@ class _NeonEvmBaseFeeLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "BASEFEE"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """BASEFEE <32 bytes le priority fee as paid by the user>"""
         if not log.tx_ix_base_fee.is_empty:
             _LOG.error("%s is specified twice", cls.name)
@@ -535,7 +547,7 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "STEPS"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks number of evm steps:
         STEP <32-bytes-le - the number of iteration EVM steps> <32-bytes-le - the total number of EVM steps>
@@ -560,7 +572,7 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "ERROR"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: tuple[str, ...]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: tuple[str, ...]) -> None:
         """
         Unpacks Neon error data:
         ERROR <32 bytes - code> <bytearray - data> <str - message>
@@ -586,7 +598,7 @@ class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "RESET"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks Neon reset of all processed EVM steps:
         RESET
@@ -605,7 +617,7 @@ class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "INVALID_REVISION"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks Neon event about changed account:
         INVALID_REVISION Solana-address
@@ -633,7 +645,7 @@ class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "HASH"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks Neon transaction hash:
         HASH neon_tx_hash
@@ -657,7 +669,7 @@ class _NeonEvmMinerDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "MINER"
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks address of the miner of the instruction:
         MINER address
@@ -675,10 +687,8 @@ class _NeonEvmMinerDecoder(_NeonEvmLogDecoder):
 
 
 class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "LOG"
-
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks base64-encoded event data:
         LOG0 address [0] data
@@ -689,13 +699,13 @@ class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
         """
 
         if len(data_list) < 3:
-            _LOG.error("failed to decode %s: less 3 elements in %s", name, data_list)
+            _LOG.error("failed to decode %s: less 3 elements in %s", cls.name, data_list)  # noqa
             return
 
         bs = base64.b64decode(data_list[1])
         topic_cnt = int.from_bytes(bs, "little")
-        if topic_cnt != int(name[-1:]):
-            _LOG.error("failed to decode %s: wrong number of topics %s", name, topic_cnt)
+        if topic_cnt != cls.topic_cnt:  # noqa
+            _LOG.error("failed to decode %s: wrong number of topics %s", cls.name, topic_cnt) # noqa
             return
 
         address = base64.b64decode(data_list[0])
@@ -710,19 +720,44 @@ class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
         log.tx_event_list.append(event)
 
 
+class _NeonEvmEventLog0Decoder(_NeonEvmEventLogDecoder):
+    name: Final[str] = "LOG0"
+    topic_cnt: Final[int] = 0
+
+
+class _NeonEvmEventLog1Decoder(_NeonEvmEventLogDecoder):
+    name: Final[str] = "LOG1"
+    topic_cnt: Final[int] = 1
+
+
+class _NeonEvmEventLog2Decoder(_NeonEvmEventLogDecoder):
+    name: Final[str] = "LOG2"
+    topic_cnt: Final[int] = 2
+
+
+class _NeonEvmEventLog3Decoder(_NeonEvmEventLogDecoder):
+    name: Final[str] = "LOG3"
+    topic_cnt: Final[int] = 3
+
+
+class _NeonEvmEventLog4Decoder(_NeonEvmEventLogDecoder):
+    name: Final[str] = "LOG4"
+    topic_cnt: Final[int] = 4
+
+
 class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "ENTER"
     _event_dict: Final[dict[str, NeonTxEventModel.Type]] = {
-        "CALL": NeonTxEventModel.Type.EnterCall,
-        "CALLCODE": NeonTxEventModel.Type.EnterCallCode,
-        "STATICCALL": NeonTxEventModel.Type.EnterStaticCall,
-        "DELEGATECALL": NeonTxEventModel.Type.EnterDelegateCall,
-        "CREATE": NeonTxEventModel.Type.EnterCreate,
-        "CREATE2": NeonTxEventModel.Type.EnterCreate2,
+        _to_b64("CALL"): NeonTxEventModel.Type.EnterCall,
+        _to_b64("CALLCODE"): NeonTxEventModel.Type.EnterCallCode,
+        _to_b64("STATICCALL"): NeonTxEventModel.Type.EnterStaticCall,
+        _to_b64("DELEGATECALL"): NeonTxEventModel.Type.EnterDelegateCall,
+        _to_b64("CREATE"): NeonTxEventModel.Type.EnterCreate,
+        _to_b64("CREATE2"): NeonTxEventModel.Type.EnterCreate2,
     }
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks base64-encoded event data:
         ENTER CALL <20 bytes contract address>
@@ -736,8 +771,8 @@ class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
             _LOG.error("failed to decode %s: should 2 elements in %s, %s", cls.name, len(data_list), data_list)
             return
 
-        type_name = str(base64.b64decode(data_list[0]), "utf-8")
-        if not (event_type := cls._event_dict.get(type_name, None)):
+        if not (event_type := cls._event_dict.get(data_list[0], None)):
+            type_name = str(base64.b64decode(data_list[0]), "utf-8")
             _LOG.error("failed to decode %s: wrong type %s", cls.name, type_name)
             return
 
@@ -755,15 +790,15 @@ class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
 class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
     name: Final[str] = "EXIT"
     _event_dict: Final[dict[str, NeonTxEventModel.Type]] = {
-        "STOP": NeonTxEventModel.Type.ExitStop,
-        "RETURN": NeonTxEventModel.Type.ExitReturn,
-        "SELFDESTRUCT": NeonTxEventModel.Type.ExitSelfDestruct,
-        "REVERT": NeonTxEventModel.Type.ExitRevert,
-        "SENDALL": NeonTxEventModel.Type.ExitSendAll,
+        _to_b64("STOP"): NeonTxEventModel.Type.ExitStop,
+        _to_b64("RETURN"): NeonTxEventModel.Type.ExitReturn,
+        _to_b64("SELFDESTRUCT"): NeonTxEventModel.Type.ExitSelfDestruct,
+        _to_b64("REVERT"): NeonTxEventModel.Type.ExitRevert,
+        _to_b64("SENDALL"): NeonTxEventModel.Type.ExitSendAll,
     }
 
     @classmethod
-    def decode(cls, log: _NeonTxLogDraft, _name: str, data_list: Sequence[str]) -> None:
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
         Unpacks base64-encoded event data:
         EXIT STOP
@@ -780,8 +815,8 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
             )
             return
 
-        type_name = str(base64.b64decode(data_list[0]), "utf-8")
-        if (event_type := cls._event_dict.get(type_name, None)) is None:
+        if (event_type := cls._event_dict.get(data_list[0], None)) is None:
+            type_name = str(base64.b64decode(data_list[0]), "utf-8")
             _LOG.error("failed to decode %s: wrong type %s", cls.name, type_name)
             return
 
@@ -796,48 +831,52 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
 
 
 class NeonEvmLogDecoder:
+    _start_line: Final[str] = "Program data: "
     _re_data: Final[re.Pattern] = re.compile(r"^Program data: (.+)$")
     _log_truncated_msg: Final[str] = "Log truncated"
     _is_already_finalized_msg: Final[str] = "Program log: Storage Account is finalized"
 
     _log_decoder_dict: dict[str, type[_NeonEvmLogDecoder]] = {
-        _NeonEvmHashLogDecoder.name: _NeonEvmHashLogDecoder,
-        _NeonEvmMinerDecoder.name: _NeonEvmMinerDecoder,
-        _NeonEvmResetLogDecoder.name: _NeonEvmResetLogDecoder,
-        _NeonEvmInvalidRevisionDecoder.name: _NeonEvmInvalidRevisionDecoder,
-        _NeonEvmStepLogDecoder.name: _NeonEvmStepLogDecoder,
-        _NeonEvmBlockLogDecoder.name: _NeonEvmBlockLogDecoder,
-        _NeonEvmReturnLogDecoder.name: _NeonEvmReturnLogDecoder,
-        _NeonEvmEnterLogDecoder.name: _NeonEvmEnterLogDecoder,
-        _NeonEvmExitLogDecoder.name: _NeonEvmExitLogDecoder,
-        _NeonEvmGasLogDecoder.name: _NeonEvmGasLogDecoder,
-        _NeonEvmPriorityFeeLogDecoder.name: _NeonEvmPriorityFeeLogDecoder,
-        _NeonEvmBaseFeeLogDecoder.name: _NeonEvmBaseFeeLogDecoder,
-        _NeonEvmErrorLogDecoder.name: _NeonEvmErrorLogDecoder,
-        # event logs:
-        _NeonEvmEventLogDecoder.name + "0": _NeonEvmEventLogDecoder,
-        _NeonEvmEventLogDecoder.name + "1": _NeonEvmEventLogDecoder,
-        _NeonEvmEventLogDecoder.name + "2": _NeonEvmEventLogDecoder,
-        _NeonEvmEventLogDecoder.name + "3": _NeonEvmEventLogDecoder,
-        _NeonEvmEventLogDecoder.name + "4": _NeonEvmEventLogDecoder,
+        cls.get_key(): cls for cls in (
+            _NeonEvmHashLogDecoder,
+            _NeonEvmMinerDecoder,
+            _NeonEvmResetLogDecoder,
+            _NeonEvmInvalidRevisionDecoder,
+            _NeonEvmStepLogDecoder,
+            _NeonEvmBlockLogDecoder,
+            _NeonEvmReturnLogDecoder,
+            _NeonEvmEnterLogDecoder,
+            _NeonEvmExitLogDecoder,
+            _NeonEvmGasLogDecoder,
+            _NeonEvmPriorityFeeLogDecoder,
+            _NeonEvmBaseFeeLogDecoder,
+            _NeonEvmErrorLogDecoder,
+            # event logs:
+            _NeonEvmEventLog0Decoder,
+            _NeonEvmEventLog1Decoder,
+            _NeonEvmEventLog2Decoder,
+            _NeonEvmEventLog3Decoder,
+            _NeonEvmEventLog4Decoder,
+        )
     }
 
-    def _decode_mnemonic(self, line: str) -> tuple[str, Sequence[str]]:
+    def _find_decoder(self, line: str) -> tuple[_NeonEvmLogDecoder | None, Sequence[str]]:
+        if not line.startswith(self._start_line):
+            return None, tuple()
+
         match = self._re_data.match(line)
         if match is None:
-            return "", tuple()
+            return None, tuple()
 
         tail: str = match.group(1)
         data_list: Sequence[str] = tuple(tail.split())
         if len(data_list) < 1:
-            return "", tuple()
+            return None, tuple()
 
-        try:
-            mnemonic = str(base64.b64decode(data_list[0]), "utf-8")
-        except UnicodeDecodeError:
-            return "", tuple()
+        if not (decoder := self._log_decoder_dict.get(data_list[0], None)):
+            return None, tuple()
 
-        return mnemonic, data_list[1:]
+        return decoder, data_list[1:]
 
     def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
         """Extracts Neon transaction events from Solana transaction receipt"""
@@ -851,14 +890,8 @@ class NeonEvmLogDecoder:
                 log.is_already_finalized = True
                 continue
 
-            name, data_list = self._decode_mnemonic(msg)
-            if not name:
-                continue
-
-            _LogDecoder: type[_NeonEvmLogDecoder] | None = self._log_decoder_dict.get(name, None)
-            if _LogDecoder is not None:
-                _LogDecoder.decode(log, name, data_list)
-            elif _LogDecoder is None:
-                _LOG.warning("no decoder for %s %s", name, len(data_list))
+            _LogDecoder, data_list = self._find_decoder(msg)
+            if _LogDecoder:
+                _LogDecoder.decode(log, data_list)
 
         return log.to_clean_copy()
