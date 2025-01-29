@@ -9,6 +9,7 @@ from ..neon.evm_log_decoder import (
 )
 from ..neon.neon_program import NeonProg
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
+from ..solana.pubkey import SolPubKey
 from ..solana.transaction_decoder import SolTxIxMetaInfo
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -70,6 +71,14 @@ class SolNeonTxErrorParser(SolTxErrorParser):
                 has_gas_limit = int.from_bytes(log_rec.data[0:31])
                 req_gas_limit = int.from_bytes(log_rec.data[32:64])
                 return int(has_gas_limit), int(req_gas_limit)
+        return None
+
+    @cached_method
+    def get_missing_account_error(self) -> SolPubKey | None:
+        log_list = self._get_evm_error_log_list()
+        for log_rec in log_list:
+            if log_rec.code == log_rec.code.AccountMissing:
+                return SolPubKey.from_raw(log_rec.data)
         return None
 
     @cached_method

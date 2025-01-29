@@ -57,6 +57,7 @@ class SolTxSendState:
         OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
         OutOfGasError = enum.auto()
+        MissingAccountError = enum.auto()
         UnknownError = enum.auto()
 
     status: Status
