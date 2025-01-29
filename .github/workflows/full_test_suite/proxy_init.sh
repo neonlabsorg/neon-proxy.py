@@ -91,25 +91,43 @@ function wait_service() {
   local DATA=$3
   local RESULT=$4
 
-  # Max attepts is 100 (each for 2 seconds)
+  # Max attempts is 100 (each for 2 seconds)
   local MAX_COUNT=100
   local CURRENT_ATTEMPT=1
 
   local CHECK_COMMAND="curl $URL -s -X POST -H 'Content-Type: application/json' -d '$DATA' | grep -cF '$RESULT'"
 
-  while [[ $CURRENT_ATTEMPT -lt $MAX_COUNT ]]
-  do
+  while [[ $CURRENT_ATTEMPT -lt $MAX_COUNT ]]; do
     echo "$SERVICE attempt: $CURRENT_ATTEMPT" 1>&2
     local CHECK_COMMAND_RESULT=$(eval $CHECK_COMMAND)
     echo $CHECK_COMMAND_RESULT >> /tmp/output.txt
+
     if [[ "$CHECK_COMMAND_RESULT" == "1" ]]; then
       echo "$SERVICE is up" 1>&2
-      break
+      return
     fi
 
+    docker ps -a 1>&2
     ((CURRENT_ATTEMPT=CURRENT_ATTEMPT+1))
     sleep 2
-  done;
+  done
+
+  echo "ERROR: $SERVICE did not start after $MAX_COUNT attempts" 1>&2
+  docker stats 1>&2
+
+  error_substrings="error|fail|exception|fatal|panic|abort|denied|not found|timeout|refused|invalid"
+
+  for container in $(docker ps -a --format "{{.Names}}"); do
+    echo "Error logs for container: ${container}" 1>&2
+    docker logs "${container}" 2>&1 | grep -Ei "${error_substrings}" 1>&2 || true
+    echo "---------------------------" 1>&2
+  done
+
+  free -h 1>&2
+  df -h 1>&2
+  top -bn1 | grep "Cpu(s)" 1>&2
+
+  exit 1
 }
 
 # Check if Solana is available
