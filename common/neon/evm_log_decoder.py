@@ -173,11 +173,11 @@ class NeonTxErrorLogInfo:
         PriorityFeeError = enum.auto()
         UnknownError = enum.auto()
     code: ErrorCode
-    data: bytearray
+    data: bytes
     message: str
 
     @classmethod
-    def from_raw(cls, code: int, data: bytearray, message: str):
+    def from_raw(cls, code: int, data: bytes, message: str):
 
         if code < cls.ErrorCode.Custom or code >= cls.ErrorCode.UnknownError:
             error_code = cls.ErrorCode.UnknownError
@@ -584,8 +584,7 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         bs = base64.b64decode(data_list[0])
         code = int.from_bytes(bs, "little")
 
-        bs = base64.b64decode(data_list[1])
-        data = bytearray(bs)
+        data = base64.b64decode(data_list[1])
 
         bs = base64.b64decode(data_list[2])
         msg = bs.decode('utf-8')

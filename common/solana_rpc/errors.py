@@ -1,4 +1,5 @@
 from ..solana.errors import SolError
+from ..solana.pubkey import SolPubKey
 from ..solana.transaction_meta import SolRpcErrorInfo
 
 
@@ -39,6 +40,15 @@ class SolCbExceededCriticalError(SolError):
 class SolNeonOutOfMemoryError(SolError):
     def __init__(self) -> None:
         super().__init__("Out of memory")
+
+
+class SolNeonMissingAccountError(SolError):
+    def __init__(self, account: SolPubKey) -> None:
+        super().__init__(f"Missing account: {account.to_string()}")
+        self._acct = account
+
+    def get_account(self) -> SolPubKey:
+        return self._acct
 
 
 class SolWritableError(SolError):
