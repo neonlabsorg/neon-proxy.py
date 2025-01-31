@@ -32,7 +32,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     @cached_method
     def check_if_require_resize_iter(self) -> bool:
         log_list = self._get_evm_error_log_list()
-        return any(log_rec.code == NeonTxErrorLogInfo.ErrorCode.AccountSpaceAllocationFailure for log_rec in log_list)
+        return any(log_rec.code == log_rec.code.AccountSpaceAllocationFailure for log_rec in log_list)
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
@@ -51,15 +51,15 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     @cached_method
     def check_if_already_finalized(self) -> bool:
         log_list = self._get_evm_error_log_list()
-        return any(log_rec.code == NeonTxErrorLogInfo.ErrorCode.StorageAccountFinalized for log_rec in log_list)
+        return any(log_rec.code == log_rec.code.StorageAccountFinalized for log_rec in log_list)
 
     @cached_method
     def get_nonce_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
-            if log_rec.code == NeonTxErrorLogInfo.ErrorCode.InvalidTransactionNonce:
-                state_tx_cnt = int.from_bytes(log_rec.data[20:27])
-                tx_nonce = int.from_bytes(log_rec.data[28:35])
+            if log_rec.code == log_rec.code.InvalidTransactionNonce:
+                state_tx_cnt = int.from_bytes(log_rec.data[20:27], "little")
+                tx_nonce = int.from_bytes(log_rec.data[28:35], "little")
                 return int(state_tx_cnt), int(tx_nonce)
         return None
 
@@ -67,9 +67,9 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     def  get_out_of_gas_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
-            if log_rec.code == NeonTxErrorLogInfo.ErrorCode.OutOfGas:
-                has_gas_limit = int.from_bytes(log_rec.data[0:31])
-                req_gas_limit = int.from_bytes(log_rec.data[32:64])
+            if log_rec.code == log_rec.code.OutOfGas:
+                has_gas_limit = int.from_bytes(log_rec.data[0:31], "little")
+                req_gas_limit = int.from_bytes(log_rec.data[32:64], "little")
                 return int(has_gas_limit), int(req_gas_limit)
         return None
 
