@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Sequence, Final, ClassVar
@@ -10,10 +9,11 @@ from typing_extensions import Self
 from .client import SolClient
 from .ws_client import SolWatchAccountSession, SolWatchSlotSession
 from ..config.config import Config
-from ..config.constants import MIN_FINALIZE_SEC, ONE_BLOCK_SEC
+from ..config.constants import MIN_FINALIZE_SEC
 from ..solana.alt_info import SolAltInfo
 from ..solana.alt_program import SolAltProg, SolAltAccountInfo
 from ..solana.cb_program import SolCbProg
+from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_legacy import SolLegacyTx
@@ -79,12 +79,16 @@ class SolAltTxBuilder:
         self._cb_prog = SolCbProg()
         self._cu_price = cu_price
 
-    async def _get_recent_slot(self) -> int:
-        while (recent_slot := self._slot_session.finalized_slot) <= self._recent_slot_dict.get(self._alt_prog.payer, 0):
-            await asyncio.sleep(ONE_BLOCK_SEC / 2)
+    @property
+    def _new_slot(self) -> int:
+        return self._slot_session.finalized_slot
 
-        self._recent_slot_dict[self._alt_prog.payer] = recent_slot
-        return recent_slot
+    async def _get_recent_slot(self) -> int:
+        while (new_slot := self._new_slot) <= (last_slot := self._recent_slot_dict.get(self._alt_prog.payer, 0)):
+            await self._slot_session.wait_for_slot(last_slot + 1, SolCommit.Finalized)
+
+        self._recent_slot_dict[self._alt_prog.payer] = new_slot
+        return new_slot
 
     @property
     def tx_name_list(self) -> Sequence[str]:
@@ -189,14 +193,13 @@ class SolAltTxBuilder:
         # for addr in new_addr_set:
         #     _LOG.debug("ALT %s doesn't exist", addr)
 
-        while last_extended_slot >= self._slot_session.processed_slot:
-            await asyncio.sleep(ONE_BLOCK_SEC / 2)
+        await self._slot_session.wait_for_slot(last_extended_slot + 1, SolCommit.Processed)
 
     async def _update_old_alt(self, old_alt_dict: dict[SolPubKey, SolAltInfo]) -> None:
         if not (addr_list := tuple(old_alt_dict.keys())):
             return
 
         acct_list = await self._sol_client.get_account_list(addr_list)
-        for acct in acct_list:
+        for addr, acct in zip(addr_list, acct_list):
             alt_acct = SolAltAccountInfo.from_account_nothrow(acct)
-            old_alt_dict[alt_acct.address].update_from_account(alt_acct)
+            old_alt_dict[addr].update_from_account(alt_acct)

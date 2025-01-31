@@ -298,7 +298,9 @@ class Indexer:
                 self._commit_progress_stat()
             self._last_finalized_slot = finalized_slot
         else:
-            self._last_confirmed_slot = self._confirmed_slot
+            await self._slot_session.wait_for_slot(self._last_processed_slot + 1, SolCommit.Confirmed)
+            last_confirmed_slot, self._last_confirmed_slot = self._last_confirmed_slot, self._confirmed_slot
+
             if result := self._last_processed_slot != self._last_confirmed_slot:
                 self._last_finalized_slot = self._finalized_slot
                 if self._tracer_api_client:
@@ -307,6 +309,8 @@ class Indexer:
                     #    limit indexing by finalized slot
                     if (self._last_tracer_slot is None) and self._cfg.slot_processing_delay:
                         self._last_confirmed_slot = self._last_finalized_slot
+
+            if last_confirmed_slot != self._last_confirmed_slot:
                 self._commit_progress_stat()
         return result
 

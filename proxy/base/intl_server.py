@@ -36,18 +36,6 @@ class BaseIntlProxyComponent:
     def _msg_filter(self) -> LogMsgFilter:
         return self._server._msg_filter  # noqa
 
-    @property
-    def _processed_slot(self) -> int:
-        return self._slot_session.processed_slot
-
-    @property
-    def _confirmed_slot(self) -> int:
-        return self._slot_session.confirmed_slot
-
-    @property
-    def _finalized_slot(self) -> int:
-        return self._slot_session.finalized_slot
-
 
 class BaseProxyApi(BaseIntlProxyComponent, AppDataApi):
     def __init__(self, server: BaseIntlProxyServer) -> None:
