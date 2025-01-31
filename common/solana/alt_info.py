@@ -129,7 +129,7 @@ class SolAltInfo:
             self._new_acct_key_set.add(acct_key)
 
     def update_from_account(self, alt_account: SolAltAccountInfo) -> None:
-        if self._ident.address != alt_account.address:
+        if alt_account.address not in (self._ident.address, SolPubKey.default()):
             raise SolAltContentError(
                 self.address,
                 f"trying to update account list from another lookup table {alt_account.address}",
