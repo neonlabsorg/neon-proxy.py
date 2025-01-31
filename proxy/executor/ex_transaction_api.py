@@ -292,7 +292,7 @@ class NeonTxExecApi(ExecutorApi):
         return self._server._sol_alt_destroyer  # noqa
 
     async def _acquire_op_resource(self, request: ExecTxRequest) -> OpResourceModel:
-        _LOG.debug("acquire holder for %s", request.tx.neon_tx_hash)
+        # _LOG.debug("acquire holder for %s", request.tx.neon_tx_hash)
         for _ in itertools.count():
             op_res = await self._op_client.get_resource(request.req_id, request.token.chain_id)
             if not op_res.is_empty:
