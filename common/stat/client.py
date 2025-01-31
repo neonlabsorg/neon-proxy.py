@@ -15,7 +15,7 @@ _LOG = logging.getLogger(__name__)
 class BaseStatClient:
     def __init__(self, cfg: Config) -> None:
         self._cfg = cfg
-        self._send_queue: asyncio.Queue[tuple[Callable, BaseModel]] = asyncio.Queue()
+        self._send_queue: list[tuple[Callable, BaseModel]] = list()
         self._stop_event = asyncio.Event()
         self._send_task: asyncio.Task | None = None
 
@@ -29,7 +29,7 @@ class BaseStatClient:
 
     def _put_to_queue(self, call: Callable, data: BaseModel) -> None:
         if self._cfg.gather_stat:
-            self._send_queue.put_nowait((call, data))
+            self._send_queue.append((call, data))
 
     async def _send_loop(self) -> None:
         sleep_sec: Final[float] = ONE_BLOCK_SEC / 4
@@ -37,12 +37,9 @@ class BaseStatClient:
         with logging_context(ctx="stat-client"):
             while not self._stop_event.is_set():
                 try:
-                    while not self._send_queue.empty():
-                        await self._send_data()
+                    self._send_queue, send_queue = list(), self._send_queue
+                    for call, data in send_queue:
+                        await call(data)
                 except BaseException as exc:
                     _LOG.warning("error on send data", exc_info=exc)
                 await asyncio.wait({stop_task}, timeout=sleep_sec)
-
-    async def _send_data(self) -> None:
-        call, data = self._send_queue.get_nowait()
-        await call(data)
