@@ -444,18 +444,85 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 class SolWatchSlotSession(_SolWsSession[int, None]):
     _SlotInfo = _SolWsObjInfo[int, None]
 
+    @dataclass(frozen=True)
+    class _SlotWaitTask:
+        slot: commit
+        commit: SolCommit
+        future: asyncio.Future
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._data: _SoldersSlotInfo | None = None
         self._prev_root: int | None = None
         self._update_task: asyncio.Task | None = None
         self._is_started = False
+        self._wait_slot_queue: list[SolWatchSlotSession._SlotWaitTask] = list()
 
-    async def subscribe(
+    async def start(self) -> None:
+        if self._update_task:
+            return
+        self._is_started = True
+
+        await self._subscribe(init_start_slot=True)
+        self._update_task = asyncio.create_task(self._update_loop())
+
+    async def stop(self) -> None:
+        if not self._update_task:
+            return
+
+        update_task, self._update_task, self._is_started = self._update_task, None, False
+        await update_task
+
+    async def update(self, *, timeout_nsec: int = int(2 * ONE_BLOCK_SEC * 1e9)) -> None:
+        await self._subscribe()
+        await super().update(timeout_nsec=timeout_nsec)
+
+        wait_slot_queue, self._wait_slot_queue = self._wait_slot_queue, list()
+        for task in wait_slot_queue:
+            if self._is_complete(task.slot, task.commit):
+                task.future.set_result(None)
+            else:
+                self._wait_slot_queue.append(task)
+
+    async def wait_for_slot(self, slot: int, commit: SolCommit) -> None:
+        if self._is_complete(slot, commit):
+            await asyncio.sleep(0)
+            return
+
+        future = asyncio.get_event_loop().create_future()
+        task = self._SlotWaitTask(slot, commit, future)
+        self._wait_slot_queue.append(task)
+        await future
+
+    @property
+    def processed_slot(self) -> int:
+        return self._data.slot
+
+    @property
+    def confirmed_slot(self) -> int:
+        return self._data.parent
+
+    @property
+    def finalized_slot(self) -> int:
+        return self._data.root
+
+    def _is_complete(self, slot: int, commit: SolCommit) -> bool:
+        return self._get_slot(commit) >= slot
+
+    def _get_slot(self, commit: SolCommit) -> int | None:
+        if commit == SolCommit.Confirmed:
+            return self.confirmed_slot
+        elif commit == SolCommit.Finalized:
+            return self.finalized_slot
+        elif commit == SolCommit.Processed:
+            return self.processed_slot
+        assert False, f"unknown commit {commit}"
+
+    async def _subscribe(
         self, *,
-        init_start_slot = False,
-        confirmed_slot = 0,
-        finalized_slot = 0,
+        init_start_slot=False,
+        confirmed_slot=0,
+        finalized_slot=0,
     ) -> None:
         if self._data:
             return
@@ -469,37 +536,6 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
 
         await self.connect()
         await self._sub_slot()
-
-    async def start(self) -> None:
-        if self._update_task:
-            return
-        self._is_started = True
-
-        await self.subscribe(init_start_slot=True)
-        self._update_task = asyncio.create_task(self._update_loop())
-
-    async def stop(self) -> None:
-        if not self._update_task:
-            return
-
-        update_task, self._update_task, self._is_started = self._update_task, None, False
-        await update_task
-
-    async def update(self, *, timeout_nsec: int = int(2 * ONE_BLOCK_SEC * 1e9)) -> None:
-        await self.subscribe()
-        await super().update(timeout_nsec=timeout_nsec)
-
-    @property
-    def processed_slot(self) -> int:
-        return self._data.slot
-
-    @property
-    def confirmed_slot(self) -> int:
-        return self._data.parent
-
-    @property
-    def finalized_slot(self) -> int:
-        return self._data.root
 
     async def _update_loop(self) -> None:
         with logging_context(ctx="update-slot"):
