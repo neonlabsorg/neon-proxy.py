@@ -42,10 +42,8 @@ env:
   TF_VAR_neon_evm_commit: "latest"
   TF_VAR_faucet_model_commit: ${{vars.FAUCET_COMMIT}}
   TV_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
-  TF_VAR_proxy_image_name: "neon-proxy.py"
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
-  PROXY_IMAGE_NAME: "neon-proxy.py"
   NEON_TESTS_IMAGE: "neon_tests"
   FAUCET_COMMIT: ${{vars.FAUCET_COMMIT}}
   GH_ORG_NAME: ${{vars.GH_ORG_NAME}}
