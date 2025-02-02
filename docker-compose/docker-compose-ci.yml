@@ -20,7 +20,7 @@ services:
     entrypoint: /opt/solana-run-neon.sh
 
   postgres:
-    image: postgres:15.6
+    image: postgres:17.0
     command: postgres -c 'max_connections=1000'
     environment:
       POSTGRES_DB: neon-db
@@ -39,7 +39,7 @@ services:
       - net
 
   dbcreation:
-    image: ${DOCKERHUB_ORG_NAME}/${PROXY_IMAGE_NAME}:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
       POSTGRES_DB: neon-db
@@ -55,7 +55,7 @@ services:
         condition: service_healthy
 
   proxy:
-    image: ${DOCKERHUB_ORG_NAME}/${PROXY_IMAGE_NAME}:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
       FAUCET_URL: http://faucet:3333
@@ -65,10 +65,7 @@ services:
       POSTGRES_PASSWORD: neon-proxy-pass
       POSTGRES_HOST: postgres
       DEBUG_CMD_LINE: "YES"
-      FUZZ_FAIL_PCT: 0
       GATHER_STATISTICS: "YES"
-      MIN_OPERATOR_BALANCE_TO_WARN: 4565760000 # = 913152000 * 5 (5 storage accounts) = 4.56576 SOL
-      MIN_OPERATOR_BALANCE_TO_ERR: 913152000 # = sol_client rent 131072 (= Rent-exempt minimum: 0.913152 SOL) SOLs to create a storage
       #PP_SOLANA_URL: ${CI_PP_SOLANA_URL:-https://api.devnet.solana.com}
       #PYTH_MAPPING_ACCOUNT: ${CI_PYTH_MAPPING_ACCOUNT:-BmA9Z6FjioHJPpjT39QazZyhDRUdZy2ezwx4GiDdE2u2}
       # Set to 0 + CONST_GAS_PRICE to 0, if you want 0 gas-price
@@ -77,10 +74,7 @@ services:
       MINIMAL_WITHOUT_CHAIN_ID_GAS_PRICE: 1
       CU_PRIORITY_FEE: 2
       SIMPLE_CU_PRIORITY_FEE: 1
-      MEMPOOL_SEND_BATCH_TRANSACTIONS: "YES"
       ENABLE_PRIVATE_API: "NO"
-      LOG_FULL_OBJECT_INFO: "NO"
-      LOG_CLEF_FORMAT: "NO"
       NEON_CORE_API_SERVER_COUNT: 4
       NEON_EVM_PROGRAM: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
       RUST_BACKTRACE: ${RUST_BACKTRACE:-0}
@@ -168,7 +162,7 @@ services:
 #        condition: service_started
 #
   indexer:
-    image: ${DOCKERHUB_ORG_NAME}/${PROXY_IMAGE_NAME}:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
       POSTGRES_DB: neon-db
@@ -177,8 +171,6 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_TIMEOUT: 5
       GATHER_STATISTICS: "YES"
-      LOG_FULL_OBJECT_INFO: "YES"
-      CONFIG: ci
       NEON_EVM_PROGRAM: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
       START_SLOT: latest
       REINDEX_START_SLOT: continue
