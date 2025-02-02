@@ -48,6 +48,7 @@ _SoldersUnsubSlot = _req.SlotUnsubscribe
 
 _SoldersSubResult = _resp.SubscriptionResult
 _SoldersSubError = _resp.SubscriptionError
+_SoldersUnsubResult = _resp.UnsubscribeResult
 
 _SoldersNotif = _resp.Notification
 _SoldersTxSigNotif = _resp.SignatureNotification
@@ -68,15 +69,7 @@ _SolWsSendData = Union[
 ]
 _SolWsSubNotif = Union[_SoldersTxSigNotif, _SoldersAcctNotif, _SoldersSlotNotif]
 
-
-# Solders doesn't have this event...
-class _SoldersUnsubResult(BaseModel):
-    jsonrpc: Literal["2.0"]
-    id: int
-    result: bool
-
-
-_SoldersWsMsg = Union[_resp.WebsocketMessage, _SoldersUnsubResult]
+_SoldersWsMsg = _resp.WebsocketMessage
 _SolWsObjKey = TypeVar("_SolWsObjKey")
 _SolWsObj = TypeVar("_SolWsObj")
 
@@ -204,11 +197,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         try:
             return tuple(_resp.parse_websocket_message(msg.data))
         except _err.SerdeJSONError:
-            try:
-                # solders doesn't contain parser for this event type
-                return tuple([_SoldersUnsubResult.from_json(msg.data)])
-            except _pyd.ValidationError:
-                _LOG.warning("unexpected error on parsing websocket message: %s", msg.data)
+            _LOG.warning("unexpected error on parsing websocket message: %s", msg.data)
         except (BaseException,):
             _LOG.warning("unexpected error on parsing websocket message: %s", msg.data)
         return tuple()
