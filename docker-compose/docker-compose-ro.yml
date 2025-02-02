@@ -80,7 +80,7 @@ services:
 
   postgres:
     container_name: postgres
-    image: postgres:${PG_VERSION:-15.6}
+    image: postgres:${PG_VERSION:-17.0}
     platform: linux/amd64
     command: postgres -c 'max_connections=1000'
     environment:
