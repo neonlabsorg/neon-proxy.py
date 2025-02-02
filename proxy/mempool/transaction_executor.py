@@ -39,6 +39,8 @@ class MpTxExecutor(MempoolComponent):
         self._tx_dict = MpTxDict(self._cfg)
         self._stuck_tx_dict = MpStuckTxDict()
 
+        self._old_pool_stat = NeonTxPoolData()
+
         self._stop_event = asyncio.Event()
         self._exec_event = asyncio.Event()
         self._tx_exec_task: asyncio.Task | None = None
@@ -221,6 +223,10 @@ class MpTxExecutor(MempoolComponent):
             stuck_queue_len=self._stuck_tx_dict.tx_cnt,
             processing_stuck_queue_len=self._stuck_tx_dict.processing_tx_cnt,
         )
+        if self._old_pool_stat == data:
+            return
+
+        self._old_pool_stat = data
         self._stat_client.commit_neon_tx_pool(data)
 
     async def _acquire_stuck_tx(self) -> bool:

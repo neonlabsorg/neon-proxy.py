@@ -231,38 +231,44 @@ class OpResourceMng(OpResourceComponent):
                 return op_signer
         return None
 
-    async def withdraw(self, chain_list: list[int]) -> None:
+    async def withdraw(self, owner: SolPubKey, chain_id: int) -> bool:
         cb_prog = SolCbProg()
-        for op_signer in list(self._active_signer_dict.values()):
-            ix_list: list[SolTxIx] = list()
-            for chain_id, token_sol_addr in op_signer.token_sol_address_dict.items():
-                if chain_id not in chain_list:
-                    continue
+        if not (op_signer := self._active_signer_dict.get(owner, None)):
+            return False
+        elif not (token_sol_addr := op_signer.token_sol_address_dict.get(chain_id, None)):
+            return False
 
-                if not ix_list:
-                    ix_list.append(cb_prog.make_cu_price_ix(self._cu_price))
-                    ix_list.append(cb_prog.make_cu_limit_ix(50_000))
+        neon_addr = NeonAddress.from_raw(op_signer.eth_address, chain_id)
+        neon_acct = await self._core_api_client.get_neon_account(neon_addr, None)
+        neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)
 
-                neon_addr = NeonAddress.from_raw(op_signer.eth_address, chain_id)
-                neon_acct = await self._core_api_client.get_neon_account(neon_addr, None)
-                neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)
+        if neon_acct.status == NeonAccountStatus.Empty:
+            # fmt: off
+            ix_list = tuple([
+                cb_prog.make_cu_price_ix(self._cu_price * 2),
+                cb_prog.make_cu_limit_ix(neon_prog.CuLimitOpCreateNeonBalance),
+                neon_prog.make_create_neon_account_ix(
+                    neon_addr,
+                    neon_acct.sol_address,
+                    neon_acct.contract_sol_address,
+                ),
+            ])
+            # fmt: on
 
-                if neon_acct.status == NeonAccountStatus.Empty:
-                    ix = neon_prog.make_create_neon_account_ix(
-                        neon_addr,
-                        neon_acct.sol_address,
-                        neon_acct.contract_sol_address,
-                    )
-                    ix_list.append(ix)
-
-                ix = neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address)
-                ix_list.append(ix)
-
-            if not ix_list:
-                continue
-
-            tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
+            tx = SolLegacyTx("createNeonAccount", ix_list)
             await self._send_tx(op_signer.signer, tx)
+
+        # fmt: off
+        ix_list = tuple([
+            cb_prog.make_cu_price_ix(self._cu_price),
+            cb_prog.make_cu_limit_ix(neon_prog.CuLimitOpWithdraw),
+            neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address),
+        ])
+        # fmt: on
+
+        tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
+        await self._send_tx(op_signer.signer, tx)
+        return True
 
     def get_signer_key_list(self) -> Sequence[SolPubKey]:
         key_set = set(
