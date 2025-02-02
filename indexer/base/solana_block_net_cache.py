@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Generator, Sequence
+from typing import Sequence, AsyncGenerator
 
 from common.config.config import Config
 from common.solana.block import SolRpcBlockInfo
@@ -37,7 +37,7 @@ class SolBlockNetCache:
         self._block_list = self._block_list[idx:]
         self._start_slot = slot
 
-    async def iter_block(self, ctx: SolNeonDecoderCtx) -> Generator[SolRpcBlockInfo, None, None]:
+    async def iter_block(self, ctx: SolNeonDecoderCtx) -> AsyncGenerator[SolRpcBlockInfo, None, None]:
         head_block: SolRpcBlockInfo | None = None
         root_slot = base_slot = ctx.start_slot
 
@@ -76,6 +76,7 @@ class SolBlockNetCache:
             child_slot = sol_block.slot
 
         self._raise_error(ctx, root_slot, f"Failed to reach root {root_slot} (!= {slot})")
+        return tuple()
 
     def _get_sol_block(self, slot: int) -> SolRpcBlockInfo:
         idx = self._calc_idx(slot)
