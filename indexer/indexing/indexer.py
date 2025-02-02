@@ -9,7 +9,7 @@ from common.neon_rpc.client import CoreApiClient
 from common.solana.block import SolRpcBlockInfo
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
-from common.solana_rpc.not_empty_block import SolFirstBlockFinder, SolNotEmptyBlockFinder
+from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
 from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.json_logger import logging_context, log_msg
 from common.utils.metrics_logger import MetricsLogger
@@ -387,14 +387,7 @@ class Indexer:
             pass
 
     async def _check_start_slot(self, base_slot: int) -> None:
-        block_finder = SolFirstBlockFinder(self._sol_client)
-        first_slot = await block_finder.find_slot()
-
-        if first_slot < base_slot:
-            # if first available slot on Solana is less then the base slot,
-            #   then find the first not-empty slot from the base_slot
-            # it can happen if the Solana node has broken ledger
-            first_slot = await SolNotEmptyBlockFinder(self._sol_client, start_slot=base_slot).find_slot()
+        first_slot = await SolNotEmptyBlockFinder(self._sol_client, start_slot=base_slot - 1024).find_slot()
 
         min_used_slot = self._db.get_min_used_slot()
         if min_used_slot < first_slot:

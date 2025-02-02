@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .client import SolClient
 from ..solana.commit_level import SolCommit
 from ..utils.cached import cached_method, cached_property
+from ..utils.format import if_none
 
 _LOG = logging.getLogger(__name__)
 
@@ -86,22 +87,6 @@ class SolNotEmptyBlockFinder:
         return None
 
     async def _get_start_slot(self) -> int:
-        return self._def_start_slot or 5
-
-    @cached_method
-    async def _get_stop_slot(self) -> int:
-        return self._def_stop_slot or await self._sol_client.get_slot(SolCommit.Finalized)
-
-
-class SolFirstBlockFinder(SolNotEmptyBlockFinder):
-    def __init__(self, sol_client: SolClient):
-        super().__init__(sol_client)
-
-    @cached_method
-    async def _get_start_slot(self) -> int:
-        if self._def_start_slot:
-            return self._def_start_slot
-
         first_slot = await self._sol_client.get_first_slot()
         if first_slot > 0:
             # in any case the solana doesn't have a full history
@@ -111,7 +96,13 @@ class SolFirstBlockFinder(SolNotEmptyBlockFinder):
         else:
             # for the local stand with a test-validator, which doesn't have blocks in slots 2 and 3
             first_slot = 5
-        return first_slot
+
+        return max(if_none(self._def_start_slot, 5), first_slot)
+
+    @cached_method
+    async def _get_stop_slot(self) -> int:
+        finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        return min(if_none(self._def_stop_slot, finalized_slot), finalized_slot)
 
 
 @dataclass(frozen=True)
