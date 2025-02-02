@@ -3,7 +3,7 @@ version: "3"
 services:
   postgres:
     container_name: postgres
-    image: postgres:15.3
+    image: postgres:17.0
     command: postgres -c 'max_connections=1000'
     environment:
       POSTGRES_DB: neon-db
@@ -25,7 +25,7 @@ services:
 
   dbcreation:
     container_name: dbcreation
-    image: ${DOCKERHUB_ORG_NAME}/proxy:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: ${SOLANA_URL}
       POSTGRES_DB: neon-db
@@ -42,7 +42,7 @@ services:
 
   proxy:
     container_name: proxy
-    image: ${DOCKERHUB_ORG_NAME}/proxy:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: ${SOLANA_URL}
       POSTGRES_DB: neon-db
@@ -97,7 +97,7 @@ services:
 
   indexer:
     container_name: indexer
-    image: ${DOCKERHUB_ORG_NAME}/proxy:${REVISION}
+    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: ${SOLANA_URL}
       POSTGRES_DB: neon-db

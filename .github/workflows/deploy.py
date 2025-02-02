@@ -226,7 +226,6 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     os.environ["TF_VAR_neon_evm_commit"] = evm_tag
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
     os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
-    os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
 
     thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
 
@@ -304,7 +303,6 @@ def destroy_terraform(proxy_tag, run_number):
     log.setLevel(logging.INFO)
 
     os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
-    os.environ["TF_VAR_proxy_image_name"] = "neon-proxy.py"
 
     def format_tf_output(output):
         return re.sub(r'(?m)^', ' ' * TF_OUTPUT_OFFSET, str(output))
