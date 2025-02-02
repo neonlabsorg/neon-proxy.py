@@ -180,13 +180,14 @@ class NeonProg:
     FinishSkdTxGas: ClassVar[int] = 0
     #
     EvmStepPerIter: ClassVar[int] = 0
-
     # Holder IX CUs limit
     CuLimitHolderWrite: Final[int] = 10_000
     CuLimitHolderCreate: Final[int] = 7_500
     CuLimitHolderDestroy: Final[int] = 7_500
     # Operator balance CUs limit
-    CuLimitOpCreateBalance: Final[int] = 150_000
+    CuLimitOpWithdraw: Final[int] = 5_000
+    CuLimitOpCreateBalance: Final[int] = 75_000
+    CuLimitOpCreateNeonBalance: Final[int] = 20_000
     # Tree account CUs limit
     CuLimitSkdTreeAccountDestroy: Final[int] = 200_000
 

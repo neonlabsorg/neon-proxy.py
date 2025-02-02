@@ -97,9 +97,10 @@ class OpResourceClient(AppDataClient):
         resp = await self._get_eth_list(req)
         return tuple(resp.eth_address_list)
 
-    async def withdraw(self, req_id: dict, chain_list: Sequence[int]) -> None:
-        req = OpWithdrawTokenRequest(req_id=req_id, chain_list=list(chain_list))
-        _resp = await self._withdraw(req)
+    async def withdraw(self, req_id: dict, owner: SolPubKey, chain_id: int) -> bool:
+        req = OpWithdrawTokenRequest(req_id=req_id, owner=owner, chain_id=chain_id)
+        resp = await self._withdraw(req)
+        return resp.result
 
     async def destroy_holder(self, req_id: dict, owner: SolPubKey, holder: SolPubKey) -> None:
         req = OpDestroyHolderRequest(req_id=req_id, owner=owner, holder=holder)

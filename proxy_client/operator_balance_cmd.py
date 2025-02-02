@@ -1,3 +1,5 @@
+import asyncio
+import itertools
 import logging
 from dataclasses import dataclass
 from typing import ClassVar, Final, Sequence
@@ -13,6 +15,8 @@ from common.neon_rpc.api import EvmConfigModel, NeonAccountStatus
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context
 from proxy.base.mp_api import MpTxRespCode
+from proxy.base.mp_client import MempoolClient
+from proxy.base.op_client import OpResourceClient
 from .cmd_handler import BaseNPCmdHandler
 
 _LOG = logging.getLogger(__name__)
@@ -136,29 +140,29 @@ class OpBalanceHandler(BaseNPCmdHandler):
             if not token_balance_dict:
                 return 1
 
-            op_client = await self._get_op_client()
-            chain_list = [chain_id for chain_id, balance in token_balance_dict.items() if balance > 0]
-            await op_client.withdraw(req_id, chain_list)
-
-            if not dest_addr:
-                return 0
+            op_client: OpResourceClient = await self._get_op_client()
 
             for chain_id, total_balance in token_balance_dict.items():
-                balance = total_balance
+                done_balance = 0
                 op_balance_list.sort(key=lambda x: x.token_balance_dict.get(chain_id, 0), reverse=True)
                 for op_balance in op_balance_list:
-                    if (value := min(op_balance.token_balance_dict.get(chain_id, 0), balance)) > 0:
-                        if not await self._send_value(req_id, op_balance.eth_address, dest_addr, chain_id, value):
+                    if (balance := min(op_balance.token_balance_dict.get(chain_id, 0), total_balance)) > 0:
+                        if not await op_client.withdraw(req_id, op_balance.owner, chain_id):
+                            print(f"fail to withdraw tokens from {op_balance.owner}({chain_id})")
                             return 1
-                        balance -= value
+                        if not await self._send_value(req_id, op_balance.eth_address, dest_addr, chain_id, balance):
+                            return 1
+
+                        total_balance -= balance
+                        done_balance += balance
                     else:
                         break
 
                 token = self._evm_cfg.chain_dict[chain_id].name
-                total_balance = total_balance / (10**18)
+                done_balance = done_balance / (10**18)
                 # fmt: off
                 print(
-                    f"successfully send {total_balance:,.18} {token} " 
+                    f"successfully send {done_balance:,.18} {token} " 
                     f"to {dest_addr.to_checksum()}"
                 )
                 # fmt: on
@@ -169,13 +173,16 @@ class OpBalanceHandler(BaseNPCmdHandler):
         self,
         req_id: dict,
         sender_eth_addr: EthAddress,
-        dest_eth_addr: EthAddress,
+        dest_eth_addr: EthAddress | None,
         chain_id: int,
         value: int,
     ) -> bool:
+        if not dest_eth_addr:
+            return True
+
         core_api_client = await self._get_core_api_client()
         op_client = await self._get_op_client()
-        mp_client = await self._get_mp_client()
+        mp_client: MempoolClient = await self._get_mp_client()
         token = self._evm_cfg.chain_dict[chain_id].name
 
         dest_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(dest_eth_addr, chain_id), None)
@@ -186,11 +193,13 @@ class OpBalanceHandler(BaseNPCmdHandler):
 
         sender_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(sender_eth_addr, chain_id), None)
         mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address)
+
+        tx_nonce = max(sender_acct.state_tx_cnt, mp_tx_cnt or 0)
         param_dict = dict(
             tx_type=NeonTxType.Legacy,
             from_address=sender_eth_addr,
             to_address=dest_eth_addr,
-            nonce=max(sender_acct.state_tx_cnt, mp_tx_cnt or 0),
+            nonce=tx_nonce,
             gas_price=0,
             gas_limit=gas_limit,
             value=value,
@@ -215,8 +224,19 @@ class OpBalanceHandler(BaseNPCmdHandler):
 
         resp = await mp_client.send_raw_transaction(req_id, sender_acct, resp.signed_tx.to_bytes())
         if resp.code != MpTxRespCode.Success:
-            _LOG.error("fail to send tx: %s", resp.code.name)
+            _LOG.error("fail to send tx %s: %s", tx.neon_tx_hash.to_string(), resp.code.name)
             return False
+
+        for retry in itertools.count():
+            await asyncio.sleep(1)
+
+            sender_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(sender_eth_addr, chain_id), None)
+            mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address)
+            if max(sender_acct.state_tx_cnt, mp_tx_cnt or 0) > tx_nonce:
+                break
+            elif retry > 30:
+                print("WARNING: no information completeness of %s", tx.neon_tx_hash.to_string())
+                break
 
         return True
 

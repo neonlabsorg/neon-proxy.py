@@ -148,11 +148,12 @@ class OpEthAddressListResp(BaseModel):
 
 class OpWithdrawTokenRequest(BaseModel):
     req_id: dict
-    chain_list: list[int]
+    owner: SolPubKeyField
+    chain_id: int
 
 
 class OpWithdrawTokenResp(BaseModel):
-    total_amount_dict: dict[str, int]
+    result: bool
 
 
 class OpDestroyHolderRequest(BaseModel):
