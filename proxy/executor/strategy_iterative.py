@@ -61,8 +61,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         self._def_cu_limit = 0
         self._completed_evm_step_cnt = 0
 
-    async def prep_before_emulation(self) -> bool:
-        result = await super().prep_before_emulation()
+    async def prep_before_exec(self) -> bool:
+        result = await super().prep_before_exec()
 
         if self._ctx.is_scheduled_tx:
             if not await self._start_skd_tx():

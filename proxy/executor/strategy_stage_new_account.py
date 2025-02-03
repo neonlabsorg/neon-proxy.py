@@ -32,11 +32,8 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
 
         return [[SolLegacyTx(self.name, tuple([ix]))]]
 
-    async def prep_before_emulation(self) -> bool:
+    async def prep_before_exec(self) -> bool:
         return self._is_account_exist()
-
-    async def update_after_emulation(self) -> bool:
-        return True
 
     def _is_account_exist(self) -> bool:
         if self._ctx.is_stuck_tx or self._ctx.is_scheduled_tx:
