@@ -18,6 +18,7 @@ from common.solana_rpc.errors import (
     SolBlockhashNotFound,
     SolCbExceededCriticalError,
     SolNeonOutOfMemoryError,
+    SolNeonMissingAccountError,
 )
 from .errors import StuckTxError, WrongStrategyError, SkdTxError
 from .server_abc import ExecutorComponent
@@ -146,6 +147,8 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxDoneCode.Failed
 
     async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
+        re_emulate = False
+
         ctx.reset_holder_block()
         for _retry in itertools.count():
             # if retry > 0:
@@ -155,11 +158,11 @@ class NeonTxExecutor(ExecutorComponent):
                 if await self._is_completed(ctx):
                     return ExecTxDoneCode.Done
 
-                if not await strategy.prep_before_emulation():
-                    continue
-                if ctx.has_holder_block and (not ctx.holder_block.is_empty):
-                    await self._emulate_neon_tx(ctx, re_emulate=True)
-                if not await strategy.update_after_emulation():
+                if re_emulate:
+                    await self._emulate_neon_tx(ctx, re_emulate)
+                    re_emulate = False
+
+                if not await strategy.prep_before_exec():
                     continue
 
                 # NeonTx is prepared for the execution
@@ -197,8 +200,15 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
-            except SolError as exc:
+            except SolNeonMissingAccountError:
+                if strategy.is_simple:
+                    return None
+                re_emulate = True
+                await asyncio.sleep(self._wait_sec)
+
+            except SolError:
                 # _LOG.debug("simple retry error: %s", str(exc), extra=self._msg_filter)
+                re_emulate = True
                 await asyncio.sleep(self._wait_sec)
 
             except BaseException as exc:
@@ -237,7 +247,7 @@ class NeonTxExecutor(ExecutorComponent):
             # )
             pass
 
-    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, *, re_emulate: bool = False) -> None:
+    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, re_emulate: bool = False) -> None:
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
 
