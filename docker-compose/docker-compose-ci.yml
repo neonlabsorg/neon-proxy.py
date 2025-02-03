@@ -20,7 +20,7 @@ services:
     entrypoint: /opt/solana-run-neon.sh
 
   postgres:
-    image: postgres:17.0
+    image: postgres:15.10
     command: postgres -c 'max_connections=1000'
     environment:
       POSTGRES_DB: neon-db
