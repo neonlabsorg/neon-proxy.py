@@ -470,6 +470,9 @@ class MpTxSchedule:
         def _is_higher_gas_price(_hdr: str, _old_tx: MpTxModel | None) -> MpTxResp | None:
             if not _old_tx:
                 return None
+            # force replacing of scheduled txs
+            elif _old_tx.neon_tx.is_scheduled_tx and tx.neon_tx.is_scheduled_tx:
+                return None
             elif _old_tx.gas_price >= tx.gas_price:
                 _msg = log_msg(
                     _hdr + " tx {OldTx} has higher gas-price than {GasPrice}",
