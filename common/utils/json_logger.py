@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import hashlib
 import json
 import logging
 import logging.config
 import os
 import pathlib
 import traceback
+import uuid
 from datetime import datetime
 from logging import LogRecord, Filter
 from typing import Sequence
@@ -47,6 +49,16 @@ def _get_root_path_len() -> int:
 _SKIP_ROOTPATH_LEN = _get_root_path_len()
 _BASE_ROOTPATH = __file__[:_SKIP_ROOTPATH_LEN]
 _CLEF_LOG_FORMAT = os.environ.get("LOG_CLEF_FORMAT", "NO").upper() in ("YES", "ON", "TRUE", "1")
+_PID = 0
+_PUID = 0
+
+
+def _get_uuid(pid: int) -> int:
+    global _PID, _PUID
+    if _PID != pid:
+        _PID = pid
+        _PUID = int(hashlib.sha3_512(uuid.uuid1().bytes).hexdigest(), 16) % 10000
+    return _PUID
 
 
 class JSONFormatter(logging.Formatter):
@@ -67,6 +79,7 @@ class JSONFormatter(logging.Formatter):
         msg_dict["@t"] = datetime.fromtimestamp(record.created).isoformat()
         msg_dict["@p"] = pathname + ":" + str(record.lineno)
         msg_dict["pid"] = record.process
+        msg_dict["puid"] = _get_uuid(record.process)
 
         msg_filter = record.msg_filter if hasattr(record, "msg_filter") else None
         if isinstance(record.msg, dict):
@@ -112,6 +125,7 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "date": datetime.fromtimestamp(record.created).isoformat(),
             "pid": record.process,
+            "puid": _get_uuid(record.process),
             "module": pathname + ":" + str(record.lineno),
         }
 
