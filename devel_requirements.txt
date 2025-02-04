@@ -1,5 +1,5 @@
 click==8.1.8
 docker==7.1.0
-paramiko==3.5.0
+paramiko==3.5.1
 python-terraform==0.10.1
 scp==0.15.0
