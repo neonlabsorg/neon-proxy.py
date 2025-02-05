@@ -4,12 +4,11 @@ import asyncio
 import itertools
 import logging
 import time
-from dataclasses import dataclass
-from typing import Union, Sequence, Literal, Generic, TypeVar, Final, Any
 from collections import deque
+from dataclasses import dataclass
+from typing import Union, Sequence, Generic, TypeVar, Final, Any
 
 import aiohttp as _ws
-import pydantic as _pyd
 import solders.account_decoder as _acct
 import solders.errors as _err
 import solders.rpc.config as _cfg
@@ -30,7 +29,6 @@ from ..solana.pubkey import SolPubKey
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..utils.json_logger import logging_context
-from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
 
@@ -80,11 +78,12 @@ class _SolWsObjInfo(Generic[_SolWsObjKey, _SolWsObj]):
     sub_id: int | None
     key: _SolWsObjKey | None
     obj: _SolWsObj | None
+    commit: SolCommit
 
 
 class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
     _ObjInfo = _SolWsObjInfo[_SolWsObjKey, _SolWsObj]
-    _empty_info: Final[_ObjInfo] = _SolWsObjInfo(None, None, None, None)
+    _empty_info: Final[_ObjInfo] = _SolWsObjInfo(None, None, None, None, SolCommit.Confirmed)
 
     def __init__(self, cfg: Config, sol_client: SolClient, *, ws_endpoint: HttpStrOrURL | None = None) -> None:
         self._cfg = cfg
@@ -212,7 +211,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.sub_id not in self._sub_dict, f"subscription {info.sub_id} for {key} already exists?"
                     _LOG.warning("got error %s for %s", item.error, key)
-                    self._on_sub_error(key, info.obj)
+                    await self._on_sub_error(key, info.obj, info.commit)
                 else:
                     _LOG.warning("unknown request %s on error", item.id)
             elif isinstance(item, _SoldersSubResult):
@@ -222,7 +221,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     assert item.result not in self._sub_dict, f"subscription {item.result} for {key} already exists?"
 
                     self._sub_dict[item.result] = key
-                    info = _SolWsObjInfo(key=key, obj=info.obj, req_id=item.id, sub_id=item.result)
+                    info = _SolWsObjInfo(key=key, obj=info.obj, req_id=item.id, sub_id=item.result, commit=info.commit)
                     self._obj_dict[key] = info
                     # _LOG.debug("got subscription %s for %s", item.result, key)
                 else:
@@ -241,7 +240,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
             return
 
         req_id = self._get_next_id()
-        info = _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None)
+        info = _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None, commit=commit)
         self._req_dict[req_id] = key
         self._obj_dict[key] = info
 
@@ -291,7 +290,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
     # fmt: off
     async def _on_reconnect(self) -> None: ...
-    def _on_sub_error(self, key: _SolWsObjKey, obj: _SolWsObj) -> None: ...
+    async def _on_sub_error(self, key: _SolWsObjKey, obj: _SolWsObj, commit: SolCommit) -> None: ...
     def _on_sub_notif(self, info: _ObjInfo, data: _SolWsSubNotif, now_nsec: int) -> None: ...
     def _new_sub_request(self, info: _ObjInfo, commit: SolCommit) -> _SolWsSendData: ...
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData: ...
@@ -338,6 +337,9 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
 
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData:
         return _SoldersUnsubTxSig(sub_id, req_id)
+
+    async def _on_sub_error(self, sig: SolTxSig, tx: SolTx, commit: SolCommit) -> None:
+        await self._sub_obj(sig, tx, commit)
 
 
 class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
@@ -413,7 +415,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 
     def _on_sub_notif(self, info: _AcctInfo, data: _SoldersAcctNotif, now_nsec: int) -> None:
         acct = SolAccountModel.from_raw(info.key, data.result.value)
-        info = _SolWsObjInfo(req_id=info.req_id, sub_id=info.sub_id, key=info.key, obj=acct)
+        info = _SolWsObjInfo(req_id=info.req_id, sub_id=info.sub_id, key=info.key, obj=acct, commit=info.commit)
         self._obj_dict[info.key] = info
         self._sub_dict[info.sub_id] = info.key
 
@@ -428,6 +430,9 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData:
         return _SoldersUnsubAcct(sub_id, req_id)
+
+    async def _on_sub_error(self, address: SolPubKey, account: SolAccountModel | None, commit: SolCommit) -> None:
+        await self._sub_obj(address, account, commit)
 
 
 class SolWatchSlotSession(_SolWsSession[int, None]):
@@ -561,3 +566,6 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
             except (BaseException,):
                 if retry > 5:
                     raise
+
+    async def _on_sub_error(self, _key: int, _obj: None, _commit: SolCommit) -> None:
+        await self._sub_slot()
