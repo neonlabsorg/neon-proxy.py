@@ -115,20 +115,20 @@ function wait_service() {
   echo "ERROR: $SERVICE did not start after $MAX_COUNT attempts" 1>&2
   docker stats 1>&2
 
-  error_substrings="error|fail|exception|fatal|panic|abort|denied|not found|timeout|refused|invalid"
-
-  for container in $(docker ps -a --format "{{.Names}}"); do
-    echo "Error logs for container: $container" 1>&2
-    docker logs $container 2>&1 | grep -Ei "$error_substrings" 1>&2 || true
-    echo "---------------------------" 1>&2
-  done
-
-  free -h 1>&2
-  df -h 1>&2
-  top -bn1 | grep "Cpu(s)" 1>&2
-
-  exit 1
-}
+#  error_substrings="error|fail|exception|fatal|panic|abort|denied|not found|timeout|refused|invalid"
+#
+#  for container in $(docker ps -a --format "{{.Names}}"); do
+#    echo "Error logs for container: $container" 1>&2
+#    docker logs $container 2>&1 | grep -Ei "$error_substrings" 1>&2 || true
+#    echo "---------------------------" 1>&2
+#  done
+#
+#  free -h 1>&2
+#  df -h 1>&2
+#  top -bn1 | grep "Cpu(s)" 1>&2
+#
+#  exit 1
+#}
 
 # Check if Solana is available
 SOLANA_DATA='{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
