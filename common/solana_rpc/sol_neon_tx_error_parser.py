@@ -54,6 +54,11 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return any(log_rec.code == log_rec.code.StorageAccountFinalized for log_rec in log_list)
 
     @cached_method
+    def check_if_skd_tx_use_wrong_holder(self) -> bool:
+        log_list = self._get_evm_error_log_list()
+        return any(log_rec.code == log_rec.code.NotClassicTransaction for log_rec in log_list)
+
+    @cached_method
     def get_nonce_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:

@@ -27,6 +27,21 @@ class SolNeonRequireResizeIterError(SolError):
         super().__init__("NeonTx requires resize iterations")
 
 
+class SolNeonSkdTxError(SolError):
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+
+
+class SolNeonSkdTxUseWrongHolderError(SolNeonSkdTxError):
+    def __init__(self) -> None:
+        super().__init__("NeonSkdTx use wrong holder")
+
+
+class SolNeonSkdTxWrongStateError(SolNeonSkdTxError):
+    def __init__(self) -> None:
+        super().__init__("NeonSkdTx has a wrong state")
+
+
 class SolCbExceededError(SolError):
     def __init__(self) -> None:
         super().__init__("Compute Budget exceeded")

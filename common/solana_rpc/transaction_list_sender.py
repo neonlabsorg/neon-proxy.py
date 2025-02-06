@@ -41,6 +41,7 @@ class SolTxSendState:
 
         # Skipped errors
         AlreadyFinalizedError = enum.auto()
+        SkdTxUseWrongHolderError = enum.auto()
         NeonAccountAlreadyExistsError = enum.auto()
         SolAccountAlreadyExistError = enum.auto()
 
