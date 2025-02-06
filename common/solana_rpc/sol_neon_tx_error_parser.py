@@ -19,6 +19,7 @@ from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
 
+
 class SolNeonTxErrorParser(SolTxErrorParser):
     _out_of_memory_msg: Final[str] = "Program log: EVM Allocator out of memory"
     _memory_alloc_fail_msg: Final[str] = "Program log: Error: memory allocation failed, out of memory"
@@ -50,8 +51,17 @@ class SolNeonTxErrorParser(SolTxErrorParser):
 
     @cached_method
     def check_if_already_finalized(self) -> bool:
-        log_list = self._get_evm_error_log_list()
-        return any(log_rec.code == log_rec.code.StorageAccountFinalized for log_rec in log_list)
+        err_list = self._get_evm_error_log_list()
+        # fmt: off
+        return any(
+            err_rec.code in (
+                err_rec.code.StorageAccountFinalized,
+                err_rec.code.ScheduledTxAlreadyComplete,
+                err_rec.code.ScheduledTxAlreadyInProgress,
+            )
+            for err_rec in err_list
+        )
+        # fmt: on
 
     @cached_method
     def check_if_skd_tx_use_wrong_holder(self) -> bool:
@@ -69,7 +79,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return None
 
     @cached_method
-    def  get_out_of_gas_error(self) -> tuple[int, int] | None:
+    def get_out_of_gas_error(self) -> tuple[int, int] | None:
         log_list = self._get_evm_error_log_list()
         for log_rec in log_list:
             if log_rec.code == log_rec.code.OutOfGas:
@@ -112,7 +122,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         fake_tx_ix = SolTxIxMetaInfo.default()
         try:
             neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, evm_log_list)
-        except(BaseException,):
+        except (BaseException,):
             return tuple()
 
         return tuple(neon_log.tx_error_list)
