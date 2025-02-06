@@ -97,6 +97,10 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         self._req_dict: dict[int, _SolWsObjKey] = dict()
         self._sub_dict: dict[int, _SolWsObjKey] = dict()
         self._obj_dict: dict[_SolWsObjKey, _SolWsObjInfo[_SolWsObjKey, _SolWsObj]] = dict()
+        self._error_obj_dict: dict[_SolWsObjKey, _SolWsObjInfo[_SolWsObjKey, _SolWsObj]] = dict()
+
+        self._error_handler_next_nsec: int = 0
+        self._is_error_handler_active: bool = False
 
         self._update_future: asyncio.Future[Any] | None = None
         self._reconnect_future: asyncio.Future[Any] | None = None
@@ -149,11 +153,28 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         try:
             self._update_future = asyncio.get_event_loop().create_future()
             await self._wait(timeout_nsec, time.monotonic_ns())
+            await self._error_dict_handler()
 
         finally:
             future, self._update_future = self._update_future, None
             if future:
                 future.set_result(None)
+
+
+    async def _error_dict_handler(self) -> None:
+        if self._is_error_handler_active or (self._error_handler_next_nsec > time.monotonic_ns()):
+            return
+        self._is_error_handler_active = True
+
+        try:
+            # resubscribe on objects with errors
+            error_obj_dict, self._error_obj_dict = self._error_obj_dict, dict()
+            for item in error_obj_dict.values():
+                await self._sub_obj(item.key, item.obj, item.commit)
+
+        finally:
+            self._error_handler_next_nsec = time.monotonic_ns() + int(pow(10, 9) * ONE_BLOCK_SEC)
+            self._is_error_handler_active = False
 
     async def __aenter__(self) -> Self:
         return await self.connect()
@@ -210,8 +231,11 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 if key := self._req_dict.pop(item.id, None):
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.sub_id not in self._sub_dict, f"subscription {info.sub_id} for {key} already exists?"
-                    _LOG.warning("got error %s for %s", item.error, key)
-                    await self._on_sub_error(key, info.obj, info.commit)
+
+                    # Error from Solana nodes with a BigTable...
+                    if item.error not in _resp.RpcCustomErrorFieldless.NoSnapshot:
+                        _LOG.warning("got error %s for %s", item.error, key)
+                    self._error_obj_dict[info.key] = info
                 else:
                     _LOG.warning("unknown request %s on error", item.id)
             elif isinstance(item, _SoldersSubResult):
@@ -280,17 +304,20 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
             await self._reconnect_future
             return
 
+        self._reconnect_future = asyncio.get_event_loop().create_future()
         try:
-            self._reconnect_future = asyncio.get_event_loop().create_future()
-            await self._on_reconnect()
+
+            for key, obj in self._obj_dict.items():
+                self._error_obj_dict[key] = obj
+            self._obj_dict.clear()
+
+            await self.reconnect()
         finally:
             future, self._reconnect_future = self._reconnect_future, None
             if future:
                 future.set_result(None)
 
     # fmt: off
-    async def _on_reconnect(self) -> None: ...
-    async def _on_sub_error(self, key: _SolWsObjKey, obj: _SolWsObj, commit: SolCommit) -> None: ...
     def _on_sub_notif(self, info: _ObjInfo, data: _SolWsSubNotif, now_nsec: int) -> None: ...
     def _new_sub_request(self, info: _ObjInfo, commit: SolCommit) -> _SolWsSendData: ...
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData: ...
@@ -322,7 +349,9 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
             now_nsec = time.monotonic_ns()
             if (wait_nsec := timeout_nsec - (now_nsec - start_time_nsec)) <= 0:
                 return False
-            await super()._wait(wait_nsec, now_nsec)
+
+            await self._wait(wait_nsec, now_nsec)
+            await self._error_dict_handler()
         return True
 
     async def _on_close(self) -> None:
@@ -338,9 +367,6 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData:
         return _SoldersUnsubTxSig(sub_id, req_id)
 
-    async def _on_sub_error(self, sig: SolTxSig, tx: SolTx, commit: SolCommit) -> None:
-        await self._sub_obj(sig, tx, commit)
-
 
 class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
     @dataclass(frozen=True)
@@ -354,23 +380,23 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         commit = kwargs.pop("commit", SolCommit.Confirmed)
         update_nsec = int(kwargs.pop("force_check_sec", 0) * pow(10, 9))
         has_update_queue = (update_nsec > 0) or kwargs.pop("has_update_queue", False)
+        init_acct = kwargs.pop("init_account", False)
         super().__init__(*args, **kwargs)
         self._commit = commit
         self._force_update_nsec = update_nsec
         self._has_update_queue = has_update_queue
+        self._init_acct = init_acct
         self._recheck_queue: deque[SolWatchAccountSession._RecheckAcctInfo] = deque()
         self._chg_key_set: set[SolPubKey] = set()
 
-    async def subscribe_account(self, addr: SolPubKey, *, init_account=False) -> None:
+    async def subscribe_account(self, addr: SolPubKey) -> None:
         if addr in self._obj_dict:
             return
 
-        acct = await self._sol_client.get_account(addr, commit=self._commit) if init_account else None
         for retry in itertools.count():
             try:
                 await self.connect()
-                await self._sub_obj(addr, acct, self._commit)
-                self._chg_key_set.add(addr)
+                await self._sub_obj(addr, None, self._commit)
 
                 return
             except (BaseException,):
@@ -380,6 +406,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
     async def unsubscribe_account(self, addr: SolPubKey) -> None:
         await self._unsub_obj(addr)
         self._chg_key_set.discard(addr)
+        self._error_obj_dict.pop(addr, None)
 
     def get_account(self, addr: SolPubKey) -> SolAccountModel | None:
         return info.obj if (info := self._obj_dict.get(addr, None)) else None
@@ -393,23 +420,13 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 
         return tuple(key_list)
 
-    async def _on_reconnect(self) -> None:
-        acct_queue: list[_SolWsObjInfo] = list()
-        for retry in itertools.count():
-            acct_queue.extend(self._obj_dict.values())
-            self._clear()
+    async def _sub_obj(self, key: SolPubKey, obj: SolAccountModel | None, commit: SolCommit) -> None:
+        if key in self._obj_dict:
+            return
 
-            try:
-                await self.reconnect()
-
-                while acct_queue:
-                    info = acct_queue.pop()
-                    await self._sub_obj(info.key, info.obj, self._commit)
-                return
-
-            except (BaseException,):
-                if retry > 5:
-                    raise
+        acct = await self._sol_client.get_account(key, commit=self._commit) if self._init_acct else obj
+        await super()._sub_obj(key, acct, commit)
+        self._chg_key_set.add(key)
 
     def _on_sub_notif(self, info: _AcctInfo, data: _SoldersAcctNotif, now_nsec: int) -> None:
         acct = SolAccountModel.from_raw(info.key, data.result.value)
@@ -428,9 +445,6 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
 
     def _new_unsub_request(self, req_id: int, sub_id: int) -> _SolWsSendData:
         return _SoldersUnsubAcct(sub_id, req_id)
-
-    async def _on_sub_error(self, address: SolPubKey, account: SolAccountModel | None, commit: SolCommit) -> None:
-        await self._sub_obj(address, account, commit)
 
 
 class SolWatchSlotSession(_SolWsSession[int, None]):
@@ -552,18 +566,3 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         self._obj_dict[info.key] = info
         self._sub_dict[info.sub_id] = info.key
 
-    async def _on_reconnect(self) -> None:
-        self._clear()
-
-        for retry in itertools.count():
-            try:
-                await self.reconnect()
-                await self._sub_slot()
-                return
-
-            except (BaseException,):
-                if retry > 5:
-                    raise
-
-    async def _on_sub_error(self, _key: int, _obj: None, _commit: SolCommit) -> None:
-        await self._sub_slot()
