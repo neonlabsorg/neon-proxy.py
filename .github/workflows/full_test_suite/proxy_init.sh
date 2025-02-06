@@ -118,8 +118,8 @@ function wait_service() {
   error_substrings="error|fail|exception|fatal|panic|abort|denied|not found|timeout|refused|invalid"
 
   for container in $(docker ps -a --format "{{.Names}}"); do
-    echo "Error logs for container: ${container}" 1>&2
-    docker logs "${container}" 2>&1 | grep -Ei "${error_substrings}" 1>&2 || true
+    echo "Error logs for container: $container" 1>&2
+    docker logs $container 2>&1 | grep -Ei "$error_substrings" 1>&2 || true
     echo "---------------------------" 1>&2
   done
 
