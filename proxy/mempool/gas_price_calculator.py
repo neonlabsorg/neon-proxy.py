@@ -29,7 +29,7 @@ class MpGasPriceCalculator(MempoolComponent):
     def __init__(self, server: MempoolServerAbc) -> None:
         super().__init__(server)
 
-        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client)
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, init_account=True)
 
         self._stop_event = asyncio.Event()
         self._update_pyth_acct_task: asyncio.Task | None = None
@@ -248,7 +248,7 @@ class MpGasPriceCalculator(MempoolComponent):
             return PythPriceAccount.default()
 
         elif not (raw_acct := self._watch_session.get_account(price_acct.address)):
-            await self._watch_session.subscribe_account(price_acct.address, init_account=True)
+            await self._watch_session.subscribe_account(price_acct.address)
             raw_acct = self._watch_session.get_account(price_acct.address)
 
         price_acct.update_data(raw_acct)
