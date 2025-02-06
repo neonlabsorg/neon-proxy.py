@@ -240,11 +240,12 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             [
                 (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
                 for tx_state in tx_list_sender.tx_state_list
-                # we shouldn't retry txs with the exceed Compute Budget, ALT errors and Missing Accounts
+                # we shouldn't retry txs with bad statuses
                 if tx_state.status not in (
                     tx_state.status.CbExceededError,
                     tx_state.status.AltError,
                     tx_state.status.MissingAccountError,
+                    tx_state.status.SkdTxUseWrongHolderError,
                 )
             ]
         )

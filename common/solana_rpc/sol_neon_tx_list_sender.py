@@ -12,6 +12,7 @@ from ..solana_rpc.errors import (
     SolNeonOutOfMemoryError,
     SolNeonRequireResizeIterError,
     SolNeonMissingAccountError,
+    SolNeonSkdTxUseWrongHolderError,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -30,6 +31,8 @@ class SolNeonTxListSender(SolTxListSender):
         if neon_tx_error_parser.check_if_already_finalized():
             # no exception: receipt exists - the goal is reached
             return self._DecodeResult(status.AlreadyFinalizedError, None)
+        elif neon_tx_error_parser.check_if_skd_tx_use_wrong_holder():
+            return self._DecodeResult(status.SkdTxUseWrongHolderError, SolNeonSkdTxUseWrongHolderError())
         elif neon_tx_error_parser.check_if_neon_account_already_exists():
             # no exception: neon account exists - the goal is reached
             return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)

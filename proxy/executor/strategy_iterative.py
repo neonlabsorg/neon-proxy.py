@@ -22,8 +22,8 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolUnknownReceiptError,
     SolWritableError,
+    SolNeonSkdTxWrongStateError,
 )
-from .errors import SkdTxError
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
@@ -179,7 +179,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         if status in (status.InProgress, status.ToStart, status.ToSkip, status.Skipped):
             return status
 
-        raise SkdTxError(self._ctx.neon_tx_hash)
+        raise SolNeonSkdTxWrongStateError()
 
     async def _finish_skd_tx(self) -> None:
         name = self._finish_skd_tx_name

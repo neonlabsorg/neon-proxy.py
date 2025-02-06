@@ -192,6 +192,13 @@ class NeonTxErrorLogInfo:
         ScheduledTxAlreadyInProgress = enum.auto()
         ScheduledTxAlreadyComplete = enum.auto()
         ScheduledTxInvalidIdx = enum.auto()
+        NotClassicTransaction = enum.auto()
+        TreasuryMissing = enum.auto()
+        AccountInvalidHeader = enum.auto()
+        RevertAfterSolanaCall = enum.auto()
+        UnsupportedEthereumTransactionType = enum.auto()
+        UnsupportedNeonTransactionType = enum.auto()
+        InterruptedCall = enum.auto()
         UnknownError = enum.auto()
     code: ErrorCode
     data: bytes
