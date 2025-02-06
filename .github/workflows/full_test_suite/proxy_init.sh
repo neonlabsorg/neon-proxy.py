@@ -123,9 +123,9 @@ function wait_service() {
     echo "---------------------------" 1>&2
   done
 
-  free -h 1>&2
-  df -h 1>&2
-  top -bn1 | grep "Cpu(s)" 1>&2
+  free -h 1>&2 || true
+  df -h 1>&2 || true
+  top -bn1 | grep "Cpu(s)" 1>&2 || true
 
   exit 1
 }
