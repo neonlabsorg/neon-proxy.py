@@ -18,6 +18,7 @@ from .errors import (
     SolNoMoreRetriesError,
     SolOutOfMemoryError,
     SolWritableError,
+    SolNeonSkdTxUseWrongHolderError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
@@ -44,6 +45,7 @@ class SolTxSendState:
 
         # Skipped errors
         AlreadyFinalizedError = enum.auto()
+        SkdTxUseWrongHolderError = enum.auto()
         NeonAccountAlreadyExistsError = enum.auto()
         SolAccountAlreadyExistError = enum.auto()
 
@@ -457,6 +459,8 @@ class SolTxListSender:
         elif tx_error_parser.check_if_already_finalized():
             # no exception: receipt exists - the goal is reached
             return self._DecodeResult(status.AlreadyFinalizedError, None)
+        elif tx_error_parser.check_if_skd_tx_use_wrong_holder():
+            return self._DecodeResult(status.SkdTxUseWrongHolderError, SolNeonSkdTxUseWrongHolderError())
         elif tx_error_parser.check_if_neon_account_already_exists():
             # no exception: neon account exists - the goal is reached
             return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)
