@@ -21,6 +21,9 @@ from ..utils.cached import cached_method, cached_property
 
 class SolTxErrorParser:
     _already_finalized_msg: Final[str] = "Program log: Transaction already finalized"
+    _skd_tx_use_wrong_holder_msg: Final[str] = (
+        "Scheduled transaction should be constructed via special method - scheduled_from_rlp"
+    )
     _log_truncated_msg: Final[str] = "Log truncated"
     _require_resize_iter_msg: Final[str] = (
         "Deployment of contract which needs more than 10kb of account space needs several"
@@ -133,6 +136,11 @@ class SolTxErrorParser:
     def check_if_already_finalized(self) -> bool:
         log_list = self._get_evm_log_list()
         return any(log_rec == self._already_finalized_msg for log_rec in log_list)
+
+    @cached_method
+    def check_if_skd_tx_use_wrong_holder(self) -> bool:
+        log_list = self._get_evm_log_list()
+        return any(log_rec.endswith(self._skd_tx_use_wrong_holder_msg) for log_rec in log_list)
 
     @cached_method
     def check_if_blockhash_notfound(self) -> bool:
