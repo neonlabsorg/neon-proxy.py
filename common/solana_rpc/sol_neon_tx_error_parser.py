@@ -58,6 +58,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
                 err_rec.code.StorageAccountFinalized,
                 err_rec.code.ScheduledTxAlreadyComplete,
                 err_rec.code.ScheduledTxAlreadyInProgress,
+                err_rec.code.TreeAccountTxInvalidStatus,
             )
             for err_rec in err_list
         )
