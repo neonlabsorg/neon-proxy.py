@@ -477,6 +477,10 @@ class OpResourceMng(OpResourceComponent):
             tx_hash = holder.neon_tx_hash
             msg = log_msg("found stuck tx {Tx} in holder {Holder} for resource {Owner}:{ResourceID}", Tx=tx_hash)
 
+        elif holder.status in (HolderAccountStatus.ScheduledFinalized, HolderAccountStatus.ScheduledCanceled):
+            tx_hash = holder.neon_tx_hash
+            msg = log_msg("found stuck SkdTx {Tx} in holder {Holder} for resource {Owner}:{ResourceID}", Tx=tx_hash)
+
         elif holder.status not in (HolderAccountStatus.Finalized, HolderAccountStatus.Holder):
             msg = log_msg("holder {Holder} has wrong tag {Tag} for resource {Owner}:{ResourceID}", Tag=holder.status)
             action = self._recreate_holder_acct
