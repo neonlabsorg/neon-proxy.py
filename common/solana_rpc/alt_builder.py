@@ -167,9 +167,9 @@ class SolAltTxBuilder:
         if not (new_addr_set := set(new_alt_dict.keys())):
             return
 
-        async with SolWatchAccountSession(self._cfg, self._sol_client) as acct_session:
+        async with SolWatchAccountSession(self._cfg, self._sol_client, init_account=True) as acct_session:
             for addr in new_addr_set:
-                await acct_session.subscribe_account(addr, init_account=True)
+                await acct_session.subscribe_account(addr)
 
             # wait for confirmation of all ALTs
             #  it is required for solana simulations
