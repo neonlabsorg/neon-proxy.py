@@ -81,8 +81,9 @@ class MpSkdTxLoader(MempoolComponent):
             payer = NeonAddress.from_raw(mp_tx.payer, mp_tx.chain_id)
             neon_acct = await self._core_api_client.get_neon_account(payer, None)
 
-            with logging_context(tx=mp_tx.tx_id, skd_tree=skd_tx.tree_address.ident):
-                await self._tx_executor.schedule_tx_request(mp_tx, neon_acct.state_tx_cnt, neon_acct.balance)
+            if neon_acct.state_tx_cnt <= mp_tx.nonce:
+                with logging_context(tx=mp_tx.tx_id, skd_tree=skd_tx.tree_address.ident):
+                    await self._tx_executor.schedule_tx_request(mp_tx, neon_acct.state_tx_cnt, neon_acct.balance)
         self._start_slot = start_slot
 
     async def _scan_old_skd_tx(self) -> None:
