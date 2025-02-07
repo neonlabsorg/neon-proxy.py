@@ -312,23 +312,23 @@ class NeonTxExecApi(ExecutorApi):
             await asyncio.gather(*task_list)
 
     async def _destroy_tree_account(self, skd_tree_parser: NeonSkdTreeParser) -> None:
-        stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.neon_tx_hash, SolPubKey.default())
-        stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
-        op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
-        payer_acct = await self._core_api_client.get_neon_account(skd_tree_parser.payer, None)
-
-        ctx = NeonExecTxCtx(self._server, op_res, stuck_req, None, skd_tree_parser)
-
-        base_tx_acct_set = NeonBaseTxAccountSet(
-            payer=payer_acct.sol_address,
-            sender=payer_acct.sol_address,
-            receiver=SolPubKey.default(),
-            receiver_contract=SolPubKey.default(),
-            payer_balance=payer_acct.balance,
-        )
-        ctx.set_tx_sol_address(base_tx_acct_set)
-
         try:
+            stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.neon_tx_hash, SolPubKey.default())
+            stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
+            op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
+            payer_acct = await self._core_api_client.get_neon_account(skd_tree_parser.payer, None)
+
+            ctx = NeonExecTxCtx(self._server, op_res, stuck_req, None, skd_tree_parser)
+
+            base_tx_acct_set = NeonBaseTxAccountSet(
+                payer=payer_acct.sol_address,
+                sender=payer_acct.sol_address,
+                receiver=SolPubKey.default(),
+                receiver_contract=SolPubKey.default(),
+                payer_balance=payer_acct.balance,
+            )
+            ctx.set_tx_sol_address(base_tx_acct_set)
+
             for _ in itertools.count():
                 await self._destroy_tree_account_retry_loop(ctx)
                 await asyncio.sleep(1)
