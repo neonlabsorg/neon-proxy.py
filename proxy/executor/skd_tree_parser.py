@@ -1,5 +1,5 @@
 import logging
-from typing import Generator, Final
+from typing import Final, AsyncGenerator
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthTxHash
@@ -58,15 +58,16 @@ class NeonSkdTreeParser(ExecutorComponent):
             return
 
         self._tree = await self._core_api_client.get_neon_skd_tree(self._payer, self._nonce)
-        if self._tree.node_list and self._neon_tx_hash.is_empty:
+        if self._tree.node_list:
             self._neon_tx_hash = self._tree.node_list[0].neon_tx_hash
 
         _LOG.debug(
-            "NeonSkdTree %s for payer %s has status %s, txs %d",
+            "NeonSkdTree %s for payer %s has status %s, txs %d %s",
             self.address,
             self._tree.payer,
             self._tree.status,
             len(self._tree.node_list),
+            [n.status.value for n in self._tree.node_list],
         )
 
     @cached_method
@@ -96,7 +97,7 @@ class NeonSkdTreeParser(ExecutorComponent):
         await self._refresh()
         return self._tree.is_started
 
-    async def iter_neon_skd_tx_list(self) -> Generator[tuple[NeonSkdTxStatus, NeonSkdTxModel], None, None]:
+    async def iter_neon_skd_tx_list(self) -> AsyncGenerator[tuple[NeonSkdTxStatus, NeonSkdTxModel], None]:
         await self._refresh()
 
         async def _get_skd_tx(_idx: int, _node: NeonSkdTreeNodeModel) -> NeonSkdTxModel | None:
