@@ -158,7 +158,7 @@ jobs:
   prepare-infrastructure:
     needs:
       - build-image
-    timeout-minutes: 15
+    timeout-minutes: 25
     runs-on: test-runner
     steps:
       - uses: actions/checkout@v4
