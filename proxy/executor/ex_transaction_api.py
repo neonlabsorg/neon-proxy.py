@@ -172,16 +172,16 @@ class NeonTxExecApi(ExecutorApi):
         skd_tree_parser = NeonSkdTreeParser(self._server, request.sender, tx.nonce)
         try:
             await skd_tree_parser.start()
-            resp_code = await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request.token)
-            return resp_code
+            return await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request)
         finally:
             await skd_tree_parser.stop()
 
     async def _exec_neon_skd_tree_retry_loop(
         self,
         skd_tree_parser: NeonSkdTreeParser,
-        token: ExecTokenModel,
+        skd_request: ExecTxRequest,
     ) -> ExecTxDoneCode:
+        token = skd_request.token
         resp_code = ExecTxDoneCode.Failed
 
         async def _exec_neon_tx(_skd_tx: NeonSkdTxModel) -> None:
@@ -189,26 +189,31 @@ class NeonTxExecApi(ExecutorApi):
             nonlocal token
             nonlocal resp_code
 
-            mp_tx = MpTxModel.from_skd_tx(_skd_tx)
-            request = ExecTxRequest(tx=mp_tx, token=token)
+            try:
+                mp_tx = MpTxModel.from_skd_tx(_skd_tx)
+                request = ExecTxRequest(tx=mp_tx, token=token)
 
-            with logging_context(**request.req_id, skd_tree=_skd_tx.tree_address.ident):
-                _resp_code = await self._exec_neon_tx_retry_loop(request, skd_tree_parser)
-                if _skd_tx.neon_tx_hash == skd_tree_parser.neon_tx_hash:
-                    resp_code = _resp_code
+                with logging_context(**request.req_id, skd_tree=_skd_tx.tree_address.ident):
+                    _resp_code = await self._exec_neon_tx_retry_loop(request, skd_tree_parser)
+                    if _skd_tx.neon_tx_hash == skd_request.tx.neon_tx_hash:
+                        resp_code = _resp_code
+            except BaseException as exc:
+                _LOG.error("unexpected error on execute NeonSkdTx", exc_info=exc, extra=self._msg_filter)
 
         async def _complete_neon_tx(_skd_tx: NeonSkdTxModel) -> None:
             nonlocal token
+            try:
+                with logging_context(tx=_skd_tx.neon_tx_hash.ident, skd_tree=_skd_tx.tree_address.ident):
+                    if not (holder_addr := await self._db.get_neon_skd_tx_holder_address(_skd_tx.neon_tx_hash)):
+                        # _LOG.debug("no holder for NeonSkdTx %s", _skd_tx.neon_tx_hash)
+                        return
 
-            with logging_context(tx=_skd_tx.neon_tx_hash.ident, skd_tree=_skd_tx.tree_address.ident):
-                if not (holder_addr := await self._db.get_neon_skd_tx_holder_address(_skd_tx.neon_tx_hash)):
-                    # _LOG.debug("no holder for NeonSkdTx %s", _skd_tx.neon_tx_hash)
-                    return
+                    stuck_tx = MpStuckTxModel.from_raw(_skd_tx.neon_tx_hash, holder_addr)
+                    stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
 
-                stuck_tx = MpStuckTxModel.from_raw(_skd_tx.neon_tx_hash, holder_addr)
-                stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
-
-                await self._complete_stuck_neon_tx_retry_loop(stuck_req, skd_tree_parser)
+                    await self._complete_stuck_neon_tx_retry_loop(stuck_req, skd_tree_parser)
+            except BaseException as exc:
+                _LOG.error("unexpected error on complete NeonSkdTx", exc_info=exc, extra=self._msg_filter)
 
         last_good_time = time.monotonic()
         for _retry in itertools.count():
@@ -217,6 +222,8 @@ class NeonTxExecApi(ExecutorApi):
                 if (now - last_good_time) > MIN_FINALIZE_SEC:
                     await self._destroy_tree_account(skd_tree_parser)
                     break
+            elif skd_tree_parser.neon_tx_hash != skd_request.tx.neon_tx_hash:
+                break
             else:
                 last_good_time = time.monotonic()
 
@@ -225,7 +232,9 @@ class NeonTxExecApi(ExecutorApi):
 
             task_list: list[asyncio.Task] = list()
             async for status, skd_tx in skd_tree_parser.iter_neon_skd_tx_list():
-                if status == status.InProgress:
+                if skd_tree_parser.neon_tx_hash != skd_request.tx.neon_tx_hash:
+                    break
+                elif status == status.InProgress:
                     task = asyncio.create_task(_complete_neon_tx(skd_tx))
                 elif status == status.NotStarted:
                     task = asyncio.create_task(_exec_neon_tx(skd_tx))

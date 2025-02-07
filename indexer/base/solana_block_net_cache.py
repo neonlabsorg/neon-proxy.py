@@ -37,7 +37,7 @@ class SolBlockNetCache:
         self._block_list = self._block_list[idx:]
         self._start_slot = slot
 
-    async def iter_block(self, ctx: SolNeonDecoderCtx) -> AsyncGenerator[SolRpcBlockInfo, None, None]:
+    async def iter_block(self, ctx: SolNeonDecoderCtx) -> AsyncGenerator[SolRpcBlockInfo, None]:
         head_block: SolRpcBlockInfo | None = None
         root_slot = base_slot = ctx.start_slot
 
