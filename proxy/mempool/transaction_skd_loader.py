@@ -3,6 +3,7 @@ import logging
 from typing import Final
 
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_BLOCK
+from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
 from common.utils.cached import cached_property
@@ -22,6 +23,7 @@ class MpSkdTxLoader(MempoolComponent):
         self._layer0_chain_id = 0
         self._stop_event = asyncio.Event()
         self._scan_skd_tx_task: asyncio.Task | None = None
+        self._skd_tx_hash_set: set[EthTxHash] = set()
 
     async def start(self) -> None:
         evm_cfg = await self._get_evm_cfg()
@@ -57,6 +59,7 @@ class MpSkdTxLoader(MempoolComponent):
                     await self._scan_new_skd_tx()
 
                     if (idx := idx + 1) >= MIN_FINALIZE_BLOCK:
+                        self._skd_tx_hash_set.clear()
                         await self._scan_old_skd_tx()
                         idx = 0
 
@@ -74,8 +77,10 @@ class MpSkdTxLoader(MempoolComponent):
         start_slot = 0
         for skd_tx in skd_tx_list:
             start_slot = max(start_slot, skd_tx.slot)
-            if self._tx_executor.get_tx_by_hash(skd_tx.neon_tx_hash):
+
+            if skd_tx.neon_tx_hash in self._skd_tx_hash_set:
                 continue
+            self._skd_tx_hash_set.add(skd_tx.neon_tx_hash)
 
             mp_tx = MpTxModel.from_skd_tx(skd_tx)
             payer = NeonAddress.from_raw(mp_tx.payer, mp_tx.chain_id)
