@@ -64,6 +64,7 @@ class CompleteStuckTxResp(BaseModel):
 
 
 class DestroyTreeAccountRequest(BaseModel):
+    tree_address: SolPubKey
     neon_tx_hash: EthTxHashField
     payer: NeonAddressField
     nonce: int
@@ -71,11 +72,7 @@ class DestroyTreeAccountRequest(BaseModel):
 
     @cached_property
     def req_id(self) -> dict:
-        return dict(tx=self.neon_tx_hash.ident, skd_tree=self.address.ident, is_destroy=True)
-
-    @cached_property
-    def address(self) -> SolPubKey:
-        return NeonSkdTreeAddress.from_raw(self.payer, self.nonce).address
+        return dict(tx=self.neon_tx_hash.ident, skd_tree=self.tree_address.ident, is_destroy=True)
 
 
 class DestroyTreeAccountResp(BaseModel):
