@@ -11,6 +11,7 @@ from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.solana.transaction_model import SolTxModel
 from common.utils.cached import cached_method
 from common.utils.pydantic import BaseModel
+from .mp_api import MpStuckTxModel
 
 OP_RESOURCE_ENDPOINT = "/api/v1/resource/"
 
@@ -27,7 +28,6 @@ class OpGetResourceRequest(BaseModel):
     holder_address: SolPubKeyField
 
 
-
 class OpFreeResourceRequest(BaseModel):
     req_id: dict
     is_good: bool
@@ -36,6 +36,14 @@ class OpFreeResourceRequest(BaseModel):
 
 class OpResourceResp(BaseModel):
     result: bool
+
+
+class OpResourceStuckTxListRequest(BaseModel):
+    req_id: dict
+
+
+class OpResourceStuckTxListResp(BaseModel):
+    tx_list: list[MpStuckTxModel]
 
 
 class OpResourceModel(BaseModel):

@@ -9,14 +9,13 @@ from common.neon.transaction_model import NeonTxModel
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction import SolTx
 from common.solana.transaction_model import SolTxModel
+from .mp_api import MpStuckTxModel
 from .op_api import (
     OP_RESOURCE_ENDPOINT,
     OpResourceModel,
     OpGetResourceRequest,
     OpFreeResourceRequest,
     OpResourceResp,
-    OpTokenSolAddressModel,
-    OpGetTokenSolAddressRequest,
     OpSignEthMsgRequest,
     OpSignEthMsgResp,
     OpSignEthTxRequest,
@@ -35,6 +34,8 @@ from .op_api import (
     OpUnblockHolderRequest,
     OpUnblockHolderResp,
     OpGetActiveOperatorKey,
+    OpResourceStuckTxListRequest,
+    OpResourceStuckTxListResp,
 )
 
 
@@ -111,6 +112,11 @@ class OpResourceClient(AppDataClient):
         resp = await self._unblock_holder(req)
         return resp.result
 
+    async def get_stuck_tx_list(self, req_id: dict) -> Sequence[MpStuckTxModel]:
+        req = OpResourceStuckTxListRequest(req_id=req_id)
+        resp = await self._get_stuck_tx_list(req)
+        return tuple(resp.tx_list)
+
     @AppDataClient.method(name="getOperatorResource")
     async def _get_resource(self, request: OpGetResourceRequest) -> OpResourceModel: ...
 
@@ -143,3 +149,6 @@ class OpResourceClient(AppDataClient):
 
     @AppDataClient.method(name="unblockHolder")
     async def _unblock_holder(self, request: OpUnblockHolderRequest) -> OpUnblockHolderResp: ...
+
+    @AppDataClient.method(name="getStuckTransactionList")
+    async def _get_stuck_tx_list(self, request: OpResourceStuckTxListRequest) -> OpResourceStuckTxListResp: ...
