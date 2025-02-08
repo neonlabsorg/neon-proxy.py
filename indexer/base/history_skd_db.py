@@ -54,6 +54,11 @@ class SkdTxDbTable(HistoryDbTable):
     async def destroy_tree_list(self, ctx: DbTxCtx, tree_address_list: Sequence[str | SolPubKey]) -> None:
         if not tree_address_list:
             return
+
+        if isinstance(tree_address_list, str):
+            tree_address_list = [tree_address_list]
+        elif isinstance(tree_address_list, SolPubKey):
+            tree_address_list = [tree_address_list.to_string()]
         elif isinstance(tree_address_list[0], SolPubKey):
             tree_address_list = [a.to_string() for a in tree_address_list]
 

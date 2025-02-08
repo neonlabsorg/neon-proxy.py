@@ -35,6 +35,7 @@ class ExecutorClient(AppDataClient):
 
     async def destroy_tree_account(self, skd_tx: NeonSkdTxModel, token: ExecTokenModel) -> DestroyTreeAccountResp:
         request = DestroyTreeAccountRequest(
+            tree_address=skd_tx.tree_address,
             neon_tx_hash=skd_tx.neon_tx_hash,
             payer=NeonAddress.from_raw(skd_tx.sol_skd_payer, token.chain_id),
             nonce=skd_tx.nonce,
