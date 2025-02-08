@@ -29,6 +29,7 @@ from common.utils.json_logger import log_msg, logging_context
 from .key_info import OpSignerInfo, OpHolderInfo, OpNeonBalanceInfo
 from .server_abc import OpResourceComponent
 from .transaction_list_signer import OpTxListSigner
+from ..base.mp_api import MpStuckTxModel
 from ..base.op_api import OpResourceModel, OpEthAddressModel
 from ..stat.api import (
     OpEarnedTokenBalanceData,
@@ -57,6 +58,9 @@ class OpResourceMng(OpResourceComponent):
         self._blocked_holder_addr_dict: dict[SolPubKey, SolPubKey] = dict()
         # dropped resources
         self._deleted_holder_addr_set: set[SolPubKey] = set()
+
+        # holders with stuck txs
+        self._stuck_tx_list: list[MpStuckTxModel] = list()
 
         self._holder_size = 0
         self._holder_balance = 0
@@ -176,6 +180,10 @@ class OpResourceMng(OpResourceComponent):
 
             except BaseException as exc:
                 _LOG.error("error on operator resource balance stat", exc_info=exc)
+
+    def get_stuck_tx_list(self) -> list[MpStuckTxModel]:
+        tx_list, self._stuck_tx_list = self._stuck_tx_list, list()
+        return tx_list
 
     def _send_op_resource_holder_stat(self, op_signer: OpSignerInfo) -> None:
         blocked_holder_cnt = 0
@@ -459,6 +467,7 @@ class OpResourceMng(OpResourceComponent):
 
     async def _validate_holder_acct(self, signer: SolSigner, op_holder: OpHolderInfo) -> bool:
         holder = await self._core_api_client.get_holder_account(op_holder.address)
+        status = HolderAccountStatus
 
         msg: dict | None = None
         action = None
@@ -473,15 +482,13 @@ class OpResourceMng(OpResourceComponent):
             action = self._create_holder_acct
         elif holder.size != self._holder_size:
             action = self._recreate_holder_acct
-        elif holder.status == HolderAccountStatus.Active:
+        elif holder.status in (status.Active, status.ScheduledFinalized, status.ScheduledCanceled):
             tx_hash = holder.neon_tx_hash
+            tx = MpStuckTxModel.from_raw(tx_hash, holder.address)
+            self._stuck_tx_list.append(tx)
             msg = log_msg("found stuck tx {Tx} in holder {Holder} for resource {Owner}:{ResourceID}", Tx=tx_hash)
 
-        elif holder.status in (HolderAccountStatus.ScheduledFinalized, HolderAccountStatus.ScheduledCanceled):
-            tx_hash = holder.neon_tx_hash
-            msg = log_msg("found stuck SkdTx {Tx} in holder {Holder} for resource {Owner}:{ResourceID}", Tx=tx_hash)
-
-        elif holder.status not in (HolderAccountStatus.Finalized, HolderAccountStatus.Holder):
+        elif holder.status not in (status.Finalized, status.Holder):
             msg = log_msg("holder {Holder} has wrong tag {Tag} for resource {Owner}:{ResourceID}", Tag=holder.status)
             action = self._recreate_holder_acct
 

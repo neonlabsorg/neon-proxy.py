@@ -10,9 +10,9 @@ from ..base.op_api import (
     OpResourceModel,
     OpResourceResp,
     OpFreeResourceRequest,
-    OpGetTokenSolAddressRequest,
-    OpTokenSolAddressModel,
     OpGetActiveOperatorKey,
+    OpResourceStuckTxListRequest,
+    OpResourceStuckTxListResp,
 )
 
 
@@ -46,6 +46,11 @@ class OpAcquireResourceApi(OpResourceApi):
 
             await self._op_resource_mng.free_resource(request.is_good, request.resource)
             return OpResourceResp(result=True)
+
+    @OpResourceApi.method(name="getStuckTransactionList")
+    async def stuck_tx_list(self, request: OpResourceStuckTxListRequest) -> OpResourceStuckTxListResp:
+        with logging_context(**request.req_id):
+            return OpResourceStuckTxListResp(tx_list=self._op_resource_mng.get_stuck_tx_list())
 
     @cached_property
     def _op_resource_mng(self) -> OpResourceMng:
