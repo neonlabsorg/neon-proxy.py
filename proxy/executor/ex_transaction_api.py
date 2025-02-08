@@ -109,6 +109,10 @@ class NeonTxExecApi(ExecutorApi):
                 try:
                     await skd_tree_parser.start()
                     await self._destroy_tree_account(skd_tree_parser)
+
+                    if request.tree_address != skd_tree_parser.address:
+                        _LOG.warning("tree address mismatch: %s != %s", request.tree_address, skd_tree_parser.address)
+                        await self._db.destroy_tree_account(request.tree_address)
                 finally:
                     await skd_tree_parser.stop()
 
