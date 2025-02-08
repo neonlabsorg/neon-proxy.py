@@ -8,9 +8,8 @@ from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHashField
 from common.neon.address import NeonAddress, NeonAddressField
-from common.neon.skd_tree import NeonSkdTreeAddress
 from common.solana.alt_program import SolAltID
-from common.solana.pubkey import SolPubKey
+from common.solana.pubkey import SolPubKeyField
 from common.utils.cached import cached_property
 from common.utils.pydantic import BaseModel
 from .mp_api import MpTxModel, MpStuckTxModel, MpTokenGasPriceModel, MpGasPriceModel
@@ -64,7 +63,7 @@ class CompleteStuckTxResp(BaseModel):
 
 
 class DestroyTreeAccountRequest(BaseModel):
-    tree_address: SolPubKey
+    tree_address: SolPubKeyField
     neon_tx_hash: EthTxHashField
     payer: NeonAddressField
     nonce: int

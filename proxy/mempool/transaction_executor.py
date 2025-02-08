@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from typing import Final
 
@@ -51,7 +50,7 @@ class MpTxExecutor(MempoolComponent):
     async def start(self) -> None:
         await self._tx_dict.start()
         if not self._cfg.mp_skip_stuck_tx:
-            await self._stuck_tx_dict.start(self._db),
+            await self._stuck_tx_dict.start(self._db, self._op_client)
         self._tx_exec_task = asyncio.create_task(self._tx_exec_loop())
 
     async def stop(self) -> None:
