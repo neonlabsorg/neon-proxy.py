@@ -173,13 +173,14 @@ class SolClient(HttpClient):
                         raise SolRpcError(resp)
 
                 except BaseException as exc:
+                    request.commit_stat(error_message=str(exc))
+
                     if retry > self._max_retry_cnt:
                         if isinstance(exc, SolRpcError):
                             raise exc
                         raise InternalJsonRpcError(exc)
 
                     _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, request.data)
-                    request.commit_stat(is_error=True)
                     await asyncio.sleep(0.2)
                     continue
 
@@ -193,7 +194,7 @@ class SolClient(HttpClient):
 
         # if the previous call has reraised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
-        request.commit_stat(is_error=True)
+        request.commit_stat(error_message=str(exc))
 
     @ttl_cached_method(ttl_sec=60)
     async def get_version(self) -> str:

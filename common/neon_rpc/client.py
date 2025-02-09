@@ -339,18 +339,20 @@ class CoreApiClient(HttpClient):
 
                 except PydanticValidationError as exc:
                     _LOG.warning("bad response from neon-core-api %s", str(exc), extra=self._msg_filter)
-                    rpc_request.commit_stat(is_error=True)
+                    rpc_request.commit_stat(error_message=str(exc))
                     await asyncio.sleep(self._wait_sec)
                     continue
 
-                if self._is_retry_error(resp):
-                    rpc_request.commit_stat(is_error=True)
+                if err_msg := self._get_retry_error(method, resp):
+                    rpc_request.commit_stat(error_message=err_msg)
                     await asyncio.sleep(self._wait_sec)
                     continue
                 elif resp.result == resp.result.Error:
                     # unknown error case
                     ctx_id = request.ctx_id if request else None
-                    _LOG.warning("got error on %s (%s): %s - %s", method, ctx_id, resp.error_code, resp.error)
+                    err_msg = f"got error on {method} ({ctx_id}): {resp.error_code} - {resp.error}"
+                    rpc_request.commit_stat(error_message=err_msg)
+                    _LOG.warning("%s", err_msg, extra=self._msg_filter)
 
                 if resp_type is None:
                     return resp
@@ -360,14 +362,14 @@ class CoreApiClient(HttpClient):
                 return resp_type.from_dict(resp.value)
 
     @staticmethod
-    def _is_retry_error(resp: CoreApiResp) -> bool:
+    def _get_retry_error(method: str, resp: CoreApiResp) -> str | None:
         if resp.result != resp.result.Error:
-            return False
+            return None
 
         if resp.error_code == 113:    # ClientError, Solana connection problem
-            return True
+            return f"Solana connection error on {method}"
         elif resp.error_code != 265:  # SolanaSimulatorError
-            return False
+            return None
 
         sim_error: Final[str] = "Solana Simulator error "
         sim_error_len: Final[int] = len(sim_error)
@@ -377,9 +379,9 @@ class CoreApiClient(HttpClient):
 
         error = resp.error[sim_error_len:]
         if error.startswith(rpc_error):
-            return True
+            return f"Solana connection error on {method}"
         elif not error.startswith(tx_error):
-            return False
+            return None
 
         sub_error = error[tx_error_len:]
         alt_error_list: Final[tuple] = (
@@ -392,7 +394,7 @@ class CoreApiClient(HttpClient):
             if sub_error.startswith(alt_error):
               raise SolAltError("Simulation error: " + alt_error)
 
-        return False
+        return None
 
     @ttl_cached_method(ttl_sec=60)
     async def _get_evm_exec_addr(self) -> SolPubKey:

@@ -158,6 +158,8 @@ class Config:
     debug_cmd_line_name: Final[str] = "DEBUG_CMD_LINE"
     # Statistic configuration
     gather_stat_name: Final[str] = "GATHER_STATISTICS"
+    health_error_timeout_sec_name: Final[str] = "HEALTH_ERROR_TIMEOUT_SEC"
+    health_error_list_max_len_name: Final[str] = "HEALTH_ERROR_LIST_MAX_LENGTH"
     # Proxy configuration
     rpc_private_ip_name: Final[str] = "RPC_PRIVATE_IP"
     rpc_private_port_name: Final[str] = "RPC_PRIVATE_PORT"
@@ -511,6 +513,14 @@ class Config:
     @cached_property
     def gather_stat(self) -> bool:
         return self._env_bool(self.gather_stat_name, False)
+
+    @cached_property
+    def health_error_timeout_sec(self) -> int:
+        return self._env_num(self.health_error_timeout_sec_name, self._1min, 5, self._1hour)
+
+    @cached_property
+    def health_error_list_max_len(self) -> int:
+        return self._env_num(self.health_error_list_max_len_name, 50, 5, 1000)
 
     #########################
     # Proxy configuration
@@ -987,6 +997,8 @@ class Config:
             self.enable_send_tx_api_name: self.enable_send_tx_api,
             self.max_emulate_evm_step_cnt_name: self.max_emulate_evm_step_cnt,
             self.gather_stat_name: self.gather_stat,
+            self.health_error_timeout_sec_name: self.health_error_timeout_sec,
+            self.health_error_list_max_len_name: self.health_error_list_max_len,
             self.debug_cmd_line_name: self.debug_cmd_line,
             # Proxy configuration
             self.rpc_private_ip_name: self.rpc_private_ip,
