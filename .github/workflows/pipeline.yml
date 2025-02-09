@@ -31,7 +31,7 @@ env:
   DEFAULT_NEON_EVM_TAG: "v1.18.3"
   DEFAULT_FAUCET_TAG: "latest"
   AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
-  AWS_DEFAULT_REGION: ${{secrets.AWS_DEFAULT_REGION}}
+  AWS_DEFAULT_REGION: "eu-central-1"
   AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
   DOCKER_USERNAME: ${{secrets.DOCKER_USERNAME}}
   DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
@@ -158,7 +158,7 @@ jobs:
   prepare-infrastructure:
     needs:
       - build-image
-    timeout-minutes: 15
+    timeout-minutes: 25
     runs-on: test-runner
     steps:
       - uses: actions/checkout@v4
@@ -274,6 +274,15 @@ jobs:
           fi
 
           docker exec -i ${{ env.CONTAINER }} $CMD
+      - name: "Generate allure report"
+        if: always()
+        uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@develop
+        with:
+          container: ${{ env.CONTAINER }}
+          network: ${{ env.NETWORK }}
+          aws_access_key_id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          tests_name: basic
       - name: Copy cost reports from container
         if: ${{ env.GENERATE_COST_REPORT == 'true' }}
         run: |
