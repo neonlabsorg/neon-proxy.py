@@ -23,13 +23,22 @@ class PrometheusServer(HttpServer):
         await self._metric_client.stop()
 
     def _register_handler_list(self) -> None:
+        base_url: Final[str] = self._http_socket.to_string()
         metric_url: Final[str] = "/metrics"
-        full_metric_url = self._http_socket.to_string() + metric_url
+        full_metric_url = base_url + metric_url
+
+        health_url: Final[str] = "/health"
+        full_health_url = base_url + health_url
 
         def _index(ctx: HttpRequestCtx) -> HttpResp:
+            nonlocal full_metric_url
+            nonlocal full_health_url
             return self._pack_text_resp(
                 ctx,
-                f"<html><body><a href='{full_metric_url}'>metrics</a></body></html>",
+                "<html><body>"
+                f"<a href='{full_metric_url}'>metrics</a>"
+                f"<a href='{full_health_url}'>health</a>"
+                "</body></html>",
                 "text/html",
             )
 
@@ -40,6 +49,11 @@ class PrometheusServer(HttpServer):
             stat = await self._metric_client.get_metric_stat()
             return self._pack_text_resp(ctx, stat.data, "text/plain; version=0.0.4")
 
+        async def _health(ctx: HttpRequestCtx) -> HttpResp:
+            health = await self._metric_client.get_health_error_list()
+            return self._pack_text_resp(ctx, health.data, "text/plain; version=0.0.4")
+
         self.add_get_route("/", _index)
         self.add_get_route("/robots.txt", _robot_txt)
         self.add_get_route(metric_url, _metric)
+        self.add_get_route(health_url, _health)

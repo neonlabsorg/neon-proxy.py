@@ -35,6 +35,8 @@ class NeonTxFailData(BaseModel):
 class NeonTxTokenPoolData(BaseModel):
     token: str
     queue_len: int
+    high_queue_len: int
+    max_queue_len: int
 
 
 class NeonTxPoolData(BaseModel):
