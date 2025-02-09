@@ -11,6 +11,7 @@ from typing_extensions import Self
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthOutOfGasError
+from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.solana.cb_program import SolCbProg
@@ -60,8 +61,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         self._def_cu_limit = 0
         self._completed_evm_step_cnt = 0
 
-    async def prep_before_emulation(self) -> bool:
-        result = await super().prep_before_emulation()
+    async def prep_before_exec(self) -> bool:
+        result = await super().prep_before_exec()
 
         if self._ctx.is_scheduled_tx:
             if not await self._start_skd_tx():
@@ -143,6 +144,14 @@ class IterativeTxStrategy(BaseTxStrategy):
                 _LOG.debug("just 1 iteration to commit the block number")
                 await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
 
+            tx_state_list = self._ctx.sol_tx_list_sender.tx_state_list
+            for tx_state in tx_state_list:
+                if tx_state.status == tx_state.Status.GoodReceipt:
+                    if sol_neon_ix := self._find_sol_neon_ix(tx_state):
+                        if not sol_neon_ix.neon_tx_block.is_empty:
+                            self._ctx.set_holder_block(sol_neon_ix.neon_tx_block)
+                            return
+
     async def _start_skd_tx(self) -> bool:
         for _ in itertools.count():
             if (status := await self._get_skd_tx_status()) == status.ToStart:
@@ -211,12 +220,9 @@ class IterativeTxStrategy(BaseTxStrategy):
                 return await self._send_tx_list(tx_list)
 
             except (SolWritableError, SolUnknownReceiptError):
-                if self._def_ix_mode == NeonIxMode.Unknown:
+                if self._def_ix_mode != NeonIxMode.Writable:
                     # _LOG.warning("unexpected fail on iterative transaction, try to use accounts in writable mode")
                     self._def_ix_mode = NeonIxMode.Writable
-                elif self._def_ix_mode == NeonIxMode.Writable:
-                    # _LOG.warning("unexpected fail on iterative transaction, try to use ALL accounts in writable mode")
-                    self._def_ix_mode = NeonIxMode.FullWritable
                 else:
                     raise
 
@@ -475,6 +481,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return self._ctx.neon_prog.make_skip_skd_tx_from_data_ix(index)
 
     async def _decode_neon_tx_return(self) -> ExecTxDoneCode | None:
+        tx_block = NeonTxBlockInfo.default()
         tx_state_list = self._ctx.sol_tx_list_sender.tx_state_list
         has_already_finalized, total_gas_used, self._completed_evm_step_cnt = False, 0, 0
 
@@ -494,6 +501,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             elif sol_neon_ix.neon_total_gas_used > total_gas_used:
                 total_gas_used = sol_neon_ix.neon_total_gas_used
                 self._completed_evm_step_cnt = sol_neon_ix.neon_total_step_cnt
+                tx_block = sol_neon_ix.neon_tx_block
 
         if has_already_finalized:
             return ExecTxDoneCode.Failed
@@ -505,6 +513,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         if gas_limit < required_gas_limit:
             _LOG.debug("not enough gas %d < %d", gas_limit, required_gas_limit)
             raise EthOutOfGasError(gas_limit, required_gas_limit)
+
+        self._ctx.set_holder_block(tx_block)
 
         return None
 

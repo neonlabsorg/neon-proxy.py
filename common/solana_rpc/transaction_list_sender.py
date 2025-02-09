@@ -13,19 +13,15 @@ from .client import SolClient
 from .errors import (
     SolUnknownReceiptError,
     SolBlockhashNotFound,
-    SolNeonRequireResizeIterError,
     SolCbExceededError,
     SolNoMoreRetriesError,
-    SolOutOfMemoryError,
     SolWritableError,
-    SolNeonSkdTxUseWrongHolderError,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from .ws_client import SolWatchTxSession
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
-from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError, EthOutOfGasError
 from ..solana.commit_level import SolCommit
 from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash
@@ -57,11 +53,12 @@ class SolTxSendState:
         # Fail errors
         CbExceededError = enum.auto()
         AltError = enum.auto()
+        WritableError = enum.auto()
         RequireResizeIterError = enum.auto()
         OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
         OutOfGasError = enum.auto()
-        WritableError = enum.auto()
+        MissingAccountError = enum.auto()
         UnknownError = enum.auto()
 
     status: Status
@@ -451,41 +448,14 @@ class SolTxListSender:
                 self._bad_blockhash_set.add(tx.recent_blockhash)
             # no exception: reset blockhash on the next tx signing
             return self._DecodeResult(status.BlockHashNotFoundError, None)
-        elif tx_error_parser.check_if_sol_account_already_exists():
-            # no exception: solana account exists - the goal is reached
-            return self._DecodeResult(status.SolAccountAlreadyExistError, None)
-        elif tx_error_parser.check_if_writable_error():
-            return self._DecodeResult(status.WritableError, SolWritableError())
-        elif tx_error_parser.check_if_already_finalized():
-            # no exception: receipt exists - the goal is reached
-            return self._DecodeResult(status.AlreadyFinalizedError, None)
-        elif tx_error_parser.check_if_skd_tx_use_wrong_holder():
-            return self._DecodeResult(status.SkdTxUseWrongHolderError, SolNeonSkdTxUseWrongHolderError())
-        elif tx_error_parser.check_if_neon_account_already_exists():
-            # no exception: neon account exists - the goal is reached
-            return self._DecodeResult(status.NeonAccountAlreadyExistsError, None)
         elif tx_error_parser.check_if_alt_error():
             return self._DecodeResult(status.AltError, SolAltError("Bad ALT on send tx"))
+        elif tx_error_parser.check_if_writable_error():
+            return self._DecodeResult(status.WritableError, SolWritableError())
         elif tx_error_parser.check_if_cb_exceeded():
             if cu_consumed := tx_error_parser.cu_consumed:
                 _LOG.debug("CUs consumed: %s", cu_consumed)
             return self._DecodeResult(status.CbExceededError, SolCbExceededError())
-        elif tx_error_parser.check_if_require_resize_iter():
-            return self._DecodeResult(status.RequireResizeIterError, SolNeonRequireResizeIterError())
-        elif tx_error_parser.check_if_out_of_memory():
-            return self._DecodeResult(status.OutOfMemoryError, SolOutOfMemoryError())
-
-        elif gas_limit_error := tx_error_parser.get_out_of_gas_error():
-            gas_limit, required_gas_limit = gas_limit_error
-            return self._DecodeResult(status.OutOfGasError, EthOutOfGasError(gas_limit, required_gas_limit))
-
-        elif nonce_error := tx_error_parser.get_nonce_error():
-            state_tx_cnt, tx_nonce = nonce_error
-            if tx_nonce < state_tx_cnt:
-                # sender is unknown - should be replaced on upper stack level
-                return self._DecodeResult(status.BadNonceError, EthNonceTooLowError(tx_nonce, state_tx_cnt))
-            else:
-                return self._DecodeResult(status.BadNonceError, EthNonceTooHighError(tx_nonce, state_tx_cnt))
 
         elif tx_error_parser.check_if_error():
             _LOG.debug("unknown error receipt %s: %s", tx, tx_receipt)

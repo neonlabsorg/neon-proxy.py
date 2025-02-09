@@ -412,15 +412,13 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         return info.obj if (info := self._obj_dict.get(addr, None)) else None
 
     def pop_changed_key_list(self) -> Sequence[SolPubKey]:
-        key_set, self._chg_key_set = self._chg_key_set, set()
+        key_list, self._chg_key_set = list(self._chg_key_set), set()
 
         last_nsec = time.monotonic_ns() - self._force_update_nsec
         while self._recheck_queue and (self._recheck_queue[0].insert_nsec <= last_nsec):
-            top = self._recheck_queue.popleft()
-            if top.key in self._obj_dict:
-                key_set.add(top.key)
+            key_list.append(self._recheck_queue.popleft().key)
 
-        return tuple(key_set)
+        return tuple(key_list)
 
     async def _sub_obj(self, key: SolPubKey, obj: SolAccountModel | None, commit: SolCommit) -> None:
         if key in self._obj_dict:
@@ -436,7 +434,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         self._obj_dict[info.key] = info
         self._sub_dict[info.sub_id] = info.key
 
-        if self._has_update_queue:
+        if info.key not in self._chg_key_set:
             self._chg_key_set.add(info.key)
         if self._force_update_nsec:
             self._recheck_queue.append(self._RecheckAcctInfo(info.key, now_nsec))
