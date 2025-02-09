@@ -61,10 +61,7 @@ class AltTxPrepStage(BaseTxPrepStage):
         self._last_alt = actual_alt
         return alt_tx_set.tx_list_list
 
-    async def prep_before_emulation(self) -> bool:
-        return await self._has_valid_tx_size()
-
-    async def update_after_emulation(self) -> bool:
+    async def prep_before_exec(self) -> bool:
         return await self._has_valid_tx_size()
 
     def build_tx(self, legacy_tx: SolLegacyTx, alt_list: Sequence[SolAltInfo] | None = None) -> SolV0Tx:
@@ -135,12 +132,12 @@ def alt_strategy(cls):
             self._alt_stage = AltTxPrepStage(*args, **kwargs)
             self._prep_stage_list.append(self._alt_stage)
 
-        async def prep_before_emulation(self) -> bool:
+        async def prep_before_exec(self) -> bool:
             # it isn't critical to pass a fake signer, because signer isn't included into ALT
             #  so the fake signer will be excluded from the ALT lists,
             #  and in the final version of tx it will be replaced with the real signer
             self._alt_stage.set_legacy_tx(self._build_test_legacy_tx())
-            return await cls.prep_before_emulation(self)
+            return await cls.prep_before_exec(self)
 
         async def _validate(self) -> bool:
             return self._validate_account_list_len() and await cls._validate(self)

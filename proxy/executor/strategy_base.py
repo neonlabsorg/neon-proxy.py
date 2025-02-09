@@ -48,11 +48,7 @@ class BaseTxPrepStage(ExecutorComponent, abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def prep_before_emulation(self) -> bool:
-        pass
-
-    @abc.abstractmethod
-    async def update_after_emulation(self) -> bool:
+    async def prep_before_exec(self) -> bool:
         pass
 
 
@@ -105,7 +101,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             self._validation_error_msg = str(e)
             return False
 
-    async def prep_before_emulation(self) -> bool:
+    async def prep_before_exec(self) -> bool:
         assert self.is_valid
 
         # recheck already sent transactions
@@ -122,15 +118,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         result = True
         for stage in self._prep_stage_list:
-            result = await stage.prep_before_emulation() and result
-        return result
-
-    async def update_after_emulation(self) -> bool:
-        assert self.is_valid
-
-        result = True
-        for stage in self._prep_stage_list:
-            result = await stage.update_after_emulation() and result
+            result = await stage.prep_before_exec() and result
         return result
 
     @abc.abstractmethod
@@ -252,10 +240,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             [
                 (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
                 for tx_state in tx_list_sender.tx_state_list
-                # we shouldn't retry txs with the exceed Compute Budget and ALT errors
+                # we shouldn't retry txs with bad statuses
                 if tx_state.status not in (
                     tx_state.status.CbExceededError,
                     tx_state.status.AltError,
+                    tx_state.status.MissingAccountError,
                     tx_state.status.SkdTxUseWrongHolderError,
                 )
             ]

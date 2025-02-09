@@ -17,7 +17,9 @@ from common.solana_rpc.errors import (
     SolNoMoreRetriesError,
     SolBlockhashNotFound,
     SolCbExceededCriticalError,
-    SolOutOfMemoryError, SolNeonSkdTxError,
+    SolNeonOutOfMemoryError,
+    SolNeonMissingAccountError,
+    SolNeonSkdTxError,
 )
 from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
@@ -146,6 +148,9 @@ class NeonTxExecutor(ExecutorComponent):
         return ExecTxDoneCode.Failed
 
     async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
+        re_emulate = False
+
+        ctx.reset_holder_block()
         for _retry in itertools.count():
             # if retry > 0:
             #     _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
@@ -154,11 +159,11 @@ class NeonTxExecutor(ExecutorComponent):
                 if await self._is_completed(ctx):
                     return ExecTxDoneCode.Done
 
-                if not await strategy.prep_before_emulation():
-                    continue
-                if ctx.has_holder_block and (not ctx.holder.block.is_empty):
-                    await self._emulate_neon_tx(ctx, re_emulate=True)
-                if not await strategy.update_after_emulation():
+                if re_emulate:
+                    await self._emulate_neon_tx(ctx, re_emulate)
+                    re_emulate = False
+
+                if not await strategy.prep_before_exec():
                     continue
 
                 # NeonTx is prepared for the execution
@@ -188,7 +193,7 @@ class NeonTxExecutor(ExecutorComponent):
             except (
                 EthError,
                 SolCbExceededCriticalError,
-                SolOutOfMemoryError,
+                SolNeonOutOfMemoryError,
                 SolUnknownReceiptError,
                 SolNoMoreRetriesError,
             ) as exc:
@@ -196,13 +201,20 @@ class NeonTxExecutor(ExecutorComponent):
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
 
-            except SolError as exc:
+            except SolNeonMissingAccountError:
+                if strategy.is_simple:
+                    return None
+                re_emulate = True
+                await asyncio.sleep(self._wait_sec)
+
+            except SolError:
                 # _LOG.debug("simple retry error: %s", str(exc), extra=self._msg_filter)
+                re_emulate = True
                 await asyncio.sleep(self._wait_sec)
 
             except BaseException as exc:
                 ctx.mark_skip_simple_strategy()
-                _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter)
+                _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(strategy)
 
     async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
@@ -236,7 +248,7 @@ class NeonTxExecutor(ExecutorComponent):
             # )
             pass
 
-    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, *, re_emulate: bool = False) -> None:
+    async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, re_emulate: bool = False) -> None:
         # update evm config
         evm_cfg = await self._server.get_evm_cfg()
 
@@ -251,7 +263,7 @@ class NeonTxExecutor(ExecutorComponent):
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
             sender_balance=sender_balance,
-            emulator_block=ctx.holder.block,
+            emulator_block=ctx.holder_block,
         )
 
         ctx.set_emulator_result(emul_resp)
