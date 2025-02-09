@@ -42,7 +42,7 @@ class RpcStatInfo:
     def start_timer(self) -> None:
         self._start_time_nsec = time.monotonic_ns()
 
-    def commit_stat(self, *, is_error: bool = False) -> None:
+    def commit_stat(self, *, error_message: str | None= None) -> None:
         process_time_nsec = self.process_time_nsec
         self.start_timer()
 
@@ -50,7 +50,8 @@ class RpcStatInfo:
             service=self._stat_name,
             method=self._method,
             time_nsec=process_time_nsec,
-            is_error=is_error,
+            is_error=error_message is not None,
+            error_message=error_message,
             is_modification=self._is_modification,
         )
         self._stat_client.commit_rpc_call(stat)
@@ -66,7 +67,8 @@ class RpcStatInfo:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> Self:
-        self.commit_stat(is_error=exc_val is not None)
+        err_msg = None if exc_val is None else str(exc_val)
+        self.commit_stat(error_message=err_msg)
 
         if exc_val:
             raise

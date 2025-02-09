@@ -197,7 +197,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
     def on_bad_request(self, ctx: HttpRequestCtx) -> None:
         _LOG.warning(log_msg("BAD request from {IP} with size {Size}", IP=ctx.ip_addr, Size=len(ctx.request.body)))
 
-        stat = RpcCallData(service=self._stat_name, method="UNKNOWN", time_nsec=ctx.process_time_nsec, is_error=True)
+        stat = RpcCallData(service=self._stat_name, method="UNKNOWN", time_nsec=ctx.process_time_nsec)
         self._stat_client.commit_rpc_call(stat)
 
     async def handle_request(
@@ -231,7 +231,6 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
                 service=self._stat_name,
                 method=request.method,
                 time_nsec=ctx.process_time_nsec,
-                is_error=resp.is_error,
             )
             self._stat_client.commit_rpc_call(stat)
 

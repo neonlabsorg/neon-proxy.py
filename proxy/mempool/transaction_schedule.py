@@ -15,7 +15,7 @@ from common.neon_rpc.client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.ws_client import SolWatchAccountSession
-from common.utils.cached import cached_method, reset_cached_method
+from common.utils.cached import cached_method, reset_cached_method, cached_property
 from common.utils.json_logger import logging_context, log_msg
 from .sender_nonce import SenderNonce
 from .sorted_queue import SortedQueue
@@ -559,6 +559,14 @@ class MpTxSchedule:
     @property
     def tx_cnt(self) -> int:
         return len(self._tx_dict)
+
+    @cached_property
+    def high_tx_cnt(self) -> int:
+        return int(self.max_tx_cnt * 0.9)
+
+    @property
+    def max_tx_cnt(self) -> int:
+        return self._capacity
 
     @property
     def pending_tx_cnt(self) -> int:

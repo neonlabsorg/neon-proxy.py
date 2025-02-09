@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-from .api import MetricStatData
+from .api import MetricStatData, HealthCheckData
 from ..app_data.client import AppDataClient
 from ..config.config import Config
 
@@ -14,3 +14,6 @@ class MetricStatClient(AppDataClient):
 
     @AppDataClient.method(name="getMetricStatistic")
     async def get_metric_stat(self) -> MetricStatData: ...
+
+    @AppDataClient.method(name="getHealthErrorList")
+    async def get_health_error_list(self) -> HealthCheckData: ...
