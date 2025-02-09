@@ -214,7 +214,15 @@ class MpTxExecutor(MempoolComponent):
 
     def _commit_pool_stat(self) -> None:
         queue = list(
-            map(lambda x: NeonTxTokenPoolData(token=x.token, queue_len=x.tx_cnt), self._tx_schedule_dict.values())
+            map(
+                lambda x: NeonTxTokenPoolData(
+                    token=x.token,
+                    queue_len=x.tx_cnt,
+                    high_queue_len=x.high_tx_cnt,
+                    max_queue_len=x.max_tx_cnt,
+                ),
+                self._tx_schedule_dict.values()
+            )
         )
         data = NeonTxPoolData(
             scheduling_queue=queue,

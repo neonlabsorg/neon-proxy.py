@@ -180,13 +180,14 @@ class DbConnection:
                     async with self._conn_pool.connection(None) as conn:
                         return await action(conn)
                 except BaseException as exc:
+                    stat.commit_stat(error_message=str(exc))
+
                     if ctx:
                         # Got an exception during the DB-tx execution, catch of exception occurs inside run_tx()
                         raise
                     await self._on_fail_execute(retry, exc)
 
                     # if there were no re-raises, commit the current error
-                    stat.commit_stat(is_error=True)
                     await asyncio.sleep(0.2)
 
     async def _on_fail_execute(self, retry: int, exc: BaseException) -> None:
