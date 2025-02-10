@@ -139,6 +139,7 @@ class NeonAccountModel(_BaseRespModel):
     def new_empty(cls, address: NeonAddress) -> Self:
         return cls(
             neon_address=address,
+            user_sol_address=SolPubKey.default(),
             status=NeonAccountStatus.Empty,
             sol_address=SolPubKey.default(),
             contract_sol_address=SolPubKey.default(),
@@ -889,7 +890,7 @@ class NeonSkdTreeModel(_BaseRespModel):
         )
 
         return (
-            NeonSkdTreeNodeModel.ToStart
+            NeonSkdTxStatus.ToStart
             if success_exec_cnt >= node.success_exec_limit
             else NeonSkdTxStatus.ToSkip
         )
