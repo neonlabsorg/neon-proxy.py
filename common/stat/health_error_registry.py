@@ -12,7 +12,6 @@ class HealthErrorRegistry:
 
     def get_health_error_list(self) -> dict[str, list[HealthErrorModel]]:
         now_sec = int(time.time())
-        self._clear_error_list(now_sec)
 
         # fmt: off
         return {
@@ -35,9 +34,3 @@ class HealthErrorRegistry:
 
     def clear_error(self, name: str) -> None:
         self._error_list_dict.pop(name, None)
-
-    def _clear_error_list(self, now_sec: int) -> None:
-        last_valid_sec = now_sec - self._cfg.health_error_timeout_sec
-        for error_list in self._error_list_dict.values():
-            while error_list and (error_list[-1].time_sec < last_valid_sec):
-                error_list.pop()
