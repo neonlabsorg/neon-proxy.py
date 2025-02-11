@@ -1,15 +1,16 @@
+import itertools
 import logging
-from typing import Final
+from typing import Final, Sequence
 
 from typing_extensions import Self
 
 from common.config.config import Config
-from common.neon.neon_program import NeonProg, NeonEvmIxCode
+from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.alt_info import SolAltInfo
 from common.solana.cb_program import SolCbProg
-from common.solana.instruction import SolAccountMeta
+from common.solana.instruction import SolAccountMeta, SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
@@ -76,6 +77,7 @@ class HolderHandler(BaseNPCmdHandler):
             nargs="?",
             help="timeout in seconds to wait the result from Solana",
         )
+        self._holder_func.init_list_cmd(self._cfg, self._cancel_parser)
 
         self._destroy_parser = self._cmd_parser.add_parser(cls._destroy, help="destroy a Holder")
         self._subcmd_dict[self._destroy] = self._destroy_cmd
@@ -120,33 +122,40 @@ class HolderHandler(BaseNPCmdHandler):
     async def _cancel_cmd(self, arg_space) -> int:
         req_id = self._gen_req_id()
         with logging_context(**req_id):
-            holder_addr = SolPubKey.from_raw(arg_space.holder)
             timeout_sec = arg_space.timeout
 
-            core_api_client = await self._get_core_api_client()
-            holder = await core_api_client.get_holder_account(holder_addr)
-            if holder.status != HolderAccountStatus.Active:
-                _LOG.error("holder %s doesn't have an active NeonTx", holder_addr)
-                return 1
-            _LOG.info("holder %s has the active NeonTx %s", holder_addr, holder.neon_tx_hash)
-
+            core_api_client: CoreApiClient = await self._get_core_api_client()
             op_client: OpResourceClient = await self._get_op_client()
-            if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder_addr)).is_empty:
-                _LOG.error("no available resource to process the NeonTx canceling")
-                return 1
 
-            try:
-                if not (await self._cancel_cmd_impl(req_id, holder, op_res, timeout_sec)):
-                    return 1
+            status = HolderAccountStatus
 
+            if str(arg_space.holder).upper() == "ALL":
+                signer_key_list = await op_client.get_signer_key_list(req_id)
+                cmd = self._holder_func.parse_list_cmd(arg_space)
+                holder_list = await self._holder_func.get_holder_list(core_api_client, signer_key_list, cmd)
+
+                holder_addr_list: list[SolPubKey] = list()
+                for holder in holder_list:
+                    if holder.status in (status.Active, status.ScheduledCanceled, status.ScheduledFinalized):
+                        holder_addr_list.append(holder.address)
+
+                if not holder_addr_list:
+                    print("no stuck transactions found")
+                    return 0
+            else:
+                holder_addr_list = [SolPubKey.from_raw(arg_space.holder)]
+
+            for holder_addr in holder_addr_list:
                 holder = await core_api_client.get_holder_account(holder_addr)
                 if holder.status == HolderAccountStatus.Active:
-                    _LOG.info("holder %s has the active NeonTx %s", holder_addr, holder.neon_tx_hash)
-                    return 1
+                    if not (await self._cancel_tx(req_id, holder, timeout_sec)):
+                        return 1
+                    holder = await core_api_client.get_holder_account(holder_addr)
 
-                return 0
-            finally:
-                await op_client.free_resource(req_id, True, op_res)
+                if holder.status in (HolderAccountStatus.ScheduledCanceled, HolderAccountStatus.ScheduledFinalized):
+                    if not (await self._finish_skd_tx(req_id, holder, timeout_sec)):
+                        return 1
+        return 0
 
     async def _destroy_cmd(self, arg_space) -> int:
         core_api_client: CoreApiClient = await self._get_core_api_client()
@@ -182,34 +191,63 @@ class HolderHandler(BaseNPCmdHandler):
                 return 1
         return 0
 
+    def _get_cb_ix_list(self, cu_limit = SolCbProg.MaxCuLimit // 2) -> list[SolTxIx]:
+        cb_prog = SolCbProg()
+        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
+        cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
+        heap_size_ix = cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize)
+        return [cu_price_ix, cu_limit_ix, heap_size_ix]
+
     @cached_property
     def _cu_price(self) -> int:
         return self._cfg.def_simple_cu_price
 
-    async def _cancel_cmd_impl(
+    async def _cancel_tx(
         self,
         req_id: dict,
         holder: HolderAccountModel,
-        op_res: OpResourceModel,
         timeout_sec: int,
     ) -> bool:
-        cancel_tx = await self._make_cancel_tx(holder, op_res)
-        if not (alt := await self._create_alt(req_id, op_res.owner, cancel_tx, timeout_sec)):
-            return False
-        cancel_tx = SolV0Tx(name=cancel_tx.name, ix_list=cancel_tx.ix_list, alt_list=tuple([alt]))
+        print("Holder %s has the active NeonTx %s" % (holder.address, holder.neon_tx_hash))
 
-        await self._send_tx_list(req_id, op_res.owner, tuple([cancel_tx]), timeout_sec)
-        return True
+        op_client: OpResourceClient = await self._get_op_client()
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+
+        if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder.address)).is_empty:
+            _LOG.error("no available resource to process the NeonTx canceling")
+            return False
+
+        try:
+            for retry in itertools.count():
+                if retry > 10:
+                    print("fail to cancel Holder %s after 10 retries" % holder.address)
+                    return False
+
+                cancel_tx = await self._make_cancel_tx(holder, op_res)
+                if not (alt := await self._create_alt(req_id, op_res.owner, cancel_tx, timeout_sec)):
+                    return False
+                cancel_tx = SolV0Tx(name=cancel_tx.name, ix_list=cancel_tx.ix_list, alt_list=tuple([alt]))
+                await self._send_tx_list(req_id, op_res.owner, tuple([cancel_tx]), timeout_sec)
+
+                holder = await core_api_client.get_holder_account(holder.address)
+                if holder.status == HolderAccountStatus.Active:
+                    _LOG.warning("Holder %s has the active NeonTx %s", holder.address, holder.neon_tx_hash)
+                    continue
+
+                print("done canceling Holder %s" % holder.address)
+                return True
+        except BaseException as exc:
+            _LOG.error("got error %s", str(exc))
+
+        finally:
+            await op_client.free_resource(req_id, True, op_res)
+
+        return False
 
     async def _make_cancel_tx(self, holder: HolderAccountModel, op_res: OpResourceModel) -> SolLegacyTx:
         acct_meta_list = tuple(
             map(lambda x: SolAccountMeta(x, is_signer=False, is_writable=True), holder.account_key_list)
         )
-
-        cb_prog = SolCbProg()
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(cb_prog.MaxCuLimit)
-        heap_size_ix = cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize)
 
         core_api_client: CoreApiClient = await self._get_core_api_client()
         evm_cfg = await core_api_client.get_evm_cfg()
@@ -230,7 +268,7 @@ class HolderHandler(BaseNPCmdHandler):
 
         cancel_ix = neon_prog.make_cancel_ix()
 
-        ix_list = tuple([cu_price_ix, cu_limit_ix, heap_size_ix, cancel_ix])
+        ix_list = self._get_cb_ix_list() + [cancel_ix]
         return SolLegacyTx(NeonEvmIxCode.CancelWithHash.name, ix_list=ix_list)
 
     async def _create_alt(
@@ -260,3 +298,96 @@ class HolderHandler(BaseNPCmdHandler):
 
         await slot_session.stop()
         return alt
+
+    async def _finish_skd_tx(
+        self,
+        req_id: dict,
+        holder: HolderAccountModel,
+        timeout_sec: int,
+    ) -> bool:
+        print("Holder %s has the scheduled NeonTx %s" % (holder.address, holder.neon_tx_hash))
+
+        op_client: OpResourceClient = await self._get_op_client()
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+
+        if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder.address)).is_empty:
+            _LOG.error("no available resource to process the NeonSkdTx finishing")
+            return False
+
+        try:
+            for retry in itertools.count():
+                if retry > 10:
+                    print("fail to finish NeonSkdTx in the Holder %s after 10 retries" % holder.address)
+                    return False
+
+                if not (tx_list := await self._make_finish_skd_tx(holder, op_res)):
+                    return True
+
+                finish_tx, destroy_tx = tx_list
+                await self._send_tx_list(req_id, op_res.owner, tuple([finish_tx]), timeout_sec)
+
+                holder = await core_api_client.get_holder_account(holder.address)
+                if holder.status in (HolderAccountStatus.ScheduledCanceled, HolderAccountStatus.ScheduledFinalized):
+                    _LOG.warning("Holder %s has the active NeonSkdTx %s", holder.address, holder.neon_tx_hash)
+                    continue
+
+                print("try to destroy Tree...")
+                await self._send_tx_list(req_id, op_res.owner, tuple([destroy_tx]), timeout_sec)
+
+                print("done finish Holder %s" % holder.address)
+                return True
+        except BaseException as exc:
+            _LOG.error("got error %s", str(exc), exc_info=True)
+
+        finally:
+            await op_client.free_resource(req_id, True, op_res)
+
+        return False
+
+    async def _make_finish_skd_tx(self, holder: HolderAccountModel, op_res: OpResourceModel) -> None | tuple[SolLegacyTx, SolLegacyTx]:
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+
+        if not (skd_tree_acct := await core_api_client.get_neon_skd_tree(holder.payer, holder.tx.nonce)).is_exist:
+            print("NeonSkdTree %s:%s doesn't exist" % (holder.payer, holder.tx.nonce))
+            return None
+
+        if not (skd_node_idx := skd_tree_acct.find_neon_skd_node(holder.neon_tx_hash)):
+            print("NeonTx %s doesn't exist in %s" % (holder.neon_tx_hash, skd_tree_acct.address))
+            return None
+
+        neon_acct = await core_api_client.get_neon_account(holder.payer, None)
+
+        evm_cfg = await core_api_client.get_evm_cfg()
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
+        neon_prog = NeonProg(op_res.owner)
+
+        # fmt: off
+        neon_prog.init_neon_tx(
+            holder.neon_tx_hash, bytes()
+        ).init_holder_address(
+            holder.address
+        ).init_token_address(
+            op_res.token_sol_address
+        ).init_skd_tree_address(
+            skd_tree_acct.address
+        ).init_tx_sol_address(
+            NeonBaseTxAccountSet(
+                payer=neon_acct.sol_address,
+                sender=neon_acct.sol_address,
+                receiver=SolPubKey.default(),
+                receiver_contract=SolPubKey.default(),
+                payer_balance=0
+            )
+        )
+        # fmt: on
+
+        skd_tx_idx = skd_node_idx[0]
+        finish_ix = neon_prog.make_finish_skd_tx_ix(skd_tx_idx)
+        destroy_ix = neon_prog.make_destroy_skd_tree_ix()
+
+        finish_ix_list = self._get_cb_ix_list() + [finish_ix]
+        finish_tx = SolLegacyTx(NeonEvmIxCode.SkdTxFinish.name, ix_list=finish_ix_list)
+
+        destroy_ix_list = self._get_cb_ix_list(neon_prog.CuLimitSkdTreeAccountDestroy) + [destroy_ix]
+        destroy_tx = SolLegacyTx(NeonEvmIxCode.SkdTreeDestroy.name, ix_list=destroy_ix_list)
+        return finish_tx, destroy_tx
