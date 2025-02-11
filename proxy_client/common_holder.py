@@ -73,31 +73,54 @@ class OpHolderFunc:
         cmd: ListCmd,
     ) -> None:
         total_balance = 0
-        for key in signer_key_list:
-            key_total_balance = 0
-            print("{}:".format(key))
+        holder_list = await cls.get_holder_list(core_api_client, signer_key_list, cmd)
 
-            for res_id in range(cmd.start_id, cmd.stop_id):
-                op_info = OpHolderInfo.from_raw(key, res_id, cmd.seed)
-                holder: HolderAccountModel = await core_api_client.get_holder_account(op_info.address)
+        def _print_key_balance(_key: SolPubKey, _balance: int) -> None:
+            if _key.is_empty:
+                return
 
-                balance = await cls._get_holder_balance(sol_client, holder.address)
-                key_total_balance += balance
-                total_balance += balance
-
-                data = "  {}: status={}, tx={}, size={} bytes, balance={:.9f} SOLs".format(
-                    holder.address,
-                    holder.status.name,
-                    holder.neon_tx_hash,
-                    holder.size,
-                    balance / (10**9),
-                )
-                print(data)
-
-            print("total {}: {:.9f} SOLs".format(key, key_total_balance / (10**9)))
+            print("total {}: {:.9f} SOLs".format(_key, _balance / (10 ** 9)))
             print()
 
+        key = SolPubKey.default()
+        key_total_balance = 0
+        for holder in holder_list:
+            if holder.owner != key:
+                _print_key_balance(key, key_total_balance)
+                #
+                key = holder.owner
+                key_total_balance = 0
+                print("{}:".format(key))
+
+            balance = await cls._get_holder_balance(sol_client, holder.address)
+            key_total_balance += balance
+            total_balance += balance
+
+            data = "  {}: status={}, tx={}, size={} bytes, balance={:.9f} SOLs".format(
+                holder.address,
+                holder.status.name,
+                holder.neon_tx_hash,
+                holder.size,
+                balance / (10**9),
+            )
+            print(data)
+
+        _print_key_balance(key, key_total_balance)
         print("total: {:.9f} SOLs".format(total_balance / (10**9)))
+
+    @classmethod
+    async def get_holder_list(
+        cls,
+        core_api_client: CoreApiClient,
+        signer_key_list: Sequence[SolPubKey],
+        cmd: ListCmd,
+    ) -> Sequence[HolderAccountModel]:
+        holder_list: list[HolderAccountModel] = list()
+        for key in signer_key_list:
+            for res_id in range(cmd.start_id, cmd.stop_id):
+                op_info = OpHolderInfo.from_raw(key, res_id, cmd.seed)
+                holder_list.append(await core_api_client.get_holder_account(op_info.address))
+        return holder_list
 
     @classmethod
     async def print_holder(
@@ -132,7 +155,7 @@ class OpHolderFunc:
             chainId=holder.chain_id,
             evmSteps=holder.evm_step_cnt,
             transactionHash=holder.neon_tx_hash.to_string(),
-            transactionType=holder.tx_type,
+            transactionType=hex(holder.tx_type) if holder.tx_type is not None else None,
             transactionBody=tx,
             accountKeyList=[k.to_string() for k in holder.account_key_list],
         )

@@ -895,3 +895,9 @@ class NeonSkdTreeModel(_BaseRespModel):
             else NeonSkdTxStatus.ToSkip
         )
         # fmt: on
+
+    def find_neon_skd_node(self, neon_tx_hash: EthTxHash) -> None | tuple[int, NeonSkdTreeNodeModel]:
+        for idx, node in enumerate(self.node_list):
+            if node.neon_tx_hash == neon_tx_hash:
+                return idx, node
+        return None
