@@ -41,7 +41,7 @@ from ..config.constants import ONE_BLOCK_SEC
 from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
-from ..http.client import HttpClient
+from ..http.client import HttpClient, HttpClientRequest
 from ..http.errors import PydanticValidationError
 from ..http.utils import HttpURL
 from ..neon.address import NeonAddress
@@ -327,12 +327,11 @@ class CoreApiClient(HttpClient):
 
         with rpc_request:
             for retry in itertools.count():
-                if retry >= self._max_retry_cnt:
-                    raise EthError("No connection to NeonCoreApi. Maximum retry count reached.")
+                rpc_request.start_timer()
+
                 if retry > 0:
                     _LOG.debug("attempt %d to repeat %s...", retry + 1, method)
 
-                rpc_request.start_timer()
                 resp_json = await self._send_client_request(rpc_request, path=HttpURL(method))
                 try:
                     resp = CoreApiResp.from_json(resp_json)
@@ -349,10 +348,13 @@ class CoreApiClient(HttpClient):
                     continue
                 elif resp.result == resp.result.Error:
                     # unknown error case
-                    ctx_id = request.ctx_id if request else None
-                    err_msg = f"got error on {method} ({ctx_id}): {resp.error_code} - {resp.error}"
-                    rpc_request.commit_stat(error_message=err_msg)
-                    _LOG.warning("%s", err_msg, extra=self._msg_filter)
+                    # ctx_id = request.ctx_id if request else None
+                    # err_msg = f"got error on {method} ({ctx_id}): {resp.error_code} - {resp.error}"
+                    # rpc_request.commit_stat(error_message=err_msg)
+                    # _LOG.warning("%s", err_msg, extra=self._msg_filter)
+                    pass
+
+                rpc_request.commit_stat()
 
                 if resp_type is None:
                     return resp
@@ -360,6 +362,13 @@ class CoreApiClient(HttpClient):
                     raise EthError(resp.error)
 
                 return resp_type.from_dict(resp.value)
+
+    def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+        super()._exception_handler(url, request, retry, exc)
+
+        # if the previous call has reraised an exception, this code isn't called
+        assert isinstance(request, RpcClientRequest)
+        request.commit_stat(error_message=str(exc))
 
     @staticmethod
     def _get_retry_error(method: str, resp: CoreApiResp) -> str | None:

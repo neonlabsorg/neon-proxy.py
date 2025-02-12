@@ -169,20 +169,18 @@ class SolClient(HttpClient):
                 try:
 
                     resp = parser.from_json(resp_json)
-                    if isinstance(resp, tp.get_args(SolRpcExtErrorInfo)):
-                        raise SolRpcError(resp)
 
                 except BaseException as exc:
                     request.commit_stat(error_message=str(exc))
 
                     if retry > self._max_retry_cnt:
-                        if isinstance(exc, SolRpcError):
-                            raise exc
                         raise InternalJsonRpcError(exc)
 
                     _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, request.data)
                     await asyncio.sleep(0.2)
                     continue
+
+                request.commit_stat()
 
                 if isinstance(resp, tp.get_args(SolRpcErrorInfo)):
                     raise SolRpcError(resp)
