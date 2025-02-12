@@ -236,19 +236,22 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
     def _store_sol_tx_list(self):
         tx_list_sender = self._ctx.sol_tx_list_sender
-        self._ctx.add_sol_tx_list(
-            [
-                (tx_state.tx, tx_state.status == tx_state.status.GoodReceipt)
-                for tx_state in tx_list_sender.tx_state_list
-                # we shouldn't retry txs with bad statuses
-                if tx_state.status not in (
-                    tx_state.status.CbExceededError,
-                    tx_state.status.AltError,
-                    tx_state.status.MissingAccountError,
-                    tx_state.status.SkdTxUseWrongHolderError,
-                )
-            ]
-        )
+        status = SolTxSendState.Status
+        # fmt: on
+        self._ctx.add_sol_tx_list([
+            (tx_state.tx, tx_state.status == status.GoodReceipt)
+            for tx_state in tx_list_sender.tx_state_list
+            # we shouldn't retry txs with bad statuses
+            if tx_state.status not in (
+                status.CbExceededError,
+                status.AltError,
+                status.WritableError,
+                status.MissingAccountError,
+                status.SkdTxUseWrongHolderError,
+                status.UnknownError,
+            )
+        ])
+        # fmt: off
 
     # async def _estimate_cu_price(self) -> int:
     #     # We estimate the cu_price from the recent blocks.
