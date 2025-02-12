@@ -33,7 +33,7 @@ class NeonSkdTreeParser(ExecutorComponent):
         await self._refresh()
 
     async def stop(self) -> None:
-        await self._watch_session.disconnect()
+        await self._watch_session.safe_disconnect()
 
     @property
     def neon_tx_hash(self) -> EthTxHash:

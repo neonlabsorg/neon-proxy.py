@@ -73,7 +73,7 @@ class MpGasPriceCalculator(MempoolComponent):
             await self._update_gas_price_task
 
         if self._watch_session:
-            await self._watch_session.disconnect()
+            await self._watch_session.safe_disconnect()
 
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price_cache

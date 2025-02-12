@@ -13,10 +13,6 @@ class SolRpcError(SolError):
         return self._rpc_data
 
 
-class SolWsCloseError(SolError):
-    pass
-
-
 class SolBlockhashNotFound(SolError):
     def __init__(self) -> None:
         super().__init__("Blockhash not found")
