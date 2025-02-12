@@ -104,7 +104,11 @@ class SolTxErrorParser:
 
     @ cached_method
     def check_if_writable_error(self) -> bool:
-        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.PrivilegeEscalation
+        return self._get_tx_error() in (
+            SolRpcTxIxFieldErrorCode.PrivilegeEscalation,
+            SolRpcTxIxFieldErrorCode.ReadonlyDataModified,
+            SolRpcTxIxFieldErrorCode.ReadonlyLamportChange,
+        )
 
     @cached_method
     def get_num_slots_behind(self) -> int | None:

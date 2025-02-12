@@ -41,7 +41,6 @@ class SolTxSendState:
 
         # Skipped errors
         AlreadyFinalizedError = enum.auto()
-        SkdTxUseWrongHolderError = enum.auto()
         NeonAccountAlreadyExistsError = enum.auto()
         SolAccountAlreadyExistError = enum.auto()
 
@@ -51,13 +50,16 @@ class SolTxSendState:
         NodeBehindError = enum.auto()
 
         # Fail errors
-        CbExceededError = enum.auto()
-        AltError = enum.auto()
-        WritableError = enum.auto()
         RequireResizeIterError = enum.auto()
         OutOfMemoryError = enum.auto()
         BadNonceError = enum.auto()
         OutOfGasError = enum.auto()
+
+        # Fails errors without repeats
+        CbExceededError = enum.auto()
+        AltError = enum.auto()
+        WritableError = enum.auto()
+        SkdTxUseWrongHolderError = enum.auto()
         MissingAccountError = enum.auto()
         UnknownError = enum.auto()
 

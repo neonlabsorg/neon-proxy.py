@@ -221,7 +221,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             except (SolWritableError, SolUnknownReceiptError):
                 if self._def_ix_mode != NeonIxMode.Writable:
-                    # _LOG.warning("unexpected fail on iterative transaction, try to use accounts in writable mode")
+                    _LOG.debug("switch to Writable mode")
                     self._def_ix_mode = NeonIxMode.Writable
                 else:
                     raise
