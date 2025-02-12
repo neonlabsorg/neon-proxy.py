@@ -17,7 +17,6 @@ import solders.rpc.responses as _resp
 from typing_extensions import Self
 
 from .client import SolClient
-from .errors import SolWsCloseError
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
 from ..config.utils import LogMsgFilter
@@ -97,13 +96,13 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         self._req_dict: dict[int, _SolWsObjKey] = dict()
         self._sub_dict: dict[int, _SolWsObjKey] = dict()
         self._obj_dict: dict[_SolWsObjKey, _SolWsObjInfo[_SolWsObjKey, _SolWsObj]] = dict()
-        self._error_obj_dict: dict[_SolWsObjKey, _SolWsObjInfo[_SolWsObjKey, _SolWsObj]] = dict()
 
-        self._error_handler_next_nsec: int = 0
-        self._is_error_handler_active: bool = False
+        self._err_obj_dict: dict[_SolWsObjKey, _SolWsObjInfo[_SolWsObjKey, _SolWsObj]] = dict()
+        self._err_handler_next_nsec: int = 0
+        self._is_err_handler_active: bool = False
 
         self._update_future: asyncio.Future[Any] | None = None
-        self._reconnect_future: asyncio.Future[Any] | None = None
+        self._close_future: asyncio.Future[Any] | None = None
 
     @property
     def sol_client(self) -> SolClient:
@@ -117,21 +116,28 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
     def is_empty(self) -> bool:
         return not self._obj_dict
 
-    async def connect(self) -> Self:
+    async def connect(self) -> None:
         if self.is_connected:
-            return self
+            return
 
         ws_endpoint = HttpURL(self._ws_endpoint or self._cfg.random_sol_ws_url)
 
         # _LOG.debug("connecting to WebSocket %s...", ws_endpoint, extra=self._msg_filter)
         self._ws_session = await self._sol_client.session.ws_connect(ws_endpoint)
         # _LOG.debug("connected to WebSocket")
-        return self
 
-    async def disconnect(self) -> Self:
+    async def safe_connect(self) -> bool:
+        try:
+            await self.connect()
+            return True
+        except (BaseException,):
+            return False
+
+    async def disconnect(self) -> None:
         if not self.is_connected:
+            self._ws_session = None
             self._clear()
-            return self
+            return
 
         # _LOG.debug("closing WebSocket connection...")
         ws_session, self._ws_session = self._ws_session, None
@@ -139,63 +145,58 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         self._clear()
         await ws_session.close()
         # _LOG.debug("closed WebSocket connection")
-        return self
 
-    async def reconnect(self) -> Self:
-        await self.disconnect()
-        return await self.connect()
+    async def safe_disconnect(self) -> bool:
+        try:
+            await self.disconnect()
+            return True
+        except (BaseException,):
+            return False
 
     async def update(self, *, timeout_nsec: int = 1) -> None:
-        if self._update_future:
-            await self._update_future
+        if future := self._update_future:
+            await future
             return
 
+        self._update_future = asyncio.get_event_loop().create_future()
         try:
-            self._update_future = asyncio.get_event_loop().create_future()
+            await self._err_handler()
             await self._wait(timeout_nsec, time.monotonic_ns())
-            await self._error_dict_handler()
-
         finally:
             future, self._update_future = self._update_future, None
             if future:
                 future.set_result(None)
 
-
-    async def _error_dict_handler(self) -> None:
-        if self._is_error_handler_active or (self._error_handler_next_nsec > time.monotonic_ns()):
+    async def _err_handler(self) -> None:
+        if not self.safe_connect():
             return
-        self._is_error_handler_active = True
+
+        if self._is_err_handler_active or (self._err_handler_next_nsec > time.monotonic_ns()):
+            return
+        self._is_err_handler_active = True
 
         try:
-            # resubscribe on objects with errors
-            error_obj_dict, self._error_obj_dict = self._error_obj_dict, dict()
-            for item in error_obj_dict.values():
+            # resubscribe on objects from containers with errors
+            err_obj_dict, self._err_obj_dict = self._err_obj_dict, dict()
+            for item in err_obj_dict.values():
                 await self._sub_obj(item.key, item.obj, item.commit)
-
         finally:
-            self._error_handler_next_nsec = time.monotonic_ns() + int(pow(10, 9) * ONE_BLOCK_SEC)
-            self._is_error_handler_active = False
+            self._err_handler_next_nsec = time.monotonic_ns() + int(pow(10, 9) * ONE_BLOCK_SEC)
+            self._is_err_handler_active = False
 
     async def __aenter__(self) -> Self:
-        return await self.connect()
+        await self.safe_connect()
+        return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> Self:
-        await self.disconnect()
+        await self.safe_disconnect()
         if exc_val:
             raise
         return self
 
-    def _get_next_id(self) -> int:
-        return next(self._id)
-
-    async def _ws_send_data(self, data: _SolWsSendData) -> None:
-        if not self.is_connected:
-            raise SolError("WebSocket is not connected")
-        # _LOG.debug("TYPE %s, %s", type(data), str(data))
-        await self._ws_session.send_str(data.to_json())
-
     async def _ws_receive_data(self, timeout_sec: float | None) -> Sequence[_SoldersWsMsg]:
-        if not self._ws_session:
+        if not self.is_connected:
+            await asyncio.sleep(0)
             return tuple()
 
         # aiohttp's receive_str throws a very cryptic error when the
@@ -235,7 +236,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     # Error from Solana nodes with a BigTable...
                     if item.error not in _resp.RpcCustomErrorFieldless.NoSnapshot:
                         _LOG.warning("got error %s for %s", item.error, key)
-                    self._error_obj_dict[info.key] = info
+                    self._err_obj_dict[info.key] = info
                 else:
                     _LOG.warning("unknown request %s on error", item.id)
             elif isinstance(item, _SoldersSubResult):
@@ -252,6 +253,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     _LOG.warning("unknown request %s for result %s", item.id, item.result)
             elif isinstance(item, _SolWsSubNotif):
                 if key := self._sub_dict.pop(item.subscription, None):
+                    self._err_obj_dict.pop(key, None)
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.req_id not in self._req_dict, f"request {info.req_id} for {key} still exists?"
                     # _LOG.debug("got notification %s", key)
@@ -259,63 +261,74 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 else:
                     _LOG.warning("unknown subscription %s on notification", item.subscription)
 
+    def _has_obj(self, key: _SolWsObjKey | None = None) -> bool:
+        if key is None:
+            return bool(self._obj_dict) or bool(self._err_obj_dict)
+        return (key in self._obj_dict) or (key in self._err_obj_dict)
+
     async def _sub_obj(self, key: _SolWsObjKey, obj: _SolWsObj | None, commit: SolCommit) -> None:
-        if key in self._obj_dict:
+        if self._has_obj(key):
             return
 
-        req_id = self._get_next_id()
+        req_id = next(self._id)
         info = _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None, commit=commit)
+        if not self.is_connected:
+            self._err_obj_dict[key] = info
+            return
+
         self._req_dict[req_id] = key
         self._obj_dict[key] = info
-
         req = self._new_sub_request(info, commit)
 
         try:
             # _LOG.debug("subscribe %s on tx %s", sig_info.req_id, tx)
-            await self._ws_send_data(req)
+            await self._ws_session.send_str(req.to_json())
         except (BaseException,):
             # _LOG.error("ERROR subscribe %s", str(e), exc_info=e)
             self._obj_dict.pop(key, None)
             self._req_dict.pop(req_id, None)
-            raise
+            self._err_obj_dict[key] = info
 
     async def _unsub_obj(self, key: _SolWsObjKey) -> None:
+        self._err_obj_dict.pop(key, None)
         if not (info := self._obj_dict.pop(key, None)):
             return
-        elif self._req_dict.pop(info.req_id, None):
-            _LOG.warning("didn't receive subscription for %s", key)
 
-        if self._sub_dict.pop(info.sub_id, None):
-            req_id = self._get_next_id()
-            req = self._new_unsub_request(req_id, info.sub_id)
-            try:
-                await self._ws_send_data(req)
-            except (BaseException,):
-                # _LOG.error("ERROR unsubscribe %s", str(e), exc_info=e)
-                pass
-
-    def _clear(self) -> None:
-        self._sub_dict.clear()
-        self._req_dict.clear()
-        self._obj_dict.clear()
-
-    async def _on_close(self) -> None:
-        if self._reconnect_future:
-            await self._reconnect_future
+        self._req_dict.pop(info.req_id, None)
+        if not self._sub_dict.pop(info.sub_id, None):
+            return
+        elif not self.is_connected:
             return
 
-        self._reconnect_future = asyncio.get_event_loop().create_future()
+        req_id = next(self._id)
+        req = self._new_unsub_request(req_id, info.sub_id)
         try:
+            await self._ws_session.send_str(req.to_json())
+        except (BaseException,):
+            # _LOG.error("ERROR unsubscribe %s", str(e), exc_info=e)
+            pass
 
-            for key, obj in self._obj_dict.items():
-                self._error_obj_dict[key] = obj
-            self._obj_dict.clear()
+    def _clear(self) -> None:
+        self._sub_dict, self._req_dict, self._obj_dict, self._err_obj_dict = dict(), dict(), dict(), dict()
 
-            await self.reconnect()
-        finally:
-            future, self._reconnect_future = self._reconnect_future, None
-            if future:
-                future.set_result(None)
+    async def _on_close(self) -> None:
+        if future := self._close_future:
+            await future
+            return
+
+        self._close_future = asyncio.get_event_loop().create_future()
+        # move all objects to the error dictionary
+        #  they will be restored on in _err_handler
+        err_obj_dict, self._err_obj_dict = self._err_obj_dict, dict()
+        for key, obj in self._obj_dict.items():
+            err_obj_dict[key] = obj
+        self._obj_dict = dict()
+
+        await self.safe_disconnect()
+
+        self._err_obj_dict = err_obj_dict
+        future, self._close_future = self._close_future, None
+        future.set_result(None)
 
     # fmt: off
     def _on_sub_notif(self, info: _ObjInfo, data: _SolWsSubNotif, now_nsec: int) -> None: ...
@@ -337,6 +350,7 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
             try:
                 for tx in tx_list:
                     await self._sub_obj(tx.sig, tx, commit)
+
                 return await self._wait_for_tx_list_update(timeout_sec)
             except BaseException as exc:
                 _LOG.error("error on waiting statuses for txs", exc_info=exc)
@@ -345,20 +359,14 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
     async def _wait_for_tx_list_update(self, timeout_sec: float) -> bool:
         start_time_nsec, timeout_nsec = time.monotonic_ns(), int(timeout_sec * 1e9)
         # _LOG.debug("OBJ %s %s", len(self._obj_dict), timeout_sec)
-        while self._obj_dict:
+        while self._has_obj():
+            await self._err_handler()
+
             now_nsec = time.monotonic_ns()
             if (wait_nsec := timeout_nsec - (now_nsec - start_time_nsec)) <= 0:
                 return False
-
             await self._wait(wait_nsec, now_nsec)
-            await self._error_dict_handler()
         return True
-
-    async def _on_close(self) -> None:
-        if self._obj_dict:
-            raise SolWsCloseError(
-                f"WebSocket closed while waiting for update; close code was {self._ws_session.close_code}"
-            )
 
     def _new_sub_request(self, info: _TxInfo, commit: SolCommit) -> _SolWsSendData:
         cfg = _SoldersTxSigCfg(commit.to_rpc_commit())
@@ -390,26 +398,22 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         self._chg_key_set: set[SolPubKey] = set()
 
     async def subscribe_account(self, addr: SolPubKey) -> None:
-        if addr in self._obj_dict:
+        if self._has_obj(addr):
             return
 
-        for retry in itertools.count():
-            try:
-                await self.connect()
-                await self._sub_obj(addr, None, self._commit)
-
-                return
-            except (BaseException,):
-                if retry > 5:
-                    raise
+        await self.safe_connect()
+        await self._sub_obj(addr, None, self._commit)
 
     async def unsubscribe_account(self, addr: SolPubKey) -> None:
         await self._unsub_obj(addr)
         self._chg_key_set.discard(addr)
-        self._error_obj_dict.pop(addr, None)
 
     def get_account(self, addr: SolPubKey) -> SolAccountModel | None:
-        return info.obj if (info := self._obj_dict.get(addr, None)) else None
+        if info := self._obj_dict.get(addr, None):
+            return info.obj
+        elif info := self._err_obj_dict.get(addr, None):
+            return info.obj
+        return None
 
     def pop_changed_key_list(self) -> Sequence[SolPubKey]:
         key_list, self._chg_key_set = list(self._chg_key_set), set()
@@ -421,7 +425,7 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         return tuple(key_list)
 
     async def _sub_obj(self, key: SolPubKey, obj: SolAccountModel | None, commit: SolCommit) -> None:
-        if key in self._obj_dict:
+        if self._has_obj(key):
             return
 
         acct = await self._sol_client.get_account(key, commit=self._commit) if self._init_acct else obj
@@ -469,7 +473,7 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
             return
         self._is_started = True
 
-        await self._subscribe(init_start_slot=True)
+        await self._sub_slot(init_start_slot=True)
         self._update_task = asyncio.create_task(self._update_loop())
 
     async def stop(self) -> None:
@@ -480,7 +484,7 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         await update_task
 
     async def update(self, *, timeout_nsec: int = int(2 * ONE_BLOCK_SEC * 1e9)) -> None:
-        await self._subscribe()
+        await self._sub_slot()
         await super().update(timeout_nsec=timeout_nsec)
 
         wait_slot_queue, self._wait_slot_queue = self._wait_slot_queue, list()
@@ -524,7 +528,7 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
             return self.processed_slot
         assert False, f"unknown commit {commit}"
 
-    async def _subscribe(
+    async def _sub_slot(
         self, *,
         init_start_slot=False,
         confirmed_slot=0,
@@ -540,8 +544,8 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
             ])
         self._data = _SoldersSlotInfo(confirmed_slot, 0, finalized_slot)
 
-        await self.connect()
-        await self._sub_slot()
+        await self.safe_connect()
+        await self._sub_obj(1, None, SolCommit.Confirmed)
 
     async def _update_loop(self) -> None:
         with logging_context(ctx="update-slot"):
@@ -550,9 +554,6 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
                     await self.update()
                 except BaseException as exc:
                     _LOG.error("unexpected error on update slot", exc_info=exc, extra=self._msg_filter)
-
-    async def _sub_slot(self) -> None:
-        await self._sub_obj(1, None, SolCommit.Confirmed)
 
     def _new_sub_request(self, info: _SlotInfo, commit: SolCommit) -> _SolWsSendData:
         return _SoldersSubSlot(info.req_id)
