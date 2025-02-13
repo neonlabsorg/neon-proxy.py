@@ -20,6 +20,7 @@ from common.solana_rpc.errors import (
     SolNeonOutOfMemoryError,
     SolNeonMissingAccountError,
     SolNeonSkdTxError,
+    SolWritableError,
 )
 from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
@@ -190,6 +191,12 @@ class NeonTxExecutor(ExecutorComponent):
                 # _LOG.debug("wrong strategy error: %s", str(exc))
                 return None
 
+            except (SolNeonMissingAccountError, SolWritableError):
+                if strategy.is_simple:
+                    return None
+                re_emulate = True
+                await asyncio.sleep(self._wait_sec)
+
             except (
                 EthError,
                 SolCbExceededCriticalError,
@@ -200,12 +207,6 @@ class NeonTxExecutor(ExecutorComponent):
                 ctx.mark_skip_simple_strategy()
                 _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(strategy)
-
-            except SolNeonMissingAccountError:
-                if strategy.is_simple:
-                    return None
-                re_emulate = True
-                await asyncio.sleep(self._wait_sec)
 
             except SolError:
                 # _LOG.debug("simple retry error: %s", str(exc), extra=self._msg_filter)
