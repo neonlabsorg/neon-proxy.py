@@ -5,7 +5,7 @@ from common.config.config import Config
 from common.ethereum.hash import EthAddress
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.transaction_list_sender_stat import SolTxFailData, SolTxDoneData
-from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter
+from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter, HealthErrorCode
 from common.stat.health_error_registry import HealthErrorRegistry
 from common.stat.metric import StatRegistry, StatSummary, StatGauge, stat_render
 from common.stat.metric_rpc import RpcStatCollector
@@ -125,9 +125,25 @@ class OpResourceStatApi(AppDataApi):
         self._holder_total_cnt_stat.set(label, holder_total_cnt)
 
         if holder_disabled_cnt:
-            self._error_registry.add_error("Holders", f"{holder_disabled_cnt} disabled holders")
+            self._error_registry.add_error(
+                "Holders",
+                HealthErrorCode.DisabledHolderError,
+                f"Resource manager has disabled holders",
+                dict(
+                    holdersCount=holder_disabled_cnt,
+                    operatorKeyList=[k.to_string() for k in self._holder_disabled_cnt.keys()],
+                ),
+            )
         if holder_used_cnt > int((holder_free_cnt + holder_used_cnt) * 0.8):
-            self._error_registry.add_error("Holders", "more than 80% of used holders")
+            self._error_registry.add_error(
+                "Holders",
+                HealthErrorCode.UsedHolderError,
+                "more than 80% of used holders",
+                dict(
+                    usedHolderCount=holder_used_cnt,
+                    totalHolderCount=(holder_free_cnt + holder_used_cnt),
+                ),
+            )
 
     @AppDataApi.method(name="commitOpExecutionTokenBalance")
     async def on_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
@@ -194,7 +210,14 @@ class NeonTxPoolStatApi(AppDataApi):
             self._tx_pool.set({"token": pool.token}, pool.queue_len)
             if pool.high_queue_len < pool.queue_len:
                 self._error_registry.add_error(
-                    "Mempool", f"{pool.token} has more than {pool.high_queue_len} transactions in a pool"
+                    "Mempool",
+                    HealthErrorCode.FullMempoolError,
+                    f"Too many transactions in a Mempool",
+                    dict(
+                        token=pool.token,
+                        capacity=pool.max_queue_len,
+                        size=pool.queue_len,
+                    ),
                 )
 
         self._tx_process.set(self._label, data.processing_queue_len)
@@ -202,7 +225,14 @@ class NeonTxPoolStatApi(AppDataApi):
         self._tx_stuck_process.set(self._label, data.processing_stuck_queue_len)
 
         if data.stuck_queue_len > 100:
-            self._error_registry.add_error("Mempool", f"{data.stuck_queue_len} stuck transactions")
+            self._error_registry.add_error(
+                "Mempool",
+                HealthErrorCode.StuckTxError,
+                f"Too many stuck transactions in Mempool",
+                dict(
+                    transactionCount=data.stuck_queue_len,
+                ),
+            )
 
 
 class MetricApi(AppDataApi):
