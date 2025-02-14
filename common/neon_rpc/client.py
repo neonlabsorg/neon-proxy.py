@@ -270,19 +270,33 @@ class CoreApiClient(HttpClient):
         if emul_neon_acct_dict or emulator_block:
             emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict, block=emulator_block)
 
-        req = EmulNeonCallRequest(
-            tx=tx,
-            evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-            token_list=evm_cfg.token_list,
-            trace_cfg=emul_trace_cfg,
-            preload_sol_address_list=list(preload_sol_address_list),
-            sol_account_dict=emul_sol_acct_dict,
-            slot=self._get_slot(block),
-        )
-        resp: EmulNeonCallResp = await self._send_request("emulate", req, EmulNeonCallResp)
-        if check_result:
-            self._check_emulator_result(resp)
-        return resp
+        preload_sol_address_list = list(preload_sol_address_list)
+
+        for retry in itertools.count():
+            req = EmulNeonCallRequest(
+                tx=tx,
+                evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+                token_list=evm_cfg.token_list,
+                trace_cfg=emul_trace_cfg,
+                preload_sol_address_list=preload_sol_address_list,
+                sol_account_dict=emul_sol_acct_dict,
+                slot=self._get_slot(block),
+            )
+            resp: EmulNeonCallResp = await self._send_request("emulate", req, EmulNeonCallResp)
+            if (not retry) and (not preload_sol_address_list) and self._cfg.reemulate_on_full_account_list:
+                preload_sol_address_list = resp.sol_address_list
+                continue
+
+            try:
+                self._check_emulator_result(resp)
+            except EthError:
+                if not retry:
+                    preload_sol_address_list = resp.sol_address_list
+                    continue
+                elif check_result:
+                    raise
+
+            return resp
 
     async def emulate_sol_tx_list(
         self,
@@ -317,7 +331,7 @@ class CoreApiClient(HttpClient):
         method: str,
         request: CoreApiRequest | None = None,
         resp_type: type[_RespType] | None = None,
-    ) -> _RespType:
+    ) -> _RespType | None:
         rpc_request = RpcClientRequest.from_raw(
             data=request.to_json() if request else "",
             stat_client=self._stat_client,

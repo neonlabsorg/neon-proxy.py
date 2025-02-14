@@ -155,6 +155,7 @@ class Config:
     enable_private_api_name: Final[str] = "ENABLE_PRIVATE_API"
     enable_send_tx_api_name: Final[str] = "ENABLE_SEND_TX_API"
     max_emulate_evm_step_cnt_name: Final[str] = "MAX_EMULATE_EVM_STEP_COUNT"
+    reemulate_on_full_account_list_name: Final[str] = "REEMULATE_ONFULL_ACCOUNT_LIST"
     debug_cmd_line_name: Final[str] = "DEBUG_CMD_LINE"
     # Statistic configuration
     gather_stat_name: Final[str] = "GATHER_STATISTICS"
@@ -489,6 +490,10 @@ class Config:
     @cached_property
     def max_emulate_evm_step_cnt(self) -> int:
         return self._env_num(self.max_emulate_evm_step_cnt_name, 500_000, 1000)
+
+    @cached_property
+    def reemulate_on_full_account_list(self) -> bool:
+        return self._env_bool(self.reemulate_on_full_account_list_name, False)
 
     @cached_property
     def debug_cmd_line(self) -> bool:
@@ -991,6 +996,7 @@ class Config:
             self.enable_private_api_name: self.enable_private_api,
             self.enable_send_tx_api_name: self.enable_send_tx_api,
             self.max_emulate_evm_step_cnt_name: self.max_emulate_evm_step_cnt,
+            self.reemulate_on_full_account_list: self.reemulate_on_full_account_list_name,
             self.gather_stat_name: self.gather_stat,
             self.health_error_list_max_len_name: self.health_error_list_max_len,
             self.debug_cmd_line_name: self.debug_cmd_line,
