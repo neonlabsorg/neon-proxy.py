@@ -1,4 +1,4 @@
-from .api import RpcCallData
+from .api import RpcCallData, HealthErrorCode
 from .health_error_registry import HealthErrorRegistry
 from .metric import StatSummary, StatRegistry
 
@@ -24,7 +24,22 @@ class RpcStatCollector:
         self._request.add(label, time_sec)
 
         if data.is_error:
-            self._error_registry.add_error(data.service, data.error_message)
+            self._error_registry.add_error(
+                data.service,
+                HealthErrorCode.RPCError,
+                data.error_message,
+                dict(
+                    method=data.method,
+                )
+            )
 
         if time_sec > 1.0:
-            self._error_registry.add_error(data.service, f"Big response time {time_sec} seconds on {data.method}")
+            self._error_registry.add_error(
+                data.service,
+                HealthErrorCode.RPCBigTimeError,
+                f"Big response time on {data.method}",
+                dict(
+                    method=data.method,
+                    responseTime=time_sec,
+                )
+            )
