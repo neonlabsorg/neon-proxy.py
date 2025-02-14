@@ -1,4 +1,5 @@
 import dataclasses
+import enum
 import time
 
 from pydantic import Field
@@ -17,10 +18,23 @@ class RpcCallData(BaseModel):
     is_modification: bool = False
 
 
+class HealthErrorCode(enum.IntEnum):
+    RPCError = 1
+    RPCBigTimeError = 2
+    CorruptedBlockError = 3
+    LagBlockError = 4
+    DisabledHolderError = 5
+    UsedHolderError = 6
+    FullMempoolError = 7
+    StuckTxError = 8
+
+
 @dataclasses.dataclass(frozen=True)
 class HealthErrorData:
+    code: HealthErrorCode
     time_sec: int
     message: str
+    data: dict | None
 
     @cached_property
     def time(self) -> str:
@@ -31,12 +45,22 @@ class HealthErrorData:
 
 class HealthErrorModel(BaseModel):
     time: str
+    timestamp: int
     age: int
+    code: int
     message: str
+    data: dict | None
 
     @classmethod
     def from_raw(cls, raw: HealthErrorData, now_sec: int) -> Self:
-        return cls(time=raw.time, age=raw.calc_age(now_sec), message=raw.message)
+        return cls(
+            time=raw.time,
+            code=int(raw.code),
+            timestamp=raw.time_sec,
+            age=raw.calc_age(now_sec),
+            message=raw.message,
+            data=raw.data,
+        )
 
 
 class HealthErrorListFormatter(BaseModel):
@@ -49,3 +73,4 @@ class MetricStatData(BaseModel):
 
 class HealthCheckData(BaseModel):
     data: str
+

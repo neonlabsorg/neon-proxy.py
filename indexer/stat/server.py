@@ -2,7 +2,7 @@ from typing import ClassVar
 
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
-from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter
+from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter, HealthErrorCode
 from common.stat.health_error_registry import HealthErrorRegistry
 from common.stat.metric import StatRegistry, StatGauge, stat_render
 from common.stat.metric_rpc import RpcStatCollector
@@ -57,14 +57,26 @@ class BlockStatApi(AppDataApi):
         self._block_finalized.set(label, data.finalized_block)
         if data.corrupted_block_cnt > 0:
             self._corrupted_block_cnt.add({}, data.corrupted_block_cnt)
-            self._error_registry.add_error("BlockStorage", f"{data.corrupted_block_cnt} corrupted blocks")
+            self._error_registry.add_error(
+                "BlockStorage",
+                HealthErrorCode.CorruptedBlockError,
+                f"Fail to parse a Solana block",
+                dict(
+                    blocksCount=data.corrupted_block_cnt,
+                )
+            )
         if data.tracer_block:
             self._block_tracer.set(label, data.tracer_block)
 
-        if data.confirmed_block - 250 > data.parsed_block:
+        lag_block_cnt = data.confirmed_block - data.parsed_block
+        if lag_block_cnt > 250:
             self._error_registry.add_error(
                 "BlockStorage",
-                f"Lag in {data.confirmed_block - data.parsed_block} blocks"
+                HealthErrorCode.LagBlockError,
+                f"Proxy lags behind Solana",
+                dict(
+                    blocksCount=lag_block_cnt,
+                )
             )
 
 
