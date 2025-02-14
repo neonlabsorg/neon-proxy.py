@@ -159,6 +159,7 @@ class Config:
     debug_cmd_line_name: Final[str] = "DEBUG_CMD_LINE"
     # Statistic configuration
     gather_stat_name: Final[str] = "GATHER_STATISTICS"
+    health_error_max_age_name: Final[str] = "HEALTH_ERROR_MAX_AGE"
     health_error_list_max_len_name: Final[str] = "HEALTH_ERROR_LIST_MAX_LENGTH"
     # Proxy configuration
     rpc_private_ip_name: Final[str] = "RPC_PRIVATE_IP"
@@ -517,6 +518,10 @@ class Config:
     @cached_property
     def gather_stat(self) -> bool:
         return self._env_bool(self.gather_stat_name, False)
+
+    @cached_property
+    def health_error_max_age(self) -> int:
+        return self._env_num(self.health_error_max_age_name, 3, 1, 1000)
 
     @cached_property
     def health_error_list_max_len(self) -> int:
@@ -998,6 +1003,7 @@ class Config:
             self.max_emulate_evm_step_cnt_name: self.max_emulate_evm_step_cnt,
             self.reemulate_on_full_account_list: self.reemulate_on_full_account_list_name,
             self.gather_stat_name: self.gather_stat,
+            self.health_error_max_age_name: self.health_error_max_age,
             self.health_error_list_max_len_name: self.health_error_list_max_len,
             self.debug_cmd_line_name: self.debug_cmd_line,
             # Proxy configuration
