@@ -26,6 +26,8 @@ class HealthErrorData:
     def time(self) -> str:
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.time_sec))
 
+    def calc_age(self, now_sec: int) -> int:
+        return now_sec - self.time_sec
 
 class HealthErrorModel(BaseModel):
     time: str
@@ -34,7 +36,7 @@ class HealthErrorModel(BaseModel):
 
     @classmethod
     def from_raw(cls, raw: HealthErrorData, now_sec: int) -> Self:
-        return cls(time=raw.time, age=(now_sec - raw.time_sec), message=raw.message)
+        return cls(time=raw.time, age=raw.calc_age(now_sec), message=raw.message)
 
 
 class HealthErrorListFormatter(BaseModel):
