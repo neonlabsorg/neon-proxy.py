@@ -110,11 +110,11 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
     @property
     def is_connected(self) -> bool:
-        return self._ws_session and (not self._ws_session.closed)
+        return bool(self._ws_session) and (not self._ws_session.closed)
 
     @property
     def is_empty(self) -> bool:
-        return not self._obj_dict
+        return (not self._obj_dict) and (not self._err_obj_dict)
 
     async def connect(self) -> None:
         if self.is_connected:
@@ -123,7 +123,8 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         ws_endpoint = HttpURL(self._ws_endpoint or self._cfg.random_sol_ws_url)
 
         # _LOG.debug("connecting to WebSocket %s...", ws_endpoint, extra=self._msg_filter)
-        self._ws_session = await self._sol_client.session.ws_connect(ws_endpoint)
+        ws_session = await self._sol_client.session.ws_connect(ws_endpoint)
+        self._ws_session = ws_session
         # _LOG.debug("connected to WebSocket")
 
     async def safe_connect(self) -> bool:
@@ -168,7 +169,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 future.set_result(None)
 
     async def _err_handler(self) -> None:
-        if not self.safe_connect():
+        if not (await self.safe_connect()):
             return
 
         if self._is_err_handler_active or (self._err_handler_next_nsec > time.monotonic_ns()):
@@ -209,7 +210,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
 
         msg_type = msg.type
         if msg_type in (_WsMsgType.CLOSED, _WsMsgType.CLOSING):
-            # _LOG.debug("WebSocket closed while waiting for message")
+            _LOG.debug("WebSocket closed while waiting for message")
             await self._on_close()
             return tuple()
         elif msg_type != _WsMsgType.TEXT:
@@ -253,7 +254,6 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     _LOG.warning("unknown request %s for result %s", item.id, item.result)
             elif isinstance(item, _SolWsSubNotif):
                 if key := self._sub_dict.pop(item.subscription, None):
-                    self._err_obj_dict.pop(key, None)
                     info = self._obj_dict.pop(key, self._empty_info)
                     assert info.req_id not in self._req_dict, f"request {info.req_id} for {key} still exists?"
                     # _LOG.debug("got notification %s", key)
@@ -261,22 +261,19 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                 else:
                     _LOG.warning("unknown subscription %s on notification", item.subscription)
 
-    def _has_obj(self, key: _SolWsObjKey | None = None) -> bool:
-        if key is None:
-            return bool(self._obj_dict) or bool(self._err_obj_dict)
+    def _has_obj(self, key: _SolWsObjKey) -> bool:
         return (key in self._obj_dict) or (key in self._err_obj_dict)
 
     async def _sub_obj(self, key: _SolWsObjKey, obj: _SolWsObj | None, commit: SolCommit) -> None:
         if self._has_obj(key):
             return
 
-        req_id = next(self._id)
-        info = _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None, commit=commit)
+        info = self._new_info(key, obj, commit)
         if not self.is_connected:
             self._err_obj_dict[key] = info
             return
 
-        self._req_dict[req_id] = key
+        self._req_dict[info.req_id] = key
         self._obj_dict[key] = info
         req = self._new_sub_request(info, commit)
 
@@ -286,8 +283,12 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         except (BaseException,):
             # _LOG.error("ERROR subscribe %s", str(e), exc_info=e)
             self._obj_dict.pop(key, None)
-            self._req_dict.pop(req_id, None)
+            self._req_dict.pop(info.req_id, None)
             self._err_obj_dict[key] = info
+
+    def _new_info(self, key: _SolWsObjKey, obj: _SolWsObj | None, commit: SolCommit) -> _SolWsObjInfo:
+        req_id = next(self._id)
+        return _SolWsObjInfo(key=key, obj=obj, req_id=req_id, sub_id=None, commit=commit)
 
     async def _unsub_obj(self, key: _SolWsObjKey) -> None:
         self._err_obj_dict.pop(key, None)
@@ -320,9 +321,9 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         # move all objects to the error dictionary
         #  they will be restored on in _err_handler
         err_obj_dict, self._err_obj_dict = self._err_obj_dict, dict()
+        obj_dict, self._obj_dict = self._obj_dict, dict()
         for key, obj in self._obj_dict.items():
             err_obj_dict[key] = obj
-        self._obj_dict = dict()
 
         await self.safe_disconnect()
 
@@ -359,7 +360,7 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
     async def _wait_for_tx_list_update(self, timeout_sec: float) -> bool:
         start_time_nsec, timeout_nsec = time.monotonic_ns(), int(timeout_sec * 1e9)
         # _LOG.debug("OBJ %s %s", len(self._obj_dict), timeout_sec)
-        while self._has_obj():
+        while not self.is_empty:
             await self._err_handler()
 
             now_nsec = time.monotonic_ns()
@@ -409,7 +410,9 @@ class SolWatchAccountSession(_SolWsSession[SolPubKey, SolAccountModel]):
         self._chg_key_set.discard(addr)
 
     def get_account(self, addr: SolPubKey) -> SolAccountModel | None:
-        if info := self._obj_dict.get(addr, None):
+        if addr.is_empty:
+            return None
+        elif info := self._obj_dict.get(addr, None):
             return info.obj
         elif info := self._err_obj_dict.get(addr, None):
             return info.obj
@@ -534,17 +537,19 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         confirmed_slot=0,
         finalized_slot=0,
     ) -> None:
-        if self._data:
+        if self._data and (not self.is_empty):
             return
 
-        if init_start_slot:
+        _LOG.debug("subscribe on slot update")
+        await self.safe_connect()
+
+        if self._data or init_start_slot:
             confirmed_slot, finalized_slot = await asyncio.gather(*[
                 self._sol_client.get_slot(SolCommit.Confirmed),
                 self._sol_client.get_slot(SolCommit.Finalized),
             ])
         self._data = _SoldersSlotInfo(confirmed_slot, 0, finalized_slot)
 
-        await self.safe_connect()
         await self._sub_obj(1, None, SolCommit.Confirmed)
 
     async def _update_loop(self) -> None:
@@ -566,4 +571,3 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         self._prev_root = new_data.root
         self._obj_dict[info.key] = info
         self._sub_dict[info.sub_id] = info.key
-

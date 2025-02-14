@@ -176,7 +176,7 @@ class SolAltTxBuilder:
             now_nsec = time.monotonic_ns()
             stop_time_nsec = now_nsec + self._wait_nsec
             last_extended_slot = 0
-            while (stop_time_nsec > now_nsec) and new_addr_set:
+            while (stop_time_nsec > now_nsec) and new_addr_set and (not acct_session.is_empty):
                 await acct_session.update(timeout_nsec=(stop_time_nsec - now_nsec))
                 addr_list = acct_session.pop_changed_key_list()
 
