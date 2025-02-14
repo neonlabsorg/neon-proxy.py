@@ -17,7 +17,7 @@ class RpcStatCollector:
 
         time_sec = data.time_nsec / pow(10, 9)
 
-        _add_label("service", data.service)
+        _add_label("exported_service", data.service)
         _add_label("method", data.method)
         _add_label("is_error", data.is_error)
         _add_label("is_modification", data.is_modification)
