@@ -1,7 +1,7 @@
 import time
 from collections import deque
 
-from .api import HealthErrorData, HealthErrorModel
+from .api import HealthErrorData, HealthErrorModel, HealthErrorCode
 from ..config.config import Config
 
 
@@ -21,14 +21,18 @@ class HealthErrorRegistry:
         }
         # fmt: on
 
-    def add_error(self, name: str, message: str) -> None:
+    def add_error(self, name: str, code: HealthErrorCode, message: str, data: dict | None) -> None:
         now_sec = int(time.time())
 
         if not (error_list := self._error_list_dict.get(name, None)):
             self._error_list_dict[name] = error_list = deque(maxlen=self._cfg.health_error_list_max_len)
         else:
             for error in error_list:
-                if (error.message == message) and (error.calc_age(now_sec) < self._cfg.health_error_max_age):
+                if (
+                    error.code == code and
+                    error.message == message and
+                    error.calc_age(now_sec) < self._cfg.health_error_max_age
+                ):
                     return
 
-        error_list.appendleft(HealthErrorData(time_sec=now_sec, message=message))
+        error_list.appendleft(HealthErrorData(code=code, time_sec=now_sec, message=message, data=data))
