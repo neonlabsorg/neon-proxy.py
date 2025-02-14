@@ -745,6 +745,10 @@ class EmulNeonCallResp(_BaseRespModel):
     def sol_account_meta_list(self) -> Sequence[SolAccountMeta]:
         return tuple([a.to_sol_account_meta() for a in self.raw_meta_list])
 
+    @cached_property
+    def sol_address_list(self) -> list[SolPubKeyField]:
+        return [a.pubkey for a in self.raw_meta_list]
+
 
 class EmulSolTxListRequest(CoreApiRequest):
     cu_limit: DecUIntField = Field(serialization_alias="compute_units")
