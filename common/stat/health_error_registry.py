@@ -22,15 +22,13 @@ class HealthErrorRegistry:
         # fmt: on
 
     def add_error(self, name: str, message: str) -> None:
+        now_sec = int(time.time())
+
         if not (error_list := self._error_list_dict.get(name, None)):
             self._error_list_dict[name] = error_list = deque(maxlen=self._cfg.health_error_list_max_len)
         else:
             for error in error_list:
-                if error.message == message:
+                if (error.message == message) and (error.calc_age(now_sec) < self._cfg.health_error_max_age):
                     return
 
-        now_sec = int(time.time())
         error_list.appendleft(HealthErrorData(time_sec=now_sec, message=message))
-
-    def clear_error(self, name: str) -> None:
-        self._error_list_dict.pop(name, None)
