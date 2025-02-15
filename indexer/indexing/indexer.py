@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import multiprocessing as mp
 
-from common.config.config import Config
+from common.config.config import Config, StartSlot
+from common.config.constants import MIN_FINALIZE_BLOCK
 from common.config.utils import LogMsgFilter
 from common.neon_rpc.client import CoreApiClient
 from common.solana.block import SolRpcBlockInfo
@@ -21,7 +23,7 @@ from ..base.neon_ix_decoder import DummyIxDecoder, get_neon_ix_decoder_list
 from ..base.neon_ix_decoder_deprecate import get_neon_ix_decoder_deprecated_list
 from ..base.objects import NeonIndexedBlockInfo, NeonIndexedBlockDict, SolNeonDecoderCtx, SolNeonDecoderStat
 from ..base.solana_block_net_cache import SolBlockNetCache
-from ..db.indexer_db import IndexerDb
+from ..db.indexer_db import IndexerDb, IndexerDbSlotRange
 from ..stat.api import NeonBlockStat, NeonReindexBlockStat, NeonDoneReindexStat
 from ..stat.client import StatClient
 
@@ -42,9 +44,10 @@ class Indexer:
         self._cfg = cfg
         self._layer0_chain_id = layer0_chain_id
         self._sol_client = sol_client
-        self._is_done_slot_task = False
         self._slot_session = SolWatchSlotSession(cfg, sol_client)
         self._db = db
+
+        self._reindex_process_list: list[mp.Process] = list()
 
         self._tracer_api_client = tracer_api_client
 
@@ -267,6 +270,11 @@ class Indexer:
                 await asyncio.sleep(check_sec)
                 continue
 
+            if not self._db.is_reindexing_mode:
+                self._wait_for_reindex_process_list()
+                if await self._check_for_fast_reindexing():
+                    continue
+
             self._decoder_stat.start_timer()
             try:
                 await self._process_solana_blocks()
@@ -298,7 +306,7 @@ class Indexer:
                 self._commit_progress_stat()
             self._last_finalized_slot = finalized_slot
         else:
-            await self._slot_session.wait_for_slot(self._last_processed_slot + 1, SolCommit.Confirmed)
+            await self._slot_session.wait_for_slot(self._last_confirmed_slot + 1, SolCommit.Confirmed)
             last_confirmed_slot, self._last_confirmed_slot = self._last_confirmed_slot, self._confirmed_slot
 
             if result := self._last_processed_slot != self._last_confirmed_slot:
@@ -330,6 +338,67 @@ class Indexer:
 
         neon_block.check_stuck_objs(self._cfg)
         return neon_block.min_slot > self._db.stop_slot
+
+    async def _check_for_fast_reindexing(self) -> bool:
+        if not self._cfg.indexer_block_lag_to_reindex:
+            return False
+
+        block_lag = self._confirmed_slot - self._last_processed_slot
+        if block_lag < self._cfg.indexer_block_lag_to_reindex:
+            return False
+
+        base_slot = self._finalized_slot - MIN_FINALIZE_BLOCK // 2
+        first_slot = await SolNotEmptyBlockFinder(self._sol_client, start_slot=base_slot).find_slot()
+
+        process = mp.Process(target=self._start_reindex, args=[first_slot])
+        process.start()
+        self._reindex_process_list.append(process)
+
+        await self._jump_to_latest_slot(first_slot)
+        return True
+
+    def _start_reindex(self, first_slot: int) -> None:
+        _LOG.warning("start reindexing to slot %d", first_slot)
+
+        self._reindex_process_list.clear()
+        self._tracer_api_client = None
+        self._slot_session = self._slot_session = SolWatchSlotSession(self._cfg, self._sol_client)
+
+        min_used_slot = self._db.get_min_used_slot()
+        slot_range = IndexerDbSlotRange(StartSlot.Continue, min_used_slot, min_used_slot, stop_slot=first_slot)
+        self._term_slot = min(slot_range.stop_slot + self._alt_ix_collector.check_depth, slot_range.term_slot)
+
+    async def _run_reindex(self, slot_range: IndexerDbSlotRange) -> None:
+        await self._db.set_slot_range(slot_range)
+        try:
+            await self.run()
+        finally:
+            await self._db.done_slot_range(slot_range)
+
+    async def _jump_to_latest_slot(self, first_slot: int) -> None:
+        self._last_processed_slot = first_slot
+        self._last_confirmed_slot = self._confirmed_slot
+        self._last_finalized_slot = self._finalized_slot
+        self._last_tracer_slot: int | None = None
+
+        self._neon_block_dict = NeonIndexedBlockDict()
+        self._sol_block_net_cache = SolBlockNetCache(self._cfg, self._sol_client)
+
+        _LOG.warning("jump indexing to the block %d", first_slot)
+        await self._db.set_start_slot(first_slot)
+
+    def _wait_for_reindex_process_list(self) -> None:
+        if not self._reindex_process_list:
+            return
+
+        reindex_process_list: list[mp.Process] = list()
+        for p in self._reindex_process_list:
+            if not p.is_alive():
+                p.close()
+            else:
+                reindex_process_list.append(p)
+
+        self._reindex_process_list = reindex_process_list
 
     async def _process_solana_blocks(self) -> None:
         dctx = SolNeonDecoderCtx(self._cfg, self._layer0_chain_id, self._decoder_stat)
