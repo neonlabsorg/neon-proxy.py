@@ -26,8 +26,9 @@ class RpcStatApi(AppDataApi, RpcStatCollector):
 class BlockStatApi(AppDataApi):
     name: ClassVar[str] = "IndexerStatistic::Block"
 
-    def __init__(self, stat_registry: StatRegistry, error_registry: HealthErrorRegistry):
+    def __init__(self, cfg: Config, stat_registry: StatRegistry, error_registry: HealthErrorRegistry) -> None:
         super().__init__()
+        self._cfg = cfg
         self._error_registry = error_registry
         self._block_start = StatGauge("block_start", "Started block number", registry=stat_registry)
         self._block_confirmed = StatGauge("block_confirmed", "Last confirmed block number", registry=stat_registry)
@@ -69,11 +70,11 @@ class BlockStatApi(AppDataApi):
             self._block_tracer.set(label, data.tracer_block)
 
         lag_block_cnt = data.confirmed_block - data.parsed_block
-        if lag_block_cnt > 250:
+        if lag_block_cnt > self._cfg.indexer_block_lag_to_warn:
             self._error_registry.add_error(
                 "BlockStorage",
                 HealthErrorCode.LagBlockError,
-                f"Proxy lags behind Solana",
+                f"Indexer lags behind Solana",
                 dict(
                     blocksCount=lag_block_cnt,
                 )
@@ -124,7 +125,7 @@ class MetricServer(AppDataServer):
         super().__init__(cfg)
         self.listen(host=self._cfg.stat_ip, port=self._cfg.stat_port)
         self._add_api(RpcStatApi(stat_registry, error_registry))
-        self._add_api(BlockStatApi(stat_registry, error_registry))
+        self._add_api(BlockStatApi(cfg, stat_registry, error_registry))
         self._add_api(MetricApi(stat_registry, error_registry))
 
     def _add_api(self, api: AppDataApi) -> None:
