@@ -230,6 +230,8 @@ class Config:
     start_slot_name: Final[str] = "START_SLOT"
     indexer_poll_block_cnt_name: Final[str] = "INDEXER_POLL_BLOCK_COUNT"
     indexer_check_msec_name: Final[str] = "INDEXER_CHECK_MSEC"
+    indexer_block_lag_to_warn_name: Final[str] = "INDEXER_BLOCK_LAG_WARN"
+    indexer_block_lag_to_reindex_name: Final[str] = "INDEXER_BLOCK_LAG_REINDEX"
     stuck_object_blockout_name: Final[str] = "STUCK_OBJECT_BLOCKOUT"
     stuck_object_validate_blockout_name: Final[str] = "STUCK_OBJECT_VALIDATE_BLOCKOUT"
     alt_freeing_depth_name: Final[str] = "ALT_FREEING_DEPTH"
@@ -905,6 +907,14 @@ class Config:
         return self._env_num(self.indexer_check_msec_name, 200, 50, 10_000)
 
     @cached_property
+    def indexer_block_lag_to_warn(self) -> int:
+        return self._env_num(self.indexer_block_lag_to_warn_name, 250, 0, 10_240)
+
+    @cached_property
+    def indexer_block_lag_to_reindex(self) -> int:
+        return self._env_num(self.indexer_block_lag_to_reindex_name, 0, 0, 10_240)
+
+    @cached_property
     def stuck_object_blockout(self) -> int:
         return self._env_num(self.stuck_object_blockout_name, 64, 16, 1024)
 
@@ -1076,6 +1086,8 @@ class Config:
             self.start_slot_name: self.start_slot,
             self.indexer_poll_block_cnt_name: self.indexer_poll_block_cnt,
             self.indexer_check_msec_name: self.indexer_check_msec,
+            self.indexer_block_lag_to_warn_name: self.indexer_block_lag_to_warn,
+            self.indexer_block_lag_to_reindex_name: self.indexer_block_lag_to_reindex,
             self.stuck_object_blockout_name: self.stuck_object_blockout,
             self.stuck_object_validate_blockout_name: self.stuck_object_validate_blockout,
             self.alt_freeing_depth_name: self.alt_freeing_depth,

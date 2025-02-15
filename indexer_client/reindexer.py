@@ -63,6 +63,7 @@ class ReIndexHandler(BaseCmdHandler):
 
             sol_client = await self._get_sol_client()
             core_api_client = await self._get_core_api_client()
+            evm_cfg = await core_api_client.get_evm_cfg()
 
             first_slot = await sol_client.get_first_slot()
             if first_slot > arg_space.from_slot:
@@ -105,10 +106,22 @@ class ReIndexHandler(BaseCmdHandler):
             )
 
             stat_client = _FakeStatClient(self._cfg)
-            db = await self._new_client(IndexerDb, self._cfg, DbConnection(self._cfg, stat_client), slot_range)
+            db: IndexerDb = await self._new_client(
+                IndexerDb,
+                self._cfg,
+                evm_cfg.default_chain_id,
+                DbConnection(self._cfg, stat_client),
+                slot_range
+            )
 
-            indexer = Indexer(self._cfg, sol_client, core_api_client, None, stat_client, db)
-            await indexer.run()
+            await db.set_slot_range(slot_range)
+            indexer = Indexer(self._cfg, evm_cfg.layer0_chain_id, sol_client, core_api_client, None, stat_client, db)
+
+            try:
+                await indexer.run()
+            finally:
+                await db.done_slot_range(slot_range)
+
             await asyncio.sleep(1)
             return 0
 
