@@ -281,7 +281,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     ssh = SSHClient()
 
     path_home = Path.home()
-    ssh_key = RSAKey.from_private_key(path_home + "/.ssh/ci-stands")
+    ssh_key = RSAKey.from_private_key(str(path_home) + "/.ssh/ci-stands")
     ssh.set_missing_host_key_policy(AutoAddPolicy())
     ssh.connect(proxy_ip, username="root", pkey=ssh_key)
 
