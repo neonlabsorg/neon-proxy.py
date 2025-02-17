@@ -160,8 +160,6 @@ jobs:
       - build-image
     timeout-minutes: 25
     runs-on: test-runner
-    env:
-      TF_LOG: debug
     steps:
       - uses: actions/checkout@v4
       - name: Add private key
@@ -170,6 +168,8 @@ jobs:
           chmod 600 ${HOME}/.ssh/ci-stands
       - name: Remove known_host
         run: rm -f ${HOME}/.ssh/known_hosts
+      - name: Set TF Debug
+        run: export TF_LOG=DEBUG
       - name: Terraform build infrastructure
         id: terraform
         run: |
