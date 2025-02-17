@@ -160,6 +160,8 @@ jobs:
       - build-image
     timeout-minutes: 25
     runs-on: test-runner
+    env:
+      TF_LOG: "DEBUG"
     steps:
       - uses: actions/checkout@v4
       - name: Add private key

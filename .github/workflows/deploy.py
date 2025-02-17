@@ -222,10 +222,6 @@ def finalize_image(proxy_sha_tag, proxy_tag):
 @click.option('--faucet_tag')
 @click.option('--run_number')
 def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
-
-    #Enable debug logging in terraform
-    os.environ["TF_LOG"] = "DEBUG"
-
     os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
     os.environ["TF_VAR_neon_evm_commit"] = evm_tag
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
