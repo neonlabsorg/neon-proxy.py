@@ -13,6 +13,7 @@ from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
 from common.neon_rpc.api import NeonAccountModel
 from common.solana.pubkey import SolPubKeyField, SolPubKey, SolNotNonePubKeyField
+from common.utils.format import if_none
 from common.utils.pydantic import HexUIntField
 from .api import RpcBlockRequest
 from .server_abc import NeonProxyApi
@@ -65,11 +66,12 @@ class NpAccountApi(NeonProxyApi):
 
         mp_tx_nonce: int | None = None
         if block.commit == EthCommit.Pending:
-            mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(self._get_ctx_id(ctx), addr)
+            tx_cnt = await self._core_api_client.get_state_tx_cnt(addr, block)
+            mp_tx_nonce = await self._mp_client.get_pending_tx_cnt(self._get_ctx_id(ctx), addr, tx_cnt)
             # _LOG.debug("pending tx count for %s is %s", addr, mp_tx_nonce)
 
         tx_cnt = await self._core_api_client.get_state_tx_cnt(addr, block)
-        return max(tx_cnt, mp_tx_nonce or 0)
+        return max(tx_cnt, if_none(mp_tx_nonce, 0))
 
     @NeonProxyApi.method(name="eth_getBalance")
     async def get_balance(
