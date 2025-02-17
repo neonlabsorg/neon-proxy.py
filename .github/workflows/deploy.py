@@ -290,7 +290,9 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
         chmod a+x /tmp/proxy_init.sh &&
         sudo /tmp/proxy_init.sh"""
     )
-    print(ssh_stdin.read().decode('ascii').strip("\n"), ssh_stderr.read().decode('ascii').strip("\n"), ssh_stdout.read().decode('ascii').strip("\n"))
+    stdout = ssh_stdout.read().decode('ascii').strip("\n")
+    stderr = ssh_stderr.read().decode('ascii').strip("\n")
+    print(stdout, stderr)
 
     set_github_env(infra)
 
