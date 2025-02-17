@@ -278,26 +278,26 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     solana_ip = output["solana_ip"]["value"]
     infra = dict(solana_ip=solana_ip, proxy_ip=proxy_ip)
 
-    print("Creating paramiko SSH Client")
+    click.echo("Creating paramiko SSH Client")
     ssh = SSHClient()
 
-    print("Adding ci-stands SSH key")
+    click.echo("Adding ci-stands SSH key")
     path_home = Path.home()
     ssh_key = Ed25519Key.from_private_key_file(str(path_home) + "/.ssh/ci-stands")
     ssh.set_missing_host_key_policy(AutoAddPolicy())
 
-    print("Establishing SSH connection to the Proxy instance")
+    click.echo("Establishing SSH connection to the Proxy instance")
     ssh.connect(proxy_ip, username="root", pkey=ssh_key, timeout=15, allow_agent=False)
 
-    print("Executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
+    click.echo("Executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(
         """echo '${hcloud_server.solana.network.*.ip[0]}' > /tmp/solana_host &&
         chmod a+x /tmp/proxy_init.sh &&
         sudo /tmp/proxy_init.sh"""
     )
-    print("Finished executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
+    click.echo("Finished executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
     stdout = ssh_stdout.read().decode('ascii').strip("\n")
-    print(stdout)
+    click.echo(stdout)
 
     set_github_env(infra)
 
