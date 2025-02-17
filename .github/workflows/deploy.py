@@ -286,7 +286,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     ssh.set_missing_host_key_policy(AutoAddPolicy())
 
     print("Establishing SSH connection to the Proxy instance")
-    ssh.connect(proxy_ip, username="root", pkey=ssh_key)
+    ssh.connect(proxy_ip, username="root", pkey=ssh_key, timeout=15, allow_agent=False)
 
     print("Executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(
