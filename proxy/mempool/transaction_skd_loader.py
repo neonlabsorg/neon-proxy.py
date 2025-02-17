@@ -26,7 +26,7 @@ class MpSkdTxLoader(MempoolComponent):
         self._skd_tx_hash_set: set[EthTxHash] = set()
 
     async def start(self) -> None:
-        evm_cfg = await self._get_evm_cfg()
+        evm_cfg = self._evm_cfg
         self._layer0_chain_id = evm_cfg.layer0_chain_id
 
         if not self._cfg.mp_skip_stuck_tx:
@@ -46,7 +46,7 @@ class MpSkdTxLoader(MempoolComponent):
         return self._gas_price.chain_dict.get(self._layer0_chain_id, None)
 
     async def _get_slot_out(self) -> int:
-        evm_cfg = await self._get_evm_cfg()
+        evm_cfg = self._evm_cfg
         return evm_cfg.tree_account_slot_out
 
     async def _scan_skd_tx_loop(self) -> None:

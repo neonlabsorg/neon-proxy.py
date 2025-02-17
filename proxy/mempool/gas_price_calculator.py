@@ -88,7 +88,7 @@ class MpGasPriceCalculator(MempoolComponent):
         while not self._stop_event.is_set():
             with logging_context(ctx="mp-update-gas-price"):
                 try:
-                    evm_cfg = await self._get_evm_cfg()
+                    evm_cfg = self._evm_cfg
                     fee_cfg = await self._cu_price_client.get_fee_cfg()
                     if gas_price := await self._calc_gas_price(evm_cfg, fee_cfg):
                         self._gas_price_cache = gas_price
