@@ -76,7 +76,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         assert self.is_valid
 
         if await self._is_skipped_tx():
-            return ExecTxDoneCode.Failed
+            return ExecTxDoneCode.Done
 
         evm_step_cnt = -1
         fail_retry_cnt = 0
@@ -112,10 +112,10 @@ class IterativeTxStrategy(BaseTxStrategy):
 
     async def cancel(self) -> ExecTxDoneCode | None:
         if not await self._ctx.holder_validator.is_active():
-            return ExecTxDoneCode.Failed
+            return ExecTxDoneCode.Done
         elif await self._recheck_tx_list(self._cancel_name):
             # cancel is completed
-            return ExecTxDoneCode.Failed
+            return ExecTxDoneCode.Done
 
         # generate cancel tx with the default CU budget
         self._reset_to_def()
@@ -124,7 +124,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         ix = self._ctx.neon_prog.make_cancel_ix()
 
         await self._emulate_and_send_single_tx("cancel", ix, base_cfg)
-        return ExecTxDoneCode.Failed
+        return ExecTxDoneCode.Done
 
     async def done_execution(self) -> None:
         if self._ctx.is_scheduled_tx:
@@ -504,7 +504,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 tx_block = sol_neon_ix.neon_tx_block
 
         if has_already_finalized:
-            return ExecTxDoneCode.Failed
+            return ExecTxDoneCode.Done
 
         # Check that tx has enough gas to continue the NeonTx
         gas_limit = self._ctx.holder_tx.effective_gas_limit

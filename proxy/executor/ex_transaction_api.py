@@ -55,7 +55,7 @@ class NeonTxExecApi(ExecutorApi):
     async def exec_neon_tx(self, request: ExecTxRequest) -> ExecTxResp:
         await self._complete_task_list()
 
-        tx_hash = request.tx.neon_tx_hash
+        tx_hash, tx_nonce = request.tx.neon_tx_hash, request.tx.neon_tx.nonce
         if tx_hash in self._task_dict:
             return ExecTxResp(result=False)
 
@@ -69,7 +69,7 @@ class NeonTxExecApi(ExecutorApi):
                     code = await self._exec_neon_tx_retry_loop(request, None)
 
                 neon_acct = await self._core_api_client.get_neon_account(request.sender, None)
-                await self._mp_client.done_exec_tx(tx_hash, code, neon_acct)
+                await self._mp_client.done_exec_tx(tx_hash, tx_nonce, code, neon_acct)
 
             if task := self._task_dict.pop(tx_hash, None):
                 self._completed_task_list.append(task)
