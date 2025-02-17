@@ -296,8 +296,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     )
     print("Finished executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
     stdout = ssh_stdout.read().decode('ascii').strip("\n")
-    stderr = ssh_stderr.read().decode('ascii').strip("\n")
-    print(stdout, stderr)
+    print(stdout)
 
     set_github_env(infra)
 
