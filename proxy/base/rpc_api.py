@@ -96,7 +96,7 @@ class RpcEthTxRequest(BaseEthGasModel, BaseEthCallModel):
             tx_type=self.txType,
             neon_tx_hash=EthTxHash.default(),
             from_address=self.fromAddress,
-            payer=self.payerAddress,
+            payer=self.fromAddress,
             to_address=self.toAddress,
             contract=EthAddress.default(),
             nonce=self.nonce,
