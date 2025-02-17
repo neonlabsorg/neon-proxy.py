@@ -161,7 +161,7 @@ jobs:
     timeout-minutes: 25
     runs-on: test-runner
     env:
-      TF_LOG: "DEBUG"
+      TF_LOG: "TRACE"
     steps:
       - uses: actions/checkout@v4
       - name: Add private key
