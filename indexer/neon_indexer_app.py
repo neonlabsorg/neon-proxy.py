@@ -41,7 +41,7 @@ class NeonIndexerApp:
 
         self._stat_client = StatClient(self._cfg)
         self._sol_client = SolClient(cfg, self._stat_client)
-        self._core_api_client = CoreApiClient(cfg=cfg, sol_client=self._sol_client, stat_client=self._stat_client)
+        self._core_api_client = CoreApiClient(cfg, self._sol_client, self._stat_client)
 
         self._first_slot: None | int = None
         self._finalized_slot = 0
@@ -526,7 +526,7 @@ class _ReIndexer:
         try:
             stat_client = StatClient(self._cfg)
             sol_client = SolClient(self._cfg, stat_client)
-            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client, stat_client=stat_client)
+            core_api_client = CoreApiClient(self._cfg, sol_client, stat_client)
 
             db_conn = DbConnection(self._cfg, stat_client)
             db = IndexerDb(self._cfg, self._def_chain_id, db_conn)

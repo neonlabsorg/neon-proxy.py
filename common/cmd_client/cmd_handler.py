@@ -38,12 +38,14 @@ class BaseCmdHandler:
                 _LOG.error("unknown command %s %s", self.command, arg_space)
                 return 1
             return await subcmd_handler(arg_space)
+        except (BaseException,):
+            _LOG.error("error on command %s %s", self.command, arg_space, exc_info=True)
+            return 1
         finally:
             await asyncio.gather(*[task() for task in self._stop_task_list])
 
     async def _exec_impl(self, arg_space) -> int:
         assert False, "no implementation"
-        return 0  # noqa
 
     @staticmethod
     def _gen_req_id() -> dict:
