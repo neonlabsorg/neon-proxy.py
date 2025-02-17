@@ -54,7 +54,7 @@ from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
-from ..utils.cached import cached_method, ttl_cached_method
+from ..utils.cached import cached_method
 from ..utils.json_logger import log_msg
 from ..utils.pydantic import BaseModel
 
@@ -79,17 +79,11 @@ class CoreApiClient(HttpClient):
 
         self._stat_client = stat_client
         self._sol_client = sol_client
-        self._evm_cfg = EvmConfigModel.default()
         self._def_chain_id = 0
 
         self._raise_for_status = False
 
-    async def start(self) -> None:
-        await super().start()
-        evm_cfg = await self.get_evm_cfg()
-        self._def_chain_id = evm_cfg.default_chain_id
-
-    async def get_evm_cfg(self) -> EvmConfigModel:
+    async def get_evm_cfg(self) -> EvmConfigModel | None:
         try:
             exec_addr = await self._get_evm_exec_addr()
 
@@ -97,13 +91,10 @@ class CoreApiClient(HttpClient):
             min_size = BpfLoader2ExecModel.minimum_size
             acct = await self._sol_client.get_account(exec_addr, min_size)
             if acct.is_empty:
-                raise ValueError(f"Account {exec_addr} doesn't exists")
+                _LOG.error("Account %s doesn't exists", exec_addr)
+                return None
 
             exec_info = BpfLoader2ExecModel.from_data(acct.data)
-
-            # Don't try to update EVM config, if we have the same version of the executable account
-            if exec_info.deployed_slot == self._evm_cfg.deployed_slot:
-                return self._evm_cfg
 
             _LOG.debug("get EVM config on the slot: %s", exec_info.deployed_slot)
             resp: CoreApiResp = await self._send_request("config")
@@ -113,15 +104,14 @@ class CoreApiClient(HttpClient):
                     resp.error,
                     extra=self._msg_filter,
                 )
-                return self._evm_cfg
+                return None
             evm_cfg = EvmConfigModel.from_dict(resp.value, deployed_slot=exec_info.deployed_slot)
 
             _LOG.debug("get EVM config: %s", evm_cfg)
-            self._evm_cfg = evm_cfg
-            return self._evm_cfg
+            return evm_cfg
         except BaseException as exc:
             _LOG.error("error on reading EVM config", exc_info=exc)
-            return EvmConfigModel.default()
+            return None
 
     @cached_method
     async def get_core_api_version(self) -> str:
@@ -145,6 +135,10 @@ class CoreApiClient(HttpClient):
         return "Neon-Core-API/UNKNOWN"
 
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
+        if not self._def_chain_id:
+            evm_cfg = await self.get_evm_cfg()
+            self._def_chain_id = evm_cfg.default_chain_id
+
         req = HolderAccountRequest.from_raw(address)
         resp: CoreApiResp = await self._send_request("holder", req)
         if resp.error:
@@ -419,7 +413,6 @@ class CoreApiClient(HttpClient):
 
         return None
 
-    @ttl_cached_method(ttl_sec=60)
     async def _get_evm_exec_addr(self) -> SolPubKey:
         # Load the BPF program account to get the address of the BPF executable account
         acct = await self._sol_client.get_account(NeonProg.ID)
