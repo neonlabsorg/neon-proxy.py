@@ -29,13 +29,7 @@ class MpTxApi(MempoolApi):
     @MempoolApi.method(name="getPendingTransactionCounter")
     async def get_pending_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp:
         with logging_context(**request.ctx_id):
-            tx_cnt = self._tx_executor.get_pending_tx_cnt(request.sender)
-            return MpTxCntResp(tx_cnt=tx_cnt)
-
-    @MempoolApi.method(name="getMempoolTransactionCounter")
-    async def get_mempool_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp:
-        with logging_context(**request.ctx_id):
-            tx_cnt = self._tx_executor.get_last_tx_cnt(request.sender)
+            tx_cnt = self._tx_executor.get_pending_tx_cnt(request.sender, request.base_tx_cnt)
             return MpTxCntResp(tx_cnt=tx_cnt)
 
     @MempoolApi.method(name="sendRawTransaction")

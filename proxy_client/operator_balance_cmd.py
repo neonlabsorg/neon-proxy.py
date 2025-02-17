@@ -13,6 +13,7 @@ from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EvmConfigModel, NeonAccountStatus
 from common.solana.pubkey import SolPubKey
+from common.utils.format import if_none
 from common.utils.json_logger import logging_context
 from proxy.base.mp_api import MpTxRespCode
 from proxy.base.mp_client import MempoolClient
@@ -192,9 +193,9 @@ class OpBalanceHandler(BaseNPCmdHandler):
             gas_limit = 25_000
 
         sender_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(sender_eth_addr, chain_id), None)
-        mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address)
+        mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address, sender_acct.state_tx_cnt)
 
-        tx_nonce = max(sender_acct.state_tx_cnt, mp_tx_cnt or 0)
+        tx_nonce = max(sender_acct.state_tx_cnt, if_none(mp_tx_cnt, 0))
         param_dict = dict(
             tx_type=NeonTxType.Legacy,
             from_address=sender_eth_addr,
@@ -231,8 +232,8 @@ class OpBalanceHandler(BaseNPCmdHandler):
             await asyncio.sleep(1)
 
             sender_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(sender_eth_addr, chain_id), None)
-            mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address)
-            if max(sender_acct.state_tx_cnt, mp_tx_cnt or 0) > tx_nonce:
+            mp_tx_cnt = await mp_client.get_pending_tx_cnt(req_id, sender_acct.neon_address, sender_acct.state_tx_cnt)
+            if max(sender_acct.state_tx_cnt, if_none(mp_tx_cnt, 0)) > tx_nonce:
                 break
             elif retry > 30:
                 print("WARNING: no information completeness of %s", tx.neon_tx_hash.to_string())

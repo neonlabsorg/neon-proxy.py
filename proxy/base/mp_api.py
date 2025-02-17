@@ -229,6 +229,7 @@ class MpRequest(BaseModel):
 class MpTxCntRequest(BaseModel):
     ctx_id: dict
     sender: NeonAddressField
+    base_tx_cnt: int
 
 
 class MpTxCntResp(BaseModel):
