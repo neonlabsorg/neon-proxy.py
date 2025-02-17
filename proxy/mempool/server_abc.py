@@ -49,8 +49,9 @@ class MempoolComponent(BaseIntlProxyComponent):
     def _gas_price(self) -> MpGasPriceModel:
         return self._server.get_gas_price()
 
-    async def _get_evm_cfg(self) -> EvmConfigModel:
-        return await self._server.get_evm_cfg()
+    @property
+    def _evm_cfg(self) -> EvmConfigModel:
+        return self._server.get_evm_cfg()
 
 
 class MempoolApi(MempoolComponent, AppDataApi):
@@ -78,25 +79,11 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
         self._stat_client = stat_client
         self._db = db
 
-    @ttl_cached_method(ttl_sec=1)
-    async def get_evm_cfg(self) -> EvmConfigModel:
-        # Finally, this method can be called from 2 places:
-        #     - From Mempool Server when the EVM configuration is requested
-        #     - From RPC Workers on requests from users or for internal logic in the RPC Worker
-        #
-        # The main point why it so is:
-        #     - RPC worker caches the config for 1 second, so each RPC worker requests EVM config maximum 1 time per sec
-        #     - Mempool caches the config for 1 second, so when the cache time on RPC worker is end,
-        #       the request goes to Mempool, but only 1 of the requests goes to Solana
-        #       (see logic in ttl_cached_method)
-        #
-        # As a result!, only Mempool requests EVM config from Solana and do it maximum 1 time per second,
-        # and the period of requests doesn't depend on the number of clients(RPC worker/Mempool executor)
-        # who needs the EVM config.
-        return await self._core_api_client.get_evm_cfg()
-
     @abc.abstractmethod
     def get_gas_price(self) -> MpGasPriceModel: ...
+
+    @abc.abstractmethod
+    def get_evm_cfg(self) -> EvmConfigModel: ...
 
     def _add_api(self, api: MempoolApi) -> Self:
         return self.add_api(api, endpoint=MP_ENDPOINT)
