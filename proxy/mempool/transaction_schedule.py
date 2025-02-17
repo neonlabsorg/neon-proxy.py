@@ -264,12 +264,15 @@ class _SenderTxPool:
         return self._get_pending_tx_cnt()
 
     @reset_cached_method
-    def _get_pending_tx_cnt(self) -> int | None:
+    def _get_pending_tx_cnt(self) -> int:
+        return self.get_pending_tx_cnt(0)
+
+    def get_pending_tx_cnt(self, base_tx_cnt: int) -> int | None:
         if self.status in (self.Status.Suspended, self.Status.Empty):
             # _LOG.debug("status = %s", self.status)
             return None
 
-        pending_tx_cnt = self._state_tx_cnt
+        pending_tx_cnt = max(self._state_tx_cnt, base_tx_cnt)
         # _LOG.debug(
         #     "sender %s: state_tx_cnt = %s, pending_tx_cnt = %s",
         #     self._sender,
@@ -289,10 +292,6 @@ class _SenderTxPool:
                 break
             pending_tx_cnt += 1
         return pending_tx_cnt
-
-    @property
-    def last_nonce(self) -> int | None:
-        return self._tx_nonce_queue[self._bottom_index].nonce if not self.is_empty else None
 
     @property
     def state_tx_cnt(self) -> int:
@@ -585,13 +584,9 @@ class MpTxSchedule:
         pool.acquire_tx(tx)
         self._tx_dict.acquire_tx(tx)
 
-    def get_pending_tx_cnt(self, sender: EthAddress) -> int | None:
+    def get_pending_tx_cnt(self, sender: EthAddress, base_tx_cnt: int) -> int | None:
         pool = self._find_sender_pool(sender)
-        return None if not pool else pool.pending_tx_cnt
-
-    def get_last_tx_cnt(self, sender: EthAddress) -> int | None:
-        pool = self._find_sender_pool(sender)
-        return None if not pool else pool.last_nonce + 1
+        return None if not pool else pool.get_pending_tx_cnt(base_tx_cnt)
 
     def get_tx_status_list(
         self,

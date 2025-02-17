@@ -49,14 +49,9 @@ class MempoolClient(AppDataClient):
     async def get_gas_price(self) -> MpGasPriceModel:
         return await self._get_gas_price()
 
-    async def get_pending_tx_cnt(self, ctx_id: dict, sender: NeonAddress) -> int | None:
-        req = MpTxCntRequest(ctx_id=ctx_id, sender=sender)
+    async def get_pending_tx_cnt(self, ctx_id: dict, sender: NeonAddress, base_tx_cnt: int) -> int | None:
+        req = MpTxCntRequest(ctx_id=ctx_id, sender=sender, base_tx_cnt=base_tx_cnt)
         resp = await self._get_pending_tx_cnt(req)
-        return resp.tx_cnt
-
-    async def get_mempool_tx_cnt(self, ctx_id: dict, sender: NeonAddress) -> int | None:
-        req = MpTxCntRequest(ctx_id=ctx_id, sender=sender)
-        resp = await self._get_mempool_tx_cnt(req)
         return resp.tx_cnt
 
     async def send_raw_transaction(self, ctx_id: dict, sender: NeonAccountModel, rlp_tx: bytes) -> MpTxResp:
@@ -80,13 +75,18 @@ class MempoolClient(AppDataClient):
     async def done_exec_tx(
         self,
         neon_tx_hash: EthTxHash,
+        neon_tx_nonce: int,
         code: ExecTxDoneCode,
         sender: NeonAccountModel,
     ) -> ExecTxDoneResp:
+        if code == ExecTxDoneCode.Done:
+            neon_tx_nonce = max(sender.state_tx_cnt, neon_tx_nonce + 1)
+        else:
+            neon_tx_nonce = sender.state_tx_cnt
         req = ExecTxDoneRequest(
             neon_tx_hash=neon_tx_hash,
             code=code,
-            state_tx_cnt=sender.state_tx_cnt,
+            state_tx_cnt=neon_tx_nonce,
             balance=sender.balance,
         )
         return await self._done_exec_tx(req)
@@ -146,9 +146,6 @@ class MempoolClient(AppDataClient):
 
     @AppDataClient.method(name="getPendingTransactionCounter")
     async def _get_pending_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp: ...
-
-    @AppDataClient.method(name="getMempoolTransactionCounter")
-    async def _get_mempool_tx_cnt(self, request: MpTxCntRequest) -> MpTxCntResp: ...
 
     @AppDataClient.method(name="getMempoolContent")
     async def _get_content(self, request: MpRequest) -> MpTxPoolContentResp: ...
