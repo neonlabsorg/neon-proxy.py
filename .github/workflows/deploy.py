@@ -15,7 +15,7 @@ import typing as tp
 import logging
 from urllib.parse import urlparse
 from python_terraform import Terraform
-from paramiko import SSHClient
+from paramiko import SSHClient, RSAKey, AutoAddPolicy
 from scp import SCPClient
 try:
     import pandas as pd
@@ -276,6 +276,19 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     proxy_ip = output["proxy_ip"]["value"]
     solana_ip = output["solana_ip"]["value"]
     infra = dict(solana_ip=solana_ip, proxy_ip=proxy_ip)
+
+    ssh = SSHClient()
+    ssh_key = RSAKey.from_private_key_file("~/.ssh/ci-stands")
+    ssh.set_missing_host_key_policy(AutoAddPolicy())
+    ssh.connect(proxy_ip, username="root", pkey=ssh_key)
+
+    ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(
+        """echo '${hcloud_server.solana.network.*.ip[0]}' > /tmp/solana_host &&
+        chmod a+x /tmp/proxy_init.sh &&
+        sudo /tmp/proxy_init.sh"""
+    )
+    print(ssh_stdout, ssh_stderr)
+
     set_github_env(infra)
 
 

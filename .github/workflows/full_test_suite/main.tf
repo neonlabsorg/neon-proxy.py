@@ -42,23 +42,6 @@ resource "hcloud_server" "proxy" {
 
   }
 
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo '${hcloud_server.solana.network.*.ip[0]}' > /tmp/solana_host",
-      "chmod a+x /tmp/proxy_init.sh",
-      "sudo /tmp/proxy_init.sh"
-    ]
-
-  connection {
-    type        = "ssh"
-    user        = "root"
-    host        = hcloud_server.proxy.ipv4_address
-    private_key = file("~/.ssh/ci-stands")
-  }
-  
-  }
-
   labels = {
     environment = "ci"
     purpose    = "ci-oz-full-tests"
