@@ -15,7 +15,7 @@ import typing as tp
 import logging
 from urllib.parse import urlparse
 from python_terraform import Terraform
-from paramiko import SSHClient, RSAKey, AutoAddPolicy
+from paramiko import SSHClient, Ed25519Key, AutoAddPolicy
 from scp import SCPClient
 from pathlib import Path
 try:
@@ -281,7 +281,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     ssh = SSHClient()
 
     path_home = Path.home()
-    ssh_key = RSAKey.from_private_key_file(str(path_home) + "/.ssh/ci-stands")
+    ssh_key = Ed25519Key.from_private_key_file(str(path_home) + "/.ssh/ci-stands")
     ssh.set_missing_host_key_policy(AutoAddPolicy())
     ssh.connect(proxy_ip, username="root", pkey=ssh_key)
 
