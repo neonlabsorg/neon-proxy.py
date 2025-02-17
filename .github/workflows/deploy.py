@@ -278,6 +278,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     solana_ip = output["solana_ip"]["value"]
     infra = dict(solana_ip=solana_ip, proxy_ip=proxy_ip)
 
+    print("Creating paramiko SSH Client")
     ssh = SSHClient()
 
     print("Adding ci-stands SSH key")
