@@ -285,6 +285,8 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     ssh.set_missing_host_key_policy(AutoAddPolicy())
     ssh.connect(proxy_ip, username="root", pkey=ssh_key)
 
+    print("Executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
+
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(
         """echo '${hcloud_server.solana.network.*.ip[0]}' > /tmp/solana_host &&
         chmod a+x /tmp/proxy_init.sh &&
@@ -293,6 +295,8 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     stdout = ssh_stdout.read().decode('ascii').strip("\n")
     stderr = ssh_stderr.read().decode('ascii').strip("\n")
     print(stdout, stderr)
+
+    print("Finished executing proxy_init.sh script on the Proxy instance at " + str(time.strftime("%H:%M:%S", time.localtime())))
 
     set_github_env(infra)
 
