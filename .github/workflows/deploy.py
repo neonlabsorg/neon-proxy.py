@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from python_terraform import Terraform
 from paramiko import SSHClient, RSAKey, AutoAddPolicy
 from scp import SCPClient
+from pathlib import Path
 try:
     import pandas as pd
 except ImportError:
@@ -278,7 +279,9 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     infra = dict(solana_ip=solana_ip, proxy_ip=proxy_ip)
 
     ssh = SSHClient()
-    ssh_key = RSAKey.from_private_key_file("~/.ssh/ci-stands")
+
+    path_home = Path.home()
+    ssh_key = RSAKey.from_private_key(path_home + "/.ssh/ci-stands")
     ssh.set_missing_host_key_policy(AutoAddPolicy())
     ssh.connect(proxy_ip, username="root", pkey=ssh_key)
 
