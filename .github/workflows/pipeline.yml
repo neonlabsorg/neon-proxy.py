@@ -178,6 +178,7 @@ jobs:
       - run: pip install -r ./.github/workflows/requirements.txt
       - name: Add private key
         run: |
+          mkdir -p ${HOME}/.ssh
           echo "${{ secrets.CI_STANDS_KEY_HCLOUD }}" > ${HOME}/.ssh/ci-stands
           chmod 600 ${HOME}/.ssh/ci-stands
       - name: Remove known_host
@@ -433,6 +434,7 @@ jobs:
       - run: pip install -r ./.github/workflows/requirements.txt
       - name: Add private key
         run: |
+          mkdir -p ${HOME}/.ssh
           echo "${{ secrets.CI_STANDS_KEY_HCLOUD }}" > ${HOME}/.ssh/ci-stands
           chmod 644 ${HOME}/.ssh/ci-stands
       - name: Get container logs
