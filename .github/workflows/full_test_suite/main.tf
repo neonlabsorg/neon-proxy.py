@@ -17,6 +17,18 @@ resource "hcloud_server" "proxy" {
     network_id = data.hcloud_network.ci-network.id
   }
 
+  labels = {
+    environment = "ci"
+    purpose    = "ci-oz-full-tests"
+  }
+  depends_on = [
+    hcloud_server.solana
+  ]
+}
+
+resource "null_resource" "proxy_provision" {
+  depends_on = [hcloud_server.proxy]
+
   provisioner "file" {
     source      = "../../../docker-compose/docker-compose-ci.yml"
     destination = "/tmp/docker-compose-ci.yml"
@@ -39,9 +51,7 @@ resource "hcloud_server" "proxy" {
     host        = hcloud_server.proxy.ipv4_address
     private_key = file("~/.ssh/ci-stands")
     }
-
   }
-
 
   provisioner "remote-exec" {
     inline = [
@@ -59,13 +69,6 @@ resource "hcloud_server" "proxy" {
   
   }
 
-  labels = {
-    environment = "ci"
-    purpose    = "ci-oz-full-tests"
-  }
-  depends_on = [
-    hcloud_server.solana
-  ]
 }
 
 resource "hcloud_server" "solana" {
@@ -76,30 +79,6 @@ resource "hcloud_server" "solana" {
   ssh_keys = [
     data.hcloud_ssh_key.ci-ssh-key.id
   ]
-
-  provisioner "file" {
-    source     = "../../../docker-compose/nginx.conf"
-    destination = "/tmp/nginx.conf"
-
-    connection {
-        type        = "ssh"
-        user        = "root"
-        host        = hcloud_server.solana.ipv4_address
-        private_key = file("~/.ssh/ci-stands")
-      }
-  }
-
-   provisioner "file" {
-    source      = "../../../docker-compose/docker-compose-ci.yml"
-    destination = "/tmp/docker-compose-ci.yml"
-
-    connection {
-        type        = "ssh"
-        user        = "root"
-        host        = hcloud_server.solana.ipv4_address
-        private_key = file("~/.ssh/ci-stands")
-      }
-  }
 
   public_net {
     ipv4_enabled = true
@@ -115,4 +94,34 @@ resource "hcloud_server" "solana" {
   labels = {
     environment = "ci"
   }
+}
+
+
+resource "null_resource" "solana_provision" {
+  depends_on = [hcloud_server.solana]
+
+  provisioner "file" {
+    source     = "../../../docker-compose/nginx.conf"
+    destination = "/tmp/nginx.conf"
+
+    connection {
+        type        = "ssh"
+        user        = "root"
+        host        = hcloud_server.solana.ipv4_address
+        private_key = file("~/.ssh/ci-stands")
+      }
+  }
+
+  provisioner "file" {
+    source      = "../../../docker-compose/docker-compose-ci.yml"
+    destination = "/tmp/docker-compose-ci.yml"
+
+    connection {
+        type        = "ssh"
+        user        = "root"
+        host        = hcloud_server.solana.ipv4_address
+        private_key = file("~/.ssh/ci-stands")
+      }
+  }
+
 }
