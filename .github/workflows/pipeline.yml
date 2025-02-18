@@ -172,6 +172,9 @@ jobs:
     runs-on: ["self-hosted", "k8s-prod"]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.0"
@@ -431,6 +434,9 @@ jobs:
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.0"
