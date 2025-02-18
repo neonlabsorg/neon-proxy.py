@@ -66,7 +66,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-image:
-    runs-on: build-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     outputs:
       proxy_tag: ${{ steps.tags.outputs.proxy_tag }}
       proxy_sha_tag: ${{ steps.tags.outputs.proxy_sha_tag }}
@@ -83,6 +83,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
            fetch-depth: 0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: output branches name
         run: |
           echo "neon_evm_tag/branch = ${{ github.event.inputs.evm_tag }}"
@@ -144,9 +150,13 @@ jobs:
   deploy-check:
     needs:
       - build-image
-    runs-on: test-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: deploy_check
         timeout-minutes: 60
         run: |
@@ -159,9 +169,13 @@ jobs:
     needs:
       - build-image
     timeout-minutes: 25
-    runs-on: test-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Add private key
         run: |
           echo "${{ secrets.CI_STANDS_KEY_HCLOUD }}" > ${HOME}/.ssh/ci-stands
@@ -198,13 +212,15 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: test-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
       CONTAINER: oz-${{ github.run_id }}
       NETWORK: terraform
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Pull docker image
         run: docker pull ${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}
       - name: Run docker container
@@ -248,7 +264,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: test-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
@@ -256,6 +272,8 @@ jobs:
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Determine Cost Report Generation
         run: |
           echo "GENERATE_COST_REPORT=true" >> $GITHUB_ENV
@@ -362,13 +380,17 @@ jobs:
       always() && 
       contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.dapps-tests.result)
-    runs-on: test-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
     steps:
       - uses: actions/checkout@v4
         with:
            fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt   
       - name: Request report
         id: request_report
         run: |
@@ -398,13 +420,17 @@ jobs:
       - requests-report
       - dapps-tests
       - build-image
-    runs-on: test-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     if: always()
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Add private key
         run: |
           echo "${{ secrets.CI_STANDS_KEY_HCLOUD }}" > ${HOME}/.ssh/ci-stands
@@ -427,7 +453,7 @@ jobs:
           --run_number=${{env.GITHUB_RUN_NUMBER}} \
           --proxy_tag=${{ needs.build-image.outputs.proxy_sha_tag }}
   finalize-image:
-    runs-on: build-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     needs:
       - build-image
       - openzeppelin-tests
@@ -442,13 +468,19 @@ jobs:
       contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result)
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Tag published image if tag is latest or version
         run: |
           python3 ./.github/workflows/deploy.py finalize_image \
           --proxy_sha_tag=${{ needs.build-image.outputs.proxy_sha_tag }} \
           --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
   notification:
-    runs-on: build-runner
+    runs-on: ["self-hosted", "k8s-prod"]
     needs:
       - finalize-image
       - openzeppelin-tests
@@ -460,6 +492,10 @@ jobs:
        failure() && needs.build-image.outputs.full_test_suite == 'true'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.12'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Send notification to slack
         run: |
           python3 ./.github/workflows/deploy.py send_notification \
