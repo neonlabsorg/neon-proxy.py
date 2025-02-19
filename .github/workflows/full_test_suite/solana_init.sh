@@ -41,6 +41,7 @@ export REVISION=${proxy_image_tag}
 export NEON_EVM_COMMIT=${neon_evm_commit}
 export FAUCET_COMMIT=${faucet_model_commit}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
+export DEVNET_SOLANA_URL=${devnet_solana_url}
 
 # Receive docker-compose file and create override file
 cd /tmp
@@ -50,6 +51,8 @@ version: "3"
 
 services:
   solana:
+    environment:
+      DEVNET_SOLANA_URL: $DEVNET_SOLANA_URL
     ports:
       - "8899:8899"
       - "9900:9900"

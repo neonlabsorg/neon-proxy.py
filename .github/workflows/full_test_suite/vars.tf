@@ -19,3 +19,6 @@ variable "dockerhub_org_name" {
   type = string
 }
 
+variable "devnet_solana_url" {
+  type = string
+}

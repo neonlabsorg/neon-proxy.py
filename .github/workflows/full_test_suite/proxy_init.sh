@@ -27,6 +27,7 @@ export NEON_EVM_COMMIT=${neon_evm_commit}
 export FAUCET_COMMIT=${faucet_model_commit}
 export CI_PP_SOLANA_URL=${ci_pp_solana_url}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
+export DEVNET_SOLANA_URL=${devnet_solana_url}
 
 
 # Generate docker-compose override file
@@ -36,17 +37,11 @@ version: "3"
 services:
   solana:
     container_name: solana
+    environment:
+      DEVNET_SOLANA_URL: $DEVNET_SOLANA_URL
     healthcheck:
       test: [ CMD-SHELL, "/echo done" ]
     entrypoint: "/usr/bin/sleep 10000"
-
-  gas_tank:
-    container_name: gas_tank
-    entrypoint: "/usr/bin/sleep 10000"
-
-  neon_test_invoke_program_loader:
-    container_name: neon_test_invoke_program_loader
-    command: bash -c "echo done"
 
 services:
   proxy:

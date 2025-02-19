@@ -47,6 +47,7 @@ ERR_MSG_TPL = {
 DOCKER_USERNAME = os.environ.get("DOCKER_USERNAME")
 DOCKER_PASSWORD = os.environ.get("DOCKER_PASSWORD")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
+DEVNET_SOLANA_URL = os.environ.get("DEVNET_SOLANA_URL")
 
 NEON_TEST_RUN_LINK = os.environ.get("NEON_TEST_RUN_LINK")
 
@@ -226,6 +227,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     os.environ["TF_VAR_neon_evm_commit"] = evm_tag
     os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
     os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
+    os.environ["TF_VAR_devnet_solana_url"] = DEVNET_SOLANA_URL
 
     thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
 
@@ -235,7 +237,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     if return_code != 0:
         print("Terraform init failed:", stderr)
 
-    instance_types = ["cpx51", "cx52", "cpx41", "cx42", "ccx33", "ccx43"]
+    instance_types = ["cx42", "ccx33", "ccx43"]
     locations = ["nbg1", "fsn1", "hel1"]
     instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
 

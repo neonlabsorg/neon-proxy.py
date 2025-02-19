@@ -89,7 +89,7 @@ resource "hcloud_server" "solana" {
     network_id = data.hcloud_network.ci-network.id
   }
 
-  user_data = data.template_file.solana_init.rendered
+  # user_data = data.template_file.solana_init.rendered
 
   labels = {
     environment = "ci"
@@ -122,6 +122,18 @@ resource "null_resource" "solana_provision" {
         host        = hcloud_server.solana.ipv4_address
         private_key = file("~/.ssh/ci-stands")
       }
+  }
+
+  provisioner "file" {
+    content     = data.template_file.solana_init.rendered
+    destination = "/tmp/solana_init.sh"
+
+    connection {
+      type        = "ssh"
+      user        = "root"
+      host        = hcloud_server.solana.ipv4_address
+      private_key = file("~/.ssh/ci-stands")
+    }
   }
 
 }

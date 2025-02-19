@@ -41,9 +41,10 @@ env:
   TF_VAR_ci_pp_solana_url: ${{secrets.DEVNET_INTERNAL_RPC}}
   TF_VAR_neon_evm_commit: "latest"
   TF_VAR_faucet_model_commit: ${{vars.FAUCET_COMMIT}}
-  TV_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
+  #TF_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
+  DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
   NEON_TESTS_IMAGE: "neon_tests"
   FAUCET_COMMIT: ${{vars.FAUCET_COMMIT}}
   GH_ORG_NAME: ${{vars.GH_ORG_NAME}}
@@ -197,6 +198,29 @@ jobs:
             --evm_tag=${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }} \
             --faucet_tag=${{ needs.build-image.outputs.faucet_tag }} \
             --run_number=${{ env.GITHUB_RUN_NUMBER }}
+      - name: Run Solana docker compose
+        uses: appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ env.SOLANA_IP }}
+          username: root
+          key: ${{ secrets.CI_STANDS_KEY_HCLOUD }}
+          script: |
+            chmod a+x /tmp/solana_init.sh
+            sudo /tmp/solana_init.sh
+            echo "Waiting contaners start - 10s"
+            sleep 10
+            docker ps -a
+            echo "Check for containers that exited with a non-zero status"
+            docker ps -a --filter "status=exited" --format "{{.ID}}" | while read id; do
+                exit_code=$(docker inspect --format='{{.State.ExitCode}}' $id)
+                if [ "$exit_code" -ne 0 ]; then
+                    name=$(docker inspect --format='{{.Name}}' $id | sed 's/^.\{1\}//')
+                    echo ""
+                    echo "Logs for container: $name"
+                    docker logs $id
+                    echo ""
+                fi
+            done
       - name: Run Poxy docker compose
         uses: appleboy/ssh-action@v1.2.1
         env:
@@ -205,12 +229,12 @@ jobs:
           host: ${{ env.PROXY_IP }}
           username: root
           key: ${{ secrets.CI_STANDS_KEY_HCLOUD }}
-          port: 22
           envs: SOLANA_IP
           script: |
             echo $SOLANA_IP > /tmp/solana_host
             chmod a+x /tmp/proxy_init.sh
             sudo /tmp/proxy_init.sh
+            echo "Waiting contaners start - 10s"
             sleep 10
             docker ps -a
             echo "Check for containers that exited with a non-zero status"
