@@ -213,6 +213,17 @@ jobs:
             sudo /tmp/proxy_init.sh
             sleep 10
             docker ps -a
+            echo "Check for containers that exited with a non-zero status"
+            docker ps -a --filter "status=exited" --format "{{.ID}}" | while read id; do
+                exit_code=$(docker inspect --format='{{.State.ExitCode}}' $id)
+                if [ "$exit_code" -ne 0 ]; then
+                    name=$(docker inspect --format='{{.Name}}' $id | sed 's/^.\{1\}//')
+                    echo ""
+                    echo "Logs for container: $name"
+                    docker logs $id
+                    echo ""
+                fi
+            done
       - name: Set outputs
         id: share
         env:
