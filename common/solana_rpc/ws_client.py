@@ -251,7 +251,8 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     self._obj_dict[key] = info
                     # _LOG.debug("got subscription %s for %s", item.result, key)
                 else:
-                    _LOG.warning("unknown request %s for result %s", item.id, item.result)
+                    # _LOG.warning("unknown request %s for result %s", item.id, item.result)
+                    await self._unsub(item.result)
             elif isinstance(item, _SolWsSubNotif):
                 if key := self._sub_dict.pop(item.subscription, None):
                     info = self._obj_dict.pop(key, self._empty_info)
@@ -301,8 +302,11 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
         elif not self.is_connected:
             return
 
+        await self._unsub(info.sub_id)
+
+    async def _unsub(self, sub_id: int) -> None:
         req_id = next(self._id)
-        req = self._new_unsub_request(req_id, info.sub_id)
+        req = self._new_unsub_request(req_id, sub_id)
         try:
             await self._ws_session.send_str(req.to_json())
         except (BaseException,):
