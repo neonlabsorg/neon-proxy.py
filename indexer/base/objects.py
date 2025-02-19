@@ -777,10 +777,8 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             elif event.is_exit_event_type:
                 if not addr_stack:
                     _LOG.warning("bad %s in %s", event.event_type.name, self.neon_tx_hash)
-                    # self._has_truncated_log = True
-                    # break
-                    current_level, current_order = 0, 0
-                    continue
+                    self._has_truncated_log = True
+                    break
 
                 event_level, addr = current_level, addr_stack.pop()
                 current_level -= 1
