@@ -109,7 +109,7 @@ function wait_service() {
 # Check if Solana is available
 SOLANA_DATA='{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
 SOLANA_RESULT='"ok"'
-wait_service "solana" $SOLANA_URL "$SOLANA_DATA" $SOLANA_RESULT
+wait_service "solana" $SOLANA_URL $SOLANA_DATA $SOLANA_RESULT
 
 
 # Up all services
