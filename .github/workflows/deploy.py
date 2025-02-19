@@ -305,6 +305,7 @@ def destroy_terraform(proxy_tag, run_number):
     log.setLevel(logging.INFO)
 
     os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
+    os.environ["TF_VAR_devnet_solana_url"] = DEVNET_SOLANA_URL
 
     def format_tf_output(output):
         return re.sub(r'(?m)^', ' ' * TF_OUTPUT_OFFSET, str(output))
