@@ -140,4 +140,4 @@ PROXY_RESULT='"number"'
 wait_service "proxy" $PROXY_URL "$PROXY_DATA" $PROXY_RESULT "show_docker_logs_if_fail"
 
 
-docker rm -f tmp_solana_1
+docker rm -f solana
