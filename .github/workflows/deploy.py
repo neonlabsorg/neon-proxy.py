@@ -237,7 +237,7 @@ def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
     if return_code != 0:
         print("Terraform init failed:", stderr)
 
-    instance_types = ["cx42", "ccx33", "ccx43", "ccx53", "ccx63"]
+    instance_types = ["ccx33", "ccx43", "ccx53", "cx42", "ccx63"]
     locations = ["nbg1", "fsn1", "hel1"]
     instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
 
