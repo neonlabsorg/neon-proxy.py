@@ -40,7 +40,7 @@ services:
     environment:
       DEVNET_SOLANA_URL: $DEVNET_SOLANA_URL
     healthcheck:
-      test: [ CMD-SHELL, "/echo done" ]
+      test: [ CMD-SHELL, "echo done" ]
     entrypoint: "/usr/bin/sleep 10000"
 
   proxy:
@@ -110,6 +110,7 @@ function wait_service() {
       echo ""
       echo "Service $SERVICE failed to respond as expected after $MAX_COUNT attempts."
       if [[ "$SHOW_DOCKER_LOGS_IF_FAIL" == "show_docker_logs_if_fail" ]]; then
+        docker ps -a
         docker ps -a --format "{{.ID}} {{.Names}}" | while read -r id name; do
           echo ""
           echo "Logs for container: $name"
