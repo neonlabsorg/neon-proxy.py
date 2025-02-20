@@ -106,7 +106,7 @@ function wait_service() {
     sleep 2
   done;
 
-  if [[ $CURRENT_ATTEMPT -eq 99 ]]; then
+  if [[ $CURRENT_ATTEMPT -eq 100 ]]; then
       echo ""
       echo "Service $SERVICE failed to respond as expected after $MAX_COUNT attempts."
       if [[ "$SHOW_DOCKER_LOGS_IF_FAIL" == "show_docker_logs_if_fail" ]]; then
