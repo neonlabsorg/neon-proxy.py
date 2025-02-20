@@ -627,16 +627,13 @@ class HolderAccountModel(_BaseRespModel):
 
     @property
     def is_empty(self) -> bool:
-        return self.status in (HolderAccountStatus.Empty, HolderAccountStatus.Error)
+        s = HolderAccountStatus
+        return self.status in (s.Empty, s.Error)
 
     @property
     def is_active(self) -> bool:
-        return self.status == HolderAccountStatus.Active
-
-    @cached_property
-    def is_finalized(self) -> bool:
-        s = self.status
-        return self.status in (s.Finalized, s.ScheduledFinalized, s.ScheduledCanceled)
+        s = HolderAccountStatus
+        return self.status in (s.Active, s.ScheduledFinalized, s.ScheduledCanceled)
 
 
 class _CrateModel(_BaseRespModel):
