@@ -383,13 +383,13 @@ class NeonExecTxCtx(ExecutorComponent):
         return self._emul_resp.external_sol_call
 
     @property
-    def has_holder_block(self) -> bool:
+    def _has_holder_block(self) -> bool:
         assert self._emul_resp
         return self._emul_resp.is_block_used
 
     @property
     def holder_block(self) -> CoreApiBlockModel:
-        if (not self._emul_resp) or (not self.has_holder_block):
+        if (not self._emul_resp) or (not self._has_holder_block):
             return CoreApiBlockModel.default()
         if if_none(self._holder_block.slot, 0) > if_none(self.holder.block.slot, 0):
             return self._holder_block
