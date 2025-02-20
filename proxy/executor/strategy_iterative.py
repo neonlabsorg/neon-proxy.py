@@ -68,8 +68,6 @@ class IterativeTxStrategy(BaseTxStrategy):
             if not await self._start_skd_tx():
                 return result
 
-        if self._ctx.has_holder_block:
-            await self._commit_block_number()
         return result
 
     async def execute(self) -> ExecTxDoneCode:
@@ -129,28 +127,6 @@ class IterativeTxStrategy(BaseTxStrategy):
     async def done_execution(self) -> None:
         if self._ctx.is_scheduled_tx:
             await self._finish_skd_tx()
-
-    async def _commit_block_number(self) -> None:
-        for _ in itertools.count():
-            if await self._ctx.holder_validator.is_active():
-                return
-            elif await self._ctx.holder_validator.is_finalized():
-                return
-            elif self._ctx.is_scheduled_tx:
-                # _LOG.debug("wait for the update of holder block number by %s", self._start_skd_tx_name)
-                await asyncio.sleep(self._wait_sec)
-
-            elif not await self._recheck_tx_list(self.name):
-                _LOG.debug("just 1 iteration to commit the block number")
-                await self._send_single_iter(ix_mode=NeonIxMode.BaseTx)
-
-            tx_state_list = self._ctx.sol_tx_list_sender.tx_state_list
-            for tx_state in tx_state_list:
-                if tx_state.status == tx_state.Status.GoodReceipt:
-                    if sol_neon_ix := self._find_sol_neon_ix(tx_state):
-                        if not sol_neon_ix.neon_tx_block.is_empty:
-                            self._ctx.set_holder_block(sol_neon_ix.neon_tx_block)
-                            return
 
     async def _start_skd_tx(self) -> bool:
         for _ in itertools.count():
