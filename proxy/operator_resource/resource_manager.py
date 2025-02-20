@@ -471,6 +471,7 @@ class OpResourceMng(OpResourceComponent):
 
         msg: dict | None = None
         action = None
+        result = True
 
         if op_holder.address in self._blocked_holder_addr_dict:
             if not holder.is_empty:
@@ -478,6 +479,7 @@ class OpResourceMng(OpResourceComponent):
                 action = self._delete_holder_acct
             else:
                 self._deleted_holder_addr_set.add(holder.address)
+                result = False
         elif holder.is_empty:
             action = self._create_holder_acct
         elif holder.size != self._holder_size:
@@ -487,6 +489,7 @@ class OpResourceMng(OpResourceComponent):
             tx = MpStuckTxModel.from_raw(tx_hash, holder.address)
             self._stuck_tx_list.append(tx)
             msg = log_msg("found stuck tx {Tx} in holder {Holder} for resource {Owner}:{ResourceID}", Tx=tx_hash)
+            result = False
 
         elif holder.status not in (status.Finalized, status.Holder):
             msg = log_msg("holder {Holder} has wrong tag {Tag} for resource {Owner}:{ResourceID}", Tag=holder.status)
@@ -501,7 +504,7 @@ class OpResourceMng(OpResourceComponent):
 
         if action:
             return await action(signer, op_holder)
-        return True
+        return result
 
     async def _create_holder_acct(self, signer: SolSigner, op_holder: OpHolderInfo) -> bool:
         msg = log_msg(
