@@ -126,7 +126,11 @@ class NeonTxExecutor(ExecutorComponent):
             if (alt_acct := SolAltAccountInfo.from_account_nothrow(acct)).is_exist:
                 ctx.add_alt_id(alt_acct.ident)
 
-        return await self._select_strategy(ctx, self._stuck_tx_strategy_list)
+        try:
+            return await self._select_strategy(ctx, self._stuck_tx_strategy_list)
+
+        except SolNeonSkdTxError:
+            return ExecTxDoneCode.Failed
 
     async def _select_strategy(self, ctx: NeonExecTxCtx, tx_strategy_list: _BaseTxStrategyList) -> ExecTxDoneCode:
         for _Strategy in tx_strategy_list:
