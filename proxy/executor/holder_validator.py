@@ -120,6 +120,9 @@ class HolderAccountValidator(ExecutorComponent):
 
         return is_valid and self._holder_acct.is_finalized
 
+    async def refresh(self) -> None:
+        await self._refresh()
+
     def _raise_stuck_error(self) -> None:
         _LOG.debug(
             "holder %s contains stuck NeonTx %s",

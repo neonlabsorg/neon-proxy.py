@@ -196,6 +196,7 @@ class NeonTxExecutor(ExecutorComponent):
                     return None
                 re_emulate = True
                 await asyncio.sleep(self._wait_sec)
+                await ctx.holder_validator.refresh()
 
             except (
                 EthError,
