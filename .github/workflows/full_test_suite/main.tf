@@ -51,6 +51,10 @@ resource "null_resource" "proxy_provision" {
     host        = hcloud_server.proxy.ipv4_address
     private_key = file("~/.ssh/ci-stands")
     }
+
+    triggers = {
+      proxy_srv_id = hcloud_server.proxy.id
+    }
   }
 
   # provisioner "remote-exec" {
@@ -134,6 +138,10 @@ resource "null_resource" "solana_provision" {
       host        = hcloud_server.solana.ipv4_address
       private_key = file("~/.ssh/ci-stands")
     }
+  }
+
+  triggers = {
+    solana_srv_id = hcloud_server.solana.id
   }
 
 }
