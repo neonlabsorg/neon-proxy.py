@@ -51,10 +51,7 @@ class HolderAccountValidator(ExecutorComponent):
     async def _refresh(self) -> None:
         self._holder_acct = await self._core_api_client.get_holder_account(self._holder_addr)
 
-        if (
-            self._holder_acct.is_active or
-            (self._holder_acct.is_finalized and self._holder_acct.neon_tx_hash == self._neon_tx_hash)
-        ):
+        if self._holder_acct.is_active or self.is_valid:
             _LOG.debug(
                 "holder %s contains NeonTx %s, status %s, slot %s, timestamp %s, accounts %d, steps %d",
                 self._holder_addr,
@@ -105,20 +102,6 @@ class HolderAccountValidator(ExecutorComponent):
                 self._raise_stuck_error()
             return False
         return True
-
-    async def is_finalized(self) -> bool:
-        await self._refresh()
-        is_valid = self.is_valid
-
-        if self._is_stuck_tx:
-            return (not is_valid) or self._holder_acct.is_finalized
-
-        if (not is_valid) and self._holder_acct.is_active:
-            # strange case, because the holder was tested on the start...
-            #  it is possible if the operator-key and the holder-id are defined on two different proxies
-            self._raise_stuck_error()
-
-        return is_valid and self._holder_acct.is_finalized
 
     async def refresh(self) -> None:
         await self._refresh()
