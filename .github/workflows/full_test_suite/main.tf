@@ -28,6 +28,9 @@ resource "hcloud_server" "proxy" {
 
 resource "null_resource" "proxy_provision" {
   depends_on = [hcloud_server.proxy]
+  triggers = {
+      proxy_srv_id = hcloud_server.proxy.id
+  }
 
   provisioner "file" {
     source      = "../../../docker-compose/docker-compose-ci.yml"
@@ -52,9 +55,6 @@ resource "null_resource" "proxy_provision" {
     private_key = file("~/.ssh/ci-stands")
     }
 
-    triggers = {
-      proxy_srv_id = hcloud_server.proxy.id
-    }
   }
 
   # provisioner "remote-exec" {
@@ -103,6 +103,9 @@ resource "hcloud_server" "solana" {
 
 resource "null_resource" "solana_provision" {
   depends_on = [hcloud_server.solana]
+  triggers = {
+    solana_srv_id = hcloud_server.solana.id
+  }
 
   provisioner "file" {
     source     = "../../../docker-compose/nginx.conf"
@@ -139,9 +142,4 @@ resource "null_resource" "solana_provision" {
       private_key = file("~/.ssh/ci-stands")
     }
   }
-
-  triggers = {
-    solana_srv_id = hcloud_server.solana.id
-  }
-
 }
