@@ -41,7 +41,7 @@ class NeonIndexerApp:
 
         self._stat_client = StatClient(self._cfg)
         self._sol_client = SolClient(cfg, self._stat_client)
-        self._core_api_client = CoreApiClient(cfg=cfg, sol_client=self._sol_client, stat_client=self._stat_client)
+        self._core_api_client = CoreApiClient(cfg, self._sol_client, self._stat_client)
 
         self._first_slot: None | int = None
         self._finalized_slot = 0
@@ -168,7 +168,7 @@ class NeonIndexerApp:
                 self._first_slot,
                 slot_range.stop_slot,
             )
-            await _done_slot_range(self._db, slot_range)
+            await self._db.done_slot_range(slot_range)
 
         if await self._is_reindex_completed(slot_range_list):
             slot_range_list = tuple()
@@ -213,7 +213,7 @@ class NeonIndexerApp:
 
             if self._reindex_ident != reindex_ident:
                 _LOG.info("skip the old REINDEX range %s", slot_range)
-                await _done_slot_range(self._db, slot_range)
+                await self._db.done_slot_range(slot_range)
                 continue
 
             slot_range = await self._load_slot_range(slot_range)
@@ -245,11 +245,6 @@ class NeonIndexerApp:
         new_slot_range_list = await self._build_new_reindex_range_list(start_slot, avail_cnt)
 
         slot_range_list = await self._merge_slot_range_list(slot_range_list, new_slot_range_list)
-        for slot_range in slot_range_list:
-            await self._db.constant_db.set(None, slot_range.start_slot_name, slot_range.start_slot)
-            await self._db.constant_db.set(None, slot_range.min_used_slot_name, slot_range.min_used_slot)
-            await self._db.constant_db.set(None, slot_range.stop_slot_name, slot_range.stop_slot)
-
         return slot_range_list
 
     async def _build_new_reindex_range_list(self, start_slot: int, avail_cnt: int) -> Sequence[IndexerDbSlotRange]:
@@ -396,7 +391,7 @@ class NeonIndexerApp:
 
         if isinstance(reindex_ident, int):
             if reindex_ident >= self._finalized_slot:
-                _LOG.error("skip reindexing: %s=%s is too big", self._cfg.reindex_start_slot_name, reindex_ident)
+                _LOG.debug("skip reindexing: %s=%s is too big", self._cfg.reindex_start_slot_name, reindex_ident)
                 return None, ""
 
             # start from the slot which Solana knows
@@ -412,7 +407,7 @@ class NeonIndexerApp:
             return start_slot, reindex_ident
 
         elif reindex_ident == StartSlot.Disable:
-            _LOG.error("skip reindexing: %s=%s", self._cfg.reindex_start_slot_name, reindex_ident)
+            _LOG.debug("skip reindexing: %s=%s", self._cfg.reindex_start_slot_name, reindex_ident)
             return None, ""
 
         elif reindex_ident == StartSlot.Continue:
@@ -531,7 +526,7 @@ class _ReIndexer:
         try:
             stat_client = StatClient(self._cfg)
             sol_client = SolClient(self._cfg, stat_client)
-            core_api_client = CoreApiClient(cfg=self._cfg, sol_client=sol_client, stat_client=stat_client)
+            core_api_client = CoreApiClient(self._cfg, sol_client, stat_client)
 
             db_conn = DbConnection(self._cfg, stat_client)
             db = IndexerDb(self._cfg, self._def_chain_id, db_conn)
@@ -555,7 +550,7 @@ class _ReIndexer:
                         self._idx,
                     )
 
-                    db.set_slot_range(slot_range)
+                    await db.set_slot_range(slot_range)
                     indexer = Indexer(
                         self._cfg,
                         self._layer0_chain_id,
@@ -565,8 +560,10 @@ class _ReIndexer:
                         stat_client,
                         db,
                     )
-                    await indexer.run()
-                    await _done_slot_range(db, slot_range)
+                    try:
+                        await indexer.run()
+                    finally:
+                        await db.done_slot_range(slot_range)
 
                     _LOG.info(
                         "done the reindexing of the range %s:%s on the ReIndexer(%s)",
@@ -582,8 +579,3 @@ class _ReIndexer:
         await sol_client.stop()
         await core_api_client.stop()
         await stat_client.stop()
-
-
-async def _done_slot_range(db: IndexerDb, slot_range: IndexerDbSlotRange) -> None:
-    slot_name_list = [slot_range.start_slot_name, slot_range.stop_slot_name, slot_range.min_used_slot_name]
-    await db.constant_db.delete_list(None, slot_name_list)

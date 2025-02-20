@@ -76,7 +76,7 @@ class MpTxExecutor(MempoolComponent):
                 return result
 
             if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id, None)):
-                evm_cfg = await self._get_evm_cfg()
+                evm_cfg = self._evm_cfg
                 token = evm_cfg.chain_dict.get(tx.chain_id).name
                 tx_schedule = MpTxSchedule(
                     self._cfg,
@@ -124,11 +124,13 @@ class MpTxExecutor(MempoolComponent):
 
         return self._done_complete_stuck_tx(stuck_tx, result)
 
-    def get_pending_tx_cnt(self, sender: NeonAddress) -> int | None:
-        return self._call_tx_schedule(sender.chain_id, MpTxSchedule.get_pending_tx_cnt, sender.eth_address)
-
-    def get_last_tx_cnt(self, sender: NeonAddress) -> int | None:
-        return self._call_tx_schedule(sender.chain_id, MpTxSchedule.get_last_tx_cnt, sender.eth_address)
+    def get_pending_tx_cnt(self, sender: NeonAddress, base_tx_cnt: int) -> int | None:
+        return self._call_tx_schedule(
+            sender.chain_id,
+            MpTxSchedule.get_pending_tx_cnt,
+            sender.eth_address,
+            base_tx_cnt,
+        )
 
     def get_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonTxModel | None:
         return tx.neon_tx if (tx := self._tx_dict.get_tx_by_hash(neon_tx_hash)) else None

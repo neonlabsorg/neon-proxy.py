@@ -46,9 +46,9 @@ class IndexerDbSlotRange:
             return ""
         return f"{self.reindex_ident_base}:{self.start_slot}"
 
-    @property
+    @cached_property
     def is_reindexing_mode(self) -> bool:
-        return len(self.reindex_ident) > 0
+        return bool(self.reindex_ident)
 
     @cached_property
     def start_slot_name(self) -> str:
@@ -177,7 +177,11 @@ class IndexerDb:
         self._stop_slot = await self._constant_db.get_int(None, self._stop_slot_name, self._stop_slot)
         await self._drop_not_finalized_history()
 
-    def set_slot_range(self, slot_range: IndexerDbSlotRange) -> None:
+    async def set_slot_range(self, slot_range: IndexerDbSlotRange) -> None:
+        await self._constant_db.set(None, slot_range.start_slot_name, slot_range.start_slot)
+        await self._constant_db.set(None, slot_range.min_used_slot_name, slot_range.min_used_slot)
+        await self._constant_db.set(None, slot_range.stop_slot_name, slot_range.stop_slot)
+
         self._reindex_ident = slot_range.reindex_ident
         self._is_reindexing_mode = slot_range.is_reindexing_mode
 
@@ -189,6 +193,10 @@ class IndexerDb:
         self._min_used_slot = slot_range.min_used_slot
         self._stop_slot = slot_range.stop_slot
         self._term_slot = slot_range.term_slot
+
+    async def done_slot_range(self, slot_range: IndexerDbSlotRange) -> None:
+        slot_name_list = [slot_range.start_slot_name, slot_range.stop_slot_name, slot_range.min_used_slot_name]
+        await self.constant_db.delete_list(None, slot_name_list)
 
     async def start(self) -> None:
         await self._db_conn.start()

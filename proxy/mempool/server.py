@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
+from common.neon_rpc.api import EvmConfigModel
 from .alt_loader import SolAltLoader
+from .evm_config_reader import MpEvmConfigReader
 from .gas_price_calculator import MpGasPriceCalculator
 from .mp_evm_config_api import MpEvmCfgApi
 from .mp_gas_price_api import MpGasPriceApi
@@ -21,6 +23,7 @@ class MempoolServer(MempoolServerAbc):
         self.listen(host=self._cfg.mp_ip, port=self._cfg.mp_port)
 
         self._gas_price_calc = MpGasPriceCalculator(self)
+        self._evm_cfg_reader = MpEvmConfigReader(self)
         self._tx_executor = MpTxExecutor(self)
         self._skd_tx_loader = MpSkdTxLoader(self)
         self._sol_stuck_alt_loader = SolAltLoader(self)
@@ -32,6 +35,8 @@ class MempoolServer(MempoolServerAbc):
 
     async def _on_server_start(self) -> None:
         await super()._on_server_start()
+        await self._evm_cfg_reader.start()
+
         await asyncio.gather(
             self._gas_price_calc.start(),
             self._tx_executor.start(),
@@ -50,3 +55,6 @@ class MempoolServer(MempoolServerAbc):
 
     def get_gas_price(self) -> MpGasPriceModel:
         return self._gas_price_calc.get_gas_price()
+
+    def get_evm_cfg(self) -> EvmConfigModel:
+        return self._evm_cfg_reader.get_evm_cfg()
