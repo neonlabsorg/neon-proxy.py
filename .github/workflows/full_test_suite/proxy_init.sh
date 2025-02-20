@@ -40,7 +40,7 @@ services:
     environment:
       DEVNET_SOLANA_URL: $DEVNET_SOLANA_URL
     healthcheck:
-      test: [ CMD-SHELL, "/echo done" ]
+      test: [ CMD-SHELL, "echo done" ]
     entrypoint: "/usr/bin/sleep 10000"
 
   proxy:

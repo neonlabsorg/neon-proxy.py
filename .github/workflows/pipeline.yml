@@ -198,6 +198,14 @@ jobs:
             --evm_tag=${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }} \
             --faucet_tag=${{ needs.build-image.outputs.faucet_tag }} \
             --run_number=${{ env.GITHUB_RUN_NUMBER }}
+      - name: Set outputs
+        id: share
+        env:
+          SOLANA_IP: ${{ env.SOLANA_IP }}
+          PROXY_IP: ${{ env.PROXY_IP }}
+        run: |
+          echo "solana_ip=${{ env.SOLANA_IP }}" >> $GITHUB_OUTPUT
+          echo "proxy_ip=${{ env.PROXY_IP }}" >> $GITHUB_OUTPUT
       - name: Run Solana docker compose
         uses: appleboy/ssh-action@v1.2.1
         with:
@@ -220,14 +228,6 @@ jobs:
             echo $SOLANA_IP > /tmp/solana_host
             chmod a+x /tmp/proxy_init.sh
             sudo /tmp/proxy_init.sh
-      - name: Set outputs
-        id: share
-        env:
-          SOLANA_IP: ${{ env.SOLANA_IP }}
-          PROXY_IP: ${{ env.PROXY_IP }}
-        run: |
-          echo "solana_ip=${{ env.SOLANA_IP }}" >> $GITHUB_OUTPUT
-          echo "proxy_ip=${{ env.PROXY_IP }}" >> $GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         if: always()
         with:
