@@ -13,14 +13,13 @@ from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
     SolCbExceededError,
     SolNeonRequireResizeIterError,
-    SolUnknownReceiptError,
     SolNoMoreRetriesError,
     SolBlockhashNotFound,
-    SolCbExceededCriticalError,
-    SolNeonOutOfMemoryError,
     SolNeonMissingAccountError,
     SolNeonSkdTxError,
     SolWritableError,
+    SolTxExecuteError,
+    SolErrorData,
 )
 from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
@@ -175,43 +174,32 @@ class NeonTxExecutor(ExecutorComponent):
                 ctx.holder_validator.mark_complete_prepare()
                 return await strategy.execute()
 
-            except (EthNonceTooLowError, EthNonceTooHighError):
-                raise
-
-            except SolNeonSkdTxError:
+            except (EthError, SolNeonSkdTxError):
                 raise
 
             except StuckTxError as exc:
                 _LOG.warning("stuck NeonTx error: %s", str(exc))
                 raise
 
-            except (
-                WrongStrategyError,
-                SolCbExceededError,
-                SolNeonRequireResizeIterError,
-                SolTxSizeError,
-            ) as _exc:
+            except (SolCbExceededError, SolNeonRequireResizeIterError):
                 ctx.mark_skip_simple_strategy()
-                # _LOG.debug("wrong strategy error: %s", str(exc))
+                return None
+
+            except (WrongStrategyError, SolTxSizeError):
                 return None
 
             except (SolNeonMissingAccountError, SolWritableError):
+                ctx.mark_skip_simple_strategy()
                 if strategy.is_simple:
                     return None
+
                 re_emulate = True
                 await asyncio.sleep(self._wait_sec)
                 await ctx.holder_validator.refresh()
 
-            except (
-                EthError,
-                SolCbExceededCriticalError,
-                SolNeonOutOfMemoryError,
-                SolUnknownReceiptError,
-                SolNoMoreRetriesError,
-            ) as exc:
-                ctx.mark_skip_simple_strategy()
-                _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
-                return await self._cancel_neon_tx(strategy)
+            except SolTxExecuteError as exc:
+                # _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
+                return await self._cancel_neon_tx(ctx, strategy, exc.data)
 
             except SolError:
                 # _LOG.debug("simple retry error: %s", str(exc), extra=self._msg_filter)
@@ -219,17 +207,25 @@ class NeonTxExecutor(ExecutorComponent):
                 await asyncio.sleep(self._wait_sec)
 
             except BaseException as exc:
-                ctx.mark_skip_simple_strategy()
                 _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter, exc_info=exc)
-                return await self._cancel_neon_tx(strategy)
+                return await self._cancel_neon_tx(ctx, strategy, SolErrorData.default())
 
-    async def _cancel_neon_tx(self, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
+    async def _cancel_neon_tx(
+        self,
+        ctx: NeonExecTxCtx,
+        strategy: BaseTxStrategy,
+        data: SolErrorData,
+    ) -> ExecTxDoneCode | None:
+        ctx.mark_skip_simple_strategy()
+        if strategy.is_simple:
+            return None
+
         for _retry in range(self._cfg.retry_on_fail):
             # if retry > 0:
             #     _LOG.debug("cancel NeonTx, attempt %s...", retry + 1)
 
             try:
-                return await strategy.cancel()
+                return await strategy.cancel(data)
 
             except (SolNoMoreRetriesError, SolBlockhashNotFound):
                 await asyncio.sleep(self._wait_sec)

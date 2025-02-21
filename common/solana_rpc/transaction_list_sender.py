@@ -16,6 +16,7 @@ from .errors import (
     SolCbExceededError,
     SolNoMoreRetriesError,
     SolWritableError,
+    SolErrorCode,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
@@ -42,7 +43,6 @@ class SolTxSendState:
         # Skipped errors
         AlreadyFinalizedError = enum.auto()
         NeonAccountAlreadyExistsError = enum.auto()
-        SolAccountAlreadyExistError = enum.auto()
 
         # Resubmitted errors
         NoReceiptError = enum.auto()
@@ -87,7 +87,6 @@ class SolTxListSender:
         SolTxSendState.Status.GoodReceipt,
         SolTxSendState.Status.AlreadyFinalizedError,
         SolTxSendState.Status.NeonAccountAlreadyExistsError,
-        SolTxSendState.Status.SolAccountAlreadyExistError,
     )
 
     _resubmitted_tx_status_list = (
@@ -457,12 +456,15 @@ class SolTxListSender:
         elif tx_error_parser.check_if_cb_exceeded():
             if cu_consumed := tx_error_parser.cu_consumed:
                 _LOG.debug("CUs consumed: %s", cu_consumed)
-            return self._DecodeResult(status.CbExceededError, SolCbExceededError())
+            return self._DecodeResult(status.CbExceededError, SolCbExceededError(cu_consumed))
 
-        elif tx_error_parser.check_if_error():
-            _LOG.debug("unknown error receipt %s: %s", tx, tx_receipt)
+        elif data := tx_error_parser.get_error():
+            if data.code == SolErrorCode.Unknown:
+                _LOG.debug("unknown Solana receipt %s: %s", tx, tx_receipt)
+            else:
+                _LOG.debug("unknown Solana error %s: %s", tx, data.message)
             # no exception: will be converted to DEFAULT EXCEPTION
-            return self._DecodeResult(status.UnknownError, SolUnknownReceiptError())
+            return self._DecodeResult(status.UnknownError, SolUnknownReceiptError(data))
 
         return self._DecodeResult(status.GoodReceipt, None)
 

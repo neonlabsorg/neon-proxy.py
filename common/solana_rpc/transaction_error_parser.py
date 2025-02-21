@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Sequence, Final
 
+from .errors import SolErrorData, SolErrorType, SolErrorCode
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -35,19 +37,23 @@ class SolTxErrorParser:
     ])
     # fmt: on
     _alt_fail_msg: Final[str] = "Program AddressLookupTab1e1111111111111111111111111 failed: "
+    _prog_fail_re: Final[re.Pattern] = re.compile(r"Program (\w+) failed: (.*)")
 
     def __init__(self, tx: SolTx, receipt: SolRpcTxReceiptInfo) -> None:
         self._tx = tx
         self._receipt = receipt
 
     @cached_method
-    def check_if_error(self) -> bool:
-        if isinstance(self._receipt, (SolRpcSendTxErrorInfo, SolRpcNodeUnhealthyErrorInfo)):
-            return True
-        if isinstance(self._receipt, SolRpcTxSlotInfo):
-            if self._receipt.transaction.meta.err:
-                return True
-        return False
+    def get_error(self) -> SolErrorData | None:
+        log_list = self._get_log_list()
+        for log_rec in log_list:
+            if match := self._prog_fail_re.match(log_rec):
+                msg = match.group(1) + ": " + match.group(2)
+                return SolErrorData(SolErrorType.Solana, SolErrorCode.Custom, msg)
+
+        if self._check_if_error():
+            return SolErrorData(SolErrorType.Solana, SolErrorCode.Unknown, "Unknown error")
+        return None
 
     @cached_method
     def check_if_alt_error(self) -> bool:
@@ -95,10 +101,6 @@ class SolTxErrorParser:
         return self._get_tx_error() == SolRpcTxFieldErrorCode.BlockhashNotFound
 
     @cached_method
-    def check_if_sol_account_already_exists(self) -> bool:
-        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.AccountAlreadyInitialized
-
-    @cached_method
     def check_if_preprocessed_error(self) -> bool:
         return isinstance(self._receipt, SolRpcSendTxErrorInfo)
 
@@ -136,3 +138,12 @@ class SolTxErrorParser:
         if isinstance(self._receipt, SolRpcTxSlotInfo):
             return tuple(self._receipt.transaction.meta.log_messages or list())
         return tuple()
+
+    @cached_method
+    def _check_if_error(self) -> bool:
+        if isinstance(self._receipt, (SolRpcSendTxErrorInfo, SolRpcNodeUnhealthyErrorInfo)):
+            return True
+        if isinstance(self._receipt, SolRpcTxSlotInfo):
+            if self._receipt.transaction.meta.err:
+                return True
+        return False

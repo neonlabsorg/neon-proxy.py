@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Final, Sequence
+from typing import Final
 
 from typing_extensions import Self
 
@@ -16,6 +16,7 @@ from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
 from common.solana_rpc.alt_builder import SolAltTxBuilder
 from common.solana_rpc.client import SolClient
+from common.solana_rpc.errors import SolErrorData, SolProxyErrorCode, SolErrorType
 from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
@@ -46,7 +47,7 @@ class HolderHandler(BaseNPCmdHandler):
         self = cls(cfg)
         self._root_parser = cmd_list_parser.add_parser(
             self.command,
-            description="Commands on Holder accounts"
+            description="Commands on Holder accounts",
         )
         self._cmd_parser = self._root_parser.add_subparsers(
             title="command",
@@ -191,7 +192,7 @@ class HolderHandler(BaseNPCmdHandler):
                 return 1
         return 0
 
-    def _get_cb_ix_list(self, cu_limit = SolCbProg.MaxCuLimit // 2) -> list[SolTxIx]:
+    def _get_cb_ix_list(self, cu_limit=SolCbProg.MaxCuLimit // 2) -> list[SolTxIx]:
         cb_prog = SolCbProg()
         cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
         cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
@@ -266,7 +267,8 @@ class HolderHandler(BaseNPCmdHandler):
         )
         # fmt: on
 
-        cancel_ix = neon_prog.make_cancel_ix()
+        data = SolErrorData(SolErrorType.Proxy, SolProxyErrorCode.Manual, "Unknown")
+        cancel_ix = neon_prog.make_cancel_ix(data.to_bytes())
 
         ix_list = self._get_cb_ix_list() + [cancel_ix]
         return SolLegacyTx(NeonEvmIxCode.CancelWithHash.name, ix_list=ix_list)
@@ -344,7 +346,9 @@ class HolderHandler(BaseNPCmdHandler):
 
         return False
 
-    async def _make_finish_skd_tx(self, holder: HolderAccountModel, op_res: OpResourceModel) -> None | tuple[SolLegacyTx, SolLegacyTx]:
+    async def _make_finish_skd_tx(
+        self, holder: HolderAccountModel, op_res: OpResourceModel
+    ) -> None | tuple[SolLegacyTx, SolLegacyTx]:
         core_api_client: CoreApiClient = await self._get_core_api_client()
 
         if not (skd_tree_acct := await core_api_client.get_neon_skd_tree(holder.payer, holder.tx.nonce)).is_exist:
