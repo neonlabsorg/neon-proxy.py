@@ -41,7 +41,6 @@ env:
   TF_VAR_ci_pp_solana_url: ${{secrets.DEVNET_INTERNAL_RPC}}
   TF_VAR_neon_evm_commit: "latest"
   TF_VAR_faucet_model_commit: ${{vars.FAUCET_COMMIT}}
-  #TF_VAR_dockerhub_org_name: ${{vars.DOCKERHUB_ORG_NAME}}
   HCLOUD_TOKEN: ${{secrets.HCLOUD_TOKEN}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
