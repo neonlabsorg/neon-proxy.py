@@ -63,13 +63,3 @@ class EthNonceTooHighError(EthError):
     @classmethod
     def raise_error(cls, tx_nonce: int, state_tx_cnt: int, *, sender: str | EthAddress) -> None:
         raise cls(tx_nonce, state_tx_cnt, sender=sender)
-
-
-class EthOutOfGasError(EthError):
-    _empty_sender: Final[str] = "?"
-
-    def __init__(self, gas_limit: int, required_gas_limit: int, *, sender: str | EthAddress = _empty_sender) -> None:
-        super().__init__("gas limit reached")
-        self._sender = sender
-        self._gas_limit = gas_limit
-        self._required_gas_limit = required_gas_limit
