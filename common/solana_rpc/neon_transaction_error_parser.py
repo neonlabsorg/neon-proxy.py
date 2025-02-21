@@ -2,6 +2,7 @@ import logging
 import re
 from typing import Sequence, Final
 
+from .errors import SolErrorType, SolErrorData
 from .transaction_error_parser import SolTxErrorParser
 from ..neon.evm_log_decoder import (
     NeonTxErrorLogInfo,
@@ -9,7 +10,6 @@ from ..neon.evm_log_decoder import (
 )
 from ..neon.neon_program import NeonProg
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
-from ..solana.pubkey import SolPubKey
 from ..solana.transaction_decoder import SolTxIxMetaInfo
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -31,13 +31,14 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     )
 
     @cached_method
-    def check_if_require_resize_iter(self) -> bool:
-        log_list = self._get_evm_error_log_list()
-        return any(log_rec.code == log_rec.code.AccountSpaceAllocationFailure for log_rec in log_list)
+    def get_require_resize_iter_error(self) -> SolErrorData | None:
+        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountSpaceAllocationFailure])
+        return self._find_evm_error(err_list)
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
         evm_log_list = self._get_evm_log_list()
+
         if any(self._create_neon_acct_re.match(log_rec) for log_rec in evm_log_list):
             return True
 
@@ -45,33 +46,35 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return any(self._create_acct_re.match(log_rec) for log_rec in raw_log_list)
 
     @cached_method
-    def check_if_out_of_memory(self) -> bool:
-        log_list = self._get_log_list()
-        return any(log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg) for log_rec in log_list)
+    def get_out_of_memory_error(self) -> SolErrorData | None:
+        log_list: Sequence[str] = self._get_log_list()
+        for log_rec in log_list:
+            if log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg):
+                err_msg = log_rec[idx + 2:] if (idx := log_rec.rfind(": ")) != -1 else log_rec
+                return SolErrorData(SolErrorType.Neon, int(NeonTxErrorLogInfo.ErrorCode.Custom), err_msg)
+        return None
 
     @cached_method
-    def check_if_already_finalized(self) -> bool:
-        err_list = self._get_evm_error_log_list()
+    def get_already_finalized_error(self) -> SolErrorData | None:
+        code = NeonTxErrorLogInfo.ErrorCode
         # fmt: off
-        return any(
-            err_rec.code in (
-                err_rec.code.StorageAccountFinalized,
-                err_rec.code.ScheduledTxAlreadyComplete,
-                err_rec.code.ScheduledTxAlreadyInProgress,
-                err_rec.code.TreeAccountTxInvalidStatus,
-            )
-            for err_rec in err_list
-        )
+        err_code_list = tuple([
+            code.StorageAccountFinalized,
+            code.ScheduledTxAlreadyComplete,
+            code.ScheduledTxAlreadyInProgress,
+            code.TreeAccountTxInvalidStatus,
+        ])
         # fmt: on
+        return self._find_evm_error(err_code_list)
 
     @cached_method
-    def check_if_skd_tx_use_wrong_holder(self) -> bool:
-        log_list = self._get_evm_error_log_list()
-        return any(log_rec.code == log_rec.code.NotClassicTransaction for log_rec in log_list)
+    def get_skd_tx_use_wrong_holder_error(self) -> SolErrorData | None:
+        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.NotClassicTransaction])
+        return self._find_evm_error(err_list)
 
     @cached_method
     def get_nonce_error(self) -> tuple[int, int] | None:
-        log_list = self._get_evm_error_log_list()
+        log_list = self._get_evm_error_list()
         for log_rec in log_list:
             if log_rec.code == log_rec.code.InvalidTransactionNonce:
                 state_tx_cnt = int.from_bytes(log_rec.data[20:27], "little")
@@ -80,22 +83,19 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return None
 
     @cached_method
-    def get_out_of_gas_error(self) -> tuple[int, int] | None:
-        log_list = self._get_evm_error_log_list()
-        for log_rec in log_list:
-            if log_rec.code == log_rec.code.OutOfGas:
-                has_gas_limit = int.from_bytes(log_rec.data[0:31], "little")
-                req_gas_limit = int.from_bytes(log_rec.data[32:64], "little")
-                return int(has_gas_limit), int(req_gas_limit)
-        return None
+    def get_out_of_gas_error(self) -> SolErrorData | None:
+        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.OutOfGas])
+        return self._find_evm_error(err_list)
 
     @cached_method
-    def get_missing_account_error(self) -> SolPubKey | None:
-        log_list = self._get_evm_error_log_list()
-        for log_rec in log_list:
-            if log_rec.code == log_rec.code.AccountMissing:
-                return SolPubKey.from_raw(log_rec.data)
-        return None
+    def get_missing_account_error(self) -> SolErrorData | None:
+        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountMissing])
+        return self._find_evm_error(err_list)
+
+    @cached_method
+    def get_evm_error(self) -> SolErrorData | None:
+        err_list = self._get_evm_error_list()
+        return SolErrorData(SolErrorType.Neon, err_list[0].code, err_list[0].message) if err_list else None
 
     @cached_method
     def _get_evm_log_list(self) -> Sequence[str]:
@@ -116,8 +116,15 @@ class SolNeonTxErrorParser(SolTxErrorParser):
                     log_list.extend(inner_log_info.log_msg_list())
         return tuple(log_list)
 
+    def _find_evm_error(self, error_code_list: Sequence[NeonTxErrorLogInfo.ErrorCode]) -> SolErrorData | None:
+        err_list = self._get_evm_error_list()
+        for err_rec in err_list:
+            if err_rec.code in error_code_list:
+                return SolErrorData(SolErrorType.Neon, err_rec.code, err_rec.message)
+        return None
+
     @cached_method
-    def _get_evm_error_log_list(self) -> Sequence[NeonTxErrorLogInfo]:
+    def _get_evm_error_list(self) -> Sequence[NeonTxErrorLogInfo]:
         evm_log_list = self._get_evm_log_list()
 
         fake_tx_ix = SolTxIxMetaInfo.default()

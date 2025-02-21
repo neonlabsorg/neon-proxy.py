@@ -475,12 +475,13 @@ class NeonProg:
     def make_tx_step_from_data_ix(self, mode: NeonIxMode, step_cnt: int, index: int) -> SolTxIx:
         return self._make_tx_step_ix(NeonEvmIxCode.TxStepFromData, mode, step_cnt, index, self._rlp_tx)
 
-    def make_cancel_ix(self) -> SolTxIx:
+    def make_cancel_ix(self, memo: bytes) -> SolTxIx:
         self.validate_protocol()
 
         ix_data_list = (
             NeonEvmIxCode.CancelWithHash.value.to_bytes(1, byteorder="little"),
             self._neon_tx_hash.to_bytes(),
+            memo,
         )
 
         acct_meta_list = [

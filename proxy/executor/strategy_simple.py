@@ -48,10 +48,6 @@ class SimpleTxStrategy(BaseTxStrategy):
         _LOG.debug("failed!? NeonTx-Return, try next strategy...")
         raise WrongStrategyError()
 
-    async def cancel(self) -> None:
-        _LOG.debug("canceling of a simple NeonTx...")
-        return None
-
     def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
         return self._ctx.neon_prog.make_tx_exec_from_data_ix()
 
