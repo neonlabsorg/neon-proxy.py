@@ -20,7 +20,7 @@ from common.solana.transaction import SolTx, SolTxIx
 from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
-from common.solana_rpc.errors import SolCbExceededError
+from common.solana_rpc.errors import SolCbExceededError, SolErrorData
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from common.utils.cached import cached_property
 from .server_abc import ExecutorComponent, ExecutorServerAbc
@@ -127,9 +127,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
     async def done_execution(self) -> None: ...
 
-    @abc.abstractmethod
-    async def cancel(self) -> ExecTxDoneCode | None:
-        pass
+    async def cancel(self, data: SolErrorData) -> ExecTxDoneCode | None:
+        return None
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
@@ -364,7 +363,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             raise
         except BaseException as _exc:
             _LOG.warning("error on emulate solana tx list")
-            raise SolCbExceededError()
+            raise SolCbExceededError(SolCbProg.MaxCuLimit * 2)
 
     @staticmethod
     def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
@@ -402,7 +401,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                 used_cu_limit,
                 threshold_cu_limit,
             )
-            raise SolCbExceededError()
+            raise SolCbExceededError(threshold_cu_limit)
 
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 50_000
@@ -422,6 +421,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                 if cu_limit == max_cu_limit:
                     raise
                 # _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
+        return False
 
     @staticmethod
     def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:

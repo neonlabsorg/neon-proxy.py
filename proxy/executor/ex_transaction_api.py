@@ -15,6 +15,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
+from common.solana_rpc.errors import SolTxExecuteError
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context
 from .alt_destroyer import SolAltDestroyer
@@ -350,6 +351,9 @@ class NeonTxExecApi(ExecutorApi):
                 if acct.is_empty:
                     await self._db.destroy_tree_account(skd_tree_parser.address)
                     break
+
+        except SolTxExecuteError:
+            pass
 
         except BaseException as exc:
             _LOG.error("error on destroy tree account: %s", str(exc))

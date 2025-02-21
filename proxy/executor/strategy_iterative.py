@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import itertools
 import logging
@@ -10,11 +9,11 @@ from typing import Final, ClassVar
 from typing_extensions import Self
 
 from common.config.constants import ONE_BLOCK_SEC
-from common.ethereum.errors import EthOutOfGasError
 from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.solana.cb_program import SolCbProg
+from common.solana.errors import SolTxSizeError
 from common.solana.instruction import SolTxIx
 from common.solana_rpc.errors import (
     SolNoMoreRetriesError,
@@ -23,6 +22,7 @@ from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolWritableError,
     SolNeonSkdTxWrongStateError,
+    SolErrorData,
 )
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -108,7 +108,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             except SolNoMoreRetriesError:
                 pass
 
-    async def cancel(self) -> ExecTxDoneCode | None:
+    async def cancel(self, data: SolErrorData) -> ExecTxDoneCode | None:
         if not await self._ctx.holder_validator.is_active():
             return ExecTxDoneCode.Done
         elif await self._recheck_tx_list(self._cancel_name):
@@ -118,10 +118,17 @@ class IterativeTxStrategy(BaseTxStrategy):
         # generate cancel tx with the default CU budget
         self._reset_to_def()
 
+        memo = data.to_bytes()
         base_cfg = self._init_sol_tx_cfg(name=self._cancel_name)
-        ix = self._ctx.neon_prog.make_cancel_ix()
+        for retry in range(2):
+            try:
+                ix = self._ctx.neon_prog.make_cancel_ix(memo)
+                await self._emulate_and_send_single_tx("cancel", ix, base_cfg)
+                break
+            except SolTxSizeError:
+                _LOG.debug("skip cancel memo")
+                memo = bytes()
 
-        await self._emulate_and_send_single_tx("cancel", ix, base_cfg)
         return ExecTxDoneCode.Done
 
     async def done_execution(self) -> None:
@@ -155,7 +162,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         if status in (status.InProgress, status.ToStart, status.ToSkip, status.Skipped):
             return status
 
-        raise SolNeonSkdTxWrongStateError()
+        raise SolNeonSkdTxWrongStateError(status)
 
     async def _finish_skd_tx(self) -> None:
         name = self._finish_skd_tx_name
@@ -202,7 +209,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 else:
                     raise
 
-            except SolCbExceededError:
+            except SolCbExceededError as exc:
                 if not self._def_cu_limit:
                     self._def_cu_limit = SolCbProg.MaxCuLimit
                     _LOG.warning(
@@ -216,7 +223,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                         "with the the maximum (%s) CUs budget",
                         self._def_cu_limit,
                     )
-                    raise SolCbExceededCriticalError()
+                    raise SolCbExceededCriticalError(exc.cu_consumed)
 
     async def _send_single_iter(self, ix_mode=NeonIxMode.Unknown) -> bool:
         base_cfg = self._init_sol_tx_cfg(ix_mode=ix_mode)
@@ -482,16 +489,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         if has_already_finalized:
             return ExecTxDoneCode.Done
 
-        # Check that tx has enough gas to continue the NeonTx
-        gas_limit = self._ctx.holder_tx.effective_gas_limit
-        required_gas_limit = total_gas_used + NeonProg.SignatureGas
-
-        if gas_limit < required_gas_limit:
-            _LOG.debug("not enough gas %d < %d", gas_limit, required_gas_limit)
-            raise EthOutOfGasError(gas_limit, required_gas_limit)
-
         self._ctx.set_holder_block(tx_block)
-
         return None
 
 
