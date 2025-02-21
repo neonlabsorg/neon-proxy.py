@@ -32,6 +32,7 @@ data "template_file" "solana_init" {
     neon_evm_commit     = "${var.neon_evm_commit}"
     faucet_model_commit = "${var.faucet_model_commit}"
     dockerhub_org_name  = "${var.dockerhub_org_name}"
+    devnet_solana_url   = "${var.devnet_solana_url}"
   }
 }
 
@@ -45,5 +46,6 @@ data "template_file" "proxy_init" {
     faucet_model_commit = "${var.faucet_model_commit}"
     ci_pp_solana_url    = "${var.ci_pp_solana_url}"
     dockerhub_org_name  = "${var.dockerhub_org_name}"
+    devnet_solana_url   = "${var.devnet_solana_url}"
   }
 }

@@ -17,6 +17,21 @@ resource "hcloud_server" "proxy" {
     network_id = data.hcloud_network.ci-network.id
   }
 
+  labels = {
+    environment = "ci"
+    purpose    = "ci-oz-full-tests"
+  }
+  depends_on = [
+    hcloud_server.solana
+  ]
+}
+
+resource "null_resource" "proxy_provision" {
+  depends_on = [hcloud_server.proxy]
+  triggers = {
+      proxy_srv_id = hcloud_server.proxy.id
+  }
+
   provisioner "file" {
     source      = "../../../docker-compose/docker-compose-ci.yml"
     destination = "/tmp/docker-compose-ci.yml"
@@ -42,30 +57,6 @@ resource "hcloud_server" "proxy" {
 
   }
 
-
-  provisioner "remote-exec" {
-    inline = [
-      "echo '${hcloud_server.solana.network.*.ip[0]}' > /tmp/solana_host",
-      "chmod a+x /tmp/proxy_init.sh",
-      "sudo /tmp/proxy_init.sh"
-    ]
-
-  connection {
-    type        = "ssh"
-    user        = "root"
-    host        = hcloud_server.proxy.ipv4_address
-    private_key = file("~/.ssh/ci-stands")
-  }
-  
-  }
-
-  labels = {
-    environment = "ci"
-    purpose    = "ci-oz-full-tests"
-  }
-  depends_on = [
-    hcloud_server.solana
-  ]
 }
 
 resource "hcloud_server" "solana" {
@@ -76,6 +67,27 @@ resource "hcloud_server" "solana" {
   ssh_keys = [
     data.hcloud_ssh_key.ci-ssh-key.id
   ]
+
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = false
+  }
+
+  network {
+    network_id = data.hcloud_network.ci-network.id
+  }
+
+  labels = {
+    environment = "ci"
+  }
+}
+
+
+resource "null_resource" "solana_provision" {
+  depends_on = [hcloud_server.solana]
+  triggers = {
+    solana_srv_id = hcloud_server.solana.id
+  }
 
   provisioner "file" {
     source     = "../../../docker-compose/nginx.conf"
@@ -89,7 +101,7 @@ resource "hcloud_server" "solana" {
       }
   }
 
-   provisioner "file" {
+  provisioner "file" {
     source      = "../../../docker-compose/docker-compose-ci.yml"
     destination = "/tmp/docker-compose-ci.yml"
 
@@ -101,18 +113,15 @@ resource "hcloud_server" "solana" {
       }
   }
 
-  public_net {
-    ipv4_enabled = true
-    ipv6_enabled = false
-  }
+  provisioner "file" {
+    content     = data.template_file.solana_init.rendered
+    destination = "/tmp/solana_init.sh"
 
-  network {
-    network_id = data.hcloud_network.ci-network.id
-  }
-
-  user_data = data.template_file.solana_init.rendered
-
-  labels = {
-    environment = "ci"
+    connection {
+      type        = "ssh"
+      user        = "root"
+      host        = hcloud_server.solana.ipv4_address
+      private_key = file("~/.ssh/ci-stands")
+    }
   }
 }

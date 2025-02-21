@@ -27,6 +27,7 @@ export NEON_EVM_COMMIT=${neon_evm_commit}
 export FAUCET_COMMIT=${faucet_model_commit}
 export CI_PP_SOLANA_URL=${ci_pp_solana_url}
 export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
+export DEVNET_SOLANA_URL=${devnet_solana_url}
 
 
 # Generate docker-compose override file
@@ -36,19 +37,12 @@ version: "3"
 services:
   solana:
     container_name: solana
+    environment:
+      DEVNET_SOLANA_URL: $DEVNET_SOLANA_URL
     healthcheck:
-      test: [ CMD-SHELL, "/echo done" ]
+      test: [ CMD-SHELL, "echo done" ]
     entrypoint: "/usr/bin/sleep 10000"
 
-  gas_tank:
-    container_name: gas_tank
-    entrypoint: "/usr/bin/sleep 10000"
-
-  neon_test_invoke_program_loader:
-    container_name: neon_test_invoke_program_loader
-    command: bash -c "echo done"
-
-services:
   proxy:
     container_name: proxy
     environment:
@@ -90,6 +84,7 @@ function wait_service() {
   local URL=$2
   local DATA=$3
   local RESULT=$4
+  local SHOW_DOCKER_LOGS_IF_FAIL=$5
 
   # Max attepts is 100 (each for 2 seconds)
   local MAX_COUNT=100
@@ -110,6 +105,21 @@ function wait_service() {
     ((CURRENT_ATTEMPT=CURRENT_ATTEMPT+1))
     sleep 2
   done;
+
+  if [[ $CURRENT_ATTEMPT -eq $MAX_COUNT ]]; then
+      echo ""
+      echo "Service $SERVICE failed to respond as expected after $MAX_COUNT attempts."
+      if [[ "$SHOW_DOCKER_LOGS_IF_FAIL" == "show_docker_logs_if_fail" ]]; then
+        docker ps -a
+        docker ps -a --format "{{.ID}} {{.Names}}" | while read -r id name; do
+          echo ""
+          echo "Logs for container: $name"
+          docker logs "$id"
+          echo ""
+        done
+      fi
+      exit 1
+  fi
 }
 
 # Check if Solana is available
@@ -126,7 +136,8 @@ docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d 
 PROXY_URL="http://localhost:9090/solana"
 PROXY_DATA='{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest", false],"id":1}'
 PROXY_RESULT='"number"'
-wait_service "proxy" $PROXY_URL "$PROXY_DATA" $PROXY_RESULT
+
+wait_service "proxy" $PROXY_URL "$PROXY_DATA" $PROXY_RESULT "show_docker_logs_if_fail"
 
 
-docker rm -f tmp_solana_1
+docker rm -f solana
