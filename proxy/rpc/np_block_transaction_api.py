@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import ClassVar, Final, Annotated, Literal, Any, Sequence
 
-from pydantic import Field, PlainValidator
+from pydantic import Field, PlainValidator, PlainSerializer
 from strenum import StrEnum
 from typing_extensions import Self
 
@@ -427,7 +427,11 @@ class _RpcNeonTxStatus(StrEnum):
             raise ValueError(f"Wrong _RpcMpNeonTxStatusField {value}")
 
 
-_RpcNeonTxStatusField = Annotated[_RpcNeonTxStatus, PlainValidator(_RpcNeonTxStatus.from_raw)]
+_RpcNeonTxStatusField = Annotated[
+    _RpcNeonTxStatus,
+    PlainValidator(_RpcNeonTxStatus.from_raw),
+    PlainSerializer(lambda x: x.value, return_type=str),
+]
 
 
 class _RpcNeonTxStatusModel(BaseJsonRpcModel):
