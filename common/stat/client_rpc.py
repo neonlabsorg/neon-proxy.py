@@ -42,8 +42,10 @@ class RpcStatInfo:
     def start_timer(self) -> None:
         self._start_time_nsec = time.monotonic_ns()
 
-    def commit_stat(self, *, error_message: str | None= None) -> None:
+    def commit_stat(self, *, error_message: str | None= None, start_timer: bool = False) -> None:
         if not self._start_time_nsec:
+            if start_timer:
+                self.start_timer()
             return
 
         process_time_nsec, self._start_time_nsec = self.process_time_nsec, 0
@@ -57,6 +59,9 @@ class RpcStatInfo:
             is_modification=self._is_modification,
         )
         self._stat_client.commit_rpc_call(stat)
+
+        if start_timer:
+            self.start_timer()
 
     @property
     def process_time_nsec(self) -> int:
