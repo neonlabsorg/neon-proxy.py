@@ -23,7 +23,9 @@ class RpcStatCollector:
         _add_label("is_modification", data.is_modification)
         self._request.add(label, time_sec)
 
+        has_error = False
         if data.is_error:
+            has_error = True
             self._error_registry.add_error(
                 data.service,
                 HealthErrorCode.RPCError,
@@ -34,6 +36,7 @@ class RpcStatCollector:
             )
 
         if time_sec > 1.0:
+            has_error = True
             self._error_registry.add_error(
                 data.service,
                 HealthErrorCode.RPCBigTimeError,
@@ -43,3 +46,6 @@ class RpcStatCollector:
                     responseTime=time_sec,
                 )
             )
+
+        if not has_error:
+            self._error_registry.add_good_time(data.service)
