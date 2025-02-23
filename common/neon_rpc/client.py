@@ -439,7 +439,7 @@ class CoreApiClient(HttpClient):
 
         # if the previous call has reraised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
-        request.commit_stat(error_message=str(exc))
+        request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
 
     @staticmethod
     def _get_retry_error(method: str, resp: CoreApiResp) -> str | None:
