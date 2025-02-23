@@ -2,8 +2,9 @@ import dataclasses
 import enum
 import time
 
-from pydantic import Field
-from typing_extensions import Self
+import strenum
+from pydantic import Field, PlainSerializer
+from typing_extensions import Self, Annotated
 
 from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
@@ -16,6 +17,12 @@ class RpcCallData(BaseModel):
     is_error: bool = False
     error_message: str | None = None
     is_modification: bool = False
+
+
+class HealthServiceName(strenum.StrEnum):
+    BlockStorage = "BlockStorage"
+    Holder = "Holders"
+    Mempool = "Mempool"
 
 
 class HealthErrorCode(enum.IntEnum):
@@ -32,6 +39,7 @@ class HealthErrorCode(enum.IntEnum):
 @dataclasses.dataclass(frozen=True)
 class HealthErrorData:
     code: HealthErrorCode
+    monotonic_sec: int
     time_sec: int
     message: str
     data: dict | None
@@ -40,8 +48,8 @@ class HealthErrorData:
     def time(self) -> str:
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.time_sec))
 
-    def calc_age(self, now_sec: int) -> int:
-        return now_sec - self.time_sec
+    def calc_age(self, monotonic_sec: int) -> int:
+        return monotonic_sec - self.monotonic_sec
 
 class HealthErrorModel(BaseModel):
     time: str
@@ -63,8 +71,22 @@ class HealthErrorModel(BaseModel):
         )
 
 
+class HealthStatus(strenum.StrEnum):
+    Good = "ok"
+    Error = "error"
+
+
+HealthStatusField = Annotated[HealthStatus, PlainSerializer(lambda x: x.value)]
+
+
+class HealthStatusModel(BaseModel):
+    status: HealthStatusField
+    error_age: int = Field(serialization_alias="errorAge")
+    error_list: list[HealthErrorModel] = Field(default_factory=list, serialization_alias="errors")
+
+
 class HealthErrorListFormatter(BaseModel):
-    error_list: dict[str, list[HealthErrorModel]] = Field(serialization_alias="errors")
+    service_list: dict[str, HealthStatusModel] = Field(serialization_alias="services")
 
 
 class MetricStatData(BaseModel):

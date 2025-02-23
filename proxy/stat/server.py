@@ -5,7 +5,14 @@ from common.config.config import Config
 from common.ethereum.hash import EthAddress
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.transaction_list_sender_stat import SolTxFailData, SolTxDoneData
-from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter, HealthErrorCode
+from common.stat.api import (
+    RpcCallData,
+    MetricStatData,
+    HealthCheckData,
+    HealthErrorListFormatter,
+    HealthErrorCode,
+    HealthServiceName,
+)
 from common.stat.health_error_registry import HealthErrorRegistry
 from common.stat.metric import StatRegistry, StatSummary, StatGauge, stat_render
 from common.stat.metric_rpc import RpcStatCollector
@@ -124,9 +131,11 @@ class OpResourceStatApi(AppDataApi):
         self._holder_blocked_addr_cnt_stat.set(label, holder_blocked_cnt)
         self._holder_total_cnt_stat.set(label, holder_total_cnt)
 
+        has_error = False
         if holder_disabled_cnt:
+            has_error = True
             self._error_registry.add_error(
-                "Holders",
+                HealthServiceName.Holder.value,
                 HealthErrorCode.DisabledHolderError,
                 f"Resource manager has disabled holders",
                 dict(
@@ -135,8 +144,9 @@ class OpResourceStatApi(AppDataApi):
                 ),
             )
         if holder_used_cnt > int((holder_free_cnt + holder_used_cnt) * 0.8):
+            has_error = True
             self._error_registry.add_error(
-                "Holders",
+                HealthServiceName.Holder.value,
                 HealthErrorCode.UsedHolderError,
                 "more than 80% of used holders",
                 dict(
@@ -144,6 +154,9 @@ class OpResourceStatApi(AppDataApi):
                     totalHolderCount=(holder_free_cnt + holder_used_cnt),
                 ),
             )
+
+        if not has_error:
+            self._error_registry.add_good_time(HealthServiceName.Holder.value)
 
     @AppDataApi.method(name="commitOpExecutionTokenBalance")
     async def on_op_exec_token_balance(self, data: OpExecTokenBalanceData) -> None:
@@ -206,11 +219,13 @@ class NeonTxPoolStatApi(AppDataApi):
 
     @AppDataApi.method(name="commitNeonTransactionPool")
     def on_tx_pool(self, data: NeonTxPoolData) -> None:
+        has_error = False
         for pool in data.scheduling_queue:
             self._tx_pool.set({"token": pool.token}, pool.queue_len)
             if pool.high_queue_len < pool.queue_len:
+                has_error = True
                 self._error_registry.add_error(
-                    "Mempool",
+                    HealthServiceName.Mempool.value,
                     HealthErrorCode.FullMempoolError,
                     f"Too many transactions in a Mempool",
                     dict(
@@ -225,14 +240,18 @@ class NeonTxPoolStatApi(AppDataApi):
         self._tx_stuck_process.set(self._label, data.processing_stuck_queue_len)
 
         if data.stuck_queue_len > 100:
+            has_error = True
             self._error_registry.add_error(
-                "Mempool",
+                HealthServiceName.Mempool.value,
                 HealthErrorCode.StuckTxError,
                 f"Too many stuck transactions in Mempool",
                 dict(
                     transactionCount=data.stuck_queue_len,
                 ),
             )
+
+        if not has_error:
+            self._error_registry.add_good_time(HealthServiceName.Mempool.value)
 
 
 class MetricApi(AppDataApi):
@@ -249,7 +268,7 @@ class MetricApi(AppDataApi):
 
     @AppDataApi.method(name="getHealthErrorList")
     def on_health_error_list(self) -> HealthCheckData:
-        fmt = HealthErrorListFormatter(error_list=self._error_registry.get_health_error_list())
+        fmt = HealthErrorListFormatter(service_list=self._error_registry.get_health_status())
         return HealthCheckData(data=fmt.to_json())
 
 
