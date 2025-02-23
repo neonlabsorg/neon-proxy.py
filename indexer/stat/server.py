@@ -2,7 +2,8 @@ from typing import ClassVar
 
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
-from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter, HealthErrorCode
+from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter, HealthErrorCode, \
+    HealthServiceName
 from common.stat.health_error_registry import HealthErrorRegistry
 from common.stat.metric import StatRegistry, StatGauge, stat_render
 from common.stat.metric_rpc import RpcStatCollector
@@ -56,29 +57,37 @@ class BlockStatApi(AppDataApi):
         self._block_parsed.set(label, data.parsed_block)
         self._block_confirmed.set(label, data.confirmed_block)
         self._block_finalized.set(label, data.finalized_block)
+
+        has_error = False
         if data.corrupted_block_cnt > 0:
             self._corrupted_block_cnt.add({}, data.corrupted_block_cnt)
+            has_error = True
             self._error_registry.add_error(
-                "BlockStorage",
+                HealthServiceName.BlockStorage.value,
                 HealthErrorCode.CorruptedBlockError,
                 f"Fail to parse a Solana block",
                 dict(
                     blocksCount=data.corrupted_block_cnt,
                 )
             )
+
         if data.tracer_block:
             self._block_tracer.set(label, data.tracer_block)
 
         lag_block_cnt = data.confirmed_block - data.parsed_block
         if lag_block_cnt > self._cfg.indexer_block_lag_to_warn:
+            has_error = True
             self._error_registry.add_error(
-                "BlockStorage",
+                HealthServiceName.BlockStorage.value,
                 HealthErrorCode.LagBlockError,
                 f"Indexer lags behind Solana",
                 dict(
                     blocksCount=lag_block_cnt,
                 )
             )
+
+        if not has_error:
+            self._error_registry.add_good_time(HealthServiceName.BlockStorage.value)
 
 
     @AppDataApi.method(name="commitReindexBlock")
@@ -116,7 +125,7 @@ class MetricApi(AppDataApi):
 
     @AppDataApi.method(name="getHealthErrorList")
     def on_health_error_list(self) -> HealthCheckData:
-        fmt = HealthErrorListFormatter(error_list=self._error_registry.get_health_error_list())
+        fmt = HealthErrorListFormatter(service_list=self._error_registry.get_health_status())
         return HealthCheckData(data=fmt.to_json())
 
 
