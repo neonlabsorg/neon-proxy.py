@@ -29,18 +29,17 @@ from ..solana.commit_level import SolCommit
 from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
 from ..solana.signature import SolTxSig, SolRpcTxSigInfo
-from ..solana.vote_program import SolVoteProg
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
     SolRpcTxInfo,
     SolRpcTxSlotInfo,
     SolRpcErrorInfo,
-    SolRpcExtErrorInfo,
     SolRpcTxFieldErrorCode,
     SolRpcSendTxErrorInfo,
     SolRpcNodeUnhealthyErrorInfo,
     SolRpcInvalidParamErrorInfo,
 )
+from ..solana.vote_program import SolVoteProg
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import ttl_cached_method
 from ..utils.format import if_none
@@ -192,7 +191,7 @@ class SolClient(HttpClient):
 
         # if the previous call has reraised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
-        request.commit_stat(error_message=str(exc))
+        request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
         _LOG.debug("bad Solana response on request %s: %s", request.data, str(exc))
 
     @ttl_cached_method(ttl_sec=60)
