@@ -2,8 +2,8 @@ import logging
 import re
 from typing import Sequence, Final
 
-from .errors import SolErrorType, SolErrorData
 from .transaction_error_parser import SolTxErrorParser
+from ..neon.cancel_error import CancelErrorSource, CancelErrorData
 from ..neon.evm_log_decoder import (
     NeonTxErrorLogInfo,
     NeonEvmLogDecoder,
@@ -31,7 +31,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     )
 
     @cached_method
-    def get_require_resize_iter_error(self) -> SolErrorData | None:
+    def get_require_resize_iter_error(self) -> CancelErrorData | None:
         err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountSpaceAllocationFailure])
         return self._find_evm_error(err_list)
 
@@ -46,16 +46,16 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return any(self._create_acct_re.match(log_rec) for log_rec in raw_log_list)
 
     @cached_method
-    def get_out_of_memory_error(self) -> SolErrorData | None:
+    def get_out_of_memory_error(self) -> CancelErrorData | None:
         log_list: Sequence[str] = self._get_log_list()
         for log_rec in log_list:
             if log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg):
-                err_msg = log_rec[idx + 2:] if (idx := log_rec.rfind(": ")) != -1 else log_rec
-                return SolErrorData(SolErrorType.Neon, int(NeonTxErrorLogInfo.ErrorCode.Custom), err_msg)
+                err_msg = log_rec[idx + 2 :] if (idx := log_rec.rfind(": ")) != -1 else log_rec
+                return CancelErrorData(CancelErrorSource.Neon, int(NeonTxErrorLogInfo.ErrorCode.Custom), err_msg)
         return None
 
     @cached_method
-    def get_already_finalized_error(self) -> SolErrorData | None:
+    def get_already_finalized_error(self) -> CancelErrorData | None:
         code = NeonTxErrorLogInfo.ErrorCode
         # fmt: off
         err_code_list = tuple([
@@ -68,7 +68,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return self._find_evm_error(err_code_list)
 
     @cached_method
-    def get_skd_tx_use_wrong_holder_error(self) -> SolErrorData | None:
+    def get_skd_tx_use_wrong_holder_error(self) -> CancelErrorData | None:
         err_list = tuple([NeonTxErrorLogInfo.ErrorCode.NotClassicTransaction])
         return self._find_evm_error(err_list)
 
@@ -83,19 +83,19 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return None
 
     @cached_method
-    def get_out_of_gas_error(self) -> SolErrorData | None:
+    def get_out_of_gas_error(self) -> CancelErrorData | None:
         err_list = tuple([NeonTxErrorLogInfo.ErrorCode.OutOfGas])
         return self._find_evm_error(err_list)
 
     @cached_method
-    def get_missing_account_error(self) -> SolErrorData | None:
+    def get_missing_account_error(self) -> CancelErrorData | None:
         err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountMissing])
         return self._find_evm_error(err_list)
 
     @cached_method
-    def get_evm_error(self) -> SolErrorData | None:
+    def get_evm_error(self) -> CancelErrorData | None:
         err_list = self._get_evm_error_list()
-        return SolErrorData(SolErrorType.Neon, err_list[0].code, err_list[0].message) if err_list else None
+        return CancelErrorData(CancelErrorSource.Neon, err_list[0].code, err_list[0].message) if err_list else None
 
     @cached_method
     def _get_evm_log_list(self) -> Sequence[str]:
@@ -116,11 +116,11 @@ class SolNeonTxErrorParser(SolTxErrorParser):
                     log_list.extend(inner_log_info.log_msg_list())
         return tuple(log_list)
 
-    def _find_evm_error(self, error_code_list: Sequence[NeonTxErrorLogInfo.ErrorCode]) -> SolErrorData | None:
+    def _find_evm_error(self, error_code_list: Sequence[NeonTxErrorLogInfo.ErrorCode]) -> CancelErrorData | None:
         err_list = self._get_evm_error_list()
         for err_rec in err_list:
             if err_rec.code in error_code_list:
-                return SolErrorData(SolErrorType.Neon, err_rec.code, err_rec.message)
+                return CancelErrorData(CancelErrorSource.Neon, err_rec.code, err_rec.message)
         return None
 
     @cached_method

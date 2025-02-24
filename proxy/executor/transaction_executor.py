@@ -7,6 +7,7 @@ from typing import ClassVar, Final
 
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
+from common.neon.cancel_error import CancelErrorData
 from common.neon.neon_program import NeonBaseTxAccountSet
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.errors import SolTxSizeError, SolError
@@ -19,7 +20,6 @@ from common.solana_rpc.errors import (
     SolNeonSkdTxError,
     SolWritableError,
     SolTxExecuteError,
-    SolErrorData,
 )
 from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
@@ -208,13 +208,13 @@ class NeonTxExecutor(ExecutorComponent):
 
             except BaseException as exc:
                 _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter, exc_info=exc)
-                return await self._cancel_neon_tx(ctx, strategy, SolErrorData.default())
+                return await self._cancel_neon_tx(ctx, strategy, CancelErrorData.default())
 
     async def _cancel_neon_tx(
         self,
         ctx: NeonExecTxCtx,
         strategy: BaseTxStrategy,
-        data: SolErrorData,
+        data: CancelErrorData,
     ) -> ExecTxDoneCode | None:
         ctx.mark_skip_simple_strategy()
         if strategy.is_simple:
