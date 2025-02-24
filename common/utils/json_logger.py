@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import copy
 import hashlib
 import json
 import logging
@@ -193,7 +194,7 @@ class ContextFilter(Filter):
 def logging_context(**kwargs):
     old_log_ctx = _LOG_CTX.get()
 
-    new_log_ctx = dict(**old_log_ctx)
+    new_log_ctx = copy.copy(old_log_ctx)
     new_log_ctx.update(kwargs)
     _LOG_CTX.set(new_log_ctx)
 
