@@ -25,6 +25,8 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
 from common.neon.block import NeonBlockHdrModel
+from common.neon.cancel_error import CancelErrorData
+from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
@@ -230,6 +232,31 @@ class _RpcSolReceiptDraft:
         return _RpcSolReceiptModel.model_validate(self, from_attributes=True)
 
 
+class _RpcNeonCancelResp(BaseJsonRpcModel):
+    solanaTransactionSignature: SolTxSigField
+    solanaInstructionIndex: int
+    solanaInnerInstructionIndex: int | None
+    source: str
+    code: HexUIntField
+    data: EthBinStrField
+    message: str
+
+    @classmethod
+    def from_raw(cls, event: NeonTxEventModel) -> Self | None:
+        raw_data = event.data.to_bytes()
+        error_data = raw_data[1:]  # skip status(0x01 or 0x00)
+        data = CancelErrorData.from_bytes(error_data)
+        return cls(
+            solanaTransactionSignature=event.sol_tx_sig,
+            solanaInstructionIndex=event.sol_ix_idx,
+            solanaInnerInstructionIndex=event.sol_inner_ix_idx,
+            source=data.source.name,
+            code=data.code,
+            data=raw_data,
+            message=data.message,
+        )
+
+
 class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
     solanaBlockHash: Base58Field
     solanaCompleteTransactionSignature: SolTxSigField
@@ -238,6 +265,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
     neonRawTransaction: EthBinStrField
     neonIsCompleted: bool = True  # TODO: remove, because it is always True
     neonIsCanceled: bool
+    neonCancelData: _RpcNeonCancelResp | None
     solanaTransactions: list[_RpcSolReceiptModel]
     neonCosts: list[_RpcNeonCostModel]
 
@@ -261,6 +289,13 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
             log_list = list()
             sol_tx_list, neon_cost_list = cls._to_sol_receipt_list(neon_tx_meta, sol_meta_list)
 
+        cancel: _RpcNeonCancelResp | None = None
+        if rcpt.is_canceled:
+            for e in reversed(rcpt.event_list):
+                if e.event_type == e.event_type.Cancel:
+                    cancel = _RpcNeonCancelResp.from_raw(e)
+                    break
+
         return cls(
             **cls._to_dict(neon_tx_meta),
             solanaBlockHash=rcpt.block_hash.to_bytes(),
@@ -270,6 +305,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
             neonRawTransaction=tx.to_rlp_tx(),
             neonIsCanceled=rcpt.is_canceled,
             logs=log_list,
+            neonCancelData=cancel,
             solanaTransactions=sol_tx_list,
             neonCosts=neon_cost_list,
         )
@@ -495,6 +531,7 @@ class _RpcNeonTreeAccountResp(BaseJsonRpcModel):
             lastIndex=tree.last_idx,
             transactions=[_RpcNeonTreeNodeModel.from_raw(n) for n in tree.node_list],
         )
+
 
 class NpBlockTxApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::BlockTransaction"
@@ -785,11 +822,11 @@ class NpBlockTxApi(NeonProxyApi):
 
     @NeonProxyApi.method(name="neon_getScheduledTreeAccount")
     async def get_neon_skd_tree(
-            self,
-            ctx: HttpRequestCtx,
-            address: EthNotNoneAddressField | SolNotNonePubKeyField,
-            nonce: HexUIntField,
-            block_tag: RpcBlockRequest,
+        self,
+        ctx: HttpRequestCtx,
+        address: EthNotNoneAddressField | SolNotNonePubKeyField,
+        nonce: HexUIntField,
+        block_tag: RpcBlockRequest,
     ) -> _RpcNeonTreeAccountResp | None:
         chain_id = self._validate_layer0_chain_id(ctx, isinstance(address, SolPubKey))
         block = await self.get_block_by_tag(block_tag)

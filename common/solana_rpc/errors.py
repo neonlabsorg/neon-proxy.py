@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..neon.cancel_error import CancelErrorData, CancelErrorSource, ProxyCancelErrorCode
+from ..neon.cancel_error import CancelErrorData, CancelErrorSource, NeonProxyCancelErrorCode
 from ..neon.evm_log_decoder import NeonTxErrorLogInfo
 from ..neon.transaction_model import NeonSkdTxStatus
 from ..solana.errors import SolError
@@ -47,8 +47,8 @@ class SolCbExceededBaseError(SolTxExecuteError):
         msg = f"Compute Budget exceeded: {cu_consumed}"
         super().__init__(
             CancelErrorData(
-                CancelErrorSource.Proxy,
-                ProxyCancelErrorCode.CbExceedError,
+                CancelErrorSource.NeonProxy,
+                NeonProxyCancelErrorCode.CbExceedError,
                 msg,
             )
         )
@@ -71,8 +71,8 @@ class SolWritableError(SolTxExecuteError):
     def __init__(self) -> None:
         super().__init__(
             CancelErrorData(
-                CancelErrorSource.Proxy,
-                ProxyCancelErrorCode.WriteableError,
+                CancelErrorSource.NeonProxy,
+                NeonProxyCancelErrorCode.WriteableError,
                 "Privileges escalation error"
             )
         )
@@ -82,8 +82,8 @@ class SolNoMoreRetriesError(SolTxExecuteError):
     def __init__(self) -> None:
         super().__init__(
             CancelErrorData(
-                CancelErrorSource.Proxy,
-                ProxyCancelErrorCode.NoMoreRetriesError,
+                CancelErrorSource.NeonProxy,
+                NeonProxyCancelErrorCode.NoMoreRetriesError,
                 "No more retries to commit transactions",
             )
         )
@@ -116,7 +116,7 @@ class SolNeonSkdTxWrongStateError(SolNeonSkdTxError):
         msg = f"NeonSkdTx has a wrong state {status.value}"
         super().__init__(
             CancelErrorData(
-                CancelErrorSource.Neon,
+                CancelErrorSource.NeonEVM,
                 NeonTxErrorLogInfo.ErrorCode.Custom,
                 msg,
             )
