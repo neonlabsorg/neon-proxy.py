@@ -40,6 +40,7 @@ from .api import (
 )
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
+from ..ethereum import revert_message
 from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
@@ -485,12 +486,13 @@ class CoreApiClient(HttpClient):
         prog = BpfLoader2ProgModel.from_data(acct.data)
         return prog.exec_address
 
-    def _check_emulator_result(self, resp: EmulNeonCallResp) -> None:
+    @staticmethod
+    def _check_emulator_result(resp: EmulNeonCallResp) -> None:
         if resp.exit_code == EmulNeonCallExitCode.Revert:
             revert_data = resp.result.to_string()
             # _LOG.debug("got reverted result with data: %s", revert_data)
 
-            if not (result_value := self._decode_revert_message(revert_data[2:])):  # remove 0x
+            if not (result_value := revert_message.decode(revert_data[2:])):  # remove 0x
                 raise EthError(code=3, message="execution reverted", data=revert_data)
             else:
                 raise EthError(
@@ -502,51 +504,6 @@ class CoreApiClient(HttpClient):
         if resp.exit_code != EmulNeonCallExitCode.Succeed:
             # _LOG.debug("got failed emulate exit code: %s", resp.exit_code)
             raise EthError(code=3, message=resp.exit_code)
-
-    @staticmethod
-    def _decode_revert_message(data: str) -> str | None:
-        if not data:
-            return None
-
-        if (data_len := len(data)) < 8:
-            raise EthError(
-                code=3,
-                message=f"Too less bytes to decode revert signature: {data_len}",
-                data=data,
-            )
-
-        if data[:8] == "4e487b71":  # keccak256("Panic(uint256)")
-            return None
-
-        if data[:8] != "08c379a0":  # keccak256("Error(string)")
-            # _LOG.debug(f"failed to decode revert_message, unknown revert signature: {data[:8]}")
-            return None
-
-        if data_len < 8 + 64:
-            raise EthError(
-                code=3,
-                message=f"Too less bytes to decode revert msg offset: {data_len}",
-                data=data,
-            )
-        offset = int(data[8 : 8 + 64], 16) * 2
-
-        if data_len < 8 + offset + 64:
-            raise EthError(
-                code=3,
-                message=f"Too less bytes to decode revert msg len: {data_len}",
-                data=data,
-            )
-        length = int(data[8 + offset : 8 + offset + 64], 16) * 2
-
-        if data_len < 8 + offset + 64 + length:
-            raise EthError(
-                code=3,
-                message=f"Too less bytes to decode revert msg: {data_len}",
-                data=data,
-            )
-
-        message = str(bytes.fromhex(data[8 + offset + 64 : 8 + offset + 64 + length]), "utf8")
-        return message
 
     def _get_slot(self, block: NeonBlockHdrModel | None) -> int | None:
         if block:

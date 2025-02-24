@@ -5,6 +5,7 @@ from typing import ClassVar, Final
 
 from common.ethereum.hash import EthTxHash, EthAddressField
 from common.neon.address import NeonAddress
+from common.neon.cancel_error import CancelErrorData
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus
 from common.solana.pubkey import SolPubKey, SolPubKeyField
@@ -344,7 +345,9 @@ class CancelWithHashIxDecoder(BaseTxStepIxDecoder):
 
     def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
         self._decode_neon_tx_from_holder_account(tx)
-        tx.set_tx_cancel_return(self.state.sol_neon_ix)
+
+        cancel_data = self.state.sol_neon_ix.neon_ix_data[33:]
+        tx.set_tx_cancel_return(self.state.sol_neon_ix, cancel_data)
         return True
 
 
@@ -729,7 +732,7 @@ class SkdTxSkipFromAccountDecoder(BaseSkdTxIxDecoder):
 
     def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
         self._decode_neon_tx_from_holder_account(tx)
-        tx.set_tx_cancel_return(self.state.sol_neon_ix)
+        tx.set_tx_cancel_return(self.state.sol_neon_ix, CancelErrorData.skipped().to_bytes())
         return True
 
 
@@ -751,7 +754,7 @@ class SkdTxSkipFromDataDecoder(BaseSkdTxIxDecoder):
         return self._decode_neon_tx_from_rlp_data("SolTxIx.Data", self.state.sol_neon_ix.neon_ix_data, start_rlp_pos=5)
 
     def _decode_neon_tx_return(self, tx: NeonIndexedTxInfo) -> bool:
-        tx.set_tx_cancel_return(self.state.sol_neon_ix)
+        tx.set_tx_cancel_return(self.state.sol_neon_ix, CancelErrorData.skipped().to_bytes())
         return True
 
 
