@@ -497,7 +497,11 @@ class NeonProg:
             acct_meta_list.extend(self._acct_meta_list)
         else:
             # _LOG.debug("Cancel uses readonly address list")
-            acct_meta_list.extend(self._ro_acct_meta_list)
+            # acct_meta_list.extend(self._ro_acct_meta_list)
+            acct_meta_list.append(
+                SolAccountMeta(pubkey=self._base_tx_acct_set.payer, is_signer=False, is_writable=True),
+            )
+
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 
