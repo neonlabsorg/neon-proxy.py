@@ -7,6 +7,7 @@ from typing import Sequence, Final, ClassVar
 
 from typing_extensions import Self
 
+from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
@@ -20,7 +21,7 @@ from common.solana.transaction import SolTx, SolTxIx
 from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_meta import SolRpcTxSlotInfo
-from common.solana_rpc.errors import SolCbExceededError, SolErrorData
+from common.solana_rpc.errors import SolCbExceededError
 from common.solana_rpc.transaction_list_sender import SolTxSendState
 from common.utils.cached import cached_property
 from .server_abc import ExecutorComponent, ExecutorServerAbc
@@ -127,7 +128,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
     async def done_execution(self) -> None: ...
 
-    async def cancel(self, data: SolErrorData) -> ExecTxDoneCode | None:
+    async def cancel(self, data: CancelErrorData) -> ExecTxDoneCode | None:
         return None
 
     def _validate_tx_size(self) -> bool:

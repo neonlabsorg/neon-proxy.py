@@ -16,13 +16,13 @@ from .errors import (
     SolCbExceededError,
     SolNoMoreRetriesError,
     SolWritableError,
-    SolErrorCode,
 )
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from .ws_client import SolWatchTxSession
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
+from ..neon.cancel_error import SolCancelErrorCode
 from ..solana.commit_level import SolCommit
 from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash
@@ -459,7 +459,7 @@ class SolTxListSender:
             return self._DecodeResult(status.CbExceededError, SolCbExceededError(cu_consumed))
 
         elif data := tx_error_parser.get_error():
-            if data.code == SolErrorCode.Unknown:
+            if data.code == SolCancelErrorCode.Unknown:
                 _LOG.debug("unknown Solana receipt %s: %s", tx, tx_receipt)
             else:
                 _LOG.debug("unknown Solana error %s: %s", tx, data.message)
