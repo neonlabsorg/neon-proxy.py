@@ -1,58 +1,11 @@
 from __future__ import annotations
 
-import dataclasses
-import enum
-from typing import ClassVar
-
+from ..neon.cancel_error import CancelErrorData, CancelErrorSource, ProxyCancelErrorCode
 from ..neon.evm_log_decoder import NeonTxErrorLogInfo
 from ..neon.transaction_model import NeonSkdTxStatus
 from ..solana.errors import SolError
 from ..solana.transaction_meta import SolRpcErrorInfo
-from ..utils.cached import cached_property, cached_method
-
-
-class SolErrorType(enum.IntEnum):
-    Proxy = 1
-    Neon = 2
-    Solana = 3
-
-
-class SolProxyErrorCode(enum.IntEnum):
-    Unknown = 1
-    Manual = 2
-    NoMoreRetriesError = 3
-    WriteableError = 4
-    CbExceedError = 5
-
-
-class SolErrorCode(enum.IntEnum):
-    Unknown = 1
-    Custom = 2
-
-
-@dataclasses.dataclass(frozen=True)
-class SolErrorData:
-    error_type: SolErrorType
-    code: int
-    message: str
-
-    _default: ClassVar[SolErrorData | None] = None
-
-    @classmethod
-    def default(cls) -> SolErrorData:
-        if not cls._default:
-            cls._default = cls(SolErrorType.Proxy, SolProxyErrorCode.Unknown, "Unknown")
-        return cls._default
-
-    @cached_method
-    def to_bytes(self) -> bytes:
-        err_data = self.message.encode("utf-8")
-        return b"".join([
-            int(self.error_type).to_bytes(1, "little"),
-            self.code.to_bytes(2, "little"),
-            len(err_data).to_bytes(2, "little"),
-            err_data,
-        ])
+from ..utils.cached import cached_property
 
 
 class SolRpcError(SolError):
@@ -76,7 +29,7 @@ class SolBlockhashNotFound(SolError):
 
 
 class SolTxExecuteError(SolError):
-    def __init__(self, data: SolErrorData) -> None:
+    def __init__(self, data: CancelErrorData) -> None:
         super().__init__(data)
         self._data = data
 
@@ -85,7 +38,7 @@ class SolTxExecuteError(SolError):
         return self._data.message
 
     @property
-    def data(self) -> SolErrorData:
+    def data(self) -> CancelErrorData:
         return self._data
 
 
@@ -93,9 +46,9 @@ class SolCbExceededBaseError(SolTxExecuteError):
     def __init__(self, cu_consumed: int) -> None:
         msg = f"Compute Budget exceeded: {cu_consumed}"
         super().__init__(
-            SolErrorData(
-                SolErrorType.Proxy,
-                SolProxyErrorCode.CbExceedError,
+            CancelErrorData(
+                CancelErrorSource.Proxy,
+                ProxyCancelErrorCode.CbExceedError,
                 msg,
             )
         )
@@ -117,9 +70,9 @@ class SolCbExceededCriticalError(SolCbExceededBaseError):
 class SolWritableError(SolTxExecuteError):
     def __init__(self) -> None:
         super().__init__(
-            SolErrorData(
-                SolErrorType.Proxy,
-                SolProxyErrorCode.WriteableError,
+            CancelErrorData(
+                CancelErrorSource.Proxy,
+                ProxyCancelErrorCode.WriteableError,
                 "Privileges escalation error"
             )
         )
@@ -128,9 +81,9 @@ class SolWritableError(SolTxExecuteError):
 class SolNoMoreRetriesError(SolTxExecuteError):
     def __init__(self) -> None:
         super().__init__(
-            SolErrorData(
-                SolErrorType.Proxy,
-                SolProxyErrorCode.NoMoreRetriesError,
+            CancelErrorData(
+                CancelErrorSource.Proxy,
+                ProxyCancelErrorCode.NoMoreRetriesError,
                 "No more retries to commit transactions",
             )
         )
@@ -162,8 +115,8 @@ class SolNeonSkdTxWrongStateError(SolNeonSkdTxError):
     def __init__(self, status: NeonSkdTxStatus) -> None:
         msg = f"NeonSkdTx has a wrong state {status.value}"
         super().__init__(
-            SolErrorData(
-                SolErrorType.Neon,
+            CancelErrorData(
+                CancelErrorSource.Neon,
                 NeonTxErrorLogInfo.ErrorCode.Custom,
                 msg,
             )

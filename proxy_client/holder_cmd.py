@@ -5,6 +5,7 @@ from typing import Final
 from typing_extensions import Self
 
 from common.config.config import Config
+from common.neon.cancel_error import CancelErrorSource, ProxyCancelErrorCode
 from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
 from common.neon_rpc.client import CoreApiClient
@@ -16,7 +17,6 @@ from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
 from common.solana_rpc.alt_builder import SolAltTxBuilder
 from common.solana_rpc.client import SolClient
-from common.solana_rpc.errors import SolErrorData, SolProxyErrorCode, SolErrorType
 from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
@@ -277,7 +277,7 @@ class HolderHandler(BaseNPCmdHandler):
         )
         # fmt: on
 
-        data = SolErrorData(SolErrorType.Proxy, SolProxyErrorCode.Manual, "Unknown")
+        data = CancelErrorSource(CancelErrorSource.Proxy, ProxyCancelErrorCode.Manual, "Unknown")
         cancel_ix = neon_prog.make_cancel_ix(data.to_bytes())
 
         ix_list = self._get_cb_ix_list() + [cancel_ix]
