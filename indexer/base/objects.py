@@ -427,6 +427,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._is_cloned = False
         self._neon_tx_event_dict: dict[int, list[_NeonTxEventDraft]] = dict()
         self._neon_tx_ret: NeonTxLogReturnInfo | None = None
+        self._neon_tx_ret_data: bytes = bytes()
         self._clean_neon_tx_rcpt: NeonTxReceiptModel | None = None
 
     def __deepcopy__(self, memo: dict) -> Self:
@@ -592,12 +593,12 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         self._is_done = True
         self._set_last_slot(slot)
 
-    def set_tx_cancel_return(self, sol_neon_ix: SolNeonTxIxMetaInfo) -> None:
+    def set_tx_cancel_return(self, sol_neon_ix: SolNeonTxIxMetaInfo, cancel_data: bytes) -> None:
         tx_ret = NeonTxLogReturnInfo(
             event_type=NeonTxEventModel.Type.Cancel,
             total_gas_used=self._total_gas_used,
         )
-        self.set_tx_return(sol_neon_ix, tx_ret)
+        self.set_tx_return(sol_neon_ix, tx_ret, cancel_data)
 
     def set_tx_lost_return(self, sol_neon_ix: SolNeonTxIxMetaInfo) -> None:
         tx_ret = NeonTxLogReturnInfo(
@@ -606,7 +607,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         )
         self.set_tx_return(sol_neon_ix, tx_ret)
 
-    def set_tx_return(self, sol_neon_ix: SolNeonTxIxMetaInfo, tx_return: NeonTxLogReturnInfo) -> None:
+    def set_tx_return(self, sol_neon_ix: SolNeonTxIxMetaInfo, tx_return: NeonTxLogReturnInfo, ret_data=bytes()) -> None:
         if self._is_completed:
             _LOG.debug("skip an surplus return: %s", tx_return)
             return
@@ -626,6 +627,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
         rcpt.sol_inner_ix_idx = sol_neon_ix.sol_inner_ix_idx
 
         self._neon_tx_ret = tx_return
+        self._neon_tx_ret_data = ret_data
 
     def set_neon_tx(self, neon_tx: NeonTxModel, holder: NeonIndexedHolderInfo) -> None:
         # assert not self._neon_tx.is_valid
@@ -839,7 +841,7 @@ class NeonIndexedTxInfo(BaseNeonIndexedObjInfo):
             sol_tx_sig=rcpt.sol_tx_sig,
             sol_ix_idx=rcpt.sol_ix_idx,
             sol_inner_ix_idx=rcpt.sol_inner_ix_idx,
-            data=EthBinStr.from_raw(ret.status.to_bytes(1, "little")),
+            data=EthBinStr.from_raw(ret.status.to_bytes(1, "little") + self._neon_tx_ret_data),
             total_gas_used=self._neon_tx_ret.total_gas_used,
             event_order=len(neon_tx_event_list) + 1,
         )
