@@ -9,6 +9,7 @@ from typing import Final, ClassVar
 from typing_extensions import Self
 
 from common.config.constants import ONE_BLOCK_SEC
+from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
@@ -22,7 +23,6 @@ from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolWritableError,
     SolNeonSkdTxWrongStateError,
-    SolErrorData,
 )
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -108,7 +108,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             except SolNoMoreRetriesError:
                 pass
 
-    async def cancel(self, data: SolErrorData) -> ExecTxDoneCode | None:
+    async def cancel(self, data: CancelErrorData) -> ExecTxDoneCode | None:
         if not await self._ctx.holder_validator.is_active():
             return ExecTxDoneCode.Done
         elif await self._recheck_tx_list(self._cancel_name):

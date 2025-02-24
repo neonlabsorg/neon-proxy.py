@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Sequence, Final
 
-from .errors import SolErrorData, SolErrorType, SolErrorCode
+from ..neon.cancel_error import CancelErrorSource, CancelErrorData, SolCancelErrorCode
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -44,15 +44,15 @@ class SolTxErrorParser:
         self._receipt = receipt
 
     @cached_method
-    def get_error(self) -> SolErrorData | None:
+    def get_error(self) -> CancelErrorData | None:
         log_list = self._get_log_list()
         for log_rec in log_list:
             if match := self._prog_fail_re.match(log_rec):
                 msg = match.group(1) + ": " + match.group(2)
-                return SolErrorData(SolErrorType.Solana, SolErrorCode.Custom, msg)
+                return CancelErrorData(CancelErrorSource.Solana, SolCancelErrorCode.Custom, msg)
 
         if self._check_if_error():
-            return SolErrorData(SolErrorType.Solana, SolErrorCode.Unknown, "Unknown error")
+            return CancelErrorData(CancelErrorSource.Solana, SolCancelErrorCode.Unknown, "Unknown error")
         return None
 
     @cached_method
@@ -104,7 +104,7 @@ class SolTxErrorParser:
     def check_if_preprocessed_error(self) -> bool:
         return isinstance(self._receipt, SolRpcSendTxErrorInfo)
 
-    @ cached_method
+    @cached_method
     def check_if_writable_error(self) -> bool:
         return self._get_tx_error() in (
             SolRpcTxIxFieldErrorCode.PrivilegeEscalation,
