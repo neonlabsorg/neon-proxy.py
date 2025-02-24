@@ -251,7 +251,9 @@ class HolderHandler(BaseNPCmdHandler):
         )
 
         core_api_client: CoreApiClient = await self._get_core_api_client()
-        evm_cfg = await core_api_client.get_evm_cfg()
+        evm_cfg = await self._get_evm_cfg()
+
+        neon_acct = await core_api_client.get_neon_account(holder.payer, None)
 
         NeonProg.init_prog(evm_cfg.neon_prog_cfg)
         neon_prog = NeonProg(op_res.owner)
@@ -264,6 +266,14 @@ class HolderHandler(BaseNPCmdHandler):
             op_res.token_sol_address
         ).init_account_meta_list(
             acct_meta_list
+        ).init_tx_sol_address(
+            NeonBaseTxAccountSet(
+                payer=neon_acct.sol_address,
+                sender=neon_acct.sol_address,
+                receiver=SolPubKey.default(),
+                receiver_contract=SolPubKey.default(),
+                payer_balance=0
+            )
         )
         # fmt: on
 
