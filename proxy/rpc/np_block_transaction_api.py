@@ -9,6 +9,7 @@ from pydantic import Field, PlainValidator, PlainSerializer
 from strenum import StrEnum
 from typing_extensions import Self
 
+from common.ethereum import revert_message
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.hash import (
@@ -237,6 +238,7 @@ class _RpcNeonCancelResp(BaseJsonRpcModel):
     solanaInstructionIndex: int
     solanaInnerInstructionIndex: int | None
     source: str
+    address: SolPubKeyField
     code: HexUIntField
     data: EthBinStrField
     message: str
@@ -251,9 +253,30 @@ class _RpcNeonCancelResp(BaseJsonRpcModel):
             solanaInstructionIndex=event.sol_ix_idx,
             solanaInnerInstructionIndex=event.sol_inner_ix_idx,
             source=data.source.name,
+            address=data.address,
             code=data.code,
             data=raw_data,
             message=data.message,
+        )
+
+
+class _RpcNeonRevertResp(BaseJsonRpcModel):
+    solanaTransactionSignature: SolTxSigField
+    solanaInstructionIndex: int
+    solanaInnerInstructionIndex: int | None
+    address: EthAddressField
+    data: EthBinStrField
+    message: str | None
+
+    @classmethod
+    def from_raw(cls, event: NeonTxEventModel) -> Self:
+        return cls(
+            solanaTransactionSignature=event.sol_tx_sig,
+            solanaInstructionIndex=event.sol_ix_idx,
+            solanaInnerInstructionIndex=event.sol_inner_ix_idx,
+            address=event.address,
+            data=event.data,
+            message=revert_message.safe_decode(event.data.to_bytes()),
         )
 
 
@@ -266,6 +289,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
     neonIsCompleted: bool = True  # TODO: remove, because it is always True
     neonIsCanceled: bool
     neonCancelData: _RpcNeonCancelResp | None
+    neonRevertData: _RpcNeonRevertResp | None
     solanaTransactions: list[_RpcSolReceiptModel]
     neonCosts: list[_RpcNeonCostModel]
 
@@ -290,9 +314,17 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
             sol_tx_list, neon_cost_list = cls._to_sol_receipt_list(neon_tx_meta, sol_meta_list)
 
         cancel: _RpcNeonCancelResp | None = None
-        if rcpt.is_canceled:
-            for e in reversed(rcpt.event_list):
-                if e.event_type == e.event_type.Cancel:
+        revert: _RpcNeonRevertResp | None = None
+        if neon_tx_meta.neon_tx_rcpt.is_failed:
+            for idx, e in enumerate(reversed(rcpt.event_list)):
+                if idx > 5:
+                    break
+                elif e.event_type == e.event_type.ExitRevert:
+                    revert = _RpcNeonRevertResp.from_raw(e)
+                    break
+                elif e.is_reverted:
+                    continue
+                elif e.event_type == e.event_type.Cancel:
                     cancel = _RpcNeonCancelResp.from_raw(e)
                     break
 
@@ -306,6 +338,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
             neonIsCanceled=rcpt.is_canceled,
             logs=log_list,
             neonCancelData=cancel,
+            neonRevertData=revert,
             solanaTransactions=sol_tx_list,
             neonCosts=neon_cost_list,
         )

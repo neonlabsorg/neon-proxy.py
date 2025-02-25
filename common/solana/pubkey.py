@@ -86,7 +86,7 @@ class SolPubKey(_SoldersPubKey):
         base_key, nonce = _SoldersPubKey.find_program_address(seed_list, prog_id)
         return cls(base_key.__bytes__()), nonce
 
-    @property
+    @cached_property
     def is_empty(self) -> bool:
         return self.to_bytes() == self.default().to_bytes()
 
@@ -94,6 +94,7 @@ class SolPubKey(_SoldersPubKey):
     def ident(self) -> str:
         return self.to_string()[:8]
 
+    @cached_method
     def to_string(self) -> str:
         return self.__str__()
 

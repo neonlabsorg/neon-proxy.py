@@ -1,9 +1,14 @@
 from common.ethereum.errors import EthError
+from common.utils.format import has_hex_start
 
 
-def decode(data: str) -> str | None:
+def decode(data: str | bytes) -> str | None:
     if not data:
         return None
+    elif isinstance(data, bytes):
+        data = data.hex()
+    elif has_hex_start(data):
+        data = data[2:]
 
     if (data_len := len(data)) < 8:
         raise EthError(
@@ -51,3 +56,10 @@ def decode(data: str) -> str | None:
 
     message = str(bytes.fromhex(data[8 + offset + 64 : 8 + offset + 64 + length]), "utf8")
     return message
+
+
+def safe_decode(data: str | bytes) -> str | None:
+    try:
+        return decode(data)
+    except EthError:
+        return None
