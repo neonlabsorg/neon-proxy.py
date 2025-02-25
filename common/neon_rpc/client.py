@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-from typing import Sequence, Final, TypeVar, ClassVar
+from typing import Sequence, Final, TypeVar, ClassVar, Union
 
 from .api import (
     CoreApiResp,
@@ -18,6 +18,8 @@ from .api import (
     NeonAccountListRequest,
     EmulNeonCallResp,
     EmulNeonCallRequest,
+    EmulMultipleNeonCallRequest,
+    EmulMultipleNeonCallResp,
     CoreApiTxModel,
     EmulNeonCallExitCode,
     NeonStorageAtRequest,
@@ -56,10 +58,10 @@ from ..solana_rpc.client import SolClient
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import cached_method
 from ..utils.json_logger import log_msg
-from ..utils.pydantic import BaseModel
+from ..utils.pydantic import BaseModel, RootModel
 
 _LOG = logging.getLogger(__name__)
-_RespType = TypeVar("_RespType", bound=BaseModel)
+_RespType = TypeVar("_RespType", bound=Union[BaseModel, RootModel])
 
 
 class CoreApiClient(HttpClient):
@@ -243,7 +245,7 @@ class CoreApiClient(HttpClient):
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         emulator_block=CoreApiBlockModel.default(),
         block: NeonBlockHdrModel | None = None,
-    ) -> EmulNeonCallResp:
+    ) -> EmulNeonCallResp:  # noqa
         emul_sol_acct_dict = dict()
         if sol_account_dict:
             emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
@@ -291,6 +293,46 @@ class CoreApiClient(HttpClient):
                     raise
 
             return resp
+
+    async def emulate_multiple_neon_call(
+        self,
+        evm_cfg: EvmConfigModel,
+        tx_list: Sequence[CoreApiTxModel],
+        *,
+        check_result: bool,
+        preload_sol_address_list: Sequence[SolPubKey] = tuple(),
+        block: NeonBlockHdrModel | None = None,
+    ) -> Sequence[EmulNeonCallResp]:  # noqa
+        preload_sol_address_list = list(preload_sol_address_list)
+        tx_list = list(tx_list)
+        _RootType = EmulMultipleNeonCallResp
+
+        def _get_full_preload_addr_list(_resp: _RootType) -> list[SolPubKey]:
+            return list(set(itertools.chain.from_iterable(x.sol_address_list for x in _resp.root)))
+
+        for retry in itertools.count():
+            req = EmulMultipleNeonCallRequest(
+                tx_list=tx_list,
+                evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+                token_list=evm_cfg.token_list,
+                preload_sol_address_list=preload_sol_address_list,
+                slot=self._get_slot(block),
+            )
+            resp: _RootType = await self._send_request("emulate_multiple", req, _RootType)
+            if (not retry) and (not preload_sol_address_list) and self._cfg.reemulate_on_full_account_list:
+                preload_sol_address_list = _get_full_preload_addr_list(resp)
+                continue
+
+            try:
+                for r in resp.root:
+                    self._check_emulator_result(r)
+            except EthError:
+                if not retry:
+                    preload_sol_address_list = _get_full_preload_addr_list(resp)
+                    continue
+                elif check_result:
+                    raise
+            return resp.root
 
     async def emulate_sol_tx_list(
         self,
