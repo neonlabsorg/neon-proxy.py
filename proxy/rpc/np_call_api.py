@@ -251,15 +251,12 @@ class NpCallApi(NeonProxyApi):
         if if_none(call.nonce, sender_acct.state_tx_cnt) != sender_acct.state_tx_cnt:
             raise EthError("nonce mismatch")
 
+        gas_limit_list = await self._gas_limit_calc.estimate_skd_tree(call.to_core_tx_list(chain_id))
+
         _, token_gas_price = await self._get_token_gas_price(ctx)
 
         base_index = sender_acct.state_tx_cnt + int.from_bytes(sender_addr.to_bytes()[:4], "little")
         treasury_index, _, treasury_addr = NeonProg.calc_treasury_address(base_index)
-
-        gas_limit_list = [
-            (await self._gas_limit_calc.estimate(tx, dict(), block)) + NeonProg.FinishSkdTxGas
-            for tx in call.to_core_tx_list(chain_id)
-        ]
 
         skd_tree_addr = NeonSkdTreeAddress.from_raw(sender_addr, sender_acct.state_tx_cnt)
 
@@ -277,7 +274,7 @@ class NpCallApi(NeonProxyApi):
                 NeonProg.DepositAddress,
                 SolSysProg.ID,
             ],
-            gasList=gas_limit_list
+            gasList=list(gas_limit_list),
         )
 
     def _get_tx_chain_id(self, ctx: HttpRequestCtx, tx: RpcEthTxRequest) -> int:
