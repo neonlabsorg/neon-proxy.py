@@ -11,12 +11,12 @@ from common.neon.address import NeonAddress
 from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, CoreApiTxModel, CoreApiBlockModel
+from common.neon_rpc.transaction_list_sender import SolNeonTxListSender
 from common.solana.alt_program import SolAltID
 from common.solana.instruction import SolAccountMeta
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
-from common.solana_rpc.neon_transaction_list_sender import SolNeonTxListSender
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method

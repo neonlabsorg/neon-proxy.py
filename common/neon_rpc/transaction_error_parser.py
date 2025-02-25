@@ -2,19 +2,13 @@ import logging
 import re
 from typing import Sequence, Final
 
-from .transaction_error_parser import SolTxErrorParser
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData
-from ..neon.evm_log_decoder import (
-    NeonTxErrorLogInfo,
-    NeonEvmLogDecoder,
-)
+from ..neon.evm_log_decoder import NeonTxErrorLogInfo, NeonEvmLogDecoder
 from ..neon.neon_program import NeonProg
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
 from ..solana.transaction_decoder import SolTxIxMetaInfo
-from ..solana.transaction_meta import (
-    SolRpcTxSlotInfo,
-    SolRpcSendTxErrorInfo,
-)
+from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcSendTxErrorInfo
+from ..solana_rpc.transaction_error_parser import SolTxErrorParser
 from ..utils.cached import cached_method
 
 _LOG = logging.getLogger(__name__)
