@@ -13,6 +13,7 @@ from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
+from common.neon_rpc.errors import SolNeonSkdTxWrongStateError
 from common.solana.cb_program import SolCbProg
 from common.solana.errors import SolTxSizeError
 from common.solana.instruction import SolTxIx
@@ -22,7 +23,6 @@ from common.solana_rpc.errors import (
     SolCbExceededCriticalError,
     SolUnknownReceiptError,
     SolWritableError,
-    SolNeonSkdTxWrongStateError,
 )
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy

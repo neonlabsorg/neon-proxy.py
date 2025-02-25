@@ -9,15 +9,13 @@ from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.cancel_error import CancelErrorData
 from common.neon.neon_program import NeonBaseTxAccountSet
+from common.neon_rpc.errors import SolNeonSkdTxError, SolNeonRequireResizeIterError, SolNeonMissingAccountError
 from common.solana.alt_program import SolAltAccountInfo
 from common.solana.errors import SolTxSizeError, SolError
 from common.solana_rpc.errors import (
     SolCbExceededError,
-    SolNeonRequireResizeIterError,
     SolNoMoreRetriesError,
     SolBlockhashNotFound,
-    SolNeonMissingAccountError,
-    SolNeonSkdTxError,
     SolWritableError,
     SolTxExecuteError,
 )
