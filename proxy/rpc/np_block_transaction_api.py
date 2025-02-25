@@ -286,7 +286,6 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
     solanaCompleteInstructionIndex: int
     solanaCompleteInnerInstructionIndex: int | None
     neonRawTransaction: EthBinStrField
-    neonIsCompleted: bool = True  # TODO: remove, because it is always True
     neonIsCanceled: bool
     neonCancelData: _RpcNeonCancelResp | None
     neonRevertData: _RpcNeonRevertResp | None
