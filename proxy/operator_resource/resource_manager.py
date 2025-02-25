@@ -15,6 +15,7 @@ from common.neon_rpc.api import (
     HolderAccountStatus,
     NeonAccountStatus,
 )
+from common.neon_rpc.transaction_list_sender import SolNeonTxListSender
 from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
@@ -22,7 +23,6 @@ from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.neon_transaction_list_sender import SolNeonTxListSender
 from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import log_msg, logging_context
@@ -31,11 +31,7 @@ from .server_abc import OpResourceComponent
 from .transaction_list_signer import OpTxListSigner
 from ..base.mp_api import MpStuckTxModel
 from ..base.op_api import OpResourceModel, OpEthAddressModel
-from ..stat.api import (
-    OpEarnedTokenBalanceData,
-    OpResourceHolderStatusData,
-    OpExecTokenBalanceData,
-)
+from ..stat.api import OpEarnedTokenBalanceData, OpResourceHolderStatusData, OpExecTokenBalanceData
 
 _LOG = logging.getLogger(__name__)
 
