@@ -87,5 +87,9 @@ class NeonTxReceiptModel(BaseModel):
     def priority_fee_per_gas(self) -> int:
         return self.priority_fee_used // self.total_gas_used
 
+    @cached_property
+    def is_failed(self) -> bool:
+        return self.status == 0
+
 
 _RawTxReceipt = Union[NeonTxReceiptModel, dict, None]

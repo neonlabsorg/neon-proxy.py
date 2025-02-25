@@ -4,6 +4,7 @@ import re
 from typing import Sequence, Final
 
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData, SolCancelErrorCode
+from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
     SolRpcTxSlotInfo,
@@ -38,6 +39,7 @@ class SolTxErrorParser:
     # fmt: on
     _alt_fail_msg: Final[str] = "Program AddressLookupTab1e1111111111111111111111111 failed: "
     _prog_fail_re: Final[re.Pattern] = re.compile(r"Program (\w+) failed: (.*)")
+    _custom_err_re: Final[re.Pattern] = re.compile(r"custom program error: 0x([0-9A-Fa-f]+)")
 
     def __init__(self, tx: SolTx, receipt: SolRpcTxReceiptInfo) -> None:
         self._tx = tx
@@ -47,12 +49,18 @@ class SolTxErrorParser:
     def get_error(self) -> CancelErrorData | None:
         log_list = self._get_log_list()
         for log_rec in log_list:
-            if match := self._prog_fail_re.match(log_rec):
-                msg = match.group(1) + ": " + match.group(2)
-                return CancelErrorData(CancelErrorSource.Solana, SolCancelErrorCode.Custom, msg)
+            if failed_match := self._prog_fail_re.match(log_rec):
+                addr = SolPubKey.from_string(failed_match.group(1))
+                msg = failed_match.group(2)
+
+                code_match = self._custom_err_re.match(msg)
+                code = int(code_match.group(1), 16) if code_match else SolCancelErrorCode.Unknown
+                return CancelErrorData(CancelErrorSource.Solana, addr, code, msg)
 
         if self._check_if_error():
-            return CancelErrorData(CancelErrorSource.Solana, SolCancelErrorCode.Unknown, "Unknown error")
+            addr = SolPubKey.default()
+            code = SolCancelErrorCode.Unknown
+            return CancelErrorData(CancelErrorSource.Solana, addr, code, "Unknown error")
         return None
 
     @cached_method
