@@ -22,7 +22,7 @@ from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex, if_none
-from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel, DecUIntField
+from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel, RootModel, DecUIntField
 
 _LOG = logging.getLogger(__name__)
 
@@ -690,7 +690,6 @@ class EmulNeonCallRequest(CoreApiRequest):
         serialization_alias="solana_overrides"
     )
     slot: DecUIntField | None
-    provide_account_info: str | None = None
 
 
 class EmulNeonCallExitCode(StrEnum):
@@ -745,6 +744,18 @@ class EmulNeonCallResp(_BaseRespModel):
     @cached_property
     def sol_address_list(self) -> list[SolPubKeyField]:
         return [a.pubkey for a in self.raw_meta_list]
+
+
+class EmulMultipleNeonCallRequest(CoreApiRequest):
+    tx_list: list[CoreApiTxModel] = Field(serialization_alias="tx")
+    evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
+    token_list: list[TokenModel] = Field(serialization_alias="chains")
+    preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
+    slot: DecUIntField | None
+
+
+class EmulMultipleNeonCallResp(RootModel):
+    root: list[EmulNeonCallResp] = Field(default_factory=list)
 
 
 class EmulSolTxListRequest(CoreApiRequest):
