@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Sequence
 
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash
@@ -51,27 +52,56 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             sol_account_dict=sol_account_dict,
             block=block,
         )
-        execution_cost = resp.used_gas
-        tx_size_cost = self._tx_size_cost(evm_cfg, core_tx, resp)
-        alt_cost = self._alt_cost(resp)
+        return self._total_gas(evm_cfg, core_tx, resp)
 
-        # Ethereum's wallets don't accept gas limit less than 21000
-        total_cost = max(execution_cost + tx_size_cost + alt_cost, self._min_gas_limit)
-
-        _LOG.debug(
-            "total-cost(%s) = execution-cost(%s) + tx-size-cost(%s) + alt-cost(%s)",
-            total_cost,
-            execution_cost,
-            tx_size_cost,
-            alt_cost,
+    async def estimate_skd_tree(
+        self,
+        core_tx_list: Sequence[CoreApiTxModel],
+        block: NeonBlockHdrModel | None = None,
+    ) -> Sequence[int]:
+        evm_cfg = await self._get_evm_cfg()
+        resp_list = await self._core_api_client.emulate_multiple_neon_call(
+            evm_cfg,
+            core_tx_list,
+            check_result=True,
+            block=block,
         )
+        # fmt: off
+        return tuple([
+            self._total_gas(evm_cfg, core_tx, resp, finish_gas=evm_cfg.tree_account_finish_tx_gas)
+            for core_tx, resp in zip(core_tx_list, resp_list)
+        ])
+        # fmt: on
 
-        return total_cost
+    def _total_gas(
+        self,
+        evm_cfg: EvmConfigModel,
+        core_tx: CoreApiTxModel,
+        resp: EmulNeonCallResp,
+        *,
+        finish_gas: int = 0
+    ) -> int:
+        exec_gas = resp.used_gas
+        tx_size_gas = self._tx_size_gas(evm_cfg, core_tx, resp)
+        alt_gas = self._alt_gas(resp)
 
-    def _tx_size_cost(self, evm_cfg: EvmConfigModel, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
+        # Ethereum's wallets don't accept gas limit less than 21'000
+        total_gas = max(exec_gas + tx_size_gas + alt_gas + finish_gas, self._min_gas_limit)
+
+        # _LOG.debug(
+        #     "total-gas(%s) = execution-gas(%s) + tx-size-gas(%s) + alt-gas(%s) + finish-gas(%s)",
+        #     total_gas,
+        #     exec_gas,
+        #     tx_size_gas,
+        #     alt_gas,
+        #     finish_gas,
+        # )
+        return total_gas
+
+    def _tx_size_gas(self, evm_cfg: EvmConfigModel, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
         eth_tx = self._eth_tx_from_core_tx(core_tx)
         if (len(rlp_tx := eth_tx.to_bytes()) > SolTx.PktSize) or core_tx.to_address.is_empty:
-            return self._holder_tx_cost(evm_cfg, rlp_tx)
+            return self._holder_tx_gas(evm_cfg, rlp_tx)
 
         sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
         try:
@@ -85,7 +115,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         except BaseException as exc:
             _LOG.debug("error on pack solana tx", exc_info=exc)
 
-        return self._holder_tx_cost(evm_cfg, rlp_tx)
+        return self._holder_tx_gas(evm_cfg, rlp_tx)
 
     @classmethod
     def _eth_tx_from_core_tx(cls, core_tx: CoreApiTxModel) -> EthTx:
@@ -124,18 +154,17 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             neon_ix,
         ])
 
-
         sol_tx = SolLegacyTx(name="Estimate", ix_list=ix_list)
         sol_tx.recent_block_hash = SolBlockHash.fake()
         return sol_tx
 
     @classmethod
-    def _holder_tx_cost(cls, evm_cfg: EvmConfigModel, rlp_tx: bytes) -> int:
+    def _holder_tx_gas(cls, evm_cfg: EvmConfigModel, rlp_tx: bytes) -> int:
         return ((len(rlp_tx) // evm_cfg.holder_msg_size) + 1) * 5000
 
-    def _alt_cost(self, resp: EmulNeonCallResp) -> int:
+    def _alt_gas(self, resp: EmulNeonCallResp) -> int:
         """
-        Costs for:
+        Gas for:
          - create
          - N extend
          - deactivate
