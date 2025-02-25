@@ -81,13 +81,6 @@ class SolTxListSigner(abc.ABC):
 
 
 class SolTxListSender:
-    _good_tx_status_list = (
-        SolTxSendState.Status.WaitForReceipt,
-        SolTxSendState.Status.GoodReceipt,
-        SolTxSendState.Status.AlreadyFinalizedError,
-        SolTxSendState.Status.NeonAccountAlreadyExistsError,
-    )
-
     _resubmitted_tx_status_list = (
         SolTxSendState.Status.NoReceiptError,
         SolTxSendState.Status.BlockHashNotFoundError,
@@ -156,10 +149,6 @@ class SolTxListSender:
     @property
     def tx_state_list(self) -> Sequence[SolTxSendState]:
         return tuple(list(self._tx_state_dict.values()))
-
-    @property
-    def has_good_sol_tx_receipt(self) -> bool:
-        return any(status in self._tx_state_list_dict for status in self._good_tx_status_list)
 
     def clear(self) -> None:
         self._blockhash = None
