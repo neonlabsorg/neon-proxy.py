@@ -6,7 +6,7 @@ from pydantic import Field
 from typing_extensions import Self
 
 from common.ethereum import revert_message
-from common.ethereum.bin_str import EthBinStrField, EthBinStr
+from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommitField, EthCommit
 from common.ethereum.hash import (
     EthBlockHashField,
@@ -158,12 +158,6 @@ class RpcNeonTxEventModel(RpcEthTxEventModel):
         else:
             sol_addr = None
 
-        def _decode(_data: EthBinStr) -> EthBinStr | None:
-            try:
-                return revert_message.decode(_data.to_bytes().hex())
-            except (BaseException,):
-                return None
-
         return cls(
             **cls._to_dict(event),
             removed=event.is_reverted,
@@ -176,5 +170,5 @@ class RpcNeonTxEventModel(RpcEthTxEventModel):
             neonEventOrder=event.event_order,
             neonIsHidden=event.is_hidden,
             neonIsReverted=event.is_reverted,
-            neonDataMessage=_decode(event.data),
+            neonDataMessage=revert_message.safe_decode(event.data.to_bytes()),
         )

@@ -51,7 +51,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         for log_rec in log_list:
             if log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg):
                 err_msg = log_rec[idx + 2 :] if (idx := log_rec.rfind(": ")) != -1 else log_rec
-                return CancelErrorData(CancelErrorSource.NeonEVM, int(NeonTxErrorLogInfo.ErrorCode.Custom), err_msg)
+                return self._fmt_error(NeonTxErrorLogInfo.ErrorCode.Custom, err_msg)
         return None
 
     @cached_method
@@ -94,8 +94,11 @@ class SolNeonTxErrorParser(SolTxErrorParser):
 
     @cached_method
     def get_evm_error(self) -> CancelErrorData | None:
-        err_list = self._get_evm_error_list()
-        return CancelErrorData(CancelErrorSource.NeonEVM, err_list[0].code, err_list[0].message) if err_list else None
+        if not (err_list := self._get_evm_error_list()):
+            return None
+
+        err_rec = err_list[0]
+        return self._fmt_error(err_rec.code, err_rec.message)
 
     @cached_method
     def _get_evm_log_list(self) -> Sequence[str]:
@@ -120,8 +123,17 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         err_list = self._get_evm_error_list()
         for err_rec in err_list:
             if err_rec.code in error_code_list:
-                return CancelErrorData(CancelErrorSource.NeonEVM, err_rec.code, err_rec.message)
+                return self._fmt_error(err_rec.code, err_rec.message)
         return None
+
+    @staticmethod
+    def _fmt_error(code: NeonTxErrorLogInfo.ErrorCode, msg: str) -> CancelErrorData:
+        return CancelErrorData(
+            CancelErrorSource.NeonEVM,
+            NeonProg.ID,
+            code,
+            msg,
+        )
 
     @cached_method
     def _get_evm_error_list(self) -> Sequence[NeonTxErrorLogInfo]:

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from ..neon.cancel_error import CancelErrorData, CancelErrorSource, NeonProxyCancelErrorCode
 from ..neon.evm_log_decoder import NeonTxErrorLogInfo
+from ..neon.neon_program import NeonProg
 from ..neon.transaction_model import NeonSkdTxStatus
 from ..solana.errors import SolError
+from ..solana.pubkey import SolPubKey
 from ..solana.transaction_meta import SolRpcErrorInfo
 from ..utils.cached import cached_property
 
@@ -48,6 +50,7 @@ class SolCbExceededBaseError(SolTxExecuteError):
         super().__init__(
             CancelErrorData(
                 CancelErrorSource.NeonProxy,
+                SolPubKey.default(),
                 NeonProxyCancelErrorCode.CbExceedError,
                 msg,
             )
@@ -72,6 +75,7 @@ class SolWritableError(SolTxExecuteError):
         super().__init__(
             CancelErrorData(
                 CancelErrorSource.NeonProxy,
+                SolPubKey.default(),
                 NeonProxyCancelErrorCode.WriteableError,
                 "Privileges escalation error"
             )
@@ -83,6 +87,7 @@ class SolNoMoreRetriesError(SolTxExecuteError):
         super().__init__(
             CancelErrorData(
                 CancelErrorSource.NeonProxy,
+                SolPubKey.default(),
                 NeonProxyCancelErrorCode.NoMoreRetriesError,
                 "No more retries to commit transactions",
             )
@@ -117,6 +122,7 @@ class SolNeonSkdTxWrongStateError(SolNeonSkdTxError):
         super().__init__(
             CancelErrorData(
                 CancelErrorSource.NeonEVM,
+                NeonProg.ID,
                 NeonTxErrorLogInfo.ErrorCode.Custom,
                 msg,
             )
