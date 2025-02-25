@@ -48,6 +48,7 @@ class _RpcNeonTxReceiptDetail(StrEnum):
     Eth = "ethereum"
     Neon = "neon"
     SolTxList = "solanaTransactionList"
+    Compact = "compact"
 
     @classmethod
     def from_raw(cls, tag: str | _RpcNeonTxReceiptDetail) -> Self:
@@ -57,7 +58,7 @@ class _RpcNeonTxReceiptDetail(StrEnum):
         try:
             return cls(tag)
         except (BaseException,):
-            raise ValueError(f"Should be one of: {cls.Neon}, {cls.Eth}, {cls.SolTxList}")
+            raise ValueError(f"Should be one of: {cls.Neon}, {cls.Eth}, {cls.SolTxList}, {cls.Compact}")
 
 
 _RpcNeonTxReceiptDetailField = Annotated[_RpcNeonTxReceiptDetail, PlainValidator(_RpcNeonTxReceiptDetail.from_raw)]
@@ -305,7 +306,9 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
 
         tx = neon_tx_meta.neon_tx
         rcpt = neon_tx_meta.neon_tx_rcpt
-        if detail == _RpcNeonTxReceiptDetail.Neon:
+        if detail == _RpcNeonTxReceiptDetail.Compact:
+            log_list, sol_tx_list, neon_cost_list = list(), list(), list()
+        elif detail == _RpcNeonTxReceiptDetail.Neon:
             log_list = [RpcNeonTxEventModel.from_raw(e) for e in rcpt.event_list]
             sol_tx_list, neon_cost_list = list(), list()
         else:
