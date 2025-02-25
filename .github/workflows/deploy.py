@@ -211,6 +211,9 @@ def push_image_with_tag(sha, tag):
 @click.option('--proxy_tag')
 def finalize_image(proxy_sha_tag, proxy_tag):
     if re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is not None or proxy_tag == "latest":
+        click.echo('Pull docker image...')
+        out = docker_client.pull(f"{IMAGE_NAME}:{proxy_sha_tag}", stream=True, decode=True)
+        process_output(out)
         push_image_with_tag(proxy_sha_tag, proxy_tag)
     else:
         click.echo(f"Nothing to finalize, the tag {proxy_tag} is not version tag or latest")
