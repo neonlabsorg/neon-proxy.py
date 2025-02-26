@@ -39,7 +39,7 @@ class BaseEthGasModel(BaseJsonRpcModel):
 
 
 class BaseEthCallModel(BaseJsonRpcModel):
-    fromAddress: EthAddressField = Field(
+    fromAddress: EthAddressField | SolPubKeyField = Field(
         default=EthAddress.default(),
         validation_alias=AliasChoices("from", "fromAddress"),
     )
