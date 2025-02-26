@@ -16,7 +16,7 @@ from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
-from common.solana.pubkey import SolPubKeyField
+from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.sys_program import SolSysProg
 from common.utils.cached import cached_property
 from common.utils.format import if_none
@@ -162,6 +162,9 @@ class NpCallApi(NeonProxyApi):
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
         object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
     ) -> EthBinStrField:
+        if isinstance(tx.fromAddress, SolPubKey):
+            self._validate_layer0_chain_id(ctx)
+
         _ = object_state
         chain_id = self._get_tx_chain_id(ctx, tx)
         block = await self.get_block_by_tag(block_tag)
@@ -181,6 +184,9 @@ class NpCallApi(NeonProxyApi):
         call: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
+        if isinstance(call.fromAddress, SolPubKey):
+            self._validate_layer0_chain_id(ctx)
+
         chain_id = self._get_tx_chain_id(ctx, call)
         block = await self.get_block_by_tag(block_tag)
         return await self._gas_limit_calc.estimate(call.to_core_tx(chain_id), dict(), block)
@@ -193,6 +199,9 @@ class NpCallApi(NeonProxyApi):
         neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
+        if isinstance(tx.fromAddress, SolPubKey):
+            self._validate_layer0_chain_id(ctx)
+
         chain_id = self._get_tx_chain_id(ctx, tx)
         block = await self.get_block_by_tag(block_tag)
         return await self._gas_limit_calc.estimate(tx.to_core_tx(chain_id), neon_call.sol_account_dict, block)
