@@ -470,11 +470,11 @@ CoreApiHexStrField = Annotated[
 
 
 class CoreApiTxModel(_BaseRespModel):
-    from_address: EthZeroAddressField = Field(
+    from_address: EthZeroAddressField | SolPubKeyField = Field(
         validation_alias=AliasChoices("from", "from_address"),
         serialization_alias="from",
     )
-    payer: EthZeroAddressField
+    payer: EthZeroAddressField | SolPubKeyField
     solanaPayer: SolPubKeyField | None = Field(default=None)
     nonce: DecUIntField | None
     index: DecUIntField = 0
