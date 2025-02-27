@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import logging
-from typing import Sequence
+from typing import Sequence, ClassVar
 
 from typing_extensions import Self
 
@@ -31,6 +32,36 @@ from ..base.op_api import OpResourceModel
 _LOG = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass(frozen=True)
+class NeonExecTxState:
+    total_used_gas: int
+    completed_evm_step_cnt: int
+    completed_iter_cnt: int
+    status: None | int
+    tx_block: NeonTxBlockInfo
+
+    _default: ClassVar[NeonExecTxState | None] = None
+
+    @classmethod
+    def default(cls) -> NeonExecTxState:
+        if not cls._default:
+            cls._default = NeonExecTxState(0, 0, 0, None, NeonTxBlockInfo.default())
+
+        return cls._default
+
+    @property
+    def is_completed(self) -> bool:
+        return self.status is not None
+
+    @cached_property
+    def holder_block(self) -> CoreApiBlockModel:
+        return CoreApiBlockModel(timestamp=self.tx_block.timestamp, slot=self.tx_block.slot)
+
+    @cached_property
+    def slot(self) -> int:
+        return self.tx_block.slot
+
+
 class NeonExecTxCtx(ExecutorComponent):
     def __init__(
         self,
@@ -53,7 +84,8 @@ class NeonExecTxCtx(ExecutorComponent):
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
         self._acct_meta_list: Sequence[SolAccountMeta] = tuple()
         self._emul_resp: EmulNeonCallResp | None = None
-        self._holder_block = CoreApiBlockModel.default()
+
+        self._tx_exec_state = NeonExecTxState.default()
 
         self._skip_simple_strategy = False
         self._is_test_mode = False
@@ -137,14 +169,8 @@ class NeonExecTxCtx(ExecutorComponent):
         self.holder_validator.set_emul_step_cnt(resp.evm_step_cnt)
 
         # reset calculated cache
-        self._calc_total_evm_step_cnt.reset_cache(self)
-        self._calc_total_iter_cnt.reset_cache(self)
         self._calc_wrap_iter_cnt.reset_cache(self)
         self._calc_resize_iter_cnt.reset_cache(self)
-
-    @property
-    def has_emulator_result(self) -> bool:
-        return self._emul_resp is not None
 
     def _update_acct_meta_list(self) -> None:
         acct_meta_dict: dict[SolPubKey, SolAccountMeta]
@@ -257,10 +283,7 @@ class NeonExecTxCtx(ExecutorComponent):
 
         prog.init_token_address(self._op_resource.token_sol_address)
 
-        if not self.is_stuck_tx:
-            rlp_tx = self._tx_request.tx.rlp_tx.to_bytes()
-        else:
-            rlp_tx = bytes()
+        rlp_tx = self._tx_request.tx.rlp_tx.to_bytes() if not self.is_stuck_tx else bytes()
         prog.init_neon_tx(self.neon_tx_hash, rlp_tx)
         prog.init_tx_sol_address(self._base_tx_acct_set)
 
@@ -338,20 +361,11 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @property
     def total_evm_step_cnt(self) -> int:
-        return self._calc_total_evm_step_cnt()
-
-    @reset_cached_method
-    def _calc_total_evm_step_cnt(self) -> int:
-        return self._emul_resp.evm_step_cnt
+        return max(self._emul_resp.evm_step_cnt - self.completed_evm_step_cnt, 0)
 
     @property
-    def total_iter_cnt(self) -> int:
-        return self._calc_total_iter_cnt()
-
-    @reset_cached_method
-    def _calc_total_iter_cnt(self) -> int:
-        assert not self.is_stuck_tx
-        return max(self._emul_resp.iter_cnt, 1)
+    def completed_evm_step_cnt(self) -> int:
+        return self._tx_exec_state.completed_evm_step_cnt
 
     @property
     def wrap_iter_cnt(self) -> int:
@@ -360,8 +374,8 @@ class NeonExecTxCtx(ExecutorComponent):
     @reset_cached_method
     def _calc_wrap_iter_cnt(self) -> int:
         evm_step_cnt = self.neon_prog.EvmStepPerIter
-        exec_iter_cnt = (self.total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt
-        iter_cnt = self.total_iter_cnt - exec_iter_cnt
+        exec_iter_cnt = (self._emul_resp.evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt
+        iter_cnt = max(self._emul_resp.iter_cnt, 1) - exec_iter_cnt
         assert iter_cnt >= 0
         return iter_cnt
 
@@ -377,32 +391,25 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @property
     def has_external_sol_call(self) -> bool:
-        if self.is_stuck_tx:
-            return False
-
         return self._emul_resp.external_sol_call
 
     @property
-    def _has_holder_block(self) -> bool:
-        assert self._emul_resp
-        return self._emul_resp.is_block_used
-
-    @property
     def holder_block(self) -> CoreApiBlockModel:
-        if (not self._emul_resp) or (not self._has_holder_block):
+        if not self._emul_resp:
             return CoreApiBlockModel.default()
-        if if_none(self._holder_block.slot, 0) > if_none(self.holder.block.slot, 0):
-            return self._holder_block
+        elif self._tx_exec_state.slot > if_none(self.holder.block.slot, 0):
+            return self._tx_exec_state.holder_block
         return self.holder.block
 
-    def set_holder_block(self, tx_block: NeonTxBlockInfo) -> None:
-        if tx_block.is_empty:
-            self._holder_block = CoreApiBlockModel.default()
-        else:
-            self._holder_block = CoreApiBlockModel(slot=tx_block.slot, timestamp=tx_block.timestamp)
+    def set_tx_exec_state(self, state: NeonExecTxState) -> None:
+        self._tx_exec_state = state
 
-    def reset_holder_block(self) -> None:
-        self._holder_block = CoreApiBlockModel.default()
+    def reset_tx_exec_state(self) -> None:
+        self._tx_exec_state = NeonExecTxState.default()
+
+    @property
+    def is_completed_tx(self) -> bool:
+        return self._tx_exec_state.is_completed
 
     @property
     def alt_id_list(self) -> Sequence[SolAltID]:
@@ -427,17 +434,6 @@ class NeonExecTxCtx(ExecutorComponent):
                     if is_success:
                         cnt += 1
         return cnt
-
-    def has_good_sol_tx(self, tx_name_list: str | Sequence[str]) -> bool:
-        if isinstance(tx_name_list, str):
-            tx_name_list = tuple([tx_name_list])
-
-        for tx_name in tx_name_list:
-            if tx_list := self._sol_tx_list_dict.get(tx_name, None):
-                for _, is_success in tx_list:
-                    if is_success:
-                        return True
-        return False
 
     def pop_sol_tx_list(self, tx_name_list: Sequence[str]) -> Sequence[SolTx]:
         tx_list: list[SolTx] = list()

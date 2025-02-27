@@ -6,7 +6,7 @@ from typing import Any, Union
 from pydantic import Field
 from typing_extensions import Self
 
-from .evm_log_decoder import NeonTxEventModel
+from .evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
 from ..ethereum.hash import EthBlockHash, EthBlockHashField, EthTxHashField
 from ..solana.signature import SolTxSig, SolTxSigField
 from ..utils.cached import cached_property
@@ -47,7 +47,7 @@ class NeonTxReceiptModel(BaseModel):
             sol_ix_idx=None,
             sol_inner_ix_idx=None,
             neon_tx_idx=None,
-            status=0,
+            status=NeonTxLogReturnInfo.Failed,
             total_gas_used=0,
             sum_gas_used=0,
             priority_fee_used=0,
@@ -89,7 +89,7 @@ class NeonTxReceiptModel(BaseModel):
 
     @cached_property
     def is_failed(self) -> bool:
-        return self.status == 0
+        return self.status == NeonTxLogReturnInfo.Failed
 
 
 _RawTxReceipt = Union[NeonTxReceiptModel, dict, None]

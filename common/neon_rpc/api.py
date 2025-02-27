@@ -555,8 +555,8 @@ class CoreApiBlockModel(_BaseModel):
             return cls.default()
 
         return cls(
-            timestamp=int(raw_list[0], 16),
-            slot=int(raw_list[1], 16),
+            timestamp=int(raw_list[0], 16),  # noqa
+            slot=int(raw_list[1], 16),       # noqa
         )
 
     @property
