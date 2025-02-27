@@ -14,7 +14,7 @@ class NoChainIdTxStrategy(HolderTxStrategy):
         if self._ctx.has_chain_id:
             self._validation_error_msg = "Normal transaction"
             return False
-        return self._validate_no_sol_call()
+        return True
 
     def _build_tx_ix(self, tx_cfg: SolIterListCfg) -> SolTxIx:
         step_cnt = tx_cfg.evm_step_cnt

@@ -18,12 +18,7 @@ class HolderTxStrategy(IterativeTxStrategy):
         self._prep_stage_list.append(self._write_holder_stage)
 
     async def _validate(self) -> bool:
-        # fmt: off
-        return (
-            self._validate_has_chain_id()
-            and self._validate_no_sol_call()
-        )
-        # fmt: on
+        return self._validate_has_chain_id()
 
     def _build_tx_ix(self, tx_cfg: SolIterListCfg) -> SolTxIx:
         step_cnt = tx_cfg.evm_step_cnt

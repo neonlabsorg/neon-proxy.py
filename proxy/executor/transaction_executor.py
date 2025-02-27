@@ -25,7 +25,6 @@ from .strategy_base import BaseTxStrategy
 from .strategy_iterative import IterativeTxStrategy, AltIterativeTxStrategy
 from .strategy_iterative_holder import HolderTxStrategy, AltHolderTxStrategy
 from .strategy_iterative_no_chain_id import NoChainIdTxStrategy, AltNoChainIdTxStrategy
-from .strategy_iterative_solana_call_holder import HolderTxSolanaCallStrategy, AltHolderTxSolanaCallStrategy
 from .strategy_simple import SimpleTxStrategy, AltSimpleTxStrategy
 from .strategy_simple_holder import SimpleHolderTxStrategy, AltSimpleHolderTxStrategy
 from .strategy_simple_solana_call import SimpleTxSolanaCallStrategy, AltSimpleTxSolanaCallStrategy
@@ -45,6 +44,10 @@ class NeonTxExecutor(ExecutorComponent):
         SimpleTxStrategy,
         #     + holder
         SimpleHolderTxStrategy,
+        # single iteration with Solana Call
+        SimpleTxSolanaCallStrategy,
+        #     + holder
+        SimpleHolderTxSolanaCallStrategy,
         # multi-iteration
         IterativeTxStrategy,
         #     + holder
@@ -58,6 +61,10 @@ class NeonTxExecutor(ExecutorComponent):
         AltSimpleTxStrategy,
         #     simple + alt + holder
         AltSimpleHolderTxStrategy,
+        #     simple + solana + alt
+        AltSimpleTxSolanaCallStrategy,
+        #     simple + solana + alt + holder
+        AltSimpleHolderTxSolanaCallStrategy,
         #     multi-iterative + alt
         AltIterativeTxStrategy,
         #     multi-iterative + alt + holder
@@ -72,11 +79,6 @@ class NeonTxExecutor(ExecutorComponent):
         SimpleHolderTxSolanaCallStrategy,
         #     + alt + holder
         AltSimpleHolderTxSolanaCallStrategy,
-        # multi-iteration with Solana call
-        #     + holder
-        HolderTxSolanaCallStrategy,
-        #     + alt + holder
-        AltHolderTxSolanaCallStrategy,
     ]
 
     _stuck_tx_strategy_list: ClassVar[_BaseTxStrategyList] = [
