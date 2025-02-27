@@ -211,7 +211,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx_list_sender = self._ctx.sol_tx_list_sender
         tx_list_sender.clear()
 
-        if not isinstance(tx_name_list, (tuple, list,)):
+        if isinstance(tx_name_list, str):
             tx_name_list = tuple([tx_name_list])
 
         if not (tx_list := self._ctx.pop_sol_tx_list(tx_name_list)):
@@ -226,7 +226,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         tx_list_sender = self._ctx.sol_tx_list_sender
         tx_list_sender.clear()
 
-        if not isinstance(tx_list, (tuple, list,)):
+        if isinstance(tx_list, SolTx):
             tx_list = tuple([tx_list])
 
         try:
@@ -343,7 +343,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
 
     async def _emulate_tx_list(self, tx_list: Sequence[SolTx] | SolTx) -> Sequence[EmulSolTxInfo] | EmulSolTxInfo:
-        if not isinstance(tx_list, (tuple, list,)):
+        if isinstance(tx_list, SolTx):
             is_single_tx: Final[bool] = True
             tx_list = tuple([tx_list])
         else:
