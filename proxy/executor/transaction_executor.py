@@ -152,7 +152,7 @@ class NeonTxExecutor(ExecutorComponent):
     async def _exec_neon_tx(self, ctx: NeonExecTxCtx, strategy: BaseTxStrategy) -> ExecTxDoneCode | None:
         re_emulate = False
 
-        ctx.reset_holder_block()
+        ctx.reset_tx_exec_state()
         for _retry in itertools.count():
             # if retry > 0:
             #     _LOG.debug("attempt %s to execute %s, ...", retry + 1, strategy.name)
