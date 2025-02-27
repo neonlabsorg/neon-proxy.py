@@ -240,6 +240,8 @@ class NeonTxLogReturnInfo:
     total_gas_used: int
     status: int = 0
 
+    Success: Final[int] = 1
+    Failed: Final[int] = 0
     _default: ClassVar[NeonTxLogReturnInfo | None] = None
 
     @classmethod

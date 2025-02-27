@@ -7,7 +7,7 @@ import enum
 import logging
 import random
 import time
-from typing import Sequence
+from typing import Sequence, Final
 
 from .client import SolClient
 from .errors import (
@@ -28,6 +28,7 @@ from ..solana.hash import SolBlockHash
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
+from ..utils.cached import reset_cached_method, cached_property
 
 _LOG = logging.getLogger(__name__)
 
@@ -87,6 +88,17 @@ class SolTxListSender:
         SolTxSendState.Status.NodeBehindError,
     )
 
+    _bad_tx_status_list = (
+        SolTxSendState.Status.CbExceededError,
+        SolTxSendState.Status.AltError,
+        SolTxSendState.Status.WritableError,
+        SolTxSendState.Status.MissingAccountError,
+        SolTxSendState.Status.SkdTxUseWrongHolderError,
+        SolTxSendState.Status.UnknownError,
+    )
+
+    _wait_sec: Final[float] = ONE_BLOCK_SEC / 2
+
     def __init__(
         self,
         cfg: Config,
@@ -110,7 +122,7 @@ class SolTxListSender:
         self._tx_state_list_dict: dict[SolTxSendState.Status, list[SolTxSendState]] = dict()
         self._tx_time_dict: dict[SolTxSig, int] = dict()
 
-    @property
+    @cached_property
     def _sol_client(self) -> SolClient:
         return self._sol_session.sol_client
 
@@ -148,13 +160,33 @@ class SolTxListSender:
 
     @property
     def tx_state_list(self) -> Sequence[SolTxSendState]:
+        return self._get_tx_state_list()
+
+    @reset_cached_method
+    def _get_tx_state_list(self) -> Sequence[SolTxSendState]:
         return tuple(list(self._tx_state_dict.values()))
+
+    @property
+    def success_tx_state_list(self) -> Sequence[SolTxSendState]:
+        return self._get_success_tx_state_list()
+
+    @reset_cached_method
+    def _get_success_tx_state_list(self) -> Sequence[SolTxSendState]:
+        # fmt: off
+        return tuple([
+            tx_state
+            for tx_state in self._tx_state_dict.values()
+            if tx_state.status not in self._bad_tx_status_list
+        ])
+        # fmt: on
 
     def clear(self) -> None:
         self._blockhash = None
         self._tx_list.clear()
         self._tx_state_dict.clear()
         self._tx_state_list_dict.clear()
+        self._get_tx_state_list.reset_cache(self)
+        self._get_success_tx_state_list.reset_cache(self)
 
     def _clear_errors(self) -> None:
         """Clear rescheduled errors to prevent raising of errors on check status."""
@@ -175,7 +207,7 @@ class SolTxListSender:
                 if not await self._is_completed_commit_level():
                     # all txs were sent, but the commit statuses aren't enough to confirm txs on the network
                     #  let's sleep for some time
-                    await asyncio.sleep(ONE_BLOCK_SEC / 2)
+                    await asyncio.sleep(self._wait_sec)
                     #  refresh all tx receipts from the network
                     await self._refresh_tx_receipt_list()
                     #  revalidate txs and get not-confirmed txs for sending
@@ -198,7 +230,7 @@ class SolTxListSender:
             self._get_tx_list_for_send()
             if self._tx_list:
                 # sleep for some time to drop conditions for the error
-                await asyncio.sleep(ONE_BLOCK_SEC / 2)
+                await asyncio.sleep(self._wait_sec)
                 continue
 
             # get receipts from the network
@@ -335,7 +367,7 @@ class SolTxListSender:
 
         if self._num_slots_behind:
             _LOG.warning("Solana node is behind %s slots from the cluster, sleep for 1 slot...", self._num_slots_behind)
-            await asyncio.sleep(ONE_BLOCK_SEC)
+            await asyncio.sleep(self._wait_sec)
 
     async def _fuzz_send_tx_list(self) -> None:
         fuzz_fail_pct = self._cfg.fuzz_fail_pct
@@ -368,10 +400,11 @@ class SolTxListSender:
 
     def _is_already_finalized(self) -> bool:
         """The NeonTx is finalized"""
-        if result := SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict:
-            # _LOG.debug("NeonTx is already finalized")
-            pass
-        return result
+        return SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict
+        # if result := SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict:
+        #     _LOG.debug("NeonTx is already finalized")
+        #     pass
+        # return result
 
     def _get_tx_list_for_send(self) -> None:
         self._tx_list.clear()
@@ -442,8 +475,9 @@ class SolTxListSender:
         elif tx_error_parser.check_if_writable_error():
             return self._DecodeResult(status.WritableError, SolWritableError())
         elif tx_error_parser.check_if_cb_exceeded():
-            if cu_consumed := tx_error_parser.cu_consumed:
-                _LOG.debug("CUs consumed: %s", cu_consumed)
+            # if cu_consumed := tx_error_parser.cu_consumed:
+            #     _LOG.debug("CUs consumed: %s", cu_consumed)
+            cu_consumed = tx_error_parser.cu_consumed
             return self._DecodeResult(status.CbExceededError, SolCbExceededError(cu_consumed))
 
         elif data := tx_error_parser.get_error():
@@ -475,15 +509,15 @@ class SolTxListSender:
             error=res.error,
         )
 
-        status = SolTxSendState.Status
-        if tx_state.status not in (
-            status.WaitForReceipt,
-            status.UnknownError,
-            status.GoodReceipt,
-            status.NoReceiptError,
-            status.WritableError,
-        ):
-            _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
+        # status = SolTxSendState.Status
+        # if tx_state.status not in (
+        #     status.WaitForReceipt,
+        #     status.UnknownError,
+        #     status.GoodReceipt,
+        #     status.NoReceiptError,
+        #     status.WritableError,
+        # ):
+        #     _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
 
         self._tx_state_dict[tx_state.tx.sig] = tx_state
         self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
