@@ -7,7 +7,7 @@ from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.errors import EthWrongChainIdError, EthError
-from common.ethereum.hash import EthAddressField, EthHash32Field
+from common.ethereum.hash import EthAddressField, EthHash32Field, EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.jsonrpc.errors import InvalidParamError
@@ -120,10 +120,11 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
             raise ValueError(f"chainId should equal to {chain_id}")
 
     def to_core_tx_list(self, chain_id: int) -> list[CoreApiTxModel]:
+        payer = NeonAddress.from_raw(self.scheduledSolanaPayer, chain_id).eth_address
         return [
             CoreApiTxModel(
-                from_address=tx.fromAddress,
-                payer=NeonAddress.from_raw(self.scheduledSolanaPayer, 0).eth_address,
+                from_address=self.scheduledSolanaPayer if tx.fromAddress == payer else tx.fromAddress,
+                payer=payer,
                 solanaPayer=self.scheduledSolanaPayer,
                 to_address=tx.toAddress,
                 nonce=self.nonce,
