@@ -70,9 +70,14 @@ class BaseRpcServerComponent:
     def _get_chain_id(self, ctx: HttpRequestCtx) -> int:
         return self._server.get_chain_id(ctx)
 
-    def _validate_layer0_chain_id(self, ctx: HttpRequestCtx) -> None:
-        if self._get_chain_id(ctx) != self._server._layer0_chain_id:  # noqa
+    def _validate_layer0_chain_id(self, ctx: HttpRequestCtx, if_true: bool = True) -> int:
+        chain_id = self._get_chain_id(ctx)
+        if not if_true:
+            return chain_id
+        elif chain_id != self._server._layer0_chain_id:  # noqa
             raise EthWrongChainIdError()
+
+        return chain_id
 
     async def _get_evm_cfg(self) -> EvmConfigModel:
         return await self._server.get_evm_cfg()
