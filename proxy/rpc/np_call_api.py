@@ -161,13 +161,9 @@ class NpCallApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         tx: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
-        object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
+        _object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
     ) -> EthBinStrField:
-        if isinstance(tx.fromAddress, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
-        _ = object_state
-        chain_id = self._get_tx_chain_id(ctx, tx)
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(tx.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
         evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
@@ -185,10 +181,7 @@ class NpCallApi(NeonProxyApi):
         call: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        if isinstance(call.fromAddress, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
-        chain_id = self._get_tx_chain_id(ctx, call)
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(call.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
         return await self._gas_limit_calc.estimate(call.to_core_tx(chain_id), dict(), block)
 
@@ -200,10 +193,7 @@ class NpCallApi(NeonProxyApi):
         neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        if isinstance(tx.fromAddress, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
-        chain_id = self._get_tx_chain_id(ctx, tx)
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(tx.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
         return await self._gas_limit_calc.estimate(tx.to_core_tx(chain_id), neon_call.sol_account_dict, block)
 
@@ -249,9 +239,7 @@ class NpCallApi(NeonProxyApi):
         call: _RpcNeonSkdTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> _RpcSkdTxEstimateResp:
-        self._validate_layer0_chain_id(ctx)
-
-        chain_id = self._get_chain_id(ctx)
+        chain_id = self._validate_layer0_chain_id(ctx)
         call.validate_chain_id(chain_id)
 
         block = await self.get_block_by_tag(block_tag)

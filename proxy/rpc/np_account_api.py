@@ -57,11 +57,8 @@ class NpAccountApi(NeonProxyApi):
         address: EthNotNoneAddressField | SolNotNonePubKeyField,
         block_tag: RpcBlockRequest,
     ) -> HexUIntField:
-        if isinstance(address, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(address, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-        chain_id = self._get_chain_id(ctx)
         addr = NeonAddress.from_raw(address, chain_id)
 
         mp_tx_nonce: int | None = None
@@ -80,10 +77,7 @@ class NpAccountApi(NeonProxyApi):
         address: EthNotNoneAddressField | SolNotNonePubKeyField,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
     ) -> HexUIntField:
-        if isinstance(address, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
-        chain_id = self._get_chain_id(ctx)
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(address, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
         acct = await self._core_api_client.get_neon_account(NeonAddress.from_raw(address, chain_id), block)
 
@@ -124,11 +118,8 @@ class NpAccountApi(NeonProxyApi):
         address: EthNotNoneAddressField | SolNotNonePubKeyField,
         block_tag: RpcBlockRequest,
     ) -> _NeonRpcAccountResp:
-        if isinstance(address, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(address, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-        chain_id = self._get_chain_id(ctx)
         addr = NeonAddress.from_raw(address, chain_id)
 
         resp = await self._core_api_client.get_neon_account(addr, block)
