@@ -513,10 +513,8 @@ class NpBlockTxApi(NeonProxyApi):
         nonce: HexUInt64Field,
         index: HexUInt64Field = 0,
     ) -> RpcEthTxResp | None:
-        if isinstance(sender, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
-        neon_addr = NeonAddress.from_raw(sender, self._get_chain_id(ctx))
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(sender, SolPubKey))
+        neon_addr = NeonAddress.from_raw(sender, chain_id)
         inc_no_chain_id = True if self._is_default_chain_id(ctx) else False
         if not (meta := await self._db.get_tx_by_sender_nonce(neon_addr, nonce, index, inc_no_chain_id)):
             if not (meta := await self._mp_client.get_tx_by_sender_nonce(self._get_ctx_id(ctx), neon_addr, nonce)):
@@ -693,10 +691,8 @@ class NpBlockTxApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         sender: EthNotNoneAddressField | SolNotNonePubKeyField,
     ) -> dict[HexUIntField, list[_RpcNeonTxStatusModel]]:
-        if isinstance(sender, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
-        sender_addr = NeonAddress.from_raw(sender, self._get_chain_id(ctx))
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(sender, SolPubKey))
+        sender_addr = NeonAddress.from_raw(sender, chain_id)
         sender_acct = await self._core_api_client.get_neon_account(sender_addr, None)
         resp = await self._mp_client.get_tx_status_list_by_sender(self._get_ctx_id(ctx), sender_acct)
 
@@ -791,12 +787,8 @@ class NpBlockTxApi(NeonProxyApi):
             nonce: HexUIntField,
             block_tag: RpcBlockRequest,
     ) -> _RpcNeonTreeAccountResp | None:
-        if isinstance(address, SolPubKey):
-            self._validate_layer0_chain_id(ctx)
-
+        chain_id = self._validate_layer0_chain_id(ctx, isinstance(address, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-
-        chain_id = self._get_chain_id(ctx)
         addr = NeonAddress.from_raw(address, chain_id)
 
         tree_acct = await self._core_api_client.get_neon_skd_tree(addr, nonce, block)
