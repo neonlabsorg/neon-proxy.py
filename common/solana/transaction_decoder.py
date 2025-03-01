@@ -70,15 +70,15 @@ class SolTxMetaInfo:
 
     def sol_ix_log_list(self, tx_ix: SolTxIxMetaInfo) -> SolTxIxLogInfo:
         tx_log_tree = self._tx_log_tree
-        if tx_ix.sol_ix_idx > len(tx_log_tree.log_list):
-            _LOG.error("%s: cannot find logs for ix %s", self.to_string(), tx_ix.sol_ix_idx)
+        if tx_ix.sol_ix_idx >= len(tx_log_tree.log_list):
+            # it can be failed tx
             return SolTxIxLogInfo.new_unknown()
 
         ix_log: SolTxIxLogInfo = tx_log_tree.log_list[tx_ix.sol_ix_idx]
         if tx_ix.sol_inner_ix_idx is None:
             return ix_log
         elif tx_ix.sol_inner_ix_idx > len(ix_log.inner_log_list):
-            _LOG.error("%s: cannot find logs for ix %s:%s", self.to_string(), tx_ix.sol_ix_idx, tx_ix.sol_inner_ix_idx)
+            # it can be failed tx
             return SolTxIxLogInfo.new_unknown()
         return ix_log.inner_log_list[tx_ix.sol_inner_ix_idx]
 
