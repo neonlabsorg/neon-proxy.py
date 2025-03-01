@@ -47,8 +47,8 @@ class BaseEthCallModel(BaseJsonRpcModel):
         default=EthAddress.default(),
         validation_alias=AliasChoices("to", "toAddress"),
     )
-    data_v1: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="data")
-    data_v2: EthBinStrField = Field(default=EthBinStr.default(), validation_alias="input")
+    data_v1: EthBinStrField = Field(default=EthBinStr.default(), validation_alias=AliasChoices("data", "data_v1"))
+    data_v2: EthBinStrField = Field(default=EthBinStr.default(), validation_alias=AliasChoices("input", "data_v2"))
 
     gas: HexUIntField = Field(default=pow(2, 64))
     value: HexUIntField = Field(default=0)
