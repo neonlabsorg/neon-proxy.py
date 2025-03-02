@@ -11,6 +11,7 @@ from common.config.config import Config, StartSlot
 from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
+from common.neon.neon_program import NeonProg
 from common.neon_rpc.client import CoreApiClient
 from common.neon_rpc.server import CoreApiServer
 from common.solana.commit_level import SolCommit
@@ -45,8 +46,6 @@ class NeonIndexerApp:
 
         self._first_slot: None | int = None
         self._finalized_slot = 0
-        self._layer0_chain_id = 0
-        self._def_chain_id = 0
 
         self._reindex_process_list: list[_ReIndexer] = list()
 
@@ -84,9 +83,8 @@ class NeonIndexerApp:
 
     async def _init_chain_id(self) -> None:
         evm_cfg = await self._core_api_client.get_evm_cfg()
-        self._def_chain_id = evm_cfg.default_chain_id
-        self._layer0_chain_id = evm_cfg.layer0_chain_id
-        _LOG.debug("default ChainID: %s, layer0 ChainID: %s", self._def_chain_id, self._layer0_chain_id)
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
+        _LOG.debug("default ChainID: %s, layer0 ChainID: %s", NeonProg.DefaultChainId, NeonProg.Layer0ChainId)
 
     async def _init_finalized_slot(self) -> None:
         self._finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
@@ -95,7 +93,7 @@ class NeonIndexerApp:
     async def _init_db(self) -> None:
         db_conn = DbConnection(self._cfg, self._stat_client)
         db_conn.enable_debug_query()
-        self._db = IndexerDb(self._cfg, self._def_chain_id, db_conn)
+        self._db = IndexerDb(self._cfg, db_conn)
 
         await self._db.start()
         await self._db.init_slot_range()
@@ -113,7 +111,6 @@ class NeonIndexerApp:
 
         indexer = Indexer(
             self._cfg,
-            self._layer0_chain_id,
             self._sol_client,
             self._core_api_client,
             tracer_api_client,
@@ -479,7 +476,7 @@ class NeonIndexerApp:
             if not slot_range_list:
                 break
 
-            reindexer = _ReIndexer(idx, self._cfg, self._def_chain_id, self._layer0_chain_id, slot_range_list)
+            reindexer = _ReIndexer(idx, self._cfg, slot_range_list)
             self._reindex_process_list.append(reindexer)
             reindexer.start()
 
@@ -494,14 +491,10 @@ class _ReIndexer:
         self,
         idx: int,
         cfg: Config,
-        def_chain_id: int,
-        layer0_chain_id: int,
         slot_range_list: Sequence[IndexerDbSlotRange],
     ):
         self._idx = idx
         self._cfg = cfg
-        self._def_chain_id = def_chain_id
-        self._layer0_chain_id = layer0_chain_id
         self._slot_range_list = slot_range_list
         self._process: mp.Process | None = None
 
@@ -529,7 +522,7 @@ class _ReIndexer:
             core_api_client = CoreApiClient(self._cfg, sol_client, stat_client)
 
             db_conn = DbConnection(self._cfg, stat_client)
-            db = IndexerDb(self._cfg, self._def_chain_id, db_conn)
+            db = IndexerDb(self._cfg, db_conn)
 
             await sol_client.start()
             await core_api_client.start()
@@ -553,7 +546,6 @@ class _ReIndexer:
                     await db.set_slot_range(slot_range)
                     indexer = Indexer(
                         self._cfg,
-                        self._layer0_chain_id,
                         sol_client,
                         core_api_client,
                         None,

@@ -1,22 +1,19 @@
 from __future__ import annotations
 
 import abc
+from typing import Sequence
 
-from typing import  Sequence
 from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config
-from common.neon.neon_program import NeonProg
-from common.neon.skd_tree import NeonSkdTreeAddress
-from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana.signer import SolSigner
 from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property
+from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 from ..base.mp_client import MempoolClient
 from ..base.op_api import OP_RESOURCE_ENDPOINT
-from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 from ..stat.client import StatClient
 
 
@@ -28,6 +25,10 @@ class OpResourceComponent(BaseIntlProxyComponent):
     @cached_property
     def _stat_client(self) -> StatClient:
         return self._server._stat_client  # noqa
+
+    @cached_property
+    def _mp_client(self) -> MempoolClient:
+        return self._server._mp_client  # noqa
 
 
 class OpResourceApi(OpResourceComponent, AppDataApi):
@@ -51,12 +52,6 @@ class OpResourceServerAbc(BaseIntlProxyServer, abc.ABC):
 
     @abc.abstractmethod
     async def get_signer_list(self) -> Sequence[SolSigner]: ...
-
-    async def get_evm_cfg(self) -> EvmConfigModel:
-        evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
-        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
-        return evm_cfg
 
     def _add_api(self, api: OpResourceApi) -> Self:
         return self.add_api(api, endpoint=OP_RESOURCE_ENDPOINT)

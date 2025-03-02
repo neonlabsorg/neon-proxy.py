@@ -10,8 +10,9 @@ from common.config.config import Config
 from common.ethereum.bin_str import EthBinStr
 from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel, NeonTxType
-from common.neon_rpc.api import EvmConfigModel, NeonAccountStatus
+from common.neon_rpc.api import NeonAccountStatus
 from common.solana.pubkey import SolPubKey
 from common.utils.format import if_none
 from common.utils.json_logger import logging_context
@@ -58,8 +59,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
 
         self._withdraw_parser = self._cmd_parser.add_parser(cls._withdraw, help="withdraw earned tokens")
 
-        evm_cfg = await self._get_evm_cfg()
-        token_list = list(evm_cfg.token_dict.keys())
+        token_list = list(NeonProg.TokenDict.keys())
 
         self._withdraw_parser.add_argument(
             "dest_address",
@@ -94,12 +94,11 @@ class OpBalanceHandler(BaseNPCmdHandler):
         with logging_context(**req_id):
             op_balance_list = await self._get_earned_token_balance(req_id)
             total_balance_dict: dict[str, int] = dict()
-            evm_cfg = await self._get_evm_cfg()
 
             for op_balance in op_balance_list:
                 print(f"{op_balance.eth_address} ({op_balance.owner}):")
                 for chain_id, balance in op_balance.token_balance_dict.items():
-                    token = evm_cfg.chain_dict[chain_id].name
+                    token = NeonProg.ChainDict[chain_id].name
                     total_balance_dict[token] = total_balance_dict.get(token, 0) + balance
                     balance = balance / (10**18)
                     balance = f"{balance:,.18f}".replace(",", "'")
@@ -121,7 +120,6 @@ class OpBalanceHandler(BaseNPCmdHandler):
             t_amount = arg_space.amount
             t_type = arg_space.type.upper()
             token_set = set(self._token_list)
-            evm_cfg = await self._get_evm_cfg()
 
             if t_type not in token_set:
                 _LOG.error("wrong type of amount type %s, should be %s", t_type, ", ".join(sorted(token_set)))
@@ -137,7 +135,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
                 return 1
 
             op_balance_list = await self._get_earned_token_balance(req_id)
-            token_balance_dict = self._build_token_balance_dict(evm_cfg, op_balance_list, t_amount, t_type)
+            token_balance_dict = self._build_token_balance_dict(op_balance_list, t_amount, t_type)
             if not token_balance_dict:
                 return 1
 
@@ -159,7 +157,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
                     else:
                         break
 
-                token = evm_cfg.chain_dict[chain_id].name
+                token = NeonProg.ChainDict[chain_id].name
                 done_balance = done_balance / (10**18)
                 # fmt: off
                 print(
@@ -184,8 +182,7 @@ class OpBalanceHandler(BaseNPCmdHandler):
         core_api_client = await self._get_core_api_client()
         op_client = await self._get_op_client()
         mp_client: MempoolClient = await self._get_mp_client()
-        evm_cfg = await self._get_evm_cfg()
-        token = evm_cfg.chain_dict[chain_id].name
+        token = NeonProg.ChainDict[chain_id].name
 
         dest_acct = await core_api_client.get_neon_account(NeonAddress.from_raw(dest_eth_addr, chain_id), None)
         if dest_acct.status == NeonAccountStatus.Empty:
@@ -244,7 +241,6 @@ class OpBalanceHandler(BaseNPCmdHandler):
 
     def _build_token_balance_dict(
         self,
-        evm_cfg: EvmConfigModel,
         op_balance_list: Sequence[_OpBalance],
         t_amount: int,
         t_type: str,
@@ -269,12 +265,12 @@ class OpBalanceHandler(BaseNPCmdHandler):
                 token_balance_dict[token] = int(balance * t_amount / 100)
         elif t_type.endswith(self._percent_postfix):
             token = t_type[: -len(self._percent_postfix)]
-            chain_id = evm_cfg.token_dict[token].chain_id
+            chain_id = NeonProg.TokenDict[token].chain_id
             balance = token_balance_dict.get(chain_id, 0)
             token_balance_dict = {chain_id: int(balance * t_amount / 100)}
         else:
             token = t_type
-            chain_id = evm_cfg.token_dict[token].chain_id
+            chain_id = NeonProg.TokenDict[token].chain_id
             balance = token_balance_dict.get(chain_id, 0)
 
             check_balance = balance // (10**18) + 1
@@ -289,18 +285,18 @@ class OpBalanceHandler(BaseNPCmdHandler):
     async def _get_earned_token_balance(self, req_id: dict) -> list[_OpBalance]:
         op_client = await self._get_op_client()
         core_api_client = await self._get_core_api_client()
-        evm_cfg = await self._get_evm_cfg()
 
         eth_address_list = await op_client.get_eth_address_list(req_id)
+        chain_id_list = list(NeonProg.ChainDict.keys())
 
         op_balance_list: list[_OpBalance] = list()
         for op_addr in eth_address_list:
             token_balance_dict: dict[int, int] = dict()
-            for chain_id in evm_cfg.chain_dict.keys():
+            for chain_id in chain_id_list:
                 neon_addr = NeonAddress.from_raw(op_addr.eth_address, chain_id)
 
                 neon_acct = await core_api_client.get_neon_account(neon_addr, None)
-                earn_acct = await core_api_client.get_earn_account(evm_cfg, op_addr.owner, neon_addr, None)
+                earn_acct = await core_api_client.get_earn_account(op_addr.owner, neon_addr, None)
 
                 balance = neon_acct.balance + earn_acct.balance
                 token_balance_dict[chain_id] = balance

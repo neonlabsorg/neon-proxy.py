@@ -7,6 +7,7 @@ from typing import Final
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel
 from common.utils.json_logger import logging_context, log_msg
 from .server_abc import MempoolServerAbc, MempoolComponent
@@ -72,12 +73,11 @@ class MpTxExecutor(MempoolComponent):
                 # _LOG.debug("tx is already known")
                 return MpTxResp(code=MpTxRespCode.AlreadyKnown, state_tx_cnt=None)
 
-            if result := self._update_tx_order(tx):
+            elif result := self._update_tx_order(tx):
                 return result
 
             if not (tx_schedule := self._tx_schedule_dict.get(tx.chain_id, None)):
-                evm_cfg = self._evm_cfg
-                token = evm_cfg.chain_dict.get(tx.chain_id).name
+                token = NeonProg.ChainDict.get(tx.chain_id).name
                 tx_schedule = MpTxSchedule(
                     self._cfg,
                     self._sol_client,
@@ -89,17 +89,12 @@ class MpTxExecutor(MempoolComponent):
                 self._tx_schedule_dict[tx.chain_id] = tx_schedule
                 await tx_schedule.start()
 
-            if not (result := tx_schedule.add_tx(tx, state_tx_cnt, balance)):
-                return MpTxResp(code=MpTxRespCode.UnknownChainID, state_tx_cnt=None)
-
-            return result
+            self._exec_event.set()
+            return tx_schedule.add_tx(tx, state_tx_cnt, balance)
 
         except BaseException as exc:
             _LOG.error("error on schedule tx", exc_info=exc)
             return MpTxResp(code=MpTxRespCode.Unspecified, state_tx_cnt=None)
-
-        finally:
-            self._exec_event.set()
 
     async def drop_tx(self, neon_tx_hash: EthTxHash) -> bool:
         if not (tx := self._tx_dict.get_tx_by_hash(neon_tx_hash)):

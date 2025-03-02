@@ -8,7 +8,7 @@ from typing import ClassVar, Final, Sequence
 from typing_extensions import Self
 
 from .address import NeonAddress
-from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER, SOL_SIG_COST
+from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER, SOL_SIG_COST, DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthTxHash
 from ..solana.instruction import SolTxIx, SolAccountMeta
@@ -138,14 +138,28 @@ class NeonBaseTxAccountSet:
 
 
 @dataclass(frozen=True)
+class TokenInfo:
+    chain_id: int
+    mint: SolPubKey
+    name: str
+    is_default: bool = False
+    is_layer0: bool = False
+
+
+@dataclass(frozen=True)
 class NeonProgCfg:
+    deployed_slot: int
     treasury_pool_cnt: int
     treasury_pool_seed: bytes
     treasury_payment: int
+    account_seed_version: int
     evm_version: str
     evm_step_cnt: int
+    holder_msg_size: int
     gas_limit_multiplier_wo_chain_id: int
+    tree_account_slot_out: int
     tree_account_finish_tx_gas: int
+    token_list: list[TokenInfo]
 
     @cached_property
     def protocol_version(self) -> NeonEvmProtocol:
@@ -163,25 +177,70 @@ class NeonProgCfg:
             _LOG.error("wrong format of NeonEVM version %s: %s", self.evm_version, str(exc))
             return NeonEvmProtocol.Unknown
 
+    @cached_property
+    def token_dict(self) -> dict[str, TokenInfo]:
+        return {token.name: token for token in self.normalized_token_list}
+
+    @cached_property
+    def chain_dict(self) -> dict[int, TokenInfo]:
+        return {token.chain_id: token for token in self.normalized_token_list}
+
+    @cached_property
+    def normalized_token_list(self) -> Sequence[TokenInfo]:
+        return [
+            TokenInfo(
+                chain_id=token.chain_id,
+                mint=token.mint,
+                name=token.name,
+                is_default=(token.name == NeonProg.DefaultTokenName),
+                is_layer0=(token.name == NeonProg.Layer0TokenName),
+            )
+            for token in self.token_list
+        ]
+
+    @cached_property
+    def default_chain_id(self) -> int:
+        return self.token_dict[NeonProg.DefaultTokenName].chain_id
+
+    @cached_property
+    def layer0_chain_id(self) -> int:
+        return self.token_dict[NeonProg.Layer0TokenName].chain_id
+
 
 class NeonProg:
-    _treasury_pool_cnt: ClassVar[int | None] = None
-    _treasury_pool_seed: ClassVar[bytes | None] = None
-    _protocol_version: ClassVar[NeonEvmProtocol] = NeonEvmProtocol.Unknown
-    _evm_version: ClassVar[str] = "0.0.0"
-    _deposit_seed: Final[bytes] = b"Deposit"
+    ID: Final[SolPubKey] = NEON_EVM_PROGRAM_ID
+    DeployedSlot: Final[int] = -1
     #
-    ID: ClassVar[SolPubKey] = NEON_EVM_PROGRAM_ID
-    DepositAddress: ClassVar[SolPubKey] = SolPubKey.find_program_address(tuple([_deposit_seed]), ID)[0]
+    TreasuryPoolCnt: Final[int] = 0
+    TreasuryPoolSeed: Final[bytes] = bytes()
+    ProtocolVersion: Final[NeonEvmProtocol] = NeonEvmProtocol.Unknown
+    EvmVersion: Final[str] = "0.0.0"
+    DepositSeed: Final[bytes] = b"Deposit"
+    #
+    DepositAddress: Final[SolPubKey] = SolPubKey.find_program_address(tuple([DepositSeed]), ID)[0]
+    #
+    DefaultChainId: Final[int] = 0
+    DefaultTokenName: Final[str] = DEFAULT_TOKEN_NAME
+    Layer0ChainId: Final[int] = 0
+    Layer0TokenName: Final[str] = LAYER0_TOKEN_NAME
+    TokenList: Final[list[TokenInfo]] = list()
+    TokenDict: Final[dict[str, TokenInfo]] = dict()
+    ChainDict: Final[dict[int, TokenInfo]] = dict()
+    #
+    AccountSeedVersion: Final[int] = 0
+    #
+    HolderMsgSize: Final[int] = 930
     #
     SignatureGas: Final[int] = SOL_SIG_COST
-    TreasuryGas: ClassVar[int] = 0
-    BaseGas: ClassVar[int] = SignatureGas + 0
-    GasLimitMultiplierWoChainId: ClassVar[int] = 1
+    TreasuryGas: Final[int] = 0
+    BaseGas: Final[int] = SignatureGas + 0
+    GasLimitMultiplierWoChainId: Final[int] = 1
+    # Live time for Tree Account
+    TreeAccountSlotOut: Final[int] = 0
     # Finish Scheduled transaction Gas
-    FinishSkdTxGas: ClassVar[int] = 0
+    FinishSkdTxGas: Final[int] = 0
     #
-    EvmStepPerIter: ClassVar[int] = 0
+    EvmStepPerIter: Final[int] = 0
     # Holder IX CUs limit
     CuLimitHolderWrite: Final[int] = 25_000
     CuLimitHolderCreate: Final[int] = 7_500
@@ -207,7 +266,7 @@ class NeonProg:
     BaseAccountCnt: Final[int] = 7
 
     def __init__(self, payer: SolPubKey) -> None:
-        assert self._treasury_pool_cnt is not None, "NeonProg should be initialized: NeonProg.init_prog"
+        assert self.TreasuryPoolCnt, "NeonProg should be initialized: NeonProg.init_prog"
 
         self._payer = payer
         self._token_sol_addr = SolPubKey.default()
@@ -223,25 +282,38 @@ class NeonProg:
 
     @classmethod
     def init_prog(cls, cfg: NeonProgCfg) -> None:
-        cls._treasury_pool_cnt = cfg.treasury_pool_cnt
-        cls._treasury_pool_seed = cfg.treasury_pool_seed
-        cls._evm_version = cfg.evm_version
-        cls._protocol_version = cfg.protocol_version
+        if cfg.deployed_slot == cls.DeployedSlot:
+            return
 
-        cls.TreasuryGas = cfg.treasury_payment
-        cls.BaseGas = cls.SignatureGas + cfg.treasury_payment
-        cls.GasLimitMultiplierWoChainId = cfg.gas_limit_multiplier_wo_chain_id
-        cls.FinishSkdTxGas = cfg.tree_account_finish_tx_gas
-        cls.EvmStepPerIter = cfg.evm_step_cnt
+        setattr(cls, "DeployedSlot", cfg.deployed_slot)
+        setattr(cls, "TreasuryPoolCnt", cfg.treasury_pool_cnt)
+        setattr(cls, "TreasuryPoolSeed", cfg.treasury_pool_seed)
+        setattr(cls, "EvmVersion", cfg.evm_version)
+        setattr(cls, "ProtocolVersion", cfg.protocol_version)
+
+        setattr(cls, "DefaultChainId", cfg.default_chain_id)
+        setattr(cls, "Layer0ChainId", cfg.layer0_chain_id)
+        setattr(cls, "TokenList", cfg.normalized_token_list)
+        setattr(cls, "TokenDict", cfg.token_dict)
+        setattr(cls, "ChainDict", cfg.chain_dict)
+
+        setattr(cls, "AccountSeedVersion", cfg.account_seed_version)
+        # setattr(cls, "HolderMsgSize", cfg.holder_msg_size)
+        setattr(cls, "TreasuryGas", cfg.treasury_payment)
+        setattr(cls, "BaseGas",  cls.SignatureGas + cfg.treasury_payment)
+        setattr(cls, "GasLimitMultiplierWoChainId",  cfg.gas_limit_multiplier_wo_chain_id)
+        setattr(cls, "TreeAccountSlotOut", cfg.tree_account_slot_out)
+        setattr(cls, "FinishSkdTxGas", cfg.tree_account_finish_tx_gas)
+        setattr(cls, "EvmStepPerIter", cfg.evm_step_cnt)
 
     @classmethod
     def is_init(cls) -> bool:
-        return cls._treasury_pool_cnt is not None
+        return cls.TreasuryPoolCnt != 0
 
     @classmethod
     def validate_protocol(cls) -> None:
-        if cls._protocol_version not in SUPPORTED_VERSION_SET:
-            raise EthError(f"Neon-Proxy {NEON_PROXY_VER} is not compatible with Neon-EVM v{cls._evm_version}")
+        if cls.ProtocolVersion not in SUPPORTED_VERSION_SET:
+            raise EthError(f"Neon-Proxy {NEON_PROXY_VER} is not compatible with Neon-EVM v{cls.EvmVersion}")
 
     def init_token_address(self, token_sol_address: SolPubKey) -> Self:
         self._token_sol_addr = token_sol_address
@@ -268,18 +340,11 @@ class NeonProg:
 
     @classmethod
     def calc_treasury_address(cls, base_index: int) -> tuple[int, bytes, SolPubKey]:
-        assert cls._treasury_pool_cnt is not None, "NeonProg should be initialized: NeonProg.init_prog"
-        index = base_index % cls._treasury_pool_cnt
+        assert cls.TreasuryPoolCnt, "NeonProg should be initialized: NeonProg.init_prog"
+        index = base_index % cls.TreasuryPoolCnt
         index_buf = index.to_bytes(4, "little")
 
-        addr, _ = SolPubKey.find_program_address(
-            seed_list=(
-                cls._treasury_pool_seed,
-                index_buf,
-            ),
-            prog_id=cls.ID,
-        )
-
+        addr, _ = SolPubKey.find_program_address(seed_list=(cls.TreasuryPoolSeed, index_buf), prog_id=cls.ID)
         return index, index_buf, addr
 
     def init_tx_sol_address(self, base_tx_account_set: NeonBaseTxAccountSet) -> Self:
@@ -567,7 +632,7 @@ class NeonProg:
         )
 
         ix_data = bytes().join(ix_data_list)
-        if data is not None:
+        if data:
             ix_data += data
 
         assert mode != NeonIxMode.Unknown

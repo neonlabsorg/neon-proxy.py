@@ -6,7 +6,8 @@ from common.config.config import CuPriceMode, CuPriceLevel
 from common.cu_price.api import PriorityFeeCfg
 from common.neon.block import NeonBlockCuPriceInfo
 from common.neon.cu_price_data_model import CuPricePercentileModel
-from common.neon.neon_program import NeonProg, NeonProgCfg, NeonEvmProtocol
+from common.neon.neon_program import NeonProg, NeonProgCfg, TokenInfo
+from common.solana.pubkey import SolPubKey
 from proxy.mempool.gas_price_calculator import MpGasPriceCalculator
 
 
@@ -25,13 +26,21 @@ class TestGasPriceCalculator(MpGasPriceCalculator):
 
 def _init_neon_prog():
     cfg = NeonProgCfg(
+        deployed_slot=0,
         treasury_pool_cnt=100,
         treasury_pool_seed=b"treasury",
         treasury_payment=5000,
+        account_seed_version=3,
         evm_version="1.14.0",
         evm_step_cnt=500,
+        holder_msg_size=950,
         gas_limit_multiplier_wo_chain_id=10,
+        tree_account_slot_out=90,
         tree_account_finish_tx_gas=5000,
+        token_list=[
+            TokenInfo(name="NEON", mint=SolPubKey.default(), chain_id=111),
+            TokenInfo(name="SOL", mint=SolPubKey.default(), chain_id=112),
+        ]
     )
     NeonProg.init_prog(cfg)
 

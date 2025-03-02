@@ -165,9 +165,6 @@ class TreeAccountHandler(BaseNPCmdHandler):
             sender = EthAddress.from_raw(arg_space.sender)
 
         core_api_client: CoreApiClient = await self._get_core_api_client()
-        evm_cfg = await self._get_evm_cfg()
-        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
-        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
 
         sender_addr = NeonAddress.from_raw(sender, arg_space.chain_id)
         skd_tree_addr = NeonSkdTreeAddress.from_raw(sender_addr, arg_space.nonce)
