@@ -5,14 +5,14 @@ from typing import Sequence
 
 from common.db.db_connect import DbConnection, DbSql, DbSqlParam, DbTxCtx, DbQueryBody
 from common.neon.block import NeonBlockBaseFeeInfo
+from common.neon.neon_program import NeonProg
 from ..base.history_db import HistoryDbTable
 from ..base.objects import NeonIndexedBlockInfo
 
 
 class NeonBlockFeeDB(HistoryDbTable):
-    def __init__(self, db: DbConnection, def_chain_id: int = 0):
+    def __init__(self, db: DbConnection):
         super().__init__(db, "neon_block_fees", _Record, key_list=("block_slot", "chain_id"))
-        self._def_chain_id = def_chain_id
         self._base_fee_list_query = DbQueryBody()
 
     async def start(self) -> None:
@@ -53,7 +53,7 @@ class NeonBlockFeeDB(HistoryDbTable):
                 elif not (tx_base_fee := tx.neon_tx_rcpt.base_fee_per_gas or tx.neon_tx.base_fee_per_gas):
                     continue
 
-                chain_id = tx.neon_tx.chain_id or self._def_chain_id
+                chain_id = tx.neon_tx.chain_id or NeonProg.DefaultChainId
                 chain_base_fee, tx_cnt = chain_fee_dict.get(chain_id, (0, 0,))
                 chain_fee_dict[chain_id] = chain_base_fee + tx_base_fee, tx_cnt + 1
 

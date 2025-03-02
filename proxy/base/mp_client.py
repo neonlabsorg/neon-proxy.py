@@ -5,6 +5,7 @@ from typing import ClassVar
 from common.app_data.client import AppDataClient
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import EvmConfigModel, NeonAccountModel
 from common.solana.pubkey import SolPubKey
@@ -45,6 +46,10 @@ class MempoolClient(AppDataClient):
 
     async def get_evm_cfg(self) -> EvmConfigModel:
         return await self._get_evm_cfg()
+
+    async def init_neon_prog(self) -> None:
+        evm_cfg = await self._get_evm_cfg()
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
 
     async def get_gas_price(self) -> MpGasPriceModel:
         return await self._get_gas_price()

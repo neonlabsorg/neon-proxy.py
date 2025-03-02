@@ -88,7 +88,7 @@ class IndexerDbSlotRange:
 
 
 class IndexerDb:
-    def __init__(self, cfg: Config, def_chain_id: int, db_conn: DbConnection, slot_range=IndexerDbSlotRange()):
+    def __init__(self, cfg: Config, db_conn: DbConnection, slot_range=IndexerDbSlotRange()):
         self._cfg = cfg
         self._db_conn = db_conn
 
@@ -103,7 +103,7 @@ class IndexerDb:
 
         self._constant_db = ConstantDb(db_conn)
         self._sol_block_db = SolBlockDb(db_conn)
-        self._neon_block_fee_db = NeonBlockFeeDB(db_conn, def_chain_id)
+        self._neon_block_fee_db = NeonBlockFeeDB(db_conn)
         self._sol_tx_cost_db = SolTxCostDb(db_conn)
         self._neon_skd_tx_db = NeonSkdTxDb(db_conn)
         self._neon_skd_tx_body_db = NeonSkdTxBodyDb(db_conn)

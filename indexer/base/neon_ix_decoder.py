@@ -6,7 +6,7 @@ from typing import ClassVar, Final
 from common.ethereum.hash import EthTxHash, EthAddressField
 from common.neon.address import NeonAddress
 from common.neon.cancel_error import CancelErrorData
-from common.neon.neon_program import NeonEvmIxCode
+from common.neon.neon_program import NeonEvmIxCode, NeonProg
 from common.neon.transaction_model import NeonTxModel, NeonSkdTxStatus
 from common.solana.pubkey import SolPubKey, SolPubKeyField
 from common.utils.pydantic import BaseModel
@@ -620,7 +620,7 @@ class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
         block = self.state.neon_block
         sol_tx_sig = ix.sol_tx_sig
         sol_payer = ix.sol_payer
-        neon_payer = NeonAddress.from_raw(ix.sol_payer, self.state.layer0_chain_id)
+        neon_payer = NeonAddress.from_raw(ix.sol_payer, NeonProg.Layer0ChainId)
 
         tx_hash_list: list[EthTxHash] = list()
         child_idx_list: list[int] = list()

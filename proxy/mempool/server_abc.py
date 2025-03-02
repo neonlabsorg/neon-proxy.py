@@ -11,7 +11,7 @@ from common.cu_price.client import CuPriceClient
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
-from common.utils.cached import cached_property, ttl_cached_method
+from common.utils.cached import cached_property
 from indexer.db.indexer_db_client import IndexerDbClient
 from ..base.ex_client import ExecutorClient
 from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
@@ -48,10 +48,6 @@ class MempoolComponent(BaseIntlProxyComponent):
     @property
     def _gas_price(self) -> MpGasPriceModel:
         return self._server.get_gas_price()
-
-    @property
-    def _evm_cfg(self) -> EvmConfigModel:
-        return self._server.get_evm_cfg()
 
 
 class MempoolApi(MempoolComponent, AppDataApi):

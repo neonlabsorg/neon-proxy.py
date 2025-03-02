@@ -1,6 +1,7 @@
 import unittest
 
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.solana.pubkey import SolPubKey
 from common.neon_rpc.api import (
     CoreApiResultCode,
@@ -148,12 +149,13 @@ class TestLayout(unittest.TestCase):
         resp = CoreApiResp.model_validate(json_data)
         self.assertEqual(resp.result, CoreApiResultCode.Success)
         evm_cfg = EvmConfigModel.from_dict(resp.value, deployed_slot=1)
-        self.assertEqual(evm_cfg.deployed_slot, 1)
-        self.assertEqual(evm_cfg.version, "1.11.0-dev")
-        self.assertEqual(evm_cfg.revision, "93a4694e6cbf89b6ae96bdf24075e84883d8390b")
-        self.assertEqual(evm_cfg.default_chain_id, 111)
-        self.assertEqual(evm_cfg.token_dict["ETH"].chain_id, 114)
-        self.assertEqual(evm_cfg.chain_dict[113].name, "USDT")
+        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
+        self.assertEqual(NeonProg.DeployedSlot, 1)
+        self.assertEqual(NeonProg.EvmVersion, "1.11.0-dev")
+        self.assertEqual(evm_cfg.package_version, "Neon-EVM/v1.11.0-dev-93a4694e6cbf89b6ae96bdf24075e84883d8390b")
+        self.assertEqual(NeonProg.DefaultChainId, 111)
+        self.assertEqual(NeonProg.TokenDict["ETH"].chain_id, 114)
+        self.assertEqual(NeonProg.ChainDict[113].name, "USDT")
 
 
 class Conversion(unittest.TestCase):

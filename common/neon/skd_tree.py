@@ -1,5 +1,3 @@
-from typing import ClassVar
-
 from typing_extensions import Self
 
 from .address import NeonAddress
@@ -10,8 +8,6 @@ from ..utils.cached import cached_property, cached_method
 
 
 class NeonSkdTreeAddress:
-    _acct_seed_ver: ClassVar[int] = 0
-
     def __init__(
         self,
         address: NeonAddress,
@@ -21,20 +17,14 @@ class NeonSkdTreeAddress:
         self._nonce = nonce
 
     @classmethod
-    def init_seed_version(cls, account_seed_version: int) -> None:
-        cls._acct_seed_ver = account_seed_version
-
-    @classmethod
     def from_raw(cls, data: NeonAddress, nonce: int) -> Self:
         assert isinstance(data, NeonAddress)
         return cls(data, nonce)
 
     @cached_property
     def address(self) -> SolPubKey:
-        assert self._acct_seed_ver != 0, "Fail to get the account seed version"
-
         seed_list = [
-            self._acct_seed_ver.to_bytes(1, "little"),
+            NeonProg.AccountSeedVersion.to_bytes(1, "little"),
             b"TREE",
             self._address.eth_address.to_bytes(),
             self._address.chain_id.to_bytes(8, "little"),
