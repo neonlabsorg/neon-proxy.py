@@ -17,8 +17,6 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcRequest, JsonRpcResp
 from common.jsonrpc.server import JsonRpcApi, JsonRpcServer
 from common.neon.neon_program import NeonProg
-from common.neon.skd_tree import NeonSkdTreeAddress
-from common.neon_rpc.api import EvmConfigModel, TokenModel
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.stat.api import RpcCallData
@@ -74,13 +72,9 @@ class BaseRpcServerComponent:
         chain_id = self._get_chain_id(ctx)
         if not if_true:
             return chain_id
-        elif chain_id != self._server._layer0_chain_id:  # noqa
+        elif chain_id != NeonProg.Layer0ChainId:
             raise EthWrongChainIdError()
-
         return chain_id
-
-    async def _get_evm_cfg(self) -> EvmConfigModel:
-        return await self._server.get_evm_cfg()
 
     async def _get_token_gas_price(self, ctx: HttpRequestCtx) -> tuple[MpGasPriceModel, MpTokenGasPriceModel]:
         return await self._server.get_token_gas_price(ctx)
@@ -129,12 +123,6 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         self._db = db
         self._process_pool = self._ProcessPool(self)
 
-        self._default_chain_id: int = 0
-        self._default_token: str = ""
-        self._layer0_chain_id: int = 0
-        self._layer0_token: str = ""
-        self._token_dict: dict[str, TokenModel] = dict()
-
     def start(self) -> None:
         self._register_handler_list()
         self._process_pool.start()
@@ -171,15 +159,6 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
     @staticmethod
     def is_default_chain_id(ctx: HttpRequestCtx) -> bool:
         return ctx.get_property_value("is_default_chain_id", False)
-
-    @ttl_cached_method(ttl_sec=1)
-    async def get_evm_cfg(self) -> EvmConfigModel:
-        # forwarding request to mempool allows to limit the number of requests to Solana to maximum 1 time per second
-        # for details, see the mempool_server::get_evm_cfg() implementation
-        evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
-        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
-        return evm_cfg
 
     async def on_request_list(self, ctx: HttpRequestCtx, request: JsonRpcListRequest) -> None:
         await self._validate_chain_id(ctx)
@@ -278,38 +257,29 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
     async def _validate_chain_id(self, ctx: HttpRequestCtx) -> int:
         if chain_id := ctx.get_property_value("chain_id", None):
             return chain_id
+        await self._init_neon_prog()
         return await self._set_chain_id(ctx)
 
-    async def _set_chain_id(self, ctx: HttpRequestCtx) -> int:
-        if not self._default_chain_id:
-            await self._refresh_token_dict()
+    @ttl_cached_method(ttl_sec=1)
+    async def _init_neon_prog(self) -> None:
+        await self._mp_client.init_neon_prog()
 
+    @staticmethod
+    async def _set_chain_id(ctx: HttpRequestCtx) -> int:
         if not (token_name := ctx.request.path_params.get("token", "").strip().upper()):
-            chain_id = self._default_chain_id
+            chain_id = NeonProg.DefaultChainId
             ctx.set_property_value("is_default_chain_id", True)
-            ctx.set_property_value("token", self._default_token)
-        elif token := self._token_dict.get(token_name, None):
+            ctx.set_property_value("token", NeonProg.DefaultTokenName)
+        elif token := NeonProg.TokenDict.get(token_name, None):
             chain_id = token.chain_id
             ctx.set_property_value("is_default_chain_id", token.is_default)
             ctx.set_property_value("token", token.name)
         else:
-            await self._refresh_token_dict()
             raise HttpRouteError()
 
         NeonProg.validate_protocol()
         ctx.set_property_value("chain_id", chain_id)
         return chain_id
-
-    async def _refresh_token_dict(self) -> None:
-        evm_cfg = await self.get_evm_cfg()
-        if not evm_cfg.default_chain_id:
-            raise HttpRouteError()
-
-        self._default_chain_id = evm_cfg.default_chain_id
-        self._default_token = evm_cfg.default_token_name
-        self._layer0_chain_id = evm_cfg.layer0_chain_id
-        self._layer0_token = evm_cfg.layer0_token_name
-        self._token_dict = evm_cfg.token_dict
 
     def _add_api(self, api: JsonRpcApi) -> Self:
         _LOG.info(log_msg(f"adding API {api.name}"))
@@ -331,6 +301,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
             self._sol_client.start(),
             self._core_api_client.start(),
         )
+        await self._init_neon_prog()
 
     async def _on_server_stop(self) -> None:
         await asyncio.gather(

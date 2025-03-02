@@ -9,4 +9,4 @@ class MpEvmCfgApi(MempoolApi):
 
     @MempoolApi.method(name="getEvmConfig")
     async def get_evm_cfg(self) -> EvmConfigModel:
-        return self._evm_cfg
+        return self._server.get_evm_cfg()

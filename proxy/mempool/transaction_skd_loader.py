@@ -5,6 +5,7 @@ from typing import Final
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_BLOCK
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
@@ -20,15 +21,11 @@ class MpSkdTxLoader(MempoolComponent):
     def __init__(self, server: MempoolServerAbc) -> None:
         super().__init__(server)
         self._start_slot = 0
-        self._layer0_chain_id = 0
         self._stop_event = asyncio.Event()
         self._scan_skd_tx_task: asyncio.Task | None = None
         self._skd_tx_hash_set: set[EthTxHash] = set()
 
     async def start(self) -> None:
-        evm_cfg = self._evm_cfg
-        self._layer0_chain_id = evm_cfg.layer0_chain_id
-
         if not self._cfg.mp_skip_stuck_tx:
             self._scan_skd_tx_task = asyncio.create_task(self._scan_skd_tx_loop())
 
@@ -43,11 +40,7 @@ class MpSkdTxLoader(MempoolComponent):
 
     @property
     def _token_gas_price(self) -> MpTokenGasPriceModel | None:
-        return self._gas_price.chain_dict.get(self._layer0_chain_id, None)
-
-    async def _get_slot_out(self) -> int:
-        evm_cfg = self._evm_cfg
-        return evm_cfg.tree_account_slot_out
+        return self._gas_price.chain_dict.get(NeonProg.Layer0ChainId, None)
 
     async def _scan_skd_tx_loop(self) -> None:
         sleep_sec: Final[float] = ONE_BLOCK_SEC
@@ -98,7 +91,7 @@ class MpSkdTxLoader(MempoolComponent):
         min_exec_gas_price = token_gas_price.min_executable_gas_price
         token = ExecTokenModel.from_raw(self._gas_price, token_gas_price)
 
-        slot_out = await self._get_slot_out()
+        slot_out = NeonProg.TreeAccountSlotOut
         current_slot = self._slot_session.confirmed_slot
         min_slot = current_slot - slot_out
         skd_tx_list = await self._db.get_old_neon_skd_tx_list_by_slot(min_slot, 100)

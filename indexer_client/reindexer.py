@@ -7,6 +7,7 @@ from typing_extensions import Self
 from common.cmd_client.cmd_handler import BaseCmdHandler
 from common.config.config import Config
 from common.db.db_connect import DbConnection
+from common.neon.neon_program import NeonProg
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
 from common.utils.json_logger import logging_context
@@ -63,7 +64,9 @@ class ReIndexHandler(BaseCmdHandler):
 
             sol_client = await self._get_sol_client()
             core_api_client = await self._get_core_api_client()
+
             evm_cfg = await core_api_client.get_evm_cfg()
+            NeonProg.init_prog(evm_cfg.neon_prog_cfg)
 
             first_slot = await sol_client.get_first_slot()
             if first_slot > arg_space.from_slot:
@@ -109,13 +112,12 @@ class ReIndexHandler(BaseCmdHandler):
             db: IndexerDb = await self._new_client(
                 IndexerDb,
                 self._cfg,
-                evm_cfg.default_chain_id,
                 DbConnection(self._cfg, stat_client),
                 slot_range
             )
 
             await db.set_slot_range(slot_range)
-            indexer = Indexer(self._cfg, evm_cfg.layer0_chain_id, sol_client, core_api_client, None, stat_client, db)
+            indexer = Indexer(self._cfg, sol_client, core_api_client, None, stat_client, db)
 
             try:
                 await indexer.run()

@@ -34,7 +34,6 @@ class Indexer:
     def __init__(
         self,
         cfg: Config,
-        layer0_chain_id: int,
         sol_client: SolClient,
         core_api_client: CoreApiClient,
         tracer_api_client: TracerApiClient | None,
@@ -42,7 +41,6 @@ class Indexer:
         db: IndexerDb,
     ) -> None:
         self._cfg = cfg
-        self._layer0_chain_id = layer0_chain_id
         self._sol_client = sol_client
         self._slot_session = SolWatchSlotSession(cfg, sol_client)
         self._db = db
@@ -401,7 +399,7 @@ class Indexer:
         self._reindex_process_list = reindex_process_list
 
     async def _process_solana_blocks(self) -> None:
-        dctx = SolNeonDecoderCtx(self._cfg, self._layer0_chain_id, self._decoder_stat)
+        dctx = SolNeonDecoderCtx(self._cfg, self._decoder_stat)
         try:
             await self._collect_neon_txs(dctx, self._last_finalized_slot, SolCommit.Finalized)
         except SolFailedHistoryError as exc:

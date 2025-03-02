@@ -1576,9 +1576,8 @@ class SolNeonDecoderCtx:
     #           for solana_ix in solana_tx.solana_ix_list:
     #               solana_ix.level <- level in stack of calls
     #  ....
-    def __init__(self, cfg: Config, layer0_chain_id: int, stat: SolNeonDecoderStat):
+    def __init__(self, cfg: Config, stat: SolNeonDecoderStat):
         self._cfg = cfg
-        self._layer0_chain_id = layer0_chain_id
         self._stat = stat
 
         self._start_slot = 0
@@ -1632,10 +1631,6 @@ class SolNeonDecoderCtx:
     @property
     def is_finalized(self) -> bool:
         return self._is_finalized
-
-    @property
-    def layer0_chain_id(self) -> int:
-        return self._layer0_chain_id
 
     @property
     def neon_block(self) -> NeonIndexedBlockInfo:

@@ -5,12 +5,11 @@ import logging
 from collections import deque
 from typing import Final
 
-from common.config.constants import ONE_BLOCK_SEC, DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
+from common.config.constants import ONE_BLOCK_SEC
 from common.cu_price.api import PriorityFeeCfg
 from common.cu_price.pyth_price_account import PythPriceAccount
 from common.neon.cu_price_data_model import CuPricePercentileModel
-from common.neon.neon_program import NeonProg
-from common.neon_rpc.api import EvmConfigModel, TokenModel
+from common.neon.neon_program import NeonProg, TokenInfo
 from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.ws_client import SolWatchAccountSession
@@ -51,8 +50,8 @@ class MpGasPriceCalculator(MempoolComponent):
             cu_price_pct=self._cfg.cu_price_level.to_pct(self._cfg.cu_price_level),
             simple_cu_price=self._cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
-            default_token=MpTokenGasPriceModel.new_empty(DEFAULT_TOKEN_NAME, is_default_token=True),
-            layer0_token=MpTokenGasPriceModel.new_empty(LAYER0_TOKEN_NAME, is_layer0_token=True),
+            default_token=MpTokenGasPriceModel.new_empty(NeonProg.DefaultTokenName, is_default_token=True),
+            layer0_token=MpTokenGasPriceModel.new_empty(NeonProg.Layer0TokenName, is_layer0_token=True),
             token_dict=dict(),
         )
 
@@ -88,9 +87,8 @@ class MpGasPriceCalculator(MempoolComponent):
         while not self._stop_event.is_set():
             with logging_context(ctx="mp-update-gas-price"):
                 try:
-                    evm_cfg = self._evm_cfg
                     fee_cfg = await self._cu_price_client.get_fee_cfg()
-                    if gas_price := await self._calc_gas_price(evm_cfg, fee_cfg):
+                    if gas_price := await self._calc_gas_price(fee_cfg):
                         self._gas_price_cache = gas_price
                 except BaseException as exc:
                     _LOG.error("error on update gas-price", exc_info=exc)
@@ -98,8 +96,8 @@ class MpGasPriceCalculator(MempoolComponent):
             sleep_sec = self._update_sec if not self._gas_price_cache.is_empty else 1.0
             await asyncio.wait({stop_task}, timeout=sleep_sec)
 
-    async def _calc_gas_price(self, evm_cfg: EvmConfigModel, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
-        base_price_acct = await self._get_price_account(LAYER0_TOKEN_NAME)
+    async def _calc_gas_price(self, fee_cfg: PriorityFeeCfg) -> MpGasPriceModel | None:
+        base_price_acct = await self._get_price_account(NeonProg.Layer0TokenName)
         base_price_usd = base_price_acct.price
 
         token_dict: dict[str, MpTokenGasPriceModel] = dict()
@@ -108,7 +106,8 @@ class MpGasPriceCalculator(MempoolComponent):
 
         priority_fee, cu_price = await self._calc_priority_fee(fee_cfg)
 
-        for token in evm_cfg.token_dict.values():
+        token_list = NeonProg.TokenList
+        for token in token_list:
             price_acct = await self._get_price_account(token.name)
             token_gas_price = await self._calc_token_gas_price(fee_cfg, priority_fee, token, base_price_usd, price_acct)
             if token_gas_price:
@@ -139,7 +138,7 @@ class MpGasPriceCalculator(MempoolComponent):
         self,
         fee_cfg: PriorityFeeCfg,
         priority_fee: float,
-        token: TokenModel,
+        token: TokenInfo,
         base_price_usd: float,
         price_acct: PythPriceAccount,
     ) -> MpTokenGasPriceModel | None:

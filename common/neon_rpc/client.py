@@ -37,6 +37,7 @@ from .api import (
     NeonSkdTreeModel,
     NeonSkdTreeRequest,
     CoreApiRequest,
+    TokenModel,
 )
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
@@ -83,7 +84,9 @@ class CoreApiClient(HttpClient):
 
         self._stat_client = stat_client
         self._sol_client = sol_client
-        self._def_chain_id = 0
+
+        self._deployed_slot = -1
+        self._token_list_cache: list[TokenModel] = list()
 
         self._raise_for_status = False
 
@@ -139,10 +142,6 @@ class CoreApiClient(HttpClient):
         return "Neon-Core-API/UNKNOWN"
 
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
-        if not self._def_chain_id:
-            evm_cfg = await self.get_evm_cfg()
-            self._def_chain_id = evm_cfg.default_chain_id
-
         req = HolderAccountRequest.from_raw(address)
         resp: CoreApiResp = await self._send_request("holder", req)
         if resp.error:
@@ -155,7 +154,7 @@ class CoreApiClient(HttpClient):
                 extra=self._msg_filter,
             )
             return HolderAccountModel.new_empty(address)
-        return HolderAccountModel.from_dict(address, self._def_chain_id, resp.value)
+        return HolderAccountModel.from_dict(address, NeonProg.DefaultChainId, resp.value)
 
     async def get_neon_account_list(
         self,
@@ -195,13 +194,12 @@ class CoreApiClient(HttpClient):
 
     async def get_earn_account(
         self,
-        evm_cfg: EvmConfigModel,
         operator_key: SolPubKey,
         address: NeonAddress,
         _block: NeonBlockHdrModel | None,
     ) -> OpEarnAccountModel:
         seed_list = (
-            evm_cfg.account_seed_version.to_bytes(1, byteorder="little"),
+            NeonProg.AccountSeedVersion.to_bytes(1, byteorder="little"),
             operator_key.to_bytes(),
             address.eth_address.to_bytes(),
             address.chain_id.to_bytes(32, byteorder="big"),
@@ -238,7 +236,6 @@ class CoreApiClient(HttpClient):
 
     async def emulate_neon_call(
         self,
-        evm_cfg: EvmConfigModel,
         tx: CoreApiTxModel,
         *,
         check_result: bool,
@@ -274,7 +271,7 @@ class CoreApiClient(HttpClient):
             req = EmulNeonCallRequest(
                 tx=tx,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-                token_list=evm_cfg.token_list,
+                token_list=self._token_list,
                 trace_cfg=emul_trace_cfg,
                 preload_sol_address_list=preload_sol_address_list,
                 sol_account_dict=emul_sol_acct_dict,
@@ -298,7 +295,6 @@ class CoreApiClient(HttpClient):
 
     async def emulate_multiple_neon_call(
         self,
-        evm_cfg: EvmConfigModel,
         sol_tx_list: Sequence[SolTx],
         neon_tx_list: Sequence[CoreApiTxModel],
         *,
@@ -334,7 +330,7 @@ class CoreApiClient(HttpClient):
                 sol_tx_request=sol_tx_req,
                 neon_tx_list=neon_tx_list,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-                token_list=evm_cfg.token_list,
+                token_list=self._token_list,
                 preload_sol_address_list=preload_sol_address_list,
                 slot=self._get_slot(block),
             )
@@ -447,7 +443,7 @@ class CoreApiClient(HttpClient):
         if resp.result != resp.result.Error:
             return None
 
-        if resp.error_code == 113:    # ClientError, Solana connection problem
+        if resp.error_code == 113:  # ClientError, Solana connection problem
             return f"Solana connection error on {method}"
         elif resp.error_code != 265:  # SolanaSimulatorError
             return None
@@ -473,7 +469,7 @@ class CoreApiClient(HttpClient):
         )
         for alt_error in alt_error_list:
             if sub_error.startswith(alt_error):
-              raise SolAltError("Simulation error: " + alt_error)
+                raise SolAltError("Simulation error: " + alt_error)
 
         return None
 
@@ -512,3 +508,10 @@ class CoreApiClient(HttpClient):
             elif self._cfg.ch_dsn_list:
                 return block.slot
         return None
+
+    @property
+    def _token_list(self) -> list[TokenModel]:
+        if self._deployed_slot != NeonProg.DeployedSlot:
+            self._deployed_slot = NeonProg.DeployedSlot
+            self._token_list_cache = [TokenModel.from_raw(token) for token in NeonProg.TokenList]
+        return self._token_list_cache

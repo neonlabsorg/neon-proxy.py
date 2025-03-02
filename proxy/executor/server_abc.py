@@ -5,19 +5,16 @@ import asyncio
 from typing_extensions import Self
 
 from common.app_data.server import AppDataApi
-from common.cu_price.client import CuPriceClient
 from common.config.config import Config
-from common.neon.neon_program import NeonProg
-from common.neon.skd_tree import NeonSkdTreeAddress
-from common.neon_rpc.api import EvmConfigModel
+from common.cu_price.client import CuPriceClient
 from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
-from common.utils.cached import ttl_cached_method, cached_property
+from common.utils.cached import cached_property
 from indexer.db.indexer_db_client import IndexerDbClient
 from ..base.ex_api import EXECUTOR_ENDPOINT
+from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 from ..base.mp_client import MempoolClient
 from ..base.op_client import OpResourceClient
-from ..base.intl_server import BaseIntlProxyServer, BaseIntlProxyComponent
 from ..stat.client import StatClient
 
 
@@ -46,9 +43,6 @@ class ExecutorComponent(BaseIntlProxyComponent):
     def _db(self) -> IndexerDbClient:
         return self._server._db  # noqa
 
-    async def _get_evm_cfg(self) -> EvmConfigModel:
-        return await self._server.get_evm_cfg()
-
 
 class ExecutorApi(ExecutorComponent, AppDataApi):
     def __init__(self, server: ExecutorServerAbc) -> None:
@@ -74,13 +68,7 @@ class ExecutorServerAbc(BaseIntlProxyServer):
         self._cu_price_client = cu_price_client
         self._stat_client = stat_client
         self._db = db
-
-    @ttl_cached_method(ttl_sec=15)
-    async def get_evm_cfg(self) -> EvmConfigModel:
-        evm_cfg = await self._mp_client.get_evm_cfg()
-        NeonSkdTreeAddress.init_seed_version(evm_cfg.account_seed_version)
-        NeonProg.init_prog(evm_cfg.neon_prog_cfg)
-        return evm_cfg
+        self._stop_event = asyncio.Event()
 
     def _add_api(self, api: ExecutorApi) -> Self:
         return self.add_api(api, endpoint=EXECUTOR_ENDPOINT)
@@ -94,9 +82,10 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._stat_client.start(),
             self._db.start(),
         )
-        await self.get_evm_cfg()
+        await self._init_neon_prog()
 
     async def _on_server_stop(self) -> None:
+        self._stop_event.set()
         await asyncio.gather(
             super()._on_server_stop(),
             self._mp_client.stop(),
@@ -105,3 +94,12 @@ class ExecutorServerAbc(BaseIntlProxyServer):
             self._stat_client.stop(),
             self._db.stop(),
         )
+
+    async def _update_neon_prog(self) -> None:
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        while not self._stop_event.is_set():
+            await self._init_neon_prog()
+            await asyncio.wait({stop_task}, timeout=1.0)
+
+    async def _init_neon_prog(self) -> None:
+        await self._mp_client.init_neon_prog()

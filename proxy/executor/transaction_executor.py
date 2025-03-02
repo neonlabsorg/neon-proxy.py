@@ -57,6 +57,10 @@ class NeonTxExecutor(ExecutorComponent):
         #     + holder
         NoChainIdTxStrategy,
         # ALT strategies:
+        #     simple + solana + alt
+        SimpleHolderTxSolanaCallStrategy,
+        #     simple + solana + alt + holder
+        AltSimpleHolderTxSolanaCallStrategy,
         #     simple + alt
         AltSimpleTxStrategy,
         #     simple + alt + holder
@@ -71,14 +75,6 @@ class NeonTxExecutor(ExecutorComponent):
         AltHolderTxStrategy,
         #     multi-iterative + wo-chain-id + alt + holder
         AltNoChainIdTxStrategy,
-        # single iteration with Solana Call
-        AltSimpleTxSolanaCallStrategy,
-        #     + holder
-        SimpleTxSolanaCallStrategy,
-        #     + alt
-        SimpleHolderTxSolanaCallStrategy,
-        #     + alt + holder
-        AltSimpleHolderTxSolanaCallStrategy,
     ]
 
     _stuck_tx_strategy_list: ClassVar[_BaseTxStrategyList] = [
@@ -252,15 +248,12 @@ class NeonTxExecutor(ExecutorComponent):
 
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, re_emulate: bool = False) -> None:
         # update evm config
-        evm_cfg = await self._server.get_evm_cfg()
-
         if re_emulate:
             sender_balance = (await self._core_api_client.get_neon_account(ctx.sender, None)).balance
         else:
             sender_balance = None
 
         emul_resp = await self._core_api_client.emulate_neon_call(
-            evm_cfg,
             ctx.holder_tx,
             preload_sol_address_list=ctx.account_key_list,
             check_result=False,
