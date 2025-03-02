@@ -38,10 +38,6 @@ class MpEvmConfigReader(MempoolComponent):
     def get_evm_cfg(self) -> EvmConfigModel:
         return self._evm_cfg_cache
 
-    @property
-    def _evm_cfg(self) -> EvmConfigModel:
-        return self._evm_cfg_cache
-
     async def _update_evm_cfg_loop(self) -> None:
         stop_task = asyncio.create_task(self._stop_event.wait())
         while not self._stop_event.is_set():
@@ -56,5 +52,9 @@ class MpEvmConfigReader(MempoolComponent):
             await asyncio.wait({stop_task}, timeout=ONE_BLOCK_SEC)
 
     async def _update_evm_cfg(self) -> None:
-        if evm_cfg := await self._core_api_client.get_evm_cfg():
-            self._evm_cfg_cache = evm_cfg
+        if not (evm_cfg := await self._core_api_client.get_evm_cfg()):
+            return
+
+        self._evm_cfg_cache = evm_cfg
+        neon_prog_cfg = evm_cfg.neon_prog_cfg
+        NeonProg.init_prog(neon_prog_cfg)

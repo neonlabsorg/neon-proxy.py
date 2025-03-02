@@ -9,12 +9,11 @@ from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, Confi
 from strenum import StrEnum
 from typing_extensions import Self
 
-from ..config.constants import DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress, EthHash32Field
 from ..ethereum.transaction import EthTx
 from ..neon.address import NeonAddress, NeonAddressField
-from ..neon.neon_program import NeonProgCfg, NeonProg
+from ..neon.neon_program import NeonProgCfg, NeonProg, TokenInfo
 from ..neon.transaction_model import NeonTxModel, NeonSkdTxStatusField, NeonSkdTxStatus, NeonTxType
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
@@ -22,7 +21,7 @@ from ..solana.pubkey import SolPubKeyField, SolPubKey
 from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex, if_none
-from ..utils.pydantic import HexUIntField, BytesField, DecIntField, BaseModel as _BaseModel, RootModel, DecUIntField
+from ..utils.pydantic import HexUIntField, DecIntField, BaseModel as _BaseModel, RootModel, DecUIntField
 
 _LOG = logging.getLogger(__name__)
 
@@ -253,22 +252,25 @@ class TokenModel(_BaseRespModel):
     chain_id: DecIntField = Field(serialization_alias="id", validation_alias=AliasChoices("id", "chain_id"))
     mint: SolPubKeyField = Field(serialization_alias="token", validation_alias=AliasChoices("token", "mint"))
     name: str
-    is_default: bool = Field(default=False, exclude=True)
-    is_layer0: bool = Field(default=False, exclude=True)
+
+    @classmethod
+    def from_raw(cls, raw: TokenInfo) -> Self:
+        return cls(
+            chain_id=raw.chain_id,
+            mint=raw.mint,
+            name=raw.name.lower(),
+        )
+
+    def to_token_info(self) -> TokenInfo:
+        return TokenInfo(
+            chain_id=self.chain_id,
+            mint=self.mint,
+            name=self.name.upper(),
+        )
 
 
 class EvmConfigModel(_BaseRespModel):
     deployed_slot: DecIntField
-
-    treasury_pool_cnt: DecIntField
-    treasury_pool_seed: BytesField
-    treasury_payment: DecIntField
-    account_seed_version: DecIntField
-    evm_step_cnt: DecIntField
-    holder_msg_size: DecIntField
-    gas_limit_multiplier_wo_chain_id: DecIntField
-    tree_account_slot_out: DecIntField
-    tree_account_finish_tx_gas: DecIntField
 
     evm_param_dict: dict[str, str] = Field(validation_alias=AliasChoices("config", "evm_param_dict"))
     token_list: list[TokenModel] = Field(validation_alias=AliasChoices("chains", "token_list"))
@@ -279,8 +281,6 @@ class EvmConfigModel(_BaseRespModel):
     version: str
     revision: str
 
-    _default_chain_id: int = 0
-    _layer0_chain_id: int = 0
     _default: ClassVar[EvmConfigModel | None] = None
 
     @classmethod
@@ -292,8 +292,6 @@ class EvmConfigModel(_BaseRespModel):
     @classmethod
     def _from_core_dict(cls, deployed_slot: int, data: dict[str, Any]) -> Self:
         data["deployed_slot"] = deployed_slot
-        config = data["config"]
-        cls._option_convertor(config, data)
 
         return cls.model_validate(data)
 
@@ -301,12 +299,13 @@ class EvmConfigModel(_BaseRespModel):
     def default(cls) -> Self:
         if not cls._default:
             opt_dict = dict()
-            cls._option_convertor(dict(), opt_dict)
 
             data = dict(
                 deployed_slot=-1,
                 evm_param_dict=dict(),
                 token_list=list(),
+                version="0.0.0-unk",
+                revision="Unknown",
             )
             data.update(opt_dict)
 
@@ -322,94 +321,21 @@ class EvmConfigModel(_BaseRespModel):
         return "Neon-EVM/v" + self.version + "-" + self.revision
 
     @cached_property
-    def token_dict(self) -> dict[str, TokenModel]:
-        return {token.name: token for token in self._normalized_token_list}
-
-    @cached_property
-    def chain_dict(self) -> dict[int, TokenModel]:
-        return {token.chain_id: token for token in self._normalized_token_list}
-
-    @cached_property
-    def _normalized_token_list(self) -> Sequence[TokenModel]:
-        if self._default_chain_id:
-            return tuple(self.token_list)
-
-        def_chain_id = 0
-        layer0_chain_id = 0
-        token_list: list[TokenModel] = list()
-        for token in self.token_list:
-            name = token.name.upper()
-            if is_default := (name == DEFAULT_TOKEN_NAME):
-                def_chain_id = token.chain_id
-            if is_layer0 := (name == LAYER0_TOKEN_NAME):
-                layer0_chain_id = token.chain_id
-
-            token = TokenModel(
-                chain_id=token.chain_id,
-                mint=token.mint,
-                name=name,
-                is_default=is_default,
-                is_layer0=is_layer0,
-            )
-            token_list.append(token)
-
-        assert def_chain_id, "DEFAULT TOKEN NOT FOUND!"
-        object.__setattr__(self, "_default_chain_id", def_chain_id)
-        object.__setattr__(self, "_layer0_chain_id", layer0_chain_id)
-
-        return tuple(token_list)
-
-    @cached_property
-    def default_chain_id(self) -> int:
-        if not self._default_chain_id:
-            _ = self._normalized_token_list
-        return self._default_chain_id
-
-    @property
-    def default_token_name(self) -> str:
-        return DEFAULT_TOKEN_NAME
-
-    @cached_property
-    def layer0_chain_id(self) -> int:
-        if not self._layer0_chain_id:
-            _ = self._normalized_token_list
-        return self._layer0_chain_id
-
-    @property
-    def layer0_token_name(self) -> str:
-        return LAYER0_TOKEN_NAME
-
-    @cached_property
     def neon_prog_cfg(self) -> NeonProgCfg:
         return NeonProgCfg(
-            treasury_pool_cnt=self.treasury_pool_cnt,
-            treasury_pool_seed=self.treasury_pool_seed,
-            treasury_payment=self.treasury_payment,
+            deployed_slot=self.deployed_slot,
+            treasury_pool_cnt=int(self.evm_param_dict.get("NEON_TREASURY_POOL_COUNT", 0)),
+            treasury_pool_seed=bytes(self.evm_param_dict.get("NEON_TREASURY_POOL_SEED", ""), "utf-8"),
+            treasury_payment=int(self.evm_param_dict.get("NEON_PAYMENT_TO_TREASURE", 0)),
+            account_seed_version=int(self.evm_param_dict.get("NEON_ACCOUNT_SEED_VERSION", 0)),
             evm_version=self.version,
-            evm_step_cnt=self.evm_step_cnt,
-            gas_limit_multiplier_wo_chain_id=self.gas_limit_multiplier_wo_chain_id,
-            tree_account_finish_tx_gas=self.tree_account_finish_tx_gas,
+            evm_step_cnt=int(self.evm_param_dict.get("NEON_EVM_STEPS_MIN", 0)),
+            holder_msg_size=int(self.evm_param_dict.get("NEON_HOLDER_MSG_SIZE", 0)),
+            gas_limit_multiplier_wo_chain_id=int(self.evm_param_dict.get("NEON_GAS_LIMIT_MULTIPLIER_NO_CHAINID", 0)),
+            tree_account_slot_out=int(self.evm_param_dict.get("NEON_TREE_ACCOUNT_TIMEOUT", 0)),
+            tree_account_finish_tx_gas=int(self.evm_param_dict.get("NEON_TREE_ACCOUNT_FINISH_TRANSACTION_GAS", 0)),
+            token_list=[token.to_token_info() for token in self.token_list],
         )
-
-    @classmethod
-    def _option_convertor(cls, src_dict: dict[str, Any], dst_dict: dict[str, Any]) -> None:
-        key_list = (
-            ("NEON_PKG_VERSION", "version", "0.0.0-unknown"),
-            ("NEON_REVISION", "revision", "unknown"),
-            ("NEON_TREASURY_POOL_COUNT", "treasury_pool_cnt", -1),
-            ("NEON_TREASURY_POOL_SEED", "treasury_pool_seed", bytes()),
-            ("NEON_PAYMENT_TO_TREASURE", "treasury_payment", -1),
-            ("NEON_EVM_STEPS_MIN", "evm_step_cnt", -1),
-            ("NEON_HOLDER_MSG_SIZE", "holder_msg_size", -1),
-            ("NEON_ACCOUNT_SEED_VERSION", "account_seed_version", -1),
-            ("NEON_GAS_LIMIT_MULTIPLIER_NO_CHAINID", "gas_limit_multiplier_wo_chain_id", -1),
-            ("NEON_TREE_ACCOUNT_TIMEOUT", "tree_account_slot_out", -1),
-            ("NEON_TREE_ACCOUNT_FINISH_TRANSACTION_GAS", "tree_account_finish_tx_gas", -1),
-        )
-
-        for src_key, dst_key, default in key_list:
-            if dst_key not in dst_dict:
-                dst_dict[dst_key] = src_dict.get(src_key, default)
 
 
 class HolderAccountRequest(CoreApiRequest):

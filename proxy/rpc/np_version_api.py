@@ -10,6 +10,7 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.neon_program import NeonProg
 from common.solana.pubkey import SolPubKeyField
+from common.utils.cached import ttl_cached_method
 from common.utils.pydantic import HexUIntField
 from .server_abc import NeonProxyApi
 
@@ -36,6 +37,10 @@ class _RpcNeonEvmParamResp(BaseJsonRpcModel):
 
 class NpVersionApi(NeonProxyApi):
     name: ClassVar[str] = "NeonRPC::Version"
+
+    @ttl_cached_method(ttl_sec=1)
+    async def _get_evm_cfg(self):
+        return await self._mp_client.get_evm_cfg()
 
     @NeonProxyApi.method(name="neon_coreVersion")
     async def neon_core_api_version(self) -> str:
@@ -79,6 +84,7 @@ class NpVersionApi(NeonProxyApi):
     @NeonProxyApi.method(name="neon_getEvmParams")
     async def get_neon_evm_param(self) -> _RpcNeonEvmParamResp:
         evm_cfg = await self._get_evm_cfg()
+        neon_prog_cfg = evm_cfg.neon_prog_cfg
 
         def _get_int_param(_name: str) -> int | None:
             if value := evm_cfg.evm_param_dict.get(_name, None):
@@ -86,15 +92,15 @@ class NpVersionApi(NeonProxyApi):
             return None
 
         return _RpcNeonEvmParamResp(
-            neonAccountSeedVersion=evm_cfg.account_seed_version,
+            neonAccountSeedVersion=neon_prog_cfg.account_seed_version,
             neonMaxEvmStepsInLastIteration=_get_int_param("NEON_EVM_STEPS_LAST_ITERATION_MAX"),
-            neonMinEvmStepsInIteration=evm_cfg.evm_step_cnt,
-            neonGasLimitMultiplierWithoutChainId=evm_cfg.gas_limit_multiplier_wo_chain_id,
-            neonHolderMessageSize=evm_cfg.holder_msg_size,
-            neonPaymentToTreasury=evm_cfg.treasury_payment,
+            neonMinEvmStepsInIteration=neon_prog_cfg.evm_step_cnt,
+            neonGasLimitMultiplierWithoutChainId=neon_prog_cfg.gas_limit_multiplier_wo_chain_id,
+            neonHolderMessageSize=neon_prog_cfg.holder_msg_size,
+            neonPaymentToTreasury=neon_prog_cfg.treasury_payment,
             neonStorageEntriesInContractAccount=_get_int_param("NEON_STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT"),
-            neonTreasuryPoolCount=evm_cfg.treasury_pool_cnt,
-            neonTreasuryPoolSeed=str(evm_cfg.treasury_pool_seed, "utf-8"),
+            neonTreasuryPoolCount=neon_prog_cfg.treasury_pool_cnt,
+            neonTreasuryPoolSeed=str(neon_prog_cfg.treasury_pool_seed, "utf-8"),
             neonEvmProgramId=NeonProg.ID,
         )
 

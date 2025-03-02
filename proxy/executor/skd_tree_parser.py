@@ -4,12 +4,13 @@ from typing import Final, AsyncGenerator
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonSkdTxModel, NeonSkdTxStatus
 from common.neon_rpc.api import NeonSkdTreeModel, NeonSkdTreeNodeModel
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.ws_client import SolWatchAccountSession
-from common.utils.cached import cached_property, cached_method
+from common.utils.cached import cached_property
 from .server_abc import ExecutorServerAbc, ExecutorComponent
 
 _LOG = logging.getLogger(__name__)
@@ -73,11 +74,6 @@ class NeonSkdTreeParser(ExecutorComponent):
             [n.status.value for n in self._tree.node_list],
         )
 
-    @cached_method
-    async def _get_slot_out(self) -> int:
-        evm_cfg = await self._get_evm_cfg()
-        return evm_cfg.tree_account_slot_out
-
     async def can_be_destroyed(self) -> bool:
         await self._refresh()
 
@@ -89,7 +85,7 @@ class NeonSkdTreeParser(ExecutorComponent):
             return True
 
         slot = self._slot_session.confirmed_slot
-        slot_out = await self._get_slot_out()
+        slot_out = NeonProg.TreeAccountSlotOut
         return self._tree.is_destroyable(slot, slot_out)
 
     async def is_exist(self) -> bool:

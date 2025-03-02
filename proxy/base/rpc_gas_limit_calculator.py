@@ -8,7 +8,7 @@ from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonProg, NeonIxMode
-from common.neon_rpc.api import EvmConfigModel, EmulNeonCallResp, CoreApiTxModel
+from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
 from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
@@ -44,15 +44,13 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         sol_account_dict: dict[SolPubKey, SolAccountModel],
         block: NeonBlockHdrModel | None = None,
     ) -> int:
-        evm_cfg = await self._get_evm_cfg()
         resp = await self._core_api_client.emulate_neon_call(
-            evm_cfg,
             core_tx,
             check_result=True,
             sol_account_dict=sol_account_dict,
             block=block,
         )
-        return self._total_gas(evm_cfg, core_tx, resp)
+        return self._total_gas(core_tx, resp)
 
     async def estimate_skd_tree(
         self,
@@ -60,9 +58,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         core_tx_list: Sequence[CoreApiTxModel],
         block: NeonBlockHdrModel | None = None,
     ) -> Sequence[int]:
-        evm_cfg = await self._get_evm_cfg()
         resp_list = await self._core_api_client.emulate_multiple_neon_call(
-            evm_cfg,
             sol_tx_list,
             core_tx_list,
             check_result=True,
@@ -70,21 +66,20 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         )
         # fmt: off
         return tuple([
-            self._total_gas(evm_cfg, core_tx, resp, finish_gas=evm_cfg.tree_account_finish_tx_gas)
+            self._total_gas(core_tx, resp, finish_gas=NeonProg.FinishSkdTxGas)
             for core_tx, resp in zip(core_tx_list, resp_list)
         ])
         # fmt: on
 
     def _total_gas(
         self,
-        evm_cfg: EvmConfigModel,
         core_tx: CoreApiTxModel,
         resp: EmulNeonCallResp,
         *,
         finish_gas: int = 0
     ) -> int:
         exec_gas = resp.used_gas
-        tx_size_gas = self._tx_size_gas(evm_cfg, core_tx, resp)
+        tx_size_gas = self._tx_size_gas(core_tx, resp)
         alt_gas = self._alt_gas(resp)
 
         # Ethereum's wallets don't accept gas limit less than 21'000
@@ -100,10 +95,10 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         # )
         return total_gas
 
-    def _tx_size_gas(self, evm_cfg: EvmConfigModel, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
+    def _tx_size_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
         eth_tx = self._eth_tx_from_core_tx(core_tx)
         if (len(rlp_tx := eth_tx.to_bytes()) > SolTx.PktSize) or core_tx.to_address.is_empty:
-            return self._holder_tx_gas(evm_cfg, rlp_tx)
+            return self._holder_tx_gas(rlp_tx)
 
         sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
         try:
@@ -117,7 +112,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         except BaseException as exc:
             _LOG.debug("error on pack solana tx", exc_info=exc)
 
-        return self._holder_tx_gas(evm_cfg, rlp_tx)
+        return self._holder_tx_gas(rlp_tx)
 
     @classmethod
     def _eth_tx_from_core_tx(cls, core_tx: CoreApiTxModel) -> EthTx:
@@ -160,9 +155,9 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         sol_tx.recent_block_hash = SolBlockHash.fake()
         return sol_tx
 
-    @classmethod
-    def _holder_tx_gas(cls, evm_cfg: EvmConfigModel, rlp_tx: bytes) -> int:
-        return ((len(rlp_tx) // evm_cfg.holder_msg_size) + 1) * 5000
+    @staticmethod
+    def _holder_tx_gas(rlp_tx: bytes) -> int:
+        return ((len(rlp_tx) // NeonProg.HolderMsgSize) + 1) * 5000
 
     def _alt_gas(self, resp: EmulNeonCallResp) -> int:
         """

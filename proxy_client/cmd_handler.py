@@ -23,11 +23,6 @@ class BaseNPCmdHandler(BaseCmdHandler):
     async def _get_op_client(self) -> OpResourceClient:
         return await self._new_client(OpResourceClient, self._cfg)
 
-    @cached_method
-    async def _get_evm_cfg(self) -> EvmConfigModel | None:
-        mp_client = await self._get_mp_client()
-        return await mp_client.get_evm_cfg()
-
     async def _send_tx_list(self, req_id: dict, payer: SolPubKey, tx_list: Sequence[SolTx], timeout_sec: int) -> None:
         sol_client: SolClient = await self._get_sol_client()
         op_client: OpResourceClient = await self._get_op_client()
