@@ -115,7 +115,7 @@ jobs:
           echo "evm_sha_tag=${{ env.EVM_SHA_TAG }}" >> "$GITHUB_OUTPUT"
           echo "evm_pr_version_branch=${{ github.event.inputs.evm_pr_version_branch }}" >> "$GITHUB_OUTPUT"
           echo "faucet_tag=${{ env.FAUCET_TAG }}" >> "$GITHUB_OUTPUT"
-          echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "neon_test_tag=NDEV-3543-fail-ci-on-bad-cost-report" >> "$GITHUB_OUTPUT"
 
       - name: Define test set
         id: full_test_suite
@@ -377,7 +377,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@NDEV-3543-fail-ci-on-bad-cost-report
     secrets: inherit
     with:
       network: custom
