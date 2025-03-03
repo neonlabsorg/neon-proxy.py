@@ -28,7 +28,6 @@ from ..solana.hash import SolBlockHash
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcTxReceiptInfo
-from ..utils.cached import reset_cached_method, cached_property
 
 _LOG = logging.getLogger(__name__)
 
@@ -36,32 +35,10 @@ _LOG = logging.getLogger(__name__)
 @dataclasses.dataclass(frozen=True)
 class SolTxSendState:
     class Status(enum.Enum):
-        # Good receipts
         WaitForReceipt = enum.auto()
         GoodReceipt = enum.auto()
-
-        # Skipped errors
-        AlreadyFinalizedError = enum.auto()
-        NeonAccountAlreadyExistsError = enum.auto()
-
-        # Resubmitted errors
-        NoReceiptError = enum.auto()
-        BlockHashNotFoundError = enum.auto()
-        NodeBehindError = enum.auto()
-
-        # Fail errors
-        RequireResizeIterError = enum.auto()
-        OutOfMemoryError = enum.auto()
-        BadNonceError = enum.auto()
-        OutOfGasError = enum.auto()
-
-        # Fails errors without repeats
-        CbExceededError = enum.auto()
-        AltError = enum.auto()
-        WritableError = enum.auto()
-        SkdTxUseWrongHolderError = enum.auto()
-        MissingAccountError = enum.auto()
-        UnknownError = enum.auto()
+        ResubmitReceipt = enum.auto()
+        ErrorReceipt = enum.auto()
 
     status: Status
     tx: SolTx
@@ -69,11 +46,12 @@ class SolTxSendState:
     error: BaseException | None
 
     @property
+    def name(self) -> str:
+        return self.tx.name
+
+    @property
     def slot(self) -> int | None:
         return self.receipt.slot if isinstance(self.receipt, SolRpcTxSlotInfo) else None
-
-    def clear_error(self) -> None:
-        object.__setattr__(self, "error", None)
 
 
 class SolTxListSigner(abc.ABC):
@@ -82,33 +60,18 @@ class SolTxListSigner(abc.ABC):
 
 
 class SolTxListSender:
-    _resubmitted_tx_status_list = (
-        SolTxSendState.Status.NoReceiptError,
-        SolTxSendState.Status.BlockHashNotFoundError,
-        SolTxSendState.Status.NodeBehindError,
-    )
-
-    _bad_tx_status_list = (
-        SolTxSendState.Status.CbExceededError,
-        SolTxSendState.Status.AltError,
-        SolTxSendState.Status.WritableError,
-        SolTxSendState.Status.MissingAccountError,
-        SolTxSendState.Status.SkdTxUseWrongHolderError,
-        SolTxSendState.Status.UnknownError,
-    )
-
     _wait_sec: Final[float] = ONE_BLOCK_SEC / 2
 
     def __init__(
         self,
         cfg: Config,
-        stat_client: SolTxStatClient,
-        sol_session: SolWatchTxSession,
+        sol_client: SolClient,
         sol_tx_signer: SolTxListSigner,
+        stat_client: SolTxStatClient,
     ) -> None:
         self._cfg = cfg
         self._stat_client = stat_client
-        self._sol_session = sol_session
+        self._sol_client = sol_client
         self._tx_signer = sol_tx_signer
         self._num_slots_behind: int | None
 
@@ -121,10 +84,6 @@ class SolTxListSender:
         self._tx_state_dict: dict[SolTxSig, SolTxSendState] = dict()
         self._tx_state_list_dict: dict[SolTxSendState.Status, list[SolTxSendState]] = dict()
         self._tx_time_dict: dict[SolTxSig, int] = dict()
-
-    @cached_property
-    def _sol_client(self) -> SolClient:
-        return self._sol_session.sol_client
 
     async def send(self, tx_list: Sequence[SolTx]) -> bool:
         assert not self._tx_list
@@ -151,52 +110,16 @@ class SolTxListSender:
         tx_sig_list = tuple(map(lambda tx: tx.sig, tx_list))
         await self._get_tx_receipt_list(tx_sig_list, tx_list)
 
-        # This is the new sending attempt,
-        # so we should prevent the raising of rescheduling errors
-        self._clear_errors()
         self._get_tx_list_for_send()
-
         return await self._send()
-
-    @property
-    def tx_state_list(self) -> Sequence[SolTxSendState]:
-        return self._get_tx_state_list()
-
-    @reset_cached_method
-    def _get_tx_state_list(self) -> Sequence[SolTxSendState]:
-        return tuple(list(self._tx_state_dict.values()))
-
-    @property
-    def success_tx_state_list(self) -> Sequence[SolTxSendState]:
-        return self._get_success_tx_state_list()
-
-    @reset_cached_method
-    def _get_success_tx_state_list(self) -> Sequence[SolTxSendState]:
-        # fmt: off
-        return tuple([
-            tx_state
-            for tx_state in self._tx_state_dict.values()
-            if tx_state.status not in self._bad_tx_status_list
-        ])
-        # fmt: on
 
     def clear(self) -> None:
         self._blockhash = None
         self._tx_list.clear()
         self._tx_state_dict.clear()
         self._tx_state_list_dict.clear()
-        self._get_tx_state_list.reset_cache(self)
-        self._get_success_tx_state_list.reset_cache(self)
 
-    def _clear_errors(self) -> None:
-        """Clear rescheduled errors to prevent raising of errors on check status."""
-        for tx_state_list in self._tx_state_list_dict.values():
-            for tx_state in tx_state_list:
-                if tx_state.error:
-                    # _LOG.debug("clear error for %s with the status %s", tx_state.tx, tx_state.status.name)
-                    tx_state.clear_error()
-
-    async def _is_done(self) -> bool:
+    def _is_done(self) -> bool:
         """Function can be overloaded to define the custom logic to stop tx sending"""
         _ = self
         return False
@@ -216,7 +139,7 @@ class SolTxListSender:
                 else:
                     return True
 
-            if await self._is_done():
+            if self._is_done():
                 return True
 
             await self._sign_tx_list()
@@ -316,10 +239,7 @@ class SolTxListSender:
             if tx.is_signed:
                 self._commit_tx_stat_time(tx, now, is_fail=True)
                 self._tx_state_dict.pop(tx.sig, None)
-                if tx.recent_blockhash != blockhash:
-                    # _LOG.debug("flash old blockhash: %s for tx %s", tx.recent_blockhash, tx)
-                    tx.set_recent_blockhash(None)
-                elif tx.recent_blockhash in self._bad_blockhash_set:
+                if tx.recent_blockhash in self._bad_blockhash_set:
                     # _LOG.debug("flash bad blockhash: %s for tx %s", tx.recent_blockhash, tx)
                     tx.set_recent_blockhash(None)
 
@@ -349,25 +269,15 @@ class SolTxListSender:
             self._tx_time_dict[tx.sig] = now
 
     async def _send_tx_list(self) -> None:
-        if not self._tx_list:
+        if not (tx_list := self._tx_list):
             return
+        max_retry_cnt = self._max_retry_cnt
 
-        _LOG.debug("send transactions: %s", self._FmtTxNameStat(self))
-        tx_sig_list = await self._sol_client.send_tx_list(
-            self._tx_list,
-            skip_preflight=False,
-            max_retry_cnt=self._max_retry_cnt,
-        )
+        _LOG.debug("send transactions: %s", self._FmtTxNameStat(tx_list))
+        tx_sig_list = await self._sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=max_retry_cnt)
 
-        now = time.monotonic_ns()
-        self._num_slots_behind = 0
-        for tx, tx_sig_or_error in zip(self._tx_list, tx_sig_list):
-            tx_receipt = tx_sig_or_error if not isinstance(tx_sig_or_error, SolTxSig) else None
-            self._add_tx_receipt(tx, now, tx_receipt, SolTxSendState.Status.WaitForReceipt)
-
-        if self._num_slots_behind:
-            _LOG.warning("Solana node is behind %s slots from the cluster, sleep for 1 slot...", self._num_slots_behind)
-            await asyncio.sleep(self._wait_sec)
+        tx_receipt_list = list(map(lambda x: x if not isinstance(x, SolTxSig) else None, tx_sig_list))
+        await self._add_tx_receipt_list(self._tx_list, tx_receipt_list, SolTxSendState.Status.WaitForReceipt)
 
     async def _fuzz_send_tx_list(self) -> None:
         fuzz_fail_pct = self._cfg.fuzz_fail_pct
@@ -375,21 +285,22 @@ class SolTxListSender:
         # Fuzz testing of skipping of txs by Solana node
         if self._tx_list:
             skip_flag_list = [random.randint(1, 100) <= fuzz_fail_pct for _ in self._tx_list]
-            for tx, skip_flag in zip(self._tx_list, skip_flag_list):
-                if skip_flag:
-                    self._add_tx_receipt(tx, 0, None, SolTxSendState.Status.WaitForReceipt)
+            skip_tx_list = [tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if skip_flag]
             self._tx_list = [tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if not skip_flag]
+
+            skip_tx_receipt_list = [None] * len(skip_tx_list)
+            await self._add_tx_receipt_list(skip_tx_list, skip_tx_receipt_list, SolTxSendState.Status.WaitForReceipt)
         # <- Fuzz testing
 
         await self._send_tx_list()
 
     class _FmtTxNameStat:
-        def __init__(self, sender: SolTxListSender) -> None:
-            self._sender = sender
+        def __init__(self, tx_list: Sequence[SolTx]) -> None:
+            self._tx_list = tx_list
 
         def to_string(self) -> str:
             tx_name_dict: dict[str, int] = dict()
-            for tx in self._sender._tx_list:
+            for tx in self._tx_list:
                 tx_name = tx.name or "Unknown"
                 tx_name_dict[tx_name] = tx_name_dict.get(tx_name, 0) + 1
 
@@ -398,30 +309,19 @@ class SolTxListSender:
         def __repr__(self) -> str:
             return self.to_string()
 
-    def _is_already_finalized(self) -> bool:
-        """The NeonTx is finalized"""
-        return SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict
-        # if result := SolTxSendState.Status.AlreadyFinalizedError in self._tx_state_list_dict:
-        #     _LOG.debug("NeonTx is already finalized")
-        #     pass
-        # return result
-
     def _get_tx_list_for_send(self) -> None:
         self._tx_list.clear()
 
-        # no errors and resending, because the NeonTx is finalized
-        if self._is_already_finalized():
+        if self._is_done():
             return
 
         # Raise error if
-        for tx_status_list in self._tx_state_list_dict.values():
-            if error := tx_status_list[0].error:
-                raise error
+        if tx_state_list := self._tx_state_list_dict.pop(SolTxSendState.Status.ErrorReceipt, None):
+            raise tx_state_list[0].error
 
         # Resend txs with the resubmitted status
-        for tx_status in self._resubmitted_tx_status_list:
-            if tx_state_list := self._tx_state_list_dict.pop(tx_status, None):
-                self._tx_list.extend(map(lambda x: x.tx, tx_state_list))
+        if tx_state_list := self._tx_state_list_dict.pop(SolTxSendState.Status.ResubmitReceipt, None):
+            self._tx_list.extend(map(lambda x: x.tx, tx_state_list))
 
     async def _refresh_tx_receipt_list(self) -> None:
         tx_list = tuple(map(lambda tx_state: tx_state.tx, self._tx_state_dict.values()))
@@ -439,88 +339,72 @@ class SolTxListSender:
             tx_sig_list.append(tx_state.tx.sig)
             tx_list.append(tx_state.tx)
 
-        await self._sol_session.wait_for_tx_receipt_list(tx_list, SolCommit.Confirmed, self._cfg.commit_timeout_sec)
+        async with SolWatchTxSession(self._cfg, self._sol_client) as watch_session:
+            await watch_session.wait_for_tx_receipt_list(tx_list, SolCommit.Confirmed, self._cfg.commit_timeout_sec)
         await self._get_tx_receipt_list(tx_sig_list, tx_list)
 
     async def _get_tx_receipt_list(self, tx_sig_list: Sequence[SolTxSig], tx_list: Sequence[SolTx]) -> None:
         tx_receipt_list = await self._sol_client.get_tx_list(tx_sig_list, SolCommit.Confirmed)
+
         now = time.monotonic_ns()
         for tx, tx_receipt in zip(tx_list, tx_receipt_list):
-            self._add_tx_receipt(tx, now, tx_receipt, SolTxSendState.Status.NoReceiptError)
+            if tx_receipt:
+                self._commit_tx_stat_time(tx, now, is_fail=False)
 
-    @dataclasses.dataclass(frozen=True)
-    class _DecodeResult:
-        tx_status: SolTxSendState.Status
-        error: BaseException | None
+        await self._add_tx_receipt_list(tx_list, tx_receipt_list, SolTxSendState.Status.ResubmitReceipt)
 
-    def _decode_tx_status(self, tx: SolTx, now: int, tx_receipt: SolRpcTxReceiptInfo) -> _DecodeResult:
+    def _decode_tx_status(self, tx: SolTx, tx_receipt: SolRpcTxReceiptInfo) -> SolTxSendState:
         status = SolTxSendState.Status
-        tx_error_parser = SolTxErrorParser(tx, tx_receipt)
 
-        if not tx_error_parser.check_if_preprocessed_error():
-            self._commit_tx_stat_time(tx, now, is_fail=False)
+        tx_status = status.GoodReceipt
+        tx_error: BaseException | None = None
+        tx_error_parser = SolTxErrorParser(tx, tx_receipt)
 
         if num_slots_behind := tx_error_parser.get_num_slots_behind():
             self._num_slots_behind = max(self._num_slots_behind, num_slots_behind)
             _LOG.debug("slots behind %s", self._num_slots_behind)
-            return self._DecodeResult(status.NodeBehindError, None)
+            tx_status = status.ResubmitReceipt
         elif tx_error_parser.check_if_blockhash_notfound():
             if tx.recent_blockhash not in self._bad_blockhash_set:
                 _LOG.debug("bad blockhash: %s", tx.recent_blockhash)
                 self._bad_blockhash_set.add(tx.recent_blockhash)
-            # no exception: reset blockhash on the next tx signing
-            return self._DecodeResult(status.BlockHashNotFoundError, None)
+            tx_status = status.ResubmitReceipt
         elif tx_error_parser.check_if_alt_error():
-            return self._DecodeResult(status.AltError, SolAltError("Bad ALT on send tx"))
+            tx_status, tx_error = status.ErrorReceipt, SolAltError("Bad ALT on send tx")
         elif tx_error_parser.check_if_writable_error():
-            return self._DecodeResult(status.WritableError, SolWritableError())
+            tx_status, tx_error = status.ErrorReceipt, SolWritableError()
         elif tx_error_parser.check_if_cb_exceeded():
             # if cu_consumed := tx_error_parser.cu_consumed:
             #     _LOG.debug("CUs consumed: %s", cu_consumed)
-            cu_consumed = tx_error_parser.cu_consumed
-            return self._DecodeResult(status.CbExceededError, SolCbExceededError(cu_consumed))
-
+            tx_status, tx_error = status.ErrorReceipt, SolCbExceededError(tx_error_parser.cu_consumed)
         elif data := tx_error_parser.get_error():
             if data.address.is_empty:
                 _LOG.debug("unknown Solana receipt %s: %s", tx, tx_receipt)
             else:
-                _LOG.debug("unknown Solana error %s: %s - %s", tx, data.address, data.message)
-            # no exception: will be converted to DEFAULT EXCEPTION
-            return self._DecodeResult(status.UnknownError, SolUnknownReceiptError(data))
+                _LOG.debug("unknown Solana Program fail %s: %s - %s", tx, data.address, data.message)
+            tx_status, tx_error = status.ErrorReceipt, SolUnknownReceiptError(data)
 
-        return self._DecodeResult(status.GoodReceipt, None)
+        return SolTxSendState(tx_status, tx, tx_receipt, tx_error)
 
-    def _add_tx_receipt(
+    @classmethod
+    def _empty_tx_status(cls, tx: SolTx, tx_status: SolTxSendState.Status) -> SolTxSendState:
+        return SolTxSendState(tx_status, tx, None, None)
+
+    async def _add_tx_receipt_list(
         self,
-        tx: SolTx,
-        now: int,
-        tx_receipt: SolRpcTxReceiptInfo | None,
-        no_receipt_status: SolTxSendState.Status,
-    ):
-        if not tx_receipt:
-            res = self._DecodeResult(no_receipt_status, None)
-        else:
-            res = self._decode_tx_status(tx, now, tx_receipt)
+        tx_list: Sequence[SolTx],
+        tx_receipt_list: Sequence[SolRpcTxReceiptInfo | None],
+        empty_status: SolTxSendState.Status,
+    ) -> None:
+        self._num_slots_behind = 0
+        for tx, tx_receipt in zip(tx_list, tx_receipt_list):
+            tx_state = self._decode_tx_status(tx, tx_receipt) if tx_receipt else self._empty_tx_status(tx, empty_status)
+            self._tx_state_dict[tx.sig] = tx_state
+            self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
 
-        tx_state = SolTxSendState(
-            status=res.tx_status,
-            tx=tx,
-            receipt=tx_receipt,
-            error=res.error,
-        )
-
-        # status = SolTxSendState.Status
-        # if tx_state.status not in (
-        #     status.WaitForReceipt,
-        #     status.UnknownError,
-        #     status.GoodReceipt,
-        #     status.NoReceiptError,
-        #     status.WritableError,
-        # ):
-        #     _LOG.debug("tx status %s: %s", tx_state.tx, tx_state.status.name)
-
-        self._tx_state_dict[tx_state.tx.sig] = tx_state
-        self._tx_state_list_dict.setdefault(tx_state.status, list()).append(tx_state)
+        if self._num_slots_behind:
+            _LOG.warning("Solana node is behind %s slots from the cluster, sleep...", self._num_slots_behind)
+            await asyncio.sleep(ONE_BLOCK_SEC)
 
     def _commit_tx_stat_time(self, tx: SolTx, now: int, is_fail: bool) -> None:
         if not tx.is_signed:

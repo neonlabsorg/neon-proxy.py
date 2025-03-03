@@ -351,15 +351,14 @@ class SolWatchTxSession(_SolWsSession[SolTxSig, SolTx]):
         commit: SolCommit,
         timeout_sec: float,
     ) -> bool:
-        async with self:
-            try:
-                for tx in tx_list:
-                    await self._sub_obj(tx.sig, tx, commit)
+        try:
+            for tx in tx_list:
+                await self._sub_obj(tx.sig, tx, commit)
 
-                return await self._wait_for_tx_list_update(timeout_sec)
-            except BaseException as exc:
-                _LOG.error("error on waiting statuses for txs", exc_info=exc)
-                return False
+            return await self._wait_for_tx_list_update(timeout_sec)
+        except BaseException as exc:
+            _LOG.error("error on waiting statuses for txs", exc_info=exc)
+            return False
 
     async def _wait_for_tx_list_update(self, timeout_sec: float) -> bool:
         start_time_nsec, timeout_nsec = time.monotonic_ns(), int(timeout_sec * 1e9)

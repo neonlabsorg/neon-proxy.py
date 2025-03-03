@@ -439,9 +439,9 @@ class TestCbExceeded(unittest.TestCase):
             def commit_sol_tx_fail(self, data: SolTxFailData) -> None: pass
 
 
-        tx_sender = SolTxListSender(_Cfg(), _SolTxStatClient(), None, None)
-        status = tx_sender._decode_tx_status(self._get_tx(), 0, self._test_meta_tx)
-        self.assertEqual(status.tx_status, status.tx_status.CbExceededError)
+        tx_sender = SolTxListSender(_Cfg(), None, None, _SolTxStatClient())
+        tx_state = tx_sender._decode_tx_status(self._get_tx(), 0, self._test_meta_tx)
+        self.assertEqual(tx_state.status, tx_state.tx_status.CbExceededError)
 
 
 if __name__ == "__main__":

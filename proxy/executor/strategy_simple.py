@@ -5,7 +5,6 @@ from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.instruction import SolTxIx
-from common.solana_rpc.transaction_list_sender import SolTxSendState
 from .errors import WrongStrategyError
 from .strategy_base import BaseTxStrategy, SolTxCfg
 from .strategy_stage_alt import alt_strategy
@@ -30,20 +29,14 @@ class SimpleTxStrategy(BaseTxStrategy):
             ix = self._build_tx_ix(base_cfg)
             await self._emulate_and_send_single_tx("simple", ix, base_cfg)
 
-        tx_send_state_list = self._ctx.sol_tx_list_sender.tx_state_list
-        status = SolTxSendState.Status
-
+        tx_send_state_list = self._ctx.sol_tx_list_sender.success_tx_state_list
         for tx_state in tx_send_state_list:
-            if tx_state.status == status.GoodReceipt:
-                if not (sol_neon_ix := self._find_sol_neon_ix(tx_state)):
-                    _LOG.warning("no!? NeonTx instruction in %s", tx_state.tx)
-                    return ExecTxDoneCode.Done
-                elif not sol_neon_ix.neon_tx_return.is_empty:
-                    _LOG.debug("found NeonTx-Return in %s", tx_state.tx)
-                    return ExecTxDoneCode.Done
-                else:
-                    _LOG.warning("truncated!? NeonTx-Return in %s", tx_state.tx)
-                    return ExecTxDoneCode.Done
+            if tx_state.is_finalized:
+                _LOG.debug("found NeonTx-Return in %s", tx_state.tx)
+                return ExecTxDoneCode.Done
+            else:
+                _LOG.warning("truncated!? NeonTx-Return in %s", tx_state.tx)
+                return ExecTxDoneCode.Done
 
         _LOG.debug("failed!? NeonTx-Return, try next strategy...")
         raise WrongStrategyError()
