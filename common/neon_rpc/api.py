@@ -864,10 +864,8 @@ class NeonSkdTreeModel(_BaseRespModel):
         return len(self.node_list) > 0
 
     @cached_property
-    def is_started(self) -> bool:
-        if self.is_exist:
-            return True
-        return next((node for node in self.node_list if node.status != node.status.NotStarted), None) is not None
+    def root_neon_tx_hash(self) -> EthTxHash:
+        return self.node_list[0].neon_tx_hash if self.is_exist else EthTxHash.default()
 
     @cached_property
     def active_status(self) -> NeonSkdTxStatus:
@@ -885,7 +883,7 @@ class NeonSkdTreeModel(_BaseRespModel):
         return current_slot - self.last_slot > slot_out
 
     def get_neon_skd_status(self, index: int) -> NeonSkdTxStatus:
-        if len(self.node_list) < index:
+        if len(self.node_list) <= index:
             return NeonSkdTxStatus.Destroyed
 
         node = self.node_list[index]
