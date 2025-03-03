@@ -17,7 +17,6 @@ from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolNoMoreRetriesError
 from common.solana_rpc.transaction_list_sender import SolTxListSender
-from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context, log_msg
 from .server_abc import ExecutorComponent
@@ -165,14 +164,13 @@ class SolAltDestroyer(ExecutorComponent):
 
     async def _send_tx(self, alt: SolAltID, name: str, cu_limit: int, ix: SolTxIx) -> bool:
         tx_list_signer = OpTxListSigner(dict(alt=alt.ctx_id), alt.owner, self._op_client)
-        watch_session = SolWatchTxSession(self._cfg, self._sol_client)
 
         cb_prog = SolCbProg()
         cu_price_ix = cb_prog.make_cu_price_ix(self._cfg.def_simple_cu_price)
         cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
 
         tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
-        return await SolTxListSender(self._cfg, self._stat_client, watch_session, tx_list_signer).send(tuple([tx]))
+        return await SolTxListSender(self._cfg, self._sol_client, tx_list_signer, self._stat_client).send(tuple([tx]))
 
     @staticmethod
     def _get_now() -> int:

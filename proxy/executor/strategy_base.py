@@ -10,7 +10,6 @@ from typing_extensions import Self
 from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
-from common.neon.transaction_decoder import SolNeonTxMetaInfo, SolNeonTxIxMetaInfo
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
 from common.solana.commit_level import SolCommit
@@ -18,11 +17,9 @@ from common.solana.errors import SolError
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx, SolTxIx
-from common.solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
+from common.solana.transaction_decoder import SolTxIxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana.transaction_meta import SolRpcTxSlotInfo
 from common.solana_rpc.errors import SolCbExceededError
-from common.solana_rpc.transaction_list_sender import SolTxSendState
 from common.utils.cached import cached_property
 from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .transaction_executor_ctx import NeonExecTxCtx
@@ -235,14 +232,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             self._store_sol_tx_list()
 
     def _store_sol_tx_list(self) -> None:
-        tx_list_sender = self._ctx.sol_tx_list_sender
-        # fmt: off
-        tx_status_list = tuple([
-            (tx_state.tx, tx_state.status == SolTxSendState.Status.GoodReceipt)
-            for tx_state in tx_list_sender.success_tx_state_list
-        ])
-        # fmt: on
-        self._ctx.add_sol_tx_list(tx_status_list)
+        tx_state_list = self._ctx.sol_tx_list_sender.success_tx_state_list
+        self._ctx.add_sol_tx_state_list(tx_state_list)
 
     # async def _estimate_cu_price(self) -> int:
     #     # We estimate the cu_price from the recent blocks.
@@ -420,15 +411,6 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                     raise
                 # _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
         return False
-
-    @staticmethod
-    def _find_sol_neon_ix(tx_send_state: SolTxSendState) -> SolNeonTxIxMetaInfo | None:
-        if not isinstance(tx_send_state.receipt, SolRpcTxSlotInfo):
-            return None
-
-        sol_tx = SolTxMetaInfo.from_raw(tx_send_state.slot, tx_send_state.receipt.transaction)
-        sol_neon_tx = SolNeonTxMetaInfo.from_raw(sol_tx)
-        return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @abc.abstractmethod
     def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:

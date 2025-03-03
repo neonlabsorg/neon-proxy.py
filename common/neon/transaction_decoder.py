@@ -6,7 +6,14 @@ from typing import Iterator, Sequence
 
 from typing_extensions import Self
 
-from .evm_log_decoder import NeonEvmLogDecoder, NeonTxLogInfo, NeonTxLogReturnInfo, NeonTxEventModel, NeonTxBlockInfo
+from .evm_log_decoder import (
+    NeonEvmLogDecoder,
+    NeonTxLogInfo,
+    NeonTxLogReturnInfo,
+    NeonTxEventModel,
+    NeonTxBlockInfo,
+    NeonTxErrorLogInfo,
+)
 from .neon_program import NeonProg
 from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddress, EthAddressField
 from ..solana.alt_program import SolAltIxCode, SolAltProg
@@ -101,6 +108,8 @@ class SolNeonTxIxMetaInfo:
     cu_limit: int
     used_cu_limit: int
 
+    log_msg_list: Sequence[str]
+
     # protected:
     _neon_log: NeonTxLogInfo
     _sol_tx: SolTxMetaInfo
@@ -108,7 +117,7 @@ class SolNeonTxIxMetaInfo:
 
     @classmethod
     def from_raw(cls, sol_tx: SolTxMetaInfo, sol_tx_ix: SolTxIxMetaInfo, sol_log: SolTxIxLogInfo) -> Self:
-        neon_log = NeonEvmLogDecoder().decode(sol_tx_ix, sol_log.log_msg_list())
+        neon_log = NeonEvmLogDecoder().decode(sol_tx_ix, sol_log.log_msg_list)
         ix_code, ix_data = cls._decode_ix_data(sol_tx_ix)
 
         return cls(
@@ -118,6 +127,7 @@ class SolNeonTxIxMetaInfo:
             used_heap_size=sol_tx.sol_tx_cu.heap_size,
             cu_limit=sol_log.cu_limit or sol_tx.sol_tx_cu.cu_limit,
             used_cu_limit=sol_log.used_cu_limit or sol_tx.sol_tx_cu.cu_limit,
+            log_msg_list=sol_log.log_msg_list,
             #
             # protected:
             _neon_log=neon_log,
@@ -192,6 +202,10 @@ class SolNeonTxIxMetaInfo:
     @property
     def neon_tx_ix_base_fee(self) -> int:
         return self._neon_log.tx_ix_base_fee.base_fee_paid
+
+    @property
+    def neon_tx_error_list(self) -> Sequence[NeonTxErrorLogInfo]:
+        return self._neon_log.tx_error_list
 
     def to_string(self) -> str:
         return self._sol_tx_ix.to_string()

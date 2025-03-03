@@ -12,14 +12,13 @@ from common.neon.address import NeonAddress
 from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon_rpc.api import EmulNeonCallResp, HolderAccountModel, CoreApiTxModel, CoreApiBlockModel
-from common.neon_rpc.transaction_list_sender import SolNeonTxListSender
+from common.neon_rpc.transaction_list_sender import SolNeonTxListSender, SolNeonTxSendState
 from common.solana.alt_program import SolAltID
 from common.solana.instruction import SolAccountMeta
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
-from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property, cached_method, reset_cached_method
 from common.utils.format import if_none
 from .holder_validator import HolderAccountValidator
@@ -79,7 +78,7 @@ class NeonExecTxCtx(ExecutorComponent):
 
         self._uniq_idx = itertools.count()
         self._alt_id_set: set[SolAltID] = set()
-        self._sol_tx_list_dict: dict[str, list[tuple[SolTx, bool]]] = dict()
+        self._sol_neon_tx_state_list_dict: dict[str, list[SolNeonTxSendState]] = dict()
 
         self._base_tx_acct_set = NeonBaseTxAccountSet.default()
         self._acct_meta_list: Sequence[SolAccountMeta] = tuple()
@@ -116,19 +115,14 @@ class NeonExecTxCtx(ExecutorComponent):
     def sol_tx_list_sender(self) -> SolNeonTxListSender:
         return SolNeonTxListSender(
             self._cfg,
-            self._stat_client,
-            self._sol_watch_session,
+            self._sol_client,
             self.sol_tx_list_signer,
+            self._stat_client,
         )
 
     @cached_property
     def skd_tree_parser(self) -> NeonSkdTreeParser | None:
         return self._skd_tree_parser
-
-    @cached_property
-    def _sol_watch_session(self) -> SolWatchTxSession:
-        """watch session creates a connection to solana, this step minimize the number of solana connections"""
-        return SolWatchTxSession(self._cfg, self._sol_client)
 
     @property
     def len_account_meta_list(self) -> int:
@@ -368,6 +362,10 @@ class NeonExecTxCtx(ExecutorComponent):
         return self._tx_exec_state.completed_evm_step_cnt
 
     @property
+    def completed_iter_cnt(self) -> int:
+        return self._tx_exec_state.completed_iter_cnt
+
+    @property
     def wrap_iter_cnt(self) -> int:
         return self._calc_wrap_iter_cnt()
 
@@ -429,19 +427,26 @@ class NeonExecTxCtx(ExecutorComponent):
 
         cnt = 0
         for tx_name in tx_name_list:
-            if tx_list := self._sol_tx_list_dict.get(tx_name, None):
-                for _, is_success in tx_list:
-                    if is_success:
+            if tx_state_list := self._sol_neon_tx_state_list_dict.get(tx_name, None):
+                for tx_state in tx_state_list:
+                    if tx_state.status == tx_state.status.GoodReceipt:
                         cnt += 1
         return cnt
+
+    def get_sol_tx_state_list(self, tx_name_list: Sequence[str]) -> Sequence[SolNeonTxSendState]:
+        tx_list: list[SolNeonTxSendState] = list()
+        for tx_name in tx_name_list:
+            if tx_sublist := self._sol_neon_tx_state_list_dict.get(tx_name, None):
+                tx_list.extend(tx_sublist)
+        return tuple(tx_list)
 
     def pop_sol_tx_list(self, tx_name_list: Sequence[str]) -> Sequence[SolTx]:
         tx_list: list[SolTx] = list()
         for tx_name in tx_name_list:
-            if tx_sublist := self._sol_tx_list_dict.pop(tx_name, None):
-                tx_list.extend([tx for tx, _ in tx_sublist])
+            if tx_sublist := self._sol_neon_tx_state_list_dict.pop(tx_name, None):
+                tx_list.extend([tx_state.tx for tx_state in tx_sublist])
         return tuple(tx_list)
 
-    def add_sol_tx_list(self, tx_list: Sequence[tuple[SolTx, bool]]) -> None:
-        for tx, is_success in tx_list:
-            self._sol_tx_list_dict.setdefault(tx.name, list()).append((tx, is_success))
+    def add_sol_tx_state_list(self, tx_state_list: Sequence[SolNeonTxSendState]) -> None:
+        for tx_state in tx_state_list:
+            self._sol_neon_tx_state_list_dict.setdefault(tx_state.name, list()).append(tx_state)
