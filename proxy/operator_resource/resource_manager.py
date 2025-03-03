@@ -737,8 +737,7 @@ class OpResourceMng(OpResourceComponent):
 
     async def _send_tx_list(self, signer: SolSigner, tx_list: Sequence[SolTx]) -> bool:
         tx_signer = OpTxListSigner(signer=signer)
-        sol_watch = SolWatchTxSession(self._cfg, self._sol_client)
-        tx_sender = SolNeonTxListSender(self._cfg, self._stat_client, sol_watch, tx_signer)
+        tx_sender = SolNeonTxListSender(self._cfg, self._sol_client, tx_signer, self._stat_client)
         try:
             return await tx_sender.send(tx_list)
         except BaseException as exc:
