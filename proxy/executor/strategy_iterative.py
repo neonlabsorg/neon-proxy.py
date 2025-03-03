@@ -9,7 +9,7 @@ from typing import Final, ClassVar
 from typing_extensions import Self
 
 from common.neon.cancel_error import CancelErrorData
-from common.neon.evm_log_decoder import NeonTxBlockInfo, NeonTxLogReturnInfo
+from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.neon_rpc.errors import SolNeonSkdTxWrongStateError
@@ -419,7 +419,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             base_iter_cnt -= 1
 
         # skip already finalized Begin and Resize iterations
-        base_iter_cnt -= self._ctx.good_sol_tx_cnt(self.name)
+        base_iter_cnt -= self._ctx.completed_iter_cnt
 
         return max(base_iter_cnt, 0)
 
@@ -467,20 +467,19 @@ class IterativeTxStrategy(BaseTxStrategy):
     def _store_sol_tx_list(self) -> None:
         super()._store_sol_tx_list()
 
-        has_already_finalized = False
         status = None
         total_gas_used, completed_evm_step_cnt, completed_iter_cnt = 0, 0, 0
         tx_block, tx_block_gas_used = NeonTxBlockInfo.default(), 0
 
         tx_state_list = self._ctx.sol_tx_list_sender.success_tx_state_list
         for tx_state in tx_state_list:
-            if tx_state.status == tx_state.status.AlreadyFinalizedError:
-                has_already_finalized = True
-                _LOG.debug("found AlreadyFinalizedError in %s", tx_state.tx)
+            if tx_state.is_finalized:
+                status = tx_state.neon_tx_return.status
+                _LOG.debug("found NeonTx.Return(%d) in %s", status, tx_state.tx)
                 continue
             elif tx_state.status != tx_state.status.GoodReceipt:
                 continue
-            elif not (ix := self._find_sol_neon_ix(tx_state)):
+            elif not (ix := tx_state.sol_neon_ix):
                 _LOG.warning("no? NeonTx instruction in %s", tx_state.tx)
                 continue
 
@@ -491,14 +490,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
             if (not ix.neon_tx_block.is_empty) and (tx_block_gas_used < ix.neon_total_gas_used):
                 tx_block, tx_block_gas_used = ix.neon_tx_block, ix.neon_total_gas_used
-                _LOG.debug("found NeonTx.Block(%d, %d) in %s", tx_block.timestamp, tx_block.slot, ix)
-
-            if not ix.neon_tx_return.is_empty:
-                status = ix.neon_tx_return.status
-                _LOG.debug("found NeonTx.Return(%d) in %s", status, ix)
-
-        if has_already_finalized and (status is None):
-            status = NeonTxLogReturnInfo.Failed
+                _LOG.debug("found NeonTx.Block(%d, %d) in %s", tx_block.timestamp, tx_block.slot, tx_state.tx)
 
         state = NeonExecTxState(
             total_used_gas=total_gas_used,

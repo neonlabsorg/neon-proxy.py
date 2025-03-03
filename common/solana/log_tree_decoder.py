@@ -16,7 +16,7 @@ from .transaction_meta import (
     SolRpcTxInnerIxList,
     SolRpcSendTxErrorInfo,
 )
-from ..utils.cached import cached_method
+from ..utils.cached import cached_method, cached_property
 from ..utils.format import str_fmt_object
 
 _LOG = logging.getLogger(__name__)
@@ -89,6 +89,7 @@ class SolTxIxLogInfo:
     def __repr__(self) -> str:
         return self.to_string()
 
+    @cached_property
     def log_msg_list(self) -> Sequence[str]:
         return tuple(filter(lambda log_rec: isinstance(log_rec, str), self.log_list))
 
