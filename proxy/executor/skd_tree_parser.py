@@ -58,8 +58,11 @@ class NeonSkdTreeParser(ExecutorComponent):
             return
 
         self._tree = await self._core_api_client.get_neon_skd_tree(self._payer, self._nonce)
-        if self._tree.node_list:
-            self._neon_tx_hash = self._tree.node_list[0].neon_tx_hash
+        if not self._tree.is_exist:
+            _LOG.debug("NeonSkdTree %s doesn't exist", self.address)
+            return
+
+        self._neon_tx_hash = self._tree.root_neon_tx_hash
 
         _LOG.debug(
             "NeonSkdTree %s for payer %s has status %s, txs %d %s",
@@ -92,10 +95,6 @@ class NeonSkdTreeParser(ExecutorComponent):
     async def is_exist(self) -> bool:
         await self._refresh()
         return self._tree.is_exist
-
-    async def is_started(self) -> bool:
-        await self._refresh()
-        return self._tree.is_started
 
     async def iter_neon_skd_tx_list(self) -> AsyncGenerator[tuple[NeonSkdTxStatus, NeonSkdTxModel], None]:
         await self._refresh()
