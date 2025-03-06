@@ -747,7 +747,8 @@ class EmulNeonCallResp(_BaseRespModel):
 
 
 class EmulMultipleNeonCallRequest(CoreApiRequest):
-    tx_list: list[CoreApiTxModel] = Field(serialization_alias="tx")
+    sol_tx_request: EmulSolTxListRequest = Field(serialization_alias="solana_tx")
+    neon_tx_list: list[CoreApiTxModel] = Field(serialization_alias="tx")
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
     preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
@@ -760,6 +761,7 @@ class EmulMultipleNeonCallResp(RootModel):
 
 class EmulSolTxListRequest(CoreApiRequest):
     cu_limit: DecUIntField = Field(serialization_alias="compute_units")
+    heap_size: DecUIntField = Field(serialization_alias="heap_size")
     account_cnt_limit: DecUIntField = Field(serialization_alias="account_limit")
     verify: bool
     blockhash: CoreApiHexStrField

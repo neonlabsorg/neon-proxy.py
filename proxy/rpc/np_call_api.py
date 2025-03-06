@@ -18,11 +18,14 @@ from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
+from common.solana.instruction import SolTxIx, SolAccountMeta
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.sys_program import SolSysProg
-from common.utils.cached import cached_property
+from common.solana.transaction import SolTx
+from common.solana.transaction_legacy import SolLegacyTx
+from common.utils.cached import cached_property, cached_method
 from common.utils.format import if_none
-from common.utils.pydantic import HexUIntField, RootModel
+from common.utils.pydantic import HexUIntField, RootModel, Base64Field
 from .api import RpcBlockRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxRequest, BaseEthGasModel, BaseEthCallModel
@@ -131,9 +134,46 @@ class _RpcNeonSkdSubTxModel(_RpcNeonSkdSubTxDraft):
         return self.parentCount == 0
 
 
+class _RpcSolTxAccountModel(BaseJsonRpcModel):
+    address: SolPubKeyField
+    isSigner: bool
+    isWritable: bool
+
+    @cached_method
+    def to_meta(self) -> SolAccountMeta:
+        return SolAccountMeta(pubkey=self.address, is_signer=self.isSigner, is_writable=self.isWritable)
+
+
+class _RpcSolTxIxModel(BaseJsonRpcModel):
+    accountList: list[_RpcSolTxAccountModel] = Field(default_factory=list, validation_alias="accounts")
+    programId: SolPubKeyField
+    data: Base64Field
+
+    @cached_method
+    def to_sol_tx_ix(self) -> SolTxIx:
+        return SolTxIx(program_id=self.programId, data=self.data, accounts=[a.to_meta() for a in self.accountList])
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if not self.accountList:
+            raise ValueError("accountList should be present")
+
+
+class _RpcSolTxModel(BaseJsonRpcModel):
+    instructions: list[_RpcSolTxIxModel] = Field(default_factory=list)
+
+    @cached_method
+    def to_sol_tx(self) -> SolTx:
+        return SolLegacyTx(name="rpc", ix_list=[ix.to_sol_tx_ix() for ix in self.instructions])
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if not self.instructions:
+            raise ValueError("instructions should be present")
+
+
 class _RpcNeonSkdTxRequest(BaseEthGasModel):
     txType: HexUIntField = Field(default=NeonTxType.Scheduled.value, validation_alias="type")
     scheduledSolanaPayer: SolPubKeyField
+    solTxList: list[_RpcSolTxModel] = Field(default_factory=list, validation_alias="preparatorySolanaTransactions")
     draftTxList: list[_RpcNeonSkdSubTxDraft] = Field(default_factory=list, validation_alias="transactions")
 
     _maxTxListLen: Final[int] = 24
@@ -192,6 +232,10 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
             )
             for tx in self.txList
         ]
+
+    @cached_method
+    def to_sol_tx_list(self) -> list[SolTx]:
+        return [tx.to_sol_tx() for tx in self.solTxList]
 
 
 class _RpcSkdTxEstimateResp(BaseJsonRpcModel):
@@ -338,6 +382,7 @@ class NpCallApi(NeonProxyApi):
     ) -> Sequence[int]:
         tx_list = call.txList
         core_tx_list = call.to_core_tx_list(chain_id)
+        sol_tx_list = call.to_sol_tx_list()
 
         # build all branches from root txs, because they
         core_tx_branch_list: list[list[tuple[int, CoreApiTxModel]]] = list()
@@ -355,12 +400,16 @@ class NpCallApi(NeonProxyApi):
             core_tx_branch_list.append(core_tx_branch)
 
         if len(core_tx_branch_list) == 1:
-            return list(await self._gas_limit_calc.estimate_skd_tree(core_tx_list, block))
+            return list(await self._gas_limit_calc.estimate_skd_tree(sol_tx_list, core_tx_list, block))
 
         # run in parallel the gas estimation tasks for all branches
         # fmt: off
         estimate_task_list = [
-            self._gas_limit_calc.estimate_skd_tree(list(map(lambda x: x[1], core_tx_branch)), block)
+            self._gas_limit_calc.estimate_skd_tree(
+                sol_tx_list,
+                list(map(lambda x: x[1], core_tx_branch)),
+                block,
+            )
             for core_tx_branch in core_tx_branch_list
         ]
         # fmt: on

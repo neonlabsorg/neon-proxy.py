@@ -56,12 +56,14 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     async def estimate_skd_tree(
         self,
+        sol_tx_list: Sequence[SolTx],
         core_tx_list: Sequence[CoreApiTxModel],
         block: NeonBlockHdrModel | None = None,
     ) -> Sequence[int]:
         evm_cfg = await self._get_evm_cfg()
         resp_list = await self._core_api_client.emulate_multiple_neon_call(
             evm_cfg,
+            sol_tx_list,
             core_tx_list,
             check_result=True,
             block=block,
