@@ -50,6 +50,7 @@ from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
 from ..solana.account import SolAccountModel
+from ..solana.cb_program import SolCbProg
 from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
@@ -297,22 +298,40 @@ class CoreApiClient(HttpClient):
     async def emulate_multiple_neon_call(
         self,
         evm_cfg: EvmConfigModel,
-        tx_list: Sequence[CoreApiTxModel],
+        sol_tx_list: Sequence[SolTx],
+        neon_tx_list: Sequence[CoreApiTxModel],
         *,
+        cu_limit=SolCbProg.MaxCuLimit,
+        heap_size=SolCbProg.MaxHeapSize,
+        account_cnt_limit=0,
         check_result: bool,
         preload_sol_address_list: Sequence[SolPubKey] = tuple(),
         block: NeonBlockHdrModel | None = None,
     ) -> Sequence[EmulNeonCallResp]:  # noqa
         preload_sol_address_list = list(preload_sol_address_list)
-        tx_list = list(tx_list)
+        neon_tx_list = list(neon_tx_list)
         _RootType = EmulMultipleNeonCallResp
 
         def _get_full_preload_addr_list(_resp: _RootType) -> list[SolPubKey]:
             return list(set(itertools.chain.from_iterable(x.sol_address_list for x in _resp.root)))
 
+        blockhash = SolBlockHash.fake()
+        for sol_tx in sol_tx_list:
+            sol_tx.set_recent_blockhash(blockhash)
+
+        sol_tx_req = EmulSolTxListRequest(
+            cu_limit=cu_limit,
+            heap_size=heap_size,
+            account_cnt_limit=account_cnt_limit or self._cfg.max_tx_account_cnt,
+            verify=False,
+            blockhash=blockhash.to_bytes(),
+            tx_list=list(map(lambda tx: tx.to_bytes(), sol_tx_list)),
+        )
+
         for retry in itertools.count():
             req = EmulMultipleNeonCallRequest(
-                tx_list=tx_list,
+                sol_tx_request=sol_tx_req,
+                neon_tx_list=neon_tx_list,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
                 token_list=evm_cfg.token_list,
                 preload_sol_address_list=preload_sol_address_list,
@@ -337,12 +356,14 @@ class CoreApiClient(HttpClient):
     async def emulate_sol_tx_list(
         self,
         cu_limit: int,
+        heap_size: int,
         account_cnt_limit: int,
         blockhash: SolBlockHash,
         tx_list: Sequence[SolTx],
     ) -> Sequence[EmulSolTxInfo]:
         req = EmulSolTxListRequest(
             cu_limit=cu_limit,
+            heap_size=heap_size,
             account_cnt_limit=account_cnt_limit,
             verify=False,
             blockhash=blockhash.to_bytes(),

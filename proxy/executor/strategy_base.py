@@ -355,9 +355,16 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         acct_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
         cu_limit = SolCbProg.MaxCuLimit * len(tx_list)
+        heap_size = SolCbProg.MaxHeapSize
 
         try:
-            emul_tx_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, acct_cnt_limit, blockhash, tx_list)
+            emul_tx_list = await self._core_api_client.emulate_sol_tx_list(
+                cu_limit,
+                heap_size,
+                acct_cnt_limit,
+                blockhash,
+                tx_list,
+            )
             return emul_tx_list[0] if is_single_tx else emul_tx_list
         except SolError:
             raise
