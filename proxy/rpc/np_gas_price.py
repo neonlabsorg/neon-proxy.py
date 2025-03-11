@@ -190,7 +190,7 @@ class NpGasPriceApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         block_cnt: HexUIntField,
         block_tag: RpcBlockRequest,
-        priority_fee_pct_list: list[int] | None,
+        priority_fee_pct_list: list[int | float] | None,
     ) -> _RpcFeeHistoryResp | None:
         # Treat empty list and None the same.
         has_reward_list: bool = bool(priority_fee_pct_list)
@@ -236,7 +236,7 @@ class NpGasPriceApi(NeonProxyApi):
         return _RpcFeeHistoryResp.from_raw(base_fee_list, gas_used_ratio_list, earliest_slot, reward_list)
 
     @staticmethod
-    def _validate_pct_list(pct_list: list[int] | None):
+    def _validate_pct_list(pct_list: list[int | float] | None):
         if not pct_list:
             return
         prev_p = -1
