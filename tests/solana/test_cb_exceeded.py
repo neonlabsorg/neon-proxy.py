@@ -440,8 +440,8 @@ class TestCbExceeded(unittest.TestCase):
 
 
         tx_sender = SolTxListSender(_Cfg(), None, None, _SolTxStatClient())
-        tx_state = tx_sender._decode_tx_status(self._get_tx(), 0, self._test_meta_tx)
-        self.assertEqual(tx_state.status, tx_state.tx_status.CbExceededError)
+        tx_state = tx_sender._decode_tx_status(self._get_tx(), self._test_meta_tx)
+        self.assertEqual(tx_state.status, tx_state.status.ErrorReceipt)
 
 
 if __name__ == "__main__":
