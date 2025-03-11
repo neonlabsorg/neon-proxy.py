@@ -8,8 +8,8 @@ from common.solana_rpc.transaction_list_sender_stat import SolTxFailData, SolTxD
 from common.stat.api import (
     RpcCallData,
     MetricStatData,
-    HealthCheckData,
-    HealthErrorListFormatter,
+    HealthShortStatusModel,
+    HealthFullStatusModel,
     HealthErrorCode,
     HealthServiceName,
 )
@@ -266,10 +266,16 @@ class MetricApi(AppDataApi):
     def on_metric_stat(self) -> MetricStatData:
         return stat_render(self._stat_registry)
 
-    @AppDataApi.method(name="getHealthErrorList")
-    def on_health_error_list(self) -> HealthCheckData:
-        fmt = HealthErrorListFormatter(service_list=self._error_registry.get_health_status())
-        return HealthCheckData(data=fmt.to_json())
+    @AppDataApi.method(name="getFullHealthStatus")
+    def on_health_error_list(self) -> HealthFullStatusModel:
+        return HealthFullStatusModel.from_raw(
+            status=self._error_registry.status,
+            service_list=self._error_registry.service_list,
+        )
+
+    @AppDataApi.method(name="getHealthStatus")
+    def on_health_status(self) -> HealthShortStatusModel:
+        return self._error_registry.status
 
 
 class SolTxStatApi(AppDataApi):
@@ -316,7 +322,7 @@ class StatServer(ProcessPool):
         self.set_process_cnt(2)
         self._idx = 0
         self._stat_registry = StatRegistry()
-        self._error_registry = HealthErrorRegistry(cfg)
+        self._error_registry = HealthErrorRegistry("Proxy", cfg)
         self._metric_server = MetricServer(cfg, self._stat_registry, self._error_registry)
         self._prometheus_server = PrometheusServer(cfg, STATISTIC_ENDPOINT)
 
