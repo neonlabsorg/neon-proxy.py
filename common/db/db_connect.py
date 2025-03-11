@@ -105,12 +105,20 @@ class DbConnection:
         return sql.encode("utf-8")
 
     async def run_tx(self, action: Callable) -> None:
+        stat = RpcStatInfo.from_raw(
+            stat_client=self._stat_client,
+            stat_name=self._stat_name,
+            method="DbTransaction",
+            is_modification=True,
+        )
         for retry in itertools.count():
             try:
+                stat.start_timer()
                 async with self._conn_pool.connection(None) as conn:
                     async with conn.transaction():
                         return await action(_DbTxCtx(conn))
             except BaseException as exc:
+                stat.commit_stat(error_message=str(exc))
                 await self._on_fail_execute(retry, exc)
 
     async def update_row(self, ctx: DbTxCtx, table_name: str, query: DbQuery, row: DbParamCont) -> None:
