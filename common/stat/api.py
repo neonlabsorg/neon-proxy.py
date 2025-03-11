@@ -1,12 +1,9 @@
-import dataclasses
 import enum
-import time
 
 import strenum
-from pydantic import Field, PlainSerializer
+from pydantic import Field, PlainSerializer, PlainValidator
 from typing_extensions import Self, Annotated
 
-from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
 
 
@@ -36,22 +33,8 @@ class HealthErrorCode(enum.IntEnum):
     StuckTxError = 8
 
 
-@dataclasses.dataclass(frozen=True)
-class HealthErrorData:
-    code: HealthErrorCode
-    monotonic_sec: int
-    time_sec: int
-    message: str
-    data: dict | None
-
-    @cached_property
-    def time(self) -> str:
-        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.time_sec))
-
-    def calc_age(self, monotonic_sec: int) -> int:
-        return monotonic_sec - self.monotonic_sec
-
 class HealthErrorModel(BaseModel):
+    id: int
     time: str
     timestamp: int
     age: int
@@ -59,40 +42,54 @@ class HealthErrorModel(BaseModel):
     message: str
     data: dict | None
 
-    @classmethod
-    def from_raw(cls, raw: HealthErrorData, now_sec: int) -> Self:
-        return cls(
-            time=raw.time,
-            code=int(raw.code),
-            timestamp=raw.time_sec,
-            age=raw.calc_age(now_sec),
-            message=raw.message,
-            data=raw.data,
-        )
-
 
 class HealthStatus(strenum.StrEnum):
     Good = "ok"
     Error = "error"
 
+    @classmethod
+    def from_raw(cls, value: str) -> Self:
+        return cls(value)
 
-HealthStatusField = Annotated[HealthStatus, PlainSerializer(lambda x: x.value)]
+
+HealthStatusField = Annotated[HealthStatus, PlainSerializer(lambda x: x.value), PlainValidator(HealthStatus.from_raw)]
 
 
-class HealthStatusModel(BaseModel):
+class HealthShortStatusModel(BaseModel):
+    name: str
+    startTime: str
+    uuid: str
     status: HealthStatusField
-    error_age: int = Field(serialization_alias="errorAge")
-    error_list: list[HealthErrorModel] = Field(default_factory=list, serialization_alias="errors")
+    errorLastId: int
+    errorService: str
+    errorMessage: str
 
 
-class HealthErrorListFormatter(BaseModel):
-    service_list: dict[str, HealthStatusModel] = Field(serialization_alias="services")
+class HealthServiceStatusModel(BaseModel):
+    status: HealthStatusField
+    errorAge: int
+    errors: list[HealthErrorModel] = Field(default_factory=list)
+
+
+class HealthFullStatusModel(BaseModel):
+    name: str
+    startTime: str
+    uuid: str
+    status: HealthStatusField
+    errorLastId: int
+    services: dict[str, HealthServiceStatusModel]
+
+    @classmethod
+    def from_raw(cls, status: HealthShortStatusModel, service_list: dict[str, HealthServiceStatusModel]) -> Self:
+        return cls(
+            name=status.name,
+            startTime=status.startTime,
+            uuid=status.uuid,
+            errorLastId=status.errorLastId,
+            status=status.status,
+            services=service_list,
+        )
 
 
 class MetricStatData(BaseModel):
     data: str
-
-
-class HealthCheckData(BaseModel):
-    data: str
-

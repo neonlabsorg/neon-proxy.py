@@ -2,8 +2,14 @@ from typing import ClassVar
 
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
-from common.stat.api import RpcCallData, MetricStatData, HealthCheckData, HealthErrorListFormatter, HealthErrorCode, \
-    HealthServiceName
+from common.stat.api import (
+    RpcCallData,
+    MetricStatData,
+    HealthShortStatusModel,
+    HealthFullStatusModel,
+    HealthErrorCode,
+    HealthServiceName,
+)
 from common.stat.health_error_registry import HealthErrorRegistry
 from common.stat.metric import StatRegistry, StatGauge, stat_render
 from common.stat.metric_rpc import RpcStatCollector
@@ -68,7 +74,7 @@ class BlockStatApi(AppDataApi):
                 f"Fail to parse a Solana block",
                 dict(
                     blocksCount=data.corrupted_block_cnt,
-                )
+                ),
             )
 
         if data.tracer_block:
@@ -83,12 +89,11 @@ class BlockStatApi(AppDataApi):
                 f"Indexer lags behind Solana",
                 dict(
                     blocksCount=lag_block_cnt,
-                )
+                ),
             )
 
         if not has_error:
             self._error_registry.add_good_time(HealthServiceName.BlockStorage.value)
-
 
     @AppDataApi.method(name="commitReindexBlock")
     def on_reindex_block(self, data: NeonReindexBlockStat) -> None:
@@ -123,10 +128,16 @@ class MetricApi(AppDataApi):
     def on_metric_stat(self) -> MetricStatData:
         return stat_render(self._stat_registry)
 
-    @AppDataApi.method(name="getHealthErrorList")
-    def on_health_error_list(self) -> HealthCheckData:
-        fmt = HealthErrorListFormatter(service_list=self._error_registry.get_health_status())
-        return HealthCheckData(data=fmt.to_json())
+    @AppDataApi.method(name="getFullHealthStatus")
+    def on_health_error_list(self) -> HealthFullStatusModel:
+        return HealthFullStatusModel.from_raw(
+            status=self._error_registry.status,
+            service_list=self._error_registry.service_list,
+        )
+
+    @AppDataApi.method(name="getHealthStatus")
+    def on_health_status(self) -> HealthShortStatusModel:
+        return self._error_registry.status
 
 
 class MetricServer(AppDataServer):
@@ -148,7 +159,7 @@ class StatServer(ProcessPool):
         self._idx = 0
 
         self._stat_registry = StatRegistry()
-        self._error_registry = HealthErrorRegistry(cfg)
+        self._error_registry = HealthErrorRegistry("Indexer", cfg)
         self._metric_server = MetricServer(cfg, self._stat_registry, self._error_registry)
         self._prometheus_server = PrometheusServer(cfg, STATISTIC_ENDPOINT)
 
