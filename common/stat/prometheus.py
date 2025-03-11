@@ -30,14 +30,19 @@ class PrometheusServer(HttpServer):
         health_url: Final[str] = "/health"
         full_health_url = base_url + health_url
 
+        status_url: Final[str] = "/healthz"
+        full_status_url = base_url + status_url
+
         def _index(ctx: HttpRequestCtx) -> HttpResp:
             nonlocal full_metric_url
             nonlocal full_health_url
             return self._pack_text_resp(
                 ctx,
                 "<html><body>"
-                f"<a href='{full_metric_url}'>metrics</a>"
-                f"<a href='{full_health_url}'>health</a>"
+                "<h1>Prometheus Server</h1>"
+                f"<p><a href='{full_metric_url}'>metrics</a></p>"
+                f"<p><a href='{full_health_url}'>health</a></p>"
+                f"<p><a href='{full_status_url}'>healthz</a><div></p>"
                 "</body></html>",
                 "text/html",
             )
@@ -51,9 +56,28 @@ class PrometheusServer(HttpServer):
 
         async def _health(ctx: HttpRequestCtx) -> HttpResp:
             health = await self._metric_client.get_health_error_list()
-            return self._pack_text_resp(ctx, health.data, "text/plain; version=0.0.4")
+            return self._pack_text_resp(ctx, health.to_json(), "text/plain")
+
+        async def _status(ctx: HttpRequestCtx) -> HttpResp:
+            health = await self._metric_client.get_health_status()
+            if health.status == health.status.Good:
+                return self._pack_text_resp(ctx, "ok", "text/plain")
+
+            return self._pack_error_resp(
+                ctx,
+                body=(
+                    "<html><body>"
+                    "<h2>Unhealthy</h2>"
+                    f"<h2>{health.errorService}</h2>"
+                    f"<h1>{health.errorMessage}</h1>"
+                    "</body></html>"
+                ),
+                status_code=503,
+                content_type="text/html",
+            )
 
         self.add_get_route("/", _index)
         self.add_get_route("/robots.txt", _robot_txt)
         self.add_get_route(metric_url, _metric)
         self.add_get_route(health_url, _health)
+        self.add_get_route(status_url, _status)

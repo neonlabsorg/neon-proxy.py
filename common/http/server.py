@@ -140,18 +140,27 @@ class HttpServer(abc.ABC):
             headers=cls._create_header_dict(ctx, content_type),
         )
 
-    def _pack_error_resp(self, ctx: HttpRequestCtx, exc: BaseException) -> HttpResp:
-        msg = dict(
-            message="error on {Path} from {IP}",
-            Path=ctx.path,
-            IP=ctx.ip_addr,
-        )
-        _LOG.error(msg, exc_info=exc)
+    def _pack_error_resp(
+        self,
+        ctx: HttpRequestCtx,
+        body: BaseException | str,
+        *,
+        status_code=_st.HTTP_500_INTERNAL_SERVER_ERROR,
+        content_type="text/plain",
+    ) -> HttpResp:
+        if isinstance(body, BaseException):
+            msg = dict(
+                message="error on {Path} from {IP}",
+                Path=ctx.path,
+                IP=ctx.ip_addr,
+            )
+            _LOG.error(msg, exc_info=body)
+            body = hide_sensitive_info(self._msg_filter, str(body))
 
         return HttpResp(
-            status_code=_st.HTTP_500_INTERNAL_SERVER_ERROR,
-            description=hide_sensitive_info(self._msg_filter, str(exc)),
-            headers=self._create_header_dict(ctx),
+            status_code=status_code,
+            description=body,
+            headers=self._create_header_dict(ctx, content_type=content_type),
         )
 
     @classmethod
