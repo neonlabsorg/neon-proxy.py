@@ -391,7 +391,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                 used_cu_limit,
                 threshold_cu_limit,
             )
-            raise SolCbExceededError(threshold_cu_limit)
+            # in the case of
+            #    Program <XXX> failed: instruction modified data of a read-only account
+            # simulator returns the maximum used_cu_limit
+            #
+            # raise SolCbExceededError(threshold_cu_limit)
 
         round_coeff: Final[int] = 10_000
         inc_coeff: Final[int] = 50_000
