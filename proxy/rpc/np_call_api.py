@@ -25,7 +25,7 @@ from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property, cached_method
 from common.utils.format import if_none
-from common.utils.pydantic import HexUIntField, RootModel, Base64Field
+from common.utils.pydantic import HexUIntField, RootModel, Base58Field
 from .api import RpcBlockRequest, RpcNeonCallRequest
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxRequest, BaseEthGasModel, BaseEthCallModel
@@ -147,7 +147,7 @@ class _RpcSolTxAccountModel(BaseJsonRpcModel):
 class _RpcSolTxIxModel(BaseJsonRpcModel):
     accountList: list[_RpcSolTxAccountModel] = Field(default_factory=list, validation_alias="accounts")
     programId: SolPubKeyField
-    data: Base64Field
+    data: Base58Field
 
     @cached_method
     def to_sol_tx_ix(self) -> SolTxIx:
