@@ -393,7 +393,9 @@ class NeonExecTxCtx(ExecutorComponent):
 
     @property
     def holder_block(self) -> CoreApiBlockModel:
-        if not self._emul_resp:
+        if self.is_stuck_tx:
+            return self.holder.block
+        elif not self._emul_resp:
             return CoreApiBlockModel.default()
         elif self._tx_exec_state.slot > if_none(self.holder.block.slot, 0):
             return self._tx_exec_state.holder_block
