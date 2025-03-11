@@ -3,11 +3,12 @@ import re
 from typing import Sequence, Final
 
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData
-from ..neon.evm_log_decoder import NeonTxErrorLogInfo, NeonTxLogReturnInfo, NeonTxEventModel
+from ..neon.evm_log_decoder import NeonTxErrorLogInfo, NeonTxLogReturnInfo, NeonTxEventModel, NeonEvmLogDecoder
 from ..neon.neon_program import NeonProg
 from ..neon.transaction_decoder import SolNeonTxIxMetaInfo, SolNeonTxMetaInfo
-from ..solana.transaction_decoder import SolTxMetaInfo
-from ..solana.transaction_meta import SolRpcTxSlotInfo
+from ..solana.log_tree_decoder import SolTxLogTreeDecoder
+from ..solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
+from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcSendTxErrorInfo
 from ..solana_rpc.transaction_error_parser import SolTxErrorParser
 from ..utils.cached import cached_method, cached_property
 
@@ -40,10 +41,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
 
     @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
-        if not self.sol_neon_ix:
-            return False
-
-        elif any(self._create_neon_acct_re.match(log_rec) for log_rec in self.sol_neon_ix.log_msg_list):
+        if any(self._create_neon_acct_re.match(log_rec) for log_rec in self._evm_log_list):
             return True
 
         raw_log_list = self._get_log_list()
@@ -85,10 +83,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
 
     @cached_method
     def get_nonce_error(self) -> tuple[int, int] | None:
-        if not self.sol_neon_ix:
-            return None
-
-        for log_rec in self.sol_neon_ix.neon_tx_error_list:
+        for log_rec in self._evm_error_list:
             if log_rec.code == log_rec.code.InvalidTransactionNonce:
                 state_tx_cnt = int.from_bytes(log_rec.data[20:27], "little")
                 tx_nonce = int.from_bytes(log_rec.data[28:35], "little")
@@ -107,18 +102,47 @@ class SolNeonTxErrorParser(SolTxErrorParser):
 
     @cached_method
     def get_evm_error(self) -> CancelErrorData | None:
-        if not self.sol_neon_ix:
-            return None
-        elif not self.sol_neon_ix.neon_tx_error_list:
+        if not self._evm_error_list:
             return None
 
-        err_rec = self.sol_neon_ix.neon_tx_error_list[0]
+        err_rec = self._evm_error_list[0]
+        _LOG.debug("found %s", err_rec)
         return self._fmt_error(err_rec.code, err_rec.message)
 
+    @cached_property
+    def _evm_error_list(self) -> Sequence[NeonTxErrorLogInfo]:
+        if self.sol_neon_ix:
+            return self.sol_neon_ix.neon_tx_error_list
+
+        evm_log_list = self._evm_log_list
+        fake_tx_ix = SolTxIxMetaInfo.default()
+        try:
+            neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, evm_log_list)
+        except (BaseException,):
+            return tuple()
+
+        return tuple(neon_log.tx_error_list)
+
+    @cached_property
+    def _evm_log_list(self) -> Sequence[str]:
+        if self.sol_neon_ix:
+            return self.sol_neon_ix.log_msg_list
+        elif not isinstance(self._receipt, SolRpcSendTxErrorInfo):
+            return tuple()
+
+        rpc_meta = self._receipt
+        log_list: list[str] = list()
+        log_state = SolTxLogTreeDecoder.decode(self._tx.message, rpc_meta, self._tx.account_key_list)
+        for log_info in log_state.log_list:
+            if log_info.prog_id == NeonProg.ID:
+                log_list.extend(log_info.log_msg_list)
+            for inner_log_info in log_info.inner_log_list:
+                if inner_log_info.prog_id == NeonProg.ID:
+                    log_list.extend(inner_log_info.log_msg_list)
+        return tuple(log_list)
+
     def _find_evm_error(self, error_code_list: Sequence[NeonTxErrorLogInfo.ErrorCode]) -> CancelErrorData | None:
-        if not self.sol_neon_ix:
-            return None
-        for err_rec in self.sol_neon_ix.neon_tx_error_list:
+        for err_rec in self._evm_error_list:
             if err_rec.code in error_code_list:
                 return self._fmt_error(err_rec.code, err_rec.message)
         return None
