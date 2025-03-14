@@ -396,7 +396,7 @@ jobs:
       - name: "Post a comment with the report"
         run: |
           python3 ./.github/workflows/deploy.py post_comment --message="${{ steps.request_report.outputs.stats }}" \
-          --pull_request="${{ needs.set-variables.steps.set-vars.outputs.pull_request }}" \
+          --pull_request="${{ needs.set-variables.outputs.pull_request }}" \
           --token=${{ secrets.GHTOKEN }}
 
   destroy-terraform:
