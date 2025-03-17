@@ -159,11 +159,11 @@ class HttpClient:
         """
 
         msg = dict(
-            message="error on retry {Retry} on request to {Name} ({Path}): {Error}",
+            message="fail on retry {Retry} on request to {Name} ({Path}): {Fail}",
             Retry=retry,
             Name=self.name,
             Path=str(url),
-            Error=str(exc),
+            Fail=str(exc),
         )
         _LOG.warning(msg, extra=self._msg_filter)
 

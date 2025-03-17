@@ -142,7 +142,6 @@ class AltHandler(BaseNPCmdHandler):
         cb_prog = SolCbProg()
 
         cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(SolAltProg.CuLimitDeactivate)
 
         alt_id = SolAltID(address=alt.address, owner=alt.owner, recent_slot=0, nonce=0)
         if not alt.is_deactivated:
@@ -155,6 +154,8 @@ class AltHandler(BaseNPCmdHandler):
             cu_limit = SolAltProg.CuLimitClose
             alt_ix = SolAltProg(alt.owner).make_close_alt_ix(alt_id)
             _LOG.debug("close Address Lookup Table %s", address)
+
+        cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
 
         name = ix_code.name + "LookupTable"
 

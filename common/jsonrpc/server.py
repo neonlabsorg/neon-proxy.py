@@ -238,19 +238,19 @@ def _create_jsonrpc_resp(method: JsonRpcMethod, ctx: HttpRequestCtx, value) -> J
 
 
 def _create_error_resp(self: BaseApiServer, ctx: HttpRequestCtx, exc: BaseException) -> JsonRpcResp:
-    extra = self._msg_filter
+    # extra = self._msg_filter
     if not isinstance(exc, BaseJsonRpcError):
-        _LOG.error(
-            log_msg("unexpected error on {Path} from {IP}", Path=ctx.path, IP=ctx.ip_addr),
-            exc_info=exc,
-            extra=extra,
-        )
+        # _LOG.debug(
+        #     log_msg("unexpected fail on {Path} from {IP}", Path=ctx.path, IP=ctx.ip_addr),
+        #     exc_info=exc,
+        #     extra=extra,
+        # )
         exc = InternalJsonRpcError(exc)
-    else:
-        _LOG.debug(
-            log_msg("error on {Path} from {IP}: {Error}", Path=ctx.path, IP=ctx.ip_addr, Error=str(exc)),
-            extra=extra,
-        )
+    # else:
+    #     _LOG.debug(
+    #         log_msg("fail on {Path} from {IP}: {Fail}", Path=ctx.path, IP=ctx.ip_addr, Fail=str(exc)),
+    #         extra=extra,
+    #     )
 
     msg = hide_sensitive_info(self._msg_filter, exc.message)
     error_list = hide_sensitive_info(self._msg_filter, list(exc.error_list))

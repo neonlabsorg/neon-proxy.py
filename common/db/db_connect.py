@@ -200,8 +200,8 @@ class DbConnection:
 
     async def _on_fail_execute(self, retry: int, exc: BaseException) -> None:
         if isinstance(exc, _pg_pool.PoolClosed):
-            _LOG.warning(
-                log_msg("PoolClosed error on {Retry} try to execute query on DB connection", Retry=retry),
+            _LOG.error(
+                log_msg("PoolClosed error {Retry} on try to execute query on DB connection", Retry=retry),
                 exc_info=exc,
                 extra=self._msg_filter,
             )
@@ -210,7 +210,7 @@ class DbConnection:
             if retry > 1:
                 _LOG.warning(
                     log_msg(
-                        "error on {Retry} try to execute query on DB connection: {Error}",
+                        "fail {Retry} on try to execute query on DB connection: {Error}",
                         Retry=retry,
                         Error=str(exc),
                     ),
@@ -218,7 +218,7 @@ class DbConnection:
                 )
         else:
             _LOG.error(
-                log_msg("unexpected error on {Retry} try to execute query on DB connection", Retry=retry),
+                log_msg("unexpected error {Retry} on try to execute query on DB connection", Retry=retry),
                 exc_info=exc,
                 extra=self._msg_filter,
             )
