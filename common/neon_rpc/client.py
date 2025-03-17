@@ -7,7 +7,6 @@ from typing import Sequence, Final, TypeVar, ClassVar, Union
 
 from .api import (
     CoreApiResp,
-    CoreApiResultCode,
     EvmConfigModel,
     BpfLoader2ExecModel,
     BpfLoader2ProgModel,
@@ -60,6 +59,7 @@ from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
 from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import cached_method
+from ..utils.format import if_none
 from ..utils.json_logger import log_msg
 from ..utils.pydantic import BaseModel, RootModel
 
@@ -98,17 +98,17 @@ class CoreApiClient(HttpClient):
             min_size = BpfLoader2ExecModel.minimum_size
             acct = await self._sol_client.get_account(exec_addr, min_size)
             if acct.is_empty:
-                _LOG.error("Account %s doesn't exists", exec_addr)
+                _LOG.error("NeonEVM program %s doesn't exists", exec_addr)
                 return None
 
             exec_info = BpfLoader2ExecModel.from_data(acct.data)
 
             _LOG.debug("get EVM config on the slot: %s", exec_info.deployed_slot)
             resp: CoreApiResp = await self._send_request("config")
-            if resp.result != CoreApiResultCode.Success:
+            if not isinstance(resp.value, dict):
                 _LOG.error(
-                    "get error on reading EVM config: %s",
-                    resp.error,
+                    "error on reading EVM config: %s",
+                    if_none(resp.error, resp.value),
                     extra=self._msg_filter,
                 )
                 return None
@@ -144,12 +144,12 @@ class CoreApiClient(HttpClient):
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
         req = HolderAccountRequest.from_raw(address)
         resp: CoreApiResp = await self._send_request("holder", req)
-        if resp.error:
+        if not isinstance(resp.value, dict):
             _LOG.error(
                 log_msg(
                     "error on reading holder account {Address}: {Error}",
                     Address=address,
-                    Error=resp.error,
+                    Error=if_none(resp.error, resp.value),
                 ),
                 extra=self._msg_filter,
             )
@@ -163,11 +163,11 @@ class CoreApiClient(HttpClient):
     ) -> Sequence[NeonAccountModel]:
         req = NeonAccountListRequest.from_raw(address_list, self._get_slot(block))
         resp: CoreApiResp = await self._send_request("balance", req)
-        if resp.error:
+        if not isinstance(resp.value, list):
             msg = log_msg(
-                "get error on reading balance accounts {Addresses}: {Error}",
+                "error on reading balance accounts {Addresses}: {Error}",
                 Addresses=address_list,
-                Error=resp.error,
+                Error=if_none(resp.error, resp.value),
             )
             _LOG.error(msg, extra=self._msg_filter)
             return tuple([NeonAccountModel.new_empty(addr) for addr in address_list])
@@ -437,6 +437,7 @@ class CoreApiClient(HttpClient):
         # if the previous call has reraised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
         request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
+        _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @staticmethod
     def _get_retry_error(method: str, resp: CoreApiResp) -> str | None:

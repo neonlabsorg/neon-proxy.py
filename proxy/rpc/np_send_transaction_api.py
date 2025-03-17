@@ -37,7 +37,7 @@ class NpExecTxApi(NeonProxyApi):
             if not neon_tx.is_scheduled_tx:
                 raise EthError("not-scheduled transaction")
             elif neon_tx.chain_id != self._get_chain_id(ctx):
-                _LOG.error("WRONG chain_id %s", neon_tx.chain_id)
+                _LOG.debug("WRONG chain_id %s", neon_tx.chain_id)
                 raise EthWrongChainIdError()
 
             payer = NeonAddress.from_raw(neon_tx.payer, neon_tx.chain_id)

@@ -174,7 +174,7 @@ class NeonTxExecutor(ExecutorComponent):
                 raise
 
             except StuckTxError as exc:
-                _LOG.warning("stuck NeonTx error: %s", str(exc))
+                _LOG.warning("stuck NeonTx fail: %s", str(exc))
                 raise
 
             except (SolCbExceededError, SolNeonRequireResizeIterError):
@@ -194,16 +194,16 @@ class NeonTxExecutor(ExecutorComponent):
                 await ctx.holder_validator.refresh()
 
             except SolTxExecuteError as exc:
-                # _LOG.debug("execution error: %s", str(exc), extra=self._msg_filter)
+                # _LOG.debug("execution fail: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(ctx, strategy, exc.data)
 
             except SolError:
-                # _LOG.debug("simple retry error: %s", str(exc), extra=self._msg_filter)
+                # _LOG.debug("simple retry fail: %s", str(exc), extra=self._msg_filter)
                 re_emulate = True
                 await asyncio.sleep(self._wait_sec)
 
             except BaseException as exc:
-                _LOG.debug("unexpected error: %s", str(exc), extra=self._msg_filter, exc_info=exc)
+                _LOG.debug("unexpected fail on transaction execution: %s", str(exc), extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(ctx, strategy, CancelErrorData.default())
 
     async def _cancel_neon_tx(

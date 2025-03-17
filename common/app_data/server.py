@@ -163,7 +163,7 @@ def _pack_error_resp(self: AppDataServer, ctx: HttpRequestCtx, exc: BaseExceptio
         IP=ctx.ip_addr,
         Error=str(exc),
     )
-    _LOG.debug(msg, extra=self._msg_filter)
+    _LOG.error(msg, extra=self._msg_filter)
 
     error_list = hide_sensitive_info(self._msg_filter, list(exc.error_list))
     msg = hide_sensitive_info(self._msg_filter, exc.message)

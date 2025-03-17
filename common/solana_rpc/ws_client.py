@@ -235,7 +235,7 @@ class _SolWsSession(Generic[_SolWsObjKey, _SolWsObj]):
                     assert info.sub_id not in self._sub_dict, f"subscription {info.sub_id} for {key} already exists?"
 
                     # Error from Solana nodes with a BigTable...
-                    if item.error not in _resp.RpcCustomErrorFieldless.NoSnapshot:
+                    if item.error != _resp.RpcCustomErrorFieldless.NoSnapshot:
                         _LOG.warning("got error %s for %s", item.error, key)
                     self._err_obj_dict[info.key] = info
                 else:
