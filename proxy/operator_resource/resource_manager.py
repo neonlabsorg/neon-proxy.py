@@ -741,5 +741,5 @@ class OpResourceMng(OpResourceComponent):
         try:
             return await tx_sender.send(tx_list)
         except BaseException as exc:
-            _LOG.warning("error on execute transaction", exc_info=exc, extra=self._msg_filter)
+            _LOG.warning("fail on execute transaction", exc_info=exc, extra=self._msg_filter)
             return False

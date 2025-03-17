@@ -352,7 +352,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         except SolError:
             raise
         except BaseException as _exc:
-            _LOG.warning("error on emulate solana tx list")
+            _LOG.warning("fail on emulate solana tx list")
             raise SolCbExceededError(SolCbProg.MaxCuLimit * 2)
 
     @staticmethod

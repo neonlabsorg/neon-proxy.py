@@ -43,7 +43,7 @@ class EthTxType(IntEnum):
 
             return cls(value)
         except (BaseException,):
-            _LOG.error("unknown EthTxType %s", value)
+            _LOG.debug("unknown EthTxType %s", value)
             return cls.Legacy
 
     @classmethod

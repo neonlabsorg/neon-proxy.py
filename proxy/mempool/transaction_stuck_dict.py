@@ -91,7 +91,7 @@ class MpStuckTxDict:
                     await self._scan_db_stuck_tx()
                     await self._scan_op_stuck_tx()
                 except BaseException as exc:
-                    _LOG.error("error on scan", exc_info=exc)
+                    _LOG.error("error on scan stuck txs", exc_info=exc)
                 await asyncio.wait({stop_task}, timeout=sleep_sec)
 
     async def _scan_db_stuck_tx(self) -> None:
