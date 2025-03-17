@@ -21,6 +21,7 @@ from common.neon_rpc.client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.stat.api import RpcCallData
 from common.utils.cached import ttl_cached_method, cached_property
+from common.utils.format import if_none
 from common.utils.json_logger import logging_context, log_msg
 from common.utils.process_pool import ProcessPool
 from indexer.db.indexer_db_client import IndexerDbClient
@@ -179,7 +180,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         self._stat_client.commit_rpc_call(stat)
 
     def on_bad_request(self, ctx: HttpRequestCtx) -> None:
-        _LOG.warning(log_msg("BAD request from {IP} with size {Size}", IP=ctx.ip_addr, Size=len(ctx.request.body)))
+        _LOG.debug(log_msg("BAD request from {IP} with size {Size}", IP=ctx.ip_addr, Size=len(ctx.request.body)))
 
         stat = RpcCallData(service=self._stat_name, method="UNKNOWN", time_nsec=ctx.process_time_nsec)
         self._stat_client.commit_rpc_call(stat)
@@ -196,19 +197,12 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         with logging_context(**self.get_ctx_id(ctx)):
             _LOG.info(log_msg("handle request <<< {IP} req={ReqID} {Method} {Params}", Params=request.params, **info))
 
-            resp = await handler(ctx, request)
-            if resp.is_error:
-                msg = log_msg(
-                    "error on request >>> {IP} req={ReqID} {Method} {Error} resp_time={TimeMS} msec",
-                    Error=resp.error,
-                    **info,
-                )
-            else:
-                msg = log_msg(
-                    "done request >>> {IP} req={ReqID} {Method} {Result} resp_time={TimeMS} msec",
-                    Result=resp.result,
-                    **info,
-                )
+            resp: JsonRpcResp = await handler(ctx, request)
+            msg = log_msg(
+                "done request >>> {IP} req={ReqID} {Method} {Result} resp_time={TimeMS} msec",
+                Result=if_none(resp.result, resp.error),
+                **info,
+            )
             _LOG.info(dict(**msg, TimeMS=ctx.process_time_msec))
 
             stat = RpcCallData(

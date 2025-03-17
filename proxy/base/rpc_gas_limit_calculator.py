@@ -110,7 +110,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         except SolTxSizeError:
             pass
         except BaseException as exc:
-            _LOG.debug("error on pack solana tx", exc_info=exc)
+            _LOG.error("error on pack solana tx", exc_info=exc)
 
         return self._holder_tx_gas(rlp_tx)
 

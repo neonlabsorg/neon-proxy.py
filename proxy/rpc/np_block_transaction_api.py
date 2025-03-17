@@ -652,7 +652,7 @@ class NpBlockTxApi(NeonProxyApi):
             try:
                 tx_list = await self._db.get_tx_list_by_slot(block.slot)
             except BaseException as exc:
-                _LOG.warning("error on loading txs", exc_info=exc, extra=self._msg_filter)
+                _LOG.error("error on loading txs from db", exc_info=exc, extra=self._msg_filter)
 
         # BaseFeePerGas for the block response is taken either from the mempool recent gas prices (for the recent block)
         #   - this case is used for requesting the current gas price by clients

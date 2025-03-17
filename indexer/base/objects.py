@@ -79,7 +79,7 @@ class BaseNeonIndexedObjInfo:
 
     def mark_stuck(self) -> None:
         if not self._is_stuck:
-            _LOG.warning("stuck: %s", self)
+            _LOG.debug("stuck: %s", self)
         self._is_stuck = True
 
     def add_sol_neon_ix(self, sol_neon_ix: SolNeonTxIxMetaInfo) -> None:
@@ -991,7 +991,7 @@ class SolIndexedAltInfo:
             return
 
         self._is_stuck = True
-        _LOG.warning("stuck: %s", self)
+        _LOG.debug("stuck: %s", self)
 
 
 @dataclass(frozen=True)
