@@ -27,22 +27,23 @@ class PrometheusServer(HttpServer):
         metric_url: Final[str] = "/metrics"
         full_metric_url = base_url + metric_url
 
-        health_url: Final[str] = "/health"
-        full_health_url = base_url + health_url
-
-        status_url: Final[str] = "/healthz"
+        status_url: Final[str] = "/status"
         full_status_url = base_url + status_url
+
+        healthz_url: Final[str] = "/healthz"
+        full_healthz_url = base_url + healthz_url
 
         def _index(ctx: HttpRequestCtx) -> HttpResp:
             nonlocal full_metric_url
-            nonlocal full_health_url
+            nonlocal full_status_url
+            nonlocal full_healthz_url
             return self._pack_text_resp(
                 ctx,
                 "<html><body>"
                 "<h1>Prometheus Server</h1>"
                 f"<p><a href='{full_metric_url}'>metrics</a></p>"
-                f"<p><a href='{full_health_url}'>health</a></p>"
-                f"<p><a href='{full_status_url}'>healthz</a><div></p>"
+                f"<p><a href='{full_status_url}'>status</a></p>"
+                f"<p><a href='{full_healthz_url}'>healthz</a><div></p>"
                 "</body></html>",
                 "text/html",
             )
@@ -54,11 +55,11 @@ class PrometheusServer(HttpServer):
             stat = await self._metric_client.get_metric_stat()
             return self._pack_text_resp(ctx, stat.data, "text/plain; version=0.0.4")
 
-        async def _health(ctx: HttpRequestCtx) -> HttpResp:
-            health = await self._metric_client.get_health_error_list()
-            return self._pack_text_resp(ctx, health.to_json(), "text/plain")
-
         async def _status(ctx: HttpRequestCtx) -> HttpResp:
+            status = await self._metric_client.get_health_error_list()
+            return self._pack_text_resp(ctx, status.to_json(), "text/plain")
+
+        async def _healthz(ctx: HttpRequestCtx) -> HttpResp:
             health = await self._metric_client.get_health_status()
             if health.status == health.status.Good:
                 return self._pack_text_resp(ctx, "ok", "text/plain")
@@ -68,7 +69,7 @@ class PrometheusServer(HttpServer):
                 body=(
                     "<html><body>"
                     "<h2>Unhealthy</h2>"
-                    f"<h2>{health.errorService}</h2>"
+                    f"<h1>{health.errorService}</h1>"
                     f"<h1>{health.errorMessage}</h1>"
                     "</body></html>"
                 ),
@@ -79,5 +80,5 @@ class PrometheusServer(HttpServer):
         self.add_get_route("/", _index)
         self.add_get_route("/robots.txt", _robot_txt)
         self.add_get_route(metric_url, _metric)
-        self.add_get_route(health_url, _health)
         self.add_get_route(status_url, _status)
+        self.add_get_route(healthz_url, _healthz)
