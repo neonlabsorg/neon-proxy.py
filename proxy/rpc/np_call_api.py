@@ -17,7 +17,8 @@ from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
-from common.neon_rpc.api import EmulAccountMetaModel, EmulNeonCallResp, CoreApiTxModel
+from common.neon_rpc.api import EmulAccountMetaModel, CoreApiTxModel
+from common.solana.account import SolAccountModel
 from common.solana.instruction import SolTxIx, SolAccountMeta
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.sys_program import SolSysProg
@@ -26,10 +27,10 @@ from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property, cached_method
 from common.utils.format import if_none
 from common.utils.pydantic import HexUIntField, RootModel, Base58Field
-from .api import RpcBlockRequest, RpcNeonCallRequest
+from .api import RpcBlockRequest
 from .server_abc import NeonProxyApi
 from ..base.rpc_api import RpcEthTxRequest, BaseEthGasModel, BaseEthCallModel
-from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator
+from ..base.rpc_gas_limit_calculator import RpcNeonGasLimitCalculator, RpcGasLimitResult
 
 
 class _RpcEthAccountModel(BaseJsonRpcModel):
@@ -74,27 +75,43 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
     revertAfterSolanaCall: bool
 
     result: EthBinStrField
-    numEvmSteps: int
+
     gasUsed: int
+    gasTransactionSizeUsed: int
+    gasAddressLookupTableUsed: int
+    gasExecutionUsed: int
+    gasFinishUsed: int
+    gasSolanaPriorityUsed: int
+
+    numEvmSteps: int
     numIterations: int
+
     solanaAccounts: list[_RpcSolanaAccountModel]
 
     @classmethod
-    def from_raw(cls, raw: _RpcEmulatorResp | EmulNeonCallResp | None) -> Self | None:
+    def from_raw(cls, raw: _RpcEmulatorResp | RpcGasLimitResult | None) -> Self | None:
         if raw is None:
             return None
         elif isinstance(raw, _RpcEmulatorResp):
             return raw
-        elif isinstance(raw, EmulNeonCallResp):
+        elif isinstance(raw, RpcGasLimitResult):
             return cls(
                 exitCode=raw.exit_code,
                 externalSolanaCall=raw.external_sol_call,
                 revertBeforeSolanaCall=raw.revert_before_sol_call,
                 revertAfterSolanaCall=raw.revert_after_sol_call,
                 result=raw.result,
+
+                gasUsed=raw.total_gas,
+                gasTransactionSizeUsed=raw.holder_gas,
+                gasAddressLookupTableUsed=raw.alt_gas,
+                gasExecutionUsed=raw.exec_gas,
+                gasFinishUsed=raw.finish_gas,
+                gasSolanaPriorityUsed=raw.priority_gas,
+
                 numEvmSteps=raw.evm_step_cnt,
-                gasUsed=raw.used_gas,
                 numIterations=raw.iter_cnt,
+
                 solanaAccounts=[_RpcSolanaAccountModel.from_raw(a) for a in raw.raw_meta_list],
             )
 
@@ -174,6 +191,7 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
     scheduledSolanaPayer: SolPubKeyField
     solTxList: list[_RpcSolTxModel] = Field(default_factory=list, validation_alias="preparatorySolanaTransactions")
     draftTxList: list[_RpcNeonSkdSubTxDraft] = Field(default_factory=list, validation_alias="transactions")
+    showDetail: bool = Field(default=False, validation_alias="showGasDetails")
 
     MaxTxListLen: Final[int] = 24
 
@@ -244,7 +262,23 @@ class _RpcSkdTxEstimateResp(BaseJsonRpcModel):
     nonce: HexUIntField
     treasuryIndex: HexUIntField
     accountList: list[SolPubKeyField]
-    gasList: list[HexUIntField]
+    gasList: list[_RpcEmulatorResp | HexUIntField]
+
+
+class _RpcNeonCallRequest(BaseJsonRpcModel):
+    sol_account_dict: dict[SolPubKeyField, SolAccountModel] = Field(
+        default_factory=dict,
+        validation_alias="solanaOverrides",
+    )
+    show_detail: bool | None = Field(default=None, validation_alias="showGasDetails")
+
+    _default: ClassVar[_RpcNeonCallRequest | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not cls._default:
+            cls._default = cls(solanaOverrides=dict())  # noqa
+        return cls._default
 
 
 class NpCallApi(NeonProxyApi):
@@ -280,52 +314,65 @@ class NpCallApi(NeonProxyApi):
     ) -> HexUIntField:
         chain_id = self._validate_layer0_chain_id(ctx, isinstance(call.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-        return await self._gas_limit_calc.estimate(call.to_core_tx(chain_id), dict(), block)
+        gas_limit = await self._gas_limit_calc.estimate(call.to_core_tx(chain_id), dict(), block)
+        return gas_limit.total_gas
 
     @NeonProxyApi.method(name="neon_estimateGas")
     async def neon_estimate_gas(
         self,
         ctx: HttpRequestCtx,
-        tx: RpcEthTxRequest,
-        neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
+        raw_tx: RpcEthTxRequest | EthBinStrField,
+        neon_call: _RpcNeonCallRequest = _RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
-    ) -> HexUIntField:
-        chain_id = self._validate_layer0_chain_id(ctx, isinstance(tx.fromAddress, SolPubKey))
-        block = await self.get_block_by_tag(block_tag)
-        return await self._gas_limit_calc.estimate(tx.to_core_tx(chain_id), neon_call.sol_account_dict, block)
+    ) -> _RpcEmulatorResp | HexUIntField:
+        return await self._neon_emulate(ctx, raw_tx, neon_call, block_tag, False)
 
     @NeonProxyApi.method(name="neon_emulate")
     async def neon_emulate(
         self,
         ctx: HttpRequestCtx,
-        raw_signed_tx: EthBinStrField,
-        neon_call: RpcNeonCallRequest = RpcNeonCallRequest.default(),
+        raw_tx: RpcEthTxRequest | EthBinStrField,
+        neon_call: _RpcNeonCallRequest = _RpcNeonCallRequest.default(),
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
-    ) -> _RpcEmulatorResp:
-        """Executes emulator with given transaction"""
-        chain_id = self._get_chain_id(ctx)
+    ) -> _RpcEmulatorResp | HexUIntField:
+        return await self._neon_emulate(ctx, raw_tx, neon_call, block_tag, True)
+
+    async def _neon_emulate(
+        self,
+        ctx: HttpRequestCtx,
+        raw_tx: RpcEthTxRequest | EthBinStrField,
+        neon_call: _RpcNeonCallRequest,
+        block_tag: RpcBlockRequest,
+        show_detail: bool,
+    ) -> _RpcEmulatorResp | int:
         block = await self.get_block_by_tag(block_tag)
 
-        try:
-            neon_tx = NeonTxModel.from_raw(raw_signed_tx.to_bytes(), raise_exception=True)
-        except EthError:
-            raise
-        except (BaseException,):
-            raise InvalidParamError(message="wrong transaction format")
+        if isinstance(raw_tx, RpcEthTxRequest):
+            chain_id = self._validate_layer0_chain_id(ctx, isinstance(raw_tx.fromAddress, SolPubKey))
+            tx = raw_tx.to_core_tx(chain_id)
+        else:
+            try:
+                neon_tx = NeonTxModel.from_raw(raw_tx.to_bytes(), raise_exception=True)
+            except EthError:
+                raise
+            except (BaseException,):
+                raise InvalidParamError(message="wrong transaction format")
 
-        if neon_tx.has_chain_id:
-            if neon_tx.chain_id != chain_id:
+            chain_id = self._get_chain_id(ctx)
+
+            if neon_tx.has_chain_id:
+                if neon_tx.chain_id != chain_id:
+                    raise EthWrongChainIdError()
+            elif not self._is_default_chain_id(ctx):
                 raise EthWrongChainIdError()
-        elif not self._is_default_chain_id(ctx):
-            raise EthWrongChainIdError()
 
-        resp = await self._core_api_client.emulate_neon_call(
-            CoreApiTxModel.from_neon_tx(neon_tx),
-            check_result=False,
-            sol_account_dict=neon_call.sol_account_dict,
-            block=block,
-        )
-        return _RpcEmulatorResp.from_raw(resp)
+            tx = CoreApiTxModel.from_neon_tx(neon_tx)
+
+        gas_limit = await self._gas_limit_calc.estimate(tx, neon_call.sol_account_dict, block)
+
+        if if_none(neon_call.show_detail, show_detail):
+            return _RpcEmulatorResp.from_raw(gas_limit)
+        return gas_limit.total_gas
 
     @NeonProxyApi.method(name="neon_estimateScheduledGas")
     async def neon_estimate_skd_tx(
@@ -366,7 +413,7 @@ class NpCallApi(NeonProxyApi):
                 NeonProg.DepositAddress,
                 SolSysProg.ID,
             ],
-            gasList=list(gas_limit_list),
+            gasList=[_RpcEmulatorResp.from_raw(g) if call.showDetail else g.total_gas for g in gas_limit_list],
         )
 
     async def _estimate_skd_tree_gas(
@@ -374,7 +421,7 @@ class NpCallApi(NeonProxyApi):
         call: _RpcNeonSkdTxRequest,
         chain_id: int,
         block: NeonBlockHdrModel
-    ) -> Sequence[int]:
+    ) -> Sequence[RpcGasLimitResult]:
         tx_list = call.txList
         core_tx_list = call.to_core_tx_list(chain_id)
         sol_tx_list = call.to_sol_tx_list()
@@ -411,9 +458,10 @@ class NpCallApi(NeonProxyApi):
         gas_branch_list = await asyncio.gather(*estimate_task_list)
 
         # get the maximum gas from each branch
-        gas_list: list[int] = [0] * len(tx_list)
+        gas_limit_list: list[RpcGasLimitResult] = [RpcGasLimitResult.default()] * len(tx_list)
         for gas_branch, core_tx_branch in zip(gas_branch_list, core_tx_branch_list):
-            for gas, core_idx_tx in zip(gas_branch, core_tx_branch):
+            for gas_limit, core_idx_tx in zip(gas_branch, core_tx_branch):
                 idx, _ = core_idx_tx
-                gas_list[idx] = max(gas_list[idx], gas)
-        return gas_list
+                if gas_limit.total_gas > gas_limit_list[idx].total_gas:
+                    gas_limit_list[idx] = gas_limit
+        return gas_limit_list
