@@ -122,6 +122,8 @@ class IterativeTxStrategy(BaseTxStrategy):
         # generate cancel tx with the default CU budget
         self._reset_to_def()
 
+        _LOG.debug("cancel: %s", data)
+
         memo = data.to_bytes()
         base_cfg = self._init_sol_tx_cfg(name=self._cancel_name)
         for retry in range(2):
