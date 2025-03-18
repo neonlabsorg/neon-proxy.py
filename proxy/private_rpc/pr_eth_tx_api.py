@@ -69,7 +69,7 @@ class PrEthTxApi(PrivateRpcApi):
         if not neon_tx.gas_limit:
             core_tx = tx.to_core_tx(chain_id)
             gas_limit = await self._gas_calculator.estimate(core_tx, dict())
-            object.__setattr__(neon_tx, "gas_limit", gas_limit)
+            object.__setattr__(neon_tx, "gas_limit", gas_limit.total_gas)
 
         if not neon_tx.nonce:
             nonce = await self._core_api_client.get_state_tx_cnt(sender_addr)

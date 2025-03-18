@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from pydantic import Field
 from typing_extensions import Self
 
 from common.ethereum import revert_message
@@ -17,7 +16,6 @@ from common.ethereum.hash import (
 )
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.evm_log_decoder import NeonTxEventModel
-from common.solana.account import SolAccountModel
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField
 from common.utils.pydantic import HexUIntField, RootModel, HexUInt64Field
@@ -92,21 +90,6 @@ class RpcBlockRequest(RootModel):
     def model_post_init(self, _ctx) -> None:
         if self.root is None:
             raise ValueError(f"{type(self).__name__} can't be null")
-
-
-class RpcNeonCallRequest(BaseJsonRpcModel):
-    sol_account_dict: dict[SolPubKeyField, SolAccountModel] = Field(
-        default_factory=dict,
-        validation_alias="solanaOverrides",
-    )
-
-    _default: ClassVar[RpcNeonCallRequest | None] = None
-
-    @classmethod
-    def default(cls) -> Self:
-        if not cls._default:
-            cls._default = cls(solanaOverrides=dict())
-        return cls._default
 
 
 class RpcEthTxEventModel(BaseJsonRpcModel):

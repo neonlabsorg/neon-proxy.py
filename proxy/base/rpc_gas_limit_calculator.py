@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
-from typing import Sequence
+from typing import Sequence, Final, ClassVar
+from typing_extensions import Self
 
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash
@@ -24,10 +26,60 @@ from .rpc_server_abc import BaseRpcServerComponent
 _LOG = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass(frozen=True)
+class RpcGasLimitResult:
+    holder_gas: int
+    alt_gas: int
+    exec_gas: int
+    finish_gas: int
+    priority_gas: int
+
+    exit_code: str
+    external_sol_call: bool
+    revert_before_sol_call: bool
+    revert_after_sol_call: bool
+    result: bytes
+
+    evm_step_cnt: int
+    iter_cnt: int
+    raw_meta_list: list
+
+    # Ethereum's wallets don't accept gas limit less than 21'000
+    _min_total_gas: Final[int] = 25_000  # minimal gas limit for NeonTx: start (10k), execute (10k), finalization (5k)
+
+    _default: ClassVar[RpcGasLimitResult | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not cls._default:
+            cls._default = cls(
+                holder_gas=0,
+                alt_gas=0,
+                exec_gas=0,
+                finish_gas=0,
+                priority_gas=0,
+                exit_code="",
+                external_sol_call=False,
+                revert_before_sol_call=False,
+                revert_after_sol_call=False,
+                result=bytes(),
+                evm_step_cnt=0,
+                iter_cnt=0,
+                raw_meta_list=list(),
+            )
+        return cls._default
+
+    @cached_property
+    def total_gas(self) -> int:
+        return max(
+            self.holder_gas + self.alt_gas + self.exec_gas + self.finish_gas + self.priority_gas,
+            self._min_total_gas,
+        )
+
+
 class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
-    _oz_gas_limit = 30_000  # openzeppelin gas-limit check
-    _min_gas_limit = 25_000  # minimal gas limit for NeonTx: start (10k), execute (10k), finalization (5k)
-    _u64_max = int.from_bytes(bytes([0xFF] * 8), "big")
+    _oz_gas_limit: Final[int] = 30_000  # openzeppelin gas-limit check
+    _u64_max: Final[int] = int.from_bytes(bytes([0xFF] * 8), "big")
 
     # These values aren't used on real network, they are used only to generate temporary data
     _holder_addr = SolPubKey.new_unique()
@@ -43,21 +95,21 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         core_tx: CoreApiTxModel,
         sol_account_dict: dict[SolPubKey, SolAccountModel],
         block: NeonBlockHdrModel | None = None,
-    ) -> int:
+    ) -> RpcGasLimitResult:
         resp = await self._core_api_client.emulate_neon_call(
             core_tx,
             check_result=True,
             sol_account_dict=sol_account_dict,
             block=block,
         )
-        return self._total_gas(core_tx, resp)
+        return self._calc_gas(core_tx, resp)
 
     async def estimate_skd_tree(
         self,
         sol_tx_list: Sequence[SolTx],
         core_tx_list: Sequence[CoreApiTxModel],
         block: NeonBlockHdrModel | None = None,
-    ) -> Sequence[int]:
+    ) -> Sequence[RpcGasLimitResult]:
         resp_list = await self._core_api_client.emulate_multiple_neon_call(
             sol_tx_list,
             core_tx_list,
@@ -66,34 +118,31 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         )
         # fmt: off
         return tuple([
-            self._total_gas(core_tx, resp, finish_gas=NeonProg.FinishSkdTxGas)
+            self._calc_gas(core_tx, resp, finish_gas=NeonProg.FinishSkdTxGas)
             for core_tx, resp in zip(core_tx_list, resp_list)
         ])
         # fmt: on
 
-    def _total_gas(
-        self,
-        core_tx: CoreApiTxModel,
-        resp: EmulNeonCallResp,
-        *,
-        finish_gas: int = 0
-    ) -> int:
+    def _calc_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp, *, finish_gas: int = 0) -> RpcGasLimitResult:
         exec_gas = resp.used_gas
         tx_size_gas = self._tx_size_gas(core_tx, resp)
         alt_gas = self._alt_gas(resp)
 
-        # Ethereum's wallets don't accept gas limit less than 21'000
-        total_gas = max(exec_gas + tx_size_gas + alt_gas + finish_gas, self._min_gas_limit)
-
-        # _LOG.debug(
-        #     "total-gas(%s) = execution-gas(%s) + tx-size-gas(%s) + alt-gas(%s) + finish-gas(%s)",
-        #     total_gas,
-        #     exec_gas,
-        #     tx_size_gas,
-        #     alt_gas,
-        #     finish_gas,
-        # )
-        return total_gas
+        return RpcGasLimitResult(
+            holder_gas=tx_size_gas,
+            alt_gas=alt_gas,
+            exec_gas=exec_gas,
+            finish_gas=finish_gas,
+            priority_gas=0,
+            exit_code=resp.exit_code,
+            external_sol_call=resp.external_sol_call,
+            revert_before_sol_call=resp.revert_before_sol_call,
+            revert_after_sol_call=resp.revert_after_sol_call,
+            result=resp.result,
+            evm_step_cnt=resp.evm_step_cnt,
+            iter_cnt=resp.iter_cnt,
+            raw_meta_list=resp.raw_meta_list,
+        )
 
     def _tx_size_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
         eth_tx = self._eth_tx_from_core_tx(core_tx)
