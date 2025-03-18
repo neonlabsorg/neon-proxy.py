@@ -643,7 +643,6 @@ EmulNeonCallExitCodeField = Annotated[EmulNeonCallExitCode, PlainValidator(EmulN
 class EmulAccountMetaModel(_BaseRespModel):
     pubkey: SolPubKeyField
     is_writable: bool
-    is_legacy: bool
 
     def to_sol_account_meta(self) -> SolAccountMeta:
         return SolAccountMeta(pubkey=self.pubkey, is_writable=self.is_writable, is_signer=False)

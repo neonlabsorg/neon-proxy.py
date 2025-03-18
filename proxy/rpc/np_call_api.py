@@ -64,7 +64,7 @@ class _RpcSolanaAccountModel(BaseJsonRpcModel):
         elif isinstance(raw, _RpcSolanaAccountModel):
             return raw
         elif isinstance(raw, EmulAccountMetaModel):
-            return cls(pubkey=raw.pubkey, isWritable=raw.is_writable, isLegacy=raw.is_legacy)
+            return cls(pubkey=raw.pubkey, isWritable=raw.is_writable, isLegacy=False)
         raise ValueError(f"Wrong input type: {type(raw).__name__}")
 
 
