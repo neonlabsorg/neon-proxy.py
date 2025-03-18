@@ -26,8 +26,6 @@ class DynamicFeeCfgClient(HttpClient):
 
         self._base_cfg = PriorityFeeCfg(
             operator_fee=self._cfg.operator_fee,
-            min_priority_fee=self._cfg.min_priority_fee,
-            max_priority_fee=self._cfg.max_priority_fee,
             const_gas_price=self._cfg.const_gas_price,
             min_gas_price=self._cfg.min_gas_price,
             cu_price_mode=self._cfg.cu_price_mode,
@@ -47,8 +45,6 @@ class DynamicFeeCfgClient(HttpClient):
             resp = PriorityFeeCfgResp.from_json(resp_json)
             cfg = PriorityFeeCfg(
                 operator_fee=resp.operator_fee,
-                min_priority_fee=resp.min_priority_fee,
-                max_priority_fee=resp.max_priority_fee,
                 const_gas_price=(
                     resp.const_gas_price * pow(10, 9) if resp.const_gas_price is not None else self._cfg.const_gas_price
                 ),

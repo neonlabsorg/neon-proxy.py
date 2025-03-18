@@ -202,8 +202,6 @@ class Config:
     pyth_url_name: Final[str] = "PYTH_URL"
     pyth_ws_url_name: Final[str] = "PYTH_WS_URL"
     operator_fee_name: Final[str] = "OPERATOR_FEE"
-    min_priority_fee_name: Final[str] = "MIN_PRIORITY_FEE"
-    max_priority_fee_name: Final[str] = "MAX_PRIORITY_FEE"
     cu_limit_name: Final[str] = "CU_LIMIT"
     cu_price_mode_name: Final[str] = "CU_PRICE_MODE"
     cu_price_level_name: Final[str] = "CU_PRICE_LEVEL"
@@ -758,25 +756,6 @@ class Config:
         return float(self._env_num(self.operator_fee_name, Decimal("0.25"), Decimal("0.0"), Decimal("100.0")))
 
     @cached_property
-    def min_priority_fee(self) -> float:
-        return float(self._env_num(self.min_priority_fee_name, Decimal("0.75"), Decimal("0.0"), Decimal("100.0")))
-
-    @cached_property
-    def max_priority_fee(self) -> float:
-        value = float(self._env_num(self.min_priority_fee_name, Decimal("0.75"), Decimal("0.0"), Decimal("100.0")))
-        if value >= (min_value := self.min_priority_fee):
-            return value
-
-        _LOG.warning(
-            "%s > %s, force to use %s (%s)",
-            self.min_priority_fee_name,
-            self.max_priority_fee_name,
-            self.min_priority_fee_name,
-            min_value,
-        )
-        return min_value
-
-    @cached_property
     def cu_limit(self) -> int:
         return self._env_num(self.cu_limit_name, SolCbProg.MaxCuLimit, SolCbProg.DefCuLimit // 5, SolCbProg.MaxCuLimit)
 
@@ -1058,8 +1037,6 @@ class Config:
             self.pyth_url_name: self.pyth_url_list,
             self.pyth_ws_url_name: self.pyth_ws_url_list,
             self.operator_fee_name: self.operator_fee,
-            self.min_priority_fee_name: self.min_priority_fee,
-            self.max_priority_fee_name: self.max_priority_fee,
             self.cu_limit_name: self.cu_limit,
             self.cu_price_mode_name: self.cu_price_mode,
             self.cu_price_level_name: self.cu_price_level,
