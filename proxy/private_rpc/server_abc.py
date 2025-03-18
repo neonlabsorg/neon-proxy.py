@@ -4,6 +4,7 @@ import abc
 import logging
 
 from common.config.config import Config
+from common.cu_price.client import CuPriceClient
 from common.ethereum.hash import EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.server import JsonRpcApi
@@ -42,11 +43,12 @@ class PrivateRpcServerAbc(BaseRpcServerAbc, abc.ABC):
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
+        cu_price_client: CuPriceClient,
         stat_client: StatClient,
         op_client: OpResourceClient,
         db: IndexerDbClient,
     ) -> None:
-        super().__init__(cfg, core_api_client, sol_client, mp_client, stat_client, db)
+        super().__init__(cfg, core_api_client, sol_client, mp_client, cu_price_client, stat_client, db)
         self._op_client = op_client
 
     async def has_fee_less_tx_permit(

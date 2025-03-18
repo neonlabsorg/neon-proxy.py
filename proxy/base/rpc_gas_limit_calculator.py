@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 from typing import Sequence, Final, ClassVar
@@ -80,6 +81,7 @@ class RpcGasLimitResult:
 class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
     _oz_gas_limit: Final[int] = 30_000  # openzeppelin gas-limit check
     _u64_max: Final[int] = int.from_bytes(bytes([0xFF] * 8), "big")
+    _round_cu_coeff: Final[int] = SolCbProg.MaxCuPriceMult + 1
 
     # These values aren't used on real network, they are used only to generate temporary data
     _holder_addr = SolPubKey.new_unique()
@@ -102,7 +104,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             sol_account_dict=sol_account_dict,
             block=block,
         )
-        return self._calc_gas(core_tx, resp)
+        return await self._calc_gas(core_tx, resp)
 
     async def estimate_skd_tree(
         self,
@@ -117,23 +119,24 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             block=block,
         )
         # fmt: off
-        return tuple([
+        return await asyncio.gather(*[
             self._calc_gas(core_tx, resp, finish_gas=NeonProg.FinishSkdTxGas)
             for core_tx, resp in zip(core_tx_list, resp_list)
         ])
         # fmt: on
 
-    def _calc_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp, *, finish_gas: int = 0) -> RpcGasLimitResult:
+    async def _calc_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp, *, finish_gas: int = 0) -> RpcGasLimitResult:
         exec_gas = resp.used_gas
         tx_size_gas = self._tx_size_gas(core_tx, resp)
         alt_gas = self._alt_gas(resp)
+        cu_fee_gas = await self._sol_cu_fee_gas(resp)
 
         return RpcGasLimitResult(
             holder_gas=tx_size_gas,
             alt_gas=alt_gas,
             exec_gas=exec_gas,
             finish_gas=finish_gas,
-            priority_gas=0,
+            priority_gas=cu_fee_gas,
             exit_code=resp.exit_code,
             external_sol_call=resp.external_sol_call,
             revert_before_sol_call=resp.revert_before_sol_call,
@@ -223,3 +226,17 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         if acc_cnt >= SolAltProg.MaxTxAccountCnt:
             return 5000 * 12  # ALT ix: create + ceil(256/30) extend + deactivate + close
         return 0
+
+    async def _sol_cu_fee_gas(self, resp: EmulNeonCallResp) -> int:
+        acct_key_list = [a.pubkey for a in resp.raw_meta_list if a.is_writable]
+        base_cu_price = await self._cu_price_client.get_cu_price(acct_key_list)
+
+        # round cu-price to divisible by 10'500
+        cu_price_mult = min(base_cu_price // self._cb_prog.BaseCuPrice + 1, self._cb_prog.MaxCuPriceMult)
+        cu_price = cu_price_mult * self._cb_prog.BaseCuPrice
+
+        # round priority-fee to divisible by 1'000
+        cu_fee = cu_price * self._cb_prog.MaxCuLimit * resp.iter_cnt // self._cb_prog.MicroLamport
+        cu_fee = (cu_fee // self._round_cu_coeff + 1) * self._round_cu_coeff
+
+        return cu_fee + cu_price_mult

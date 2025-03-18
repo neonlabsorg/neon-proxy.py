@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from common.config.config import Config
 from common.config.utils import LogMsgFilter
+from common.cu_price.client import CuPriceClient
 from common.ethereum.errors import EthError, EthWrongChainIdError
 from common.ethereum.hash import EthAddress
 from common.http.errors import HttpRouteError
@@ -51,6 +52,10 @@ class BaseRpcServerComponent:
     @cached_property
     def _mp_client(self) -> MempoolClient:
         return self._server._mp_client  # noqa
+
+    @cached_property
+    def _cu_price_client(self) -> CuPriceClient:
+        return self._server._cu_price_client  # noqa
 
     @cached_property
     def _db(self) -> IndexerDbClient:
@@ -112,6 +117,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
+        cu_price_client: CuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
     ) -> None:
@@ -120,6 +126,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         self._core_api_client = core_api_client
         self._sol_client = sol_client
         self._mp_client = mp_client
+        self._cu_price_client = cu_price_client
         self._stat_client = stat_client
         self._db = db
         self._process_pool = self._ProcessPool(self)
@@ -292,6 +299,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
             self._db.start(),
             self._stat_client.start(),
             self._mp_client.start(),
+            self._cu_price_client.start(),
             self._sol_client.start(),
             self._core_api_client.start(),
         )
@@ -299,6 +307,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
 
     async def _on_server_stop(self) -> None:
         await asyncio.gather(
+            self._cu_price_client.stop(),
             self._mp_client.stop(),
             self._core_api_client.stop(),
             self._sol_client.stop(),

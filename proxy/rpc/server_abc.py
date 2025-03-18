@@ -19,6 +19,7 @@ from common.config.constants import (
     ROLLUP_GENESIS_TIME,
     UNKNOWN_GENESIS_HASH,
 )
+from common.cu_price.client import CuPriceClient
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthAddress, EthBlockHash
@@ -93,11 +94,12 @@ class NeonProxyAbc(BaseRpcServerAbc, abc.ABC):
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
+        cu_price_client: CuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
         gas_tank: GasLessAccountDb,
     ) -> None:
-        super().__init__(cfg, core_api_client, sol_client, mp_client, stat_client, db)
+        super().__init__(cfg, core_api_client, sol_client, mp_client, cu_price_client, stat_client, db)
         self._gas_tank = gas_tank
         self._genesis_block: NeonBlockHdrModel | None = None
 
