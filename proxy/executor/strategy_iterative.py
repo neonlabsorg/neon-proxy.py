@@ -10,7 +10,7 @@ from typing_extensions import Self
 
 from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonTxBlockInfo
-from common.neon.neon_program import NeonEvmIxCode, NeonIxMode, NeonProg
+from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.neon_rpc.errors import SolNeonSkdTxWrongStateError
 from common.solana.cb_program import SolCbProg
@@ -308,8 +308,6 @@ class IterativeTxStrategy(BaseTxStrategy):
         max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
         # decrease the available CU limit in Neon iteration, because it is used for Compute Budget calls
         threshold_cu_limit: Final[int] = int(max_cu_limit * 0.99)  # 99% of the maximum
-        round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 50_000
         max_diff: Final[int] = 250_000
         evm_step_cnt: Final[int] = base_cfg.evm_step_cnt
 
@@ -337,21 +335,18 @@ class IterativeTxStrategy(BaseTxStrategy):
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
 
-        emul_tx_list = emul_tx_list[:iter_cnt]
-        gas_limit = min(map(lambda x: self._find_gas_limit(x), emul_tx_list))
-        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
+        round_cu_limit = self._round_cu_limit(used_cu_limit, max_cu_limit)
         _LOG.debug(
-            "%s: %s mode, %d EVM steps, %d CUs, %d GAS, %d iterations",
+            "%s: %s mode, %d EVM steps, %d CUs, %d iterations",
             hdr,
             base_cfg.ix_mode.name,
             evm_step_cnt,
             round_cu_limit,
-            gas_limit,
             iter_cnt,
         )
 
         optimal_cfg = base_cfg.update(iter_cnt=iter_cnt)
-        return await self._update_cu_price(optimal_cfg, cu_limit=round_cu_limit, gas_limit=gas_limit)
+        return await self._update_cu_price(optimal_cfg, cu_limit=round_cu_limit)
 
     async def _get_def_iter_list_cfg(self) -> SolIterListCfg:
         cu_limit = SolCbProg.MaxCuLimit // 2
@@ -400,16 +395,10 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return SolIterListCfg(**tx_cfg.to_dict(), evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
 
-    async def _update_cu_price(
-        self,
-        base_cfg: SolIterListCfg,
-        *,
-        cu_limit: int,
-        gas_limit: int = NeonProg.BaseGas,
-    ) -> SolIterListCfg:
+    async def _update_cu_price(self, base_cfg: SolIterListCfg, *, cu_limit: int) -> SolIterListCfg:
         cu_limit = self._def_cu_limit or cu_limit
-        cu_price = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
-        return base_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
+        cu_price = await self._calc_cu_price(cu_limit)
+        return base_cfg.update(cu_limit=cu_limit, cu_price=cu_price)
 
     def _calc_wrap_iter_cnt(self) -> int:
         ix_mode = self._calc_ix_mode()

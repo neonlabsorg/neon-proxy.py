@@ -8,7 +8,6 @@ from typing import Sequence, Final, ClassVar
 from typing_extensions import Self
 
 from common.neon.cancel_error import CancelErrorData
-from common.neon.evm_log_decoder import NeonEvmLogDecoder
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
@@ -17,7 +16,6 @@ from common.solana.errors import SolError
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx, SolTxIx
-from common.solana.transaction_decoder import SolTxIxMetaInfo
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolCbExceededError
 from common.utils.cached import cached_property
@@ -59,8 +57,6 @@ class SolTxCfg:
     cu_price: int
     heap_size: int
 
-    gas_limit: int
-
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)  # noqa
 
@@ -71,6 +67,9 @@ class SolTxCfg:
 class BaseTxStrategy(ExecutorComponent, abc.ABC):
     name: ClassVar[str] = "UNKNOWN STRATEGY"
     is_simple: ClassVar[bool] = True
+
+    _round_cu_limit_coeff: Final[int] = 10_000
+    _inc_cu_limit_coeff: Final[int] = 25_000
 
     def __init__(self, server: ExecutorServerAbc, ctx: NeonExecTxCtx) -> None:
         super().__init__(server)
@@ -258,7 +257,6 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         cu_limit: int = SolCbProg.MaxCuLimit,
         cu_price: int = SolCbProg.BaseCuPrice,
         heap_size: int = SolCbProg.MaxHeapSize,
-        gas_limit: int = NeonProg.BaseGas,
     ) -> SolTxCfg:
         return SolTxCfg(
             name=name or self.name,
@@ -266,12 +264,9 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             cu_limit=cu_limit,
             cu_price=cu_price,
             heap_size=heap_size,
-            gas_limit=gas_limit,
         )
 
-    async def _calc_cu_price(self, cu_limit: int, gas_limit: int) -> int:
-        token = self._ctx.token
-
+    async def _calc_cu_price(self, cu_limit: int) -> int:
         # calculate a required cu-price from the Solana statistics
         req_cu_price = await self._cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
 
@@ -282,29 +277,20 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         if not tx.base_fee_per_gas:
             return req_cu_price
 
-        def _calc_cu_price(_p_fee: float, _gas_limit: int) -> int:
-            nonlocal cu_limit
-            if _p_fee > 0.0:
-                # see gas-price-calculator for details
-                return int(_p_fee * _gas_limit * SolCbProg.MicroLamport / cu_limit / 100)
-            return 0
+        gas_limit = tx.gas_limit
+        tx_cu_price_mult = gas_limit % (SolCbProg.MaxCuPriceMult + 1)
+        max_tx_cu_price = SolCbProg.BaseCuPrice * tx_cu_price_mult
 
-        if tx.has_priority_fee:
-            p_fee = tx.base_fee_per_gas * 100 / tx.max_priority_fee_per_gas
-            tx_cu_price = _calc_cu_price(p_fee, NeonProg.BaseGas)
-        else:
-            p_fee = max(tx.operator_fee_per_gas - token.profitable_gas_price, 0) / token.pct_gas_price
-            tx_cu_price = _calc_cu_price(p_fee, gas_limit)
+        tx_cu_price = max_tx_cu_price * SolCbProg.MaxCuLimit // cu_limit
 
         # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
         # and neon-evm does not digest it.
         cu_price = max(min(req_cu_price, tx_cu_price), 1)
 
         # _LOG.debug(
-        #     "use %s CU-price for %s CU-limit, %s Gas-limit, %s accounts",
+        #     "use %s CU-price for %s CU-limit, %s accounts",
         #     cu_price,
         #     cu_limit,
-        #     gas_limit,
         #     len(self._ctx.rw_account_key_list),
         # )
         return cu_price
@@ -355,26 +341,6 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             _LOG.warning("fail on emulate solana tx list")
             raise SolCbExceededError(SolCbProg.MaxCuLimit * 2)
 
-    @staticmethod
-    def _find_gas_limit(emul_tx: EmulSolTxInfo) -> int:
-        gas_limit = NeonProg.BaseGas
-
-        fake_tx_ix = SolTxIxMetaInfo.default()
-        try:
-            log = NeonEvmLogDecoder().decode(fake_tx_ix, emul_tx.meta.log_list)
-            # _LOG.debug("_emulate_tx_list: neon_log.tx_error_list.size() = %d", len(log.tx_error_list))
-        except (BaseException,):
-            # _LOG.debug("exception on find GAS, use default %s", gas_limit)
-            return gas_limit
-
-        if log.tx_ix_gas.is_empty:
-            # _LOG.debug("no GAS information, use default %s", gas_limit)
-            pass
-        else:
-            gas_limit = log.tx_ix_gas.gas_used
-            # _LOG.debug("found GAS %s", gas_limit)
-        return gas_limit
-
     async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
         base_tx = self._build_cu_tx(ix, base_cfg)
         emul_tx = await self._emulate_tx_list(base_tx)
@@ -397,16 +363,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             #
             # raise SolCbExceededError(threshold_cu_limit)
 
-        round_coeff: Final[int] = 10_000
-        inc_coeff: Final[int] = 50_000
-        round_cu_limit = min((used_cu_limit // round_coeff) * round_coeff + inc_coeff, max_cu_limit)
-        # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
-
-        gas_limit = self._find_gas_limit(emul_tx)
+        round_cu_limit = self._round_cu_limit(used_cu_limit, max_cu_limit)
 
         for cu_limit in (round_cu_limit, max_cu_limit):
-            cu_price = await self._calc_cu_price(cu_limit=cu_limit, gas_limit=gas_limit)
-            optimal_cfg = base_cfg.update(cu_limit=cu_limit, gas_limit=gas_limit, cu_price=cu_price)
+            cu_price = await self._calc_cu_price(cu_limit)
+            optimal_cfg = base_cfg.update(cu_limit=cu_limit, cu_price=cu_price)
 
             optimal_tx = self._build_cu_tx(ix, optimal_cfg)
             try:
@@ -416,6 +377,15 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                     raise
                 # _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
         return False
+
+    @classmethod
+    def _round_cu_limit(cls, cu_limit: int, max_cu_limit: int) -> int:
+        round_cu_limit = min(
+            (cu_limit // cls._round_cu_limit_coeff) * cls._round_cu_limit_coeff + cls._inc_cu_limit_coeff,
+            max_cu_limit,
+        )
+        # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
+        return round_cu_limit
 
     @abc.abstractmethod
     def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
