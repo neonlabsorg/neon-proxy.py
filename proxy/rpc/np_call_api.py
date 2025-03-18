@@ -55,7 +55,6 @@ class _RpcEthStateRequest(RootModel):
 class _RpcSolanaAccountModel(BaseJsonRpcModel):
     pubkey: SolPubKeyField
     isWritable: bool
-    isLegacy: bool
 
     @classmethod
     def from_raw(cls, raw: _RpcSolanaAccountModel | EmulAccountMetaModel | None) -> Self | None:
@@ -64,7 +63,7 @@ class _RpcSolanaAccountModel(BaseJsonRpcModel):
         elif isinstance(raw, _RpcSolanaAccountModel):
             return raw
         elif isinstance(raw, EmulAccountMetaModel):
-            return cls(pubkey=raw.pubkey, isWritable=raw.is_writable, isLegacy=False)
+            return cls(pubkey=raw.pubkey, isWritable=raw.is_writable)
         raise ValueError(f"Wrong input type: {type(raw).__name__}")
 
 
