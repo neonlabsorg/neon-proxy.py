@@ -10,7 +10,6 @@ from common.cu_price.api import PriorityFeeCfg
 from common.cu_price.pyth_price_account import PythPriceAccount
 from common.neon.cu_price_data_model import CuPricePercentileModel
 from common.neon.neon_program import NeonProg, TokenInfo
-from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.ws_client import SolWatchAccountSession
 from common.utils.json_logger import log_msg, logging_context
@@ -45,7 +44,6 @@ class MpGasPriceCalculator(MempoolComponent):
         self._gas_price_cache = MpGasPriceModel(
             chain_token_price_usd=0,
             operator_fee=int(self._cfg.operator_fee * self._fee_precision),
-            priority_fee=int(self._cfg.min_priority_fee * self._fee_precision),
             cu_price=self._cfg.def_cu_price,
             cu_price_pct=self._cfg.cu_price_level.to_pct(self._cfg.cu_price_level),
             simple_cu_price=self._cfg.def_simple_cu_price,
@@ -104,12 +102,12 @@ class MpGasPriceCalculator(MempoolComponent):
         default_token: MpTokenGasPriceModel | None = None
         layer0_token: MpTokenGasPriceModel | None = None
 
-        priority_fee, cu_price = await self._calc_priority_fee(fee_cfg)
+        cu_price = await self._calc_target_cu_price(fee_cfg)
 
         token_list = NeonProg.TokenList
         for token in token_list:
             price_acct = await self._get_price_account(token.name)
-            token_gas_price = await self._calc_token_gas_price(fee_cfg, priority_fee, token, base_price_usd, price_acct)
+            token_gas_price = await self._calc_token_gas_price(fee_cfg, token, base_price_usd, price_acct)
             if token_gas_price:
                 token_dict[token.name] = token_gas_price
                 if token_gas_price.is_default_token:
@@ -124,8 +122,7 @@ class MpGasPriceCalculator(MempoolComponent):
         return MpGasPriceModel(
             chain_token_price_usd=int(base_price_usd * self._token_usd_precision),
             operator_fee=int(fee_cfg.operator_fee * self._fee_precision),
-            priority_fee=int(priority_fee * self._fee_precision),
-            cu_price=cu_price,
+            cu_price=int(cu_price),
             cu_price_pct=fee_cfg.cu_price_level.to_pct(fee_cfg.cu_price_level),
             simple_cu_price=fee_cfg.def_simple_cu_price,
             min_wo_chain_id_acceptable_gas_price=self._cfg.min_wo_chain_id_gas_price,
@@ -137,7 +134,6 @@ class MpGasPriceCalculator(MempoolComponent):
     async def _calc_token_gas_price(
         self,
         fee_cfg: PriorityFeeCfg,
-        priority_fee: float,
         token: TokenInfo,
         base_price_usd: float,
         price_acct: PythPriceAccount,
@@ -164,7 +160,7 @@ class MpGasPriceCalculator(MempoolComponent):
 
         # Populate data regardless if const_gas_price or not.
         profitable_price = int(net_price * (1 + fee_cfg.operator_fee))
-        suggested_price = int(net_price * (1 + priority_fee + fee_cfg.operator_fee))
+        suggested_price = profitable_price + 1  # skip EIP-1559, just set baseFeePerGas = 1 Alan
 
         gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
         gas_price_deque.append(profitable_price)
@@ -187,25 +183,6 @@ class MpGasPriceCalculator(MempoolComponent):
             min_executable_gas_price=min_price,
         )
 
-    async def _calc_priority_fee(self, fee_cfg: PriorityFeeCfg) -> tuple[float, int]:
-        # Logic is simple:
-        #   - User pays for gas-usage
-        #   - Each gas-unit for gas-price
-        #   - Gas-price = Base-Gas-Price + (Operator-Fee * Priority-Gas-Price) + (Priority-Fee * Priority-GasPrice)
-        #   --- Priority-Gas-Price -> covers SOLs
-        #   --- Priority-Gas-Price * Operator-Fee -> brings profit to the Operator
-        #   --- Priority-Gas-Price * Priority-Fee -> coverts SOLs for Solana Priority Fee (CUs price)
-        #   - It means, that Gas-Usage * Priority-Gas-Price * Priority-Fee - is the cost of Solana Priority Fee in NEONs
-        #   - It means, that Gas-Usage * Base-Fee - is the cost of Solana Priority Fee in SOLs
-
-        min_cu_price = self._calc_base_cu_price(fee_cfg.min_priority_fee)
-        max_cu_price = self._calc_base_cu_price(fee_cfg.max_priority_fee)
-        target_cu_price = await self._calc_target_cu_price(fee_cfg)
-
-        cu_price = max(min(max(min_cu_price, target_cu_price), max_cu_price), 1)
-        priority_fee = cu_price * fee_cfg.max_priority_fee / max_cu_price
-        return priority_fee, max(int(cu_price), 1)
-
     async def _calc_target_cu_price(self, fee_cfg: PriorityFeeCfg) -> float:
         cu_price_pct = fee_cfg.cu_price_level.to_pct(fee_cfg.cu_price_level)
         block_cnt = fee_cfg.cu_price_block_cnt
@@ -214,19 +191,6 @@ class MpGasPriceCalculator(MempoolComponent):
         return CuPricePercentileModel.get_weighted_percentile(
             cu_price_pct, len(block_list), map(lambda v: v.cu_price_list, block_list),
         )
-
-    @staticmethod
-    def _calc_base_cu_price(priority_fee: float) -> float:
-        # Logic is simple:
-        #   - User pays for gas-usage
-        #   - Each gas-unit for gas-price
-        #   - Gas-price = Base-Gas-Price + (Operator-Fee * Priority-Gas-Price) + (Priority-Fee * Priority-GasPrice)
-        #   --- Priority-Gas-Price -> covers SOLs
-        #   --- Priority-Gas-Price * Operator-Fee -> brings profit to the Operator
-        #   --- Priority-Gas-Price * Priority-Fee -> coverts SOLs for Solana Priority Fee (CUs price)
-        #   - It means, that Gas-Usage * Priority-Gas-Price * Priority-Fee - is the cost of Solana Priority Fee in NEONs
-        #   - It means, that Gas-Usage * Base-Fee - is the cost of Solana Priority Fee in SOLs
-        return priority_fee * NeonProg.BaseGas * SolCbProg.MicroLamport / SolCbProg.MaxCuLimit
 
     async def _update_pyth_acct_loop(self) -> None:
         stop_task = asyncio.create_task(self._stop_event.wait())

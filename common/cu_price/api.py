@@ -8,8 +8,6 @@ from ..solana.pubkey import SolPubKey
 @dataclasses.dataclass(frozen=True)
 class PriorityFeeCfg:
     operator_fee: float
-    min_priority_fee: float
-    max_priority_fee: float
 
     const_gas_price: int | None
     min_gas_price: int | None

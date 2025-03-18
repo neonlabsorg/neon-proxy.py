@@ -116,8 +116,6 @@ class TestCuPricePercentile(unittest.TestCase):
 class TestCuPriceCalculator(unittest.IsolatedAsyncioTestCase):
     _fee_cfg = PriorityFeeCfg(
         operator_fee=0.5,
-        min_priority_fee=2.5,
-        max_priority_fee=20.0,
         const_gas_price=None,
         min_gas_price=None,
         cu_price_mode=CuPriceMode.Atlas,
@@ -140,17 +138,6 @@ class TestCuPriceCalculator(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         _init_neon_prog()
 
-        gas_price_calculator = TestGasPriceCalculator(self._block_cu_price_list)
-
-        self.base_cu_price = int(gas_price_calculator._calc_base_cu_price(1.0))
-        self.min_cu_price = int(gas_price_calculator._calc_base_cu_price(self._fee_cfg.min_priority_fee))
-        self.max_cu_price = int(gas_price_calculator._calc_base_cu_price(self._fee_cfg.max_priority_fee))
-
-    def test_base_cu_price(self):
-        self.assertEqual(self.base_cu_price, 7142)
-        self.assertEqual(self.min_cu_price, 17857)
-        self.assertEqual(self.max_cu_price, 142857)
-
     async def test_target_cu_price(self):
         gas_price_calculator = TestGasPriceCalculator(self._block_cu_price_list)
         cu_price = await gas_price_calculator._calc_target_cu_price(self._fee_cfg)
@@ -162,42 +149,6 @@ class TestCuPriceCalculator(unittest.IsolatedAsyncioTestCase):
         low_cu_price = self._cu_price_list[idx]
         high_cu_price = self._cu_price_list[idx + 1]
         self.assertEqual(int(cu_price), int(low_cu_price + (high_cu_price - low_cu_price) / step * mul_coeff))
-
-    async def test_ok_priority_fee(self):
-        gas_price_calculator = TestGasPriceCalculator(self._block_cu_price_list)
-        #
-        priority_fee, cu_price = await gas_price_calculator._calc_priority_fee(self._fee_cfg)
-        self.assertGreater(priority_fee, self._fee_cfg.min_priority_fee)
-        self.assertLess(priority_fee, self._fee_cfg.max_priority_fee)
-        #
-        self.assertGreater(cu_price, self.min_cu_price)
-        self.assertLess(cu_price, self.max_cu_price)
-        step = CuPricePercentileModel._PercentileStep
-        cu_level_pct = CuPriceLevel.to_pct(self._fee_cfg.cu_price_level)
-        idx = cu_level_pct // step
-        low_cu_price = self._cu_price_list[idx]
-        high_cu_price = self._cu_price_list[idx + 1]
-        self.assertGreater(cu_price, low_cu_price)
-        self.assertLess(cu_price, high_cu_price)
-        target_cu_price = gas_price_calculator._calc_base_cu_price(priority_fee)
-        self.assertEqual(cu_price, int(target_cu_price))
-
-    async def test_min_priority_fee(self):
-        gas_price_calculator = TestGasPriceCalculator(self._block_cu_price_list)
-        #
-        fee_cfg = dataclasses.replace(self._fee_cfg, cu_price_level=CuPriceLevel.Low)
-        priority_fee, cu_price = await gas_price_calculator._calc_priority_fee(fee_cfg)
-        self.assertEqual(int(priority_fee*100), int(self._fee_cfg.min_priority_fee*100))
-        #
-        self.assertEqual(cu_price, self.min_cu_price)
-
-    async def test_max_priority_fee(self):
-        gas_price_calculator = TestGasPriceCalculator(self._block_cu_price_list)
-        #
-        fee_cfg = dataclasses.replace(self._fee_cfg, cu_price_level=CuPriceLevel.UnsafeMax)
-        priority_fee, cu_price = await gas_price_calculator._calc_priority_fee(fee_cfg)
-        self.assertEqual(cu_price, self.max_cu_price)
-        self.assertEqual(int(priority_fee * 100), int(self._fee_cfg.max_priority_fee * 100))
 
 
 if __name__ == "__main__":

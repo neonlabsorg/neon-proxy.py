@@ -201,7 +201,6 @@ class MpGasPriceModel(BaseModel):
     chain_token_price_usd: int
 
     operator_fee: int
-    priority_fee: int
     cu_price: int
     cu_price_pct: int
     simple_cu_price: int

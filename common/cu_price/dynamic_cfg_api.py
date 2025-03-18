@@ -25,9 +25,7 @@ CuPriceModeField = Annotated[CuPriceMode, PlainValidator(CuPriceMode.from_raw)]
 class PriorityFeeCfgResp(BaseModel):
     operator_fee_value: Decimal = Field(validation_alias="operatorFee")
 
-    priority_fee_value: Decimal = Field(default=Decimal(0), validation_alias="priorityFee")
-    min_priority_fee_value: Decimal = Field(default=Decimal(0), validation_alias="minPriorityFee")
-    max_priority_fee_value: Decimal = Field(default=Decimal(0), validation_alias="maxPriorityFee")
+    priority_fee: Decimal = Field(default=Decimal(0), validation_alias="priorityFee")
 
     const_gas_price: int | None = Field(None, validation_alias="constGasPrice")
     min_gas_price: int | None = Field(1, validation_alias="minGasPrice")
@@ -42,11 +40,3 @@ class PriorityFeeCfgResp(BaseModel):
     @cached_property
     def operator_fee(self) -> float:
         return float(self.operator_fee_value)
-
-    @cached_property
-    def min_priority_fee(self) -> float:
-        return float(self.min_priority_fee_value if self.min_priority_fee_value else self.priority_fee_value)
-
-    @cached_property
-    def max_priority_fee(self) -> float:
-        return float(self.max_priority_fee_value if self.max_priority_fee_value else self.priority_fee_value)
