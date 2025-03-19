@@ -58,10 +58,10 @@ class SolAltProg:
     MaxAltAccountCnt: Final[int] = _alt.LOOKUP_TABLE_MAX_ADDRESSES
 
     # CU limits for instructions
-    CuLimitCreate: Final[int] = 3_400
-    CuLimitExtend: Final[int] = 2_200
-    CuLimitDeactivate: Final[int] = 3_000
-    CuLimitClose: Final[int] = 3_000
+    CuLimitCreate: Final[int] = 25_000
+    CuLimitExtend: Final[int] = 12_000
+    CuLimitDeactivate: Final[int] = 10_000
+    CuLimitClose: Final[int] = 10_000
 
     def __init__(self, payer: SolPubKey) -> None:
         self._payer = payer
