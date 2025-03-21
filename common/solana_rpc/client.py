@@ -173,6 +173,7 @@ class SolClient(HttpClient):
                     request.commit_stat(error_message=str(exc))
 
                     if retry > self._max_retry_cnt:
+                        _LOG.error("fail with maximum %d retries on the request '%s'", retry, resp_json)
                         raise InternalJsonRpcError(exc)
 
                     _LOG.warning("bad Solana response '%s' on the request '%s'", resp_json, request.data)
@@ -192,7 +193,7 @@ class SolClient(HttpClient):
         # if the previous call has reraised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
         request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
-        _LOG.debug("bad Solana response on request %s: %s", request.data, str(exc))
+        _LOG.warning("bad Solana response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @ttl_cached_method(ttl_sec=60)
     async def get_version(self) -> str:

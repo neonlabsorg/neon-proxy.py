@@ -101,9 +101,9 @@ class OpSecretMng(OpResourceComponent):
                 line = src.read()
                 raw_key = [int(v) for v in line.strip("[] \n").split(",") if 0 <= int(v) <= 255]
                 if len(raw_key) < 32:
-                    _LOG.warning("wrong content in the file %s", file_name)
+                    _LOG.error("wrong content in the file %s", file_name)
                     return None
                 return SolSigner.from_raw(raw_key)
         except (BaseException,):
-            _LOG.warning("error on read secret from %s", file_name)
+            _LOG.error("error on read secret from %s", file_name)
             return None
