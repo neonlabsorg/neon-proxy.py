@@ -142,6 +142,7 @@ class OpHolderFunc:
         holder_list: list[HolderAccountModel] = list()
         for key in signer_key_list:
             if key in list(LHA.keys()):
+                # collect holder accounts with status 51 (Holder Deprecated), 31 (Finalized Deprecated)
                 holder_pubkeys = LHA[str(key)].get("51", []) + LHA[str(key)].get("31", [])
                 for holder_pubkey in holder_pubkeys:
                     holder_addr = SolPubKey.from_raw(holder_pubkey)
