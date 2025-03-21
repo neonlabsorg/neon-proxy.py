@@ -4,7 +4,6 @@ from typing import Final
 
 from typing_extensions import Self
 from common.config.config import Config
-from common.config.legacy_holders import LEGACY_HOLDERS_ACCOUNTS as LHA
 from common.neon.cancel_error import CancelErrorSource, NeonProxyCancelErrorCode
 from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
@@ -116,8 +115,20 @@ class HolderHandler(BaseNPCmdHandler):
             core_api_client: CoreApiClient = await self._get_core_api_client()
             sol_client: SolClient = await self._get_sol_client()
             signer_key_list = await op_client.get_signer_key_list(req_id)
-            await self._holder_func.print_holder_list(core_api_client, sol_client, signer_key_list, cmd)
+            holder_list = await self._holder_func.get_holder_list(core_api_client, signer_key_list, cmd)
+            await self._holder_func.print_holder_list(sol_client, holder_list)
         return 0
+
+    async def _legacy_list_cmd(self, arg_space) -> int:
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+        op_client: OpResourceClient = await self._get_op_client()
+        sol_client: SolClient = await self._get_sol_client()
+
+        req_id = self._gen_req_id()
+        with (logging_context(**req_id)):
+            signer_key_list = await op_client.get_signer_key_list(req_id)
+            holder_list = await self._holder_func.get_legacy_holder_list(core_api_client, signer_key_list)
+            await self._holder_func.print_holder_list(sol_client, holder_list)
 
     async def _info_cmd(self, arg_space) -> int:
         cmd = self._holder_func.parse_info_cmd(arg_space)
@@ -174,17 +185,23 @@ class HolderHandler(BaseNPCmdHandler):
         with logging_context(**req_id):
             holder_addr = SolPubKey.from_raw(arg_space.holder)
             holder: HolderAccountModel = await core_api_client.get_holder_account(holder_addr)
-            if holder.status == HolderAccountStatus.Empty:
-                _LOG.error("holder %s doesn't exist", holder_addr)
-                return 1
-
             key_list = await op_client.get_signer_key_list(req_id)
-            if holder.owner not in key_list:
-                _LOG.error("unknown Holder owner %s", holder.owner)
-                return 1
+            await self._holder_func.destroy_holder(core_api_client, key_list, op_client, req_id, holder)
 
-            await op_client.destroy_holder(req_id, holder.owner, holder.address)
+        return 0
 
+    async def _legacy_destroy_cmd(self, arg_space) -> int:
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+        op_client: OpResourceClient = await self._get_op_client()
+        req_id = self._gen_req_id()
+        with (logging_context(**req_id)):
+            total_hlcount = 0
+            signer_key_list = await op_client.get_signer_key_list(req_id)
+            holder_list = await self._holder_func.get_legacy_holder_list(core_api_client, signer_key_list)
+            for holder in holder_list:
+                result = await self._holder_func.destroy_holder(core_api_client, signer_key_list, op_client, req_id, holder)
+                total_hlcount += 1 if result else 0
+            _LOG.info("destroy %d legacy holders", total_hlcount)
         return 0
 
     async def _unblock_cmd(self, arg_space) -> int:
@@ -198,84 +215,6 @@ class HolderHandler(BaseNPCmdHandler):
             else:
                 _LOG.warning("holder %s can't be unblocked", holder_addr)
                 return 1
-        return 0
-
-    async def _legacy_destroy_cmd(self, arg_space) -> int:
-        core_api_client: CoreApiClient = await self._get_core_api_client()
-        op_client: OpResourceClient = await self._get_op_client()
-
-        req_id = self._gen_req_id()
-        with (logging_context(**req_id)):
-            signer_keys = await op_client.get_signer_key_list(req_id)
-            total_hlcount = 0
-            for signer_key in signer_keys:
-                if signer_key in list(LHA.keys()):
-                    # collect holders with status 51 (Holder Deprecated), 31 (Finalized Deprecated)
-                    signer_holders = LHA[str(signer_key)].get("51", []) + LHA[str(signer_key)].get("31", [])
-                    for signer_holder in signer_holders:
-                        holder_addr = SolPubKey.from_raw(signer_holder)
-                        holder: HolderAccountModel = await core_api_client.get_holder_account(holder_addr)
-                        if holder.status == HolderAccountStatus.Empty:
-                            _LOG.error("holder %s doesn't exist", holder_addr)
-                            continue
-                        if holder.owner != signer_key:
-                            _LOG.error("unexpected Holder owner %s", holder.owner)
-                            continue
-                        await op_client.destroy_holder(req_id, holder.owner, holder.address)
-                        total_hlcount += 1
-            _LOG.info("destroy %d legacy holders", total_hlcount)
-        return 0
-
-    async def _legacy_list_cmd(self, arg_space) -> int:
-        core_api_client: CoreApiClient = await self._get_core_api_client()
-        op_client: OpResourceClient = await self._get_op_client()
-        sol_client: SolClient = await self._get_sol_client()
-        logout: dict[str] = []
-
-        req_id = self._gen_req_id()
-        with (logging_context(**req_id)):
-            signer_keys = await op_client.get_signer_key_list(req_id)
-            total_balance = 0
-            total_hlcount = 0
-            total_sgcount = 0
-            for signer_key in signer_keys:
-                if signer_key in list(LHA.keys()):
-                    # collect holders with status 51 (Holder Deprecated), 31 (Finalized Deprecated)
-                    signer_holders = LHA[str(signer_key)].get("51", []) + LHA[str(signer_key)].get("31", [])
-                    signer_balance = 0
-                    signer_hlcount = 0
-                    logout.append("{}:".format(signer_key))
-                    for signer_holder in signer_holders:
-                        holder_addr = SolPubKey.from_raw(signer_holder)
-                        holder: HolderAccountModel = await core_api_client.get_holder_account(holder_addr)
-                        if holder.owner != signer_key:
-                            continue
-                        if holder.status in (HolderAccountStatus.Holder, HolderAccountStatus.Finalized):
-                            acct = await sol_client.get_account(holder.address, 1)
-                            logout.append("  {}: status={}, tx={}, size={} bytes, balance={:.9f} SOLs".format(
-                                holder.address,
-                                holder.status.name,
-                                holder.neon_tx_hash,
-                                holder.size,
-                                acct.balance / (10 ** 9),
-                            ))
-                            signer_balance += acct.balance
-                            signer_hlcount += 1
-                    if signer_hlcount > 0:
-                        logout.append("total {}: {} legacy holders with {:.9f} SOLs\n".format(
-                            signer_key, signer_hlcount, signer_balance / (10 ** 9)))
-                        total_balance += signer_balance
-                        total_hlcount += signer_hlcount
-                        total_sgcount += 1
-                    else:
-                        # do not mention signers without any deprecated holder accounts
-                        logout.pop()
-
-            logout.append("total: {} operator keys with {} legacy holders and {:.9f} SOLs".format(
-                total_sgcount, total_hlcount, total_balance / (10**9)))
-            for line in logout:
-                print(line)
-
         return 0
 
     def _get_cb_ix_list(self, cu_limit=SolCbProg.MaxCuLimit // 2) -> list[SolTxIx]:
