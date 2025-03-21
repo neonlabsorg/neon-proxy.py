@@ -99,10 +99,14 @@ class HolderHandler(BaseNPCmdHandler):
             help="address of the Holder",
         )
 
-        self._legacy_destroy_parser = self._cmd_parser.add_parser(cls._legacy_destroy, help="destroy all Legacy Holders")
+        self._legacy_destroy_parser = self._cmd_parser.add_parser(
+            cls._legacy_destroy,
+            help="destroy all Legacy Holder Accounts")
         self._subcmd_dict[self._legacy_destroy] = self._legacy_destroy_cmd
 
-        self._legacy_list_parser = self._cmd_parser.add_parser(cls._legacy_list, help="list all Legacy Holders")
+        self._legacy_list_parser = self._cmd_parser.add_parser(
+            cls._legacy_list,
+            help="list all Legacy Holder Accounts")
         self._subcmd_dict[self._legacy_list] = self._legacy_list_cmd
 
         return self
@@ -201,7 +205,7 @@ class HolderHandler(BaseNPCmdHandler):
             for holder in holder_list:
                 result = await self._holder_func.destroy_holder(core_api_client, signer_key_list, op_client, req_id, holder)
                 total_hlcount += 1 if result else 0
-            _LOG.info("destroy %d legacy holders", total_hlcount)
+            _LOG.info("destroy %d legacy holder accounts", total_hlcount)
         return 0
 
     async def _unblock_cmd(self, arg_space) -> int:
