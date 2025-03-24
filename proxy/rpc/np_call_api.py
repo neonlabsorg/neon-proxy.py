@@ -83,6 +83,8 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
     gasFinishUsed: int
     gasSolanaPriorityUsed: int
 
+
+    solanaComputeUnitPrice: int
     numEvmSteps: int
     numIterations: int
 
@@ -107,8 +109,9 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
                 gasAddressLookupTableUsed=raw.alt_gas,
                 gasExecutionUsed=raw.exec_gas,
                 gasFinishUsed=raw.finish_gas,
-                gasSolanaPriorityUsed=raw.priority_gas,
+                gasSolanaPriorityUsed=raw.cu_gas,
 
+                solanaComputeUnitPrice=raw.cu_price,
                 numEvmSteps=raw.evm_step_cnt,
                 numIterations=raw.iter_cnt,
 

@@ -10,6 +10,7 @@ from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx
 from common.neon.block import NeonBlockHdrModel
+from common.neon.cu_cost_packed import CuCostPktData
 from common.neon.neon_program import NeonProg, NeonIxMode
 from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
 from common.solana.account import SolAccountModel
@@ -33,7 +34,9 @@ class RpcGasLimitResult:
     alt_gas: int
     exec_gas: int
     finish_gas: int
-    priority_gas: int
+
+    cu_price: int
+    cu_gas: int
 
     exit_code: str
     external_sol_call: bool
@@ -45,9 +48,6 @@ class RpcGasLimitResult:
     iter_cnt: int
     raw_meta_list: list
 
-    # Ethereum's wallets don't accept gas limit less than 21'000
-    _min_total_gas: Final[int] = 25_000  # minimal gas limit for NeonTx: start (10k), execute (10k), finalization (5k)
-
     _default: ClassVar[RpcGasLimitResult | None] = None
 
     @classmethod
@@ -58,7 +58,8 @@ class RpcGasLimitResult:
                 alt_gas=0,
                 exec_gas=0,
                 finish_gas=0,
-                priority_gas=0,
+                cu_price=0,
+                cu_gas=0,
                 exit_code="",
                 external_sol_call=False,
                 revert_before_sol_call=False,
@@ -73,9 +74,15 @@ class RpcGasLimitResult:
     @cached_property
     def total_gas(self) -> int:
         return max(
-            self.holder_gas + self.alt_gas + self.exec_gas + self.finish_gas + self.priority_gas,
-            self._min_total_gas,
+            self.holder_gas + self.alt_gas + self.exec_gas + self.finish_gas + self.cu_gas,
+            NeonProg.MinTxCost,
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class _CuCostInfo:
+    price: int
+    gas: int
 
 
 class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
@@ -129,14 +136,17 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         exec_gas = resp.used_gas
         tx_size_gas = self._tx_size_gas(core_tx, resp)
         alt_gas = self._alt_gas(resp)
-        cu_fee_gas = await self._sol_cu_fee_gas(resp)
+
+        base_gas = exec_gas + tx_size_gas + alt_gas + finish_gas
+        cu = await self._sol_cu_gas(resp, base_gas)
 
         return RpcGasLimitResult(
             holder_gas=tx_size_gas,
             alt_gas=alt_gas,
             exec_gas=exec_gas,
             finish_gas=finish_gas,
-            priority_gas=cu_fee_gas,
+            cu_price=cu.price,
+            cu_gas=cu.gas,
             exit_code=resp.exit_code,
             external_sol_call=resp.external_sol_call,
             revert_before_sol_call=resp.revert_before_sol_call,
@@ -227,16 +237,13 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             return 5000 * 12  # ALT ix: create + ceil(256/30) extend + deactivate + close
         return 0
 
-    async def _sol_cu_fee_gas(self, resp: EmulNeonCallResp) -> int:
+    async def _sol_cu_gas(self, resp: EmulNeonCallResp, base_gas: int) -> _CuCostInfo:
         acct_key_list = [a.pubkey for a in resp.raw_meta_list if a.is_writable]
-        base_cu_price = await self._cu_price_client.get_cu_price(acct_key_list)
+        cu_price = await self._cu_price_client.get_cu_price(acct_key_list)
 
-        # round cu-price to divisible by 10'500
-        cu_price_mult = min(base_cu_price // self._cb_prog.BaseCuPrice + 1, self._cb_prog.MaxCuPriceMult)
-        cu_price = cu_price_mult * self._cb_prog.BaseCuPrice
+        iter_cnt = min(NeonProg.MinIterCnt, resp.iter_cnt)
 
-        # round priority-fee to divisible by 1'000
-        cu_fee = cu_price * self._cb_prog.MaxCuLimit * resp.iter_cnt // self._cb_prog.MicroLamport
-        cu_fee = (cu_fee // self._round_cu_coeff + 1) * self._round_cu_coeff
+        pkt = CuCostPktData.from_raw(base_gas, iter_cnt, cu_price)
+        cu_gas = pkt.tx_cu_cost
 
-        return cu_fee + cu_price_mult
+        return _CuCostInfo(gas=cu_gas, price=cu_price)

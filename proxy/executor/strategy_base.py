@@ -8,6 +8,7 @@ from typing import Sequence, Final, ClassVar
 from typing_extensions import Self
 
 from common.neon.cancel_error import CancelErrorData
+from common.neon.cu_cost_packed import CuCostPktData
 from common.neon.neon_program import NeonIxMode, NeonProg
 from common.neon_rpc.api import EmulSolTxInfo
 from common.solana.cb_program import SolCbProg
@@ -277,15 +278,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         if not tx.base_fee_per_gas:
             return req_cu_price
 
-        gas_limit = tx.gas_limit
-        tx_cu_price_mult = gas_limit % (SolCbProg.MaxCuPriceMult + 1)
-        max_tx_cu_price = SolCbProg.BaseCuPrice * tx_cu_price_mult
-
-        tx_cu_price = max_tx_cu_price * SolCbProg.MaxCuLimit // cu_limit
+        pkt = CuCostPktData.unpack(tx.gas_limit)
 
         # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
         # and neon-evm does not digest it.
-        cu_price = max(min(req_cu_price, tx_cu_price), 1)
+        cu_price = max(min(req_cu_price, pkt.cu_price), 1)
 
         # _LOG.debug(
         #     "use %s CU-price for %s CU-limit, %s accounts",
