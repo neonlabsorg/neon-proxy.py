@@ -6,7 +6,6 @@ from common.neon.neon_program import NeonEvmIxCode
 from common.neon_rpc.api import NeonAccountModel
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.errors import SolNoMoreRetriesError
 from .strategy_base import BaseTxPrepStage
 
 _LOG = logging.getLogger(__name__)
@@ -41,7 +40,7 @@ class NewAccountTxPrepStage(BaseTxPrepStage):
 
         # valid only for less-fee transactions
         if not self._ctx.has_payer_balance:
-            if self._ctx.holder_tx.base_fee_per_gas:
+            if not self._ctx.holder_tx.is_fee_less:
                 raise EthError("insufficient funds")
             return False
         return True

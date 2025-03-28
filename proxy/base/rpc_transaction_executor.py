@@ -144,12 +144,12 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
     ) -> None:
         # Operator can set minimum gas price to accept txs into mempool
         min_gas_price = token_price.min_acceptable_gas_price
-        op_fee_per_gas = neon_tx.operator_fee_per_gas
-        if op_fee_per_gas >= min_gas_price:
+        tx_gas_price = neon_tx.effective_gas_price
+        if tx_gas_price >= min_gas_price:
             return
 
         # Fee-less transaction
-        if not op_fee_per_gas:
+        if neon_tx.is_fee_less:
             has_fee_less_permit = await self._has_fee_less_tx_permit(
                 ctx, neon_tx.from_address, neon_tx.to_address, neon_tx.nonce, neon_tx.effective_gas_limit
             )
@@ -157,7 +157,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
                 return
 
         if neon_tx.has_chain_id:
-            raise EthError(f"transaction underpriced: have {op_fee_per_gas} want {min_gas_price}")
+            raise EthError(f"transaction underpriced: have {tx_gas_price} want {min_gas_price}")
 
     @staticmethod
     def _prevalidate_underpriced_tx_wo_chain_id(global_price: MpGasPriceModel, neon_tx: NeonTxModel) -> None:

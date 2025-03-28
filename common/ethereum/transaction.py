@@ -582,22 +582,6 @@ class EthTx:
         return keccak(contract_addr)[-20:]
 
     @staticmethod
-    def has_priority_fee(tx) -> bool:
-        max_fee_per_gas = tx.max_fee_per_gas or 0
-        assert max_fee_per_gas >= 0
-
-        max_priority_fee_per_gas = tx.max_priority_fee_per_gas or 0
-        assert max_priority_fee_per_gas >= 0
-
-        # For metamask case (base_fee_per_gas = 0), we treat it as a legacy transaction.
-        # For the general case, we take into account the gas fee parameters set in NeonTx.
-        return (max_fee_per_gas - max_priority_fee_per_gas) > 0
-
-    @classmethod
-    def calc_operator_fee_per_gas(cls, tx) -> int:
-        return tx.max_priority_fee_per_gas if cls.has_priority_fee(tx) else cls.calc_base_fee_per_gas(tx)
-
-    @staticmethod
     def calc_base_fee_per_gas(tx) -> int:
         gas_price = tx.gas_price or 0
         assert gas_price >= 0
@@ -616,20 +600,17 @@ class EthTx:
         return max_fee_per_gas
 
     @staticmethod
-    def calc_cost(self, *, gas_limit: int | None = None, value: int | None = None) -> int:
+    def calc_effective_gas_price(self) -> int:
+        return self.max_fee_per_gas or self.gas_price or 0
+
+    @classmethod
+    def calc_cost(cls, self, *, gas_limit: int | None = None, value: int | None = None) -> int:
         if value is None:
             value = self.value
         if gas_limit is None:
             gas_limit = self.effective_gas_limit
 
-        max_fee_per_gas = self.max_fee_per_gas or 0
-        gas_price = self.gas_price or 0
-
-        if max_fee_per_gas:
-            cost = max_fee_per_gas * gas_limit
-        else:
-            cost = gas_price * gas_limit
-        return cost + value
+        return cls.calc_effective_gas_price(self) * gas_limit + value
 
     @classmethod
     def calc_effective_gas_limit(cls, self, neon_prog) -> int:

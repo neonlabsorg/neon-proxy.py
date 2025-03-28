@@ -157,7 +157,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return False
 
     def _validate_gas_price(self) -> bool:
-        if self._ctx.holder_tx.base_fee_per_gas:
+        if not self._ctx.holder_tx.is_fee_less:
             return True
         self._validation_error_msg = "Fee less transaction"
         return False
@@ -271,11 +271,9 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         # calculate a required cu-price from the Solana statistics
         req_cu_price = await self._cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
 
-        tx = self._ctx.holder_tx
-        assert tx.base_fee_per_gas >= 0
-
         # for case of fee-less transactions
-        if not tx.base_fee_per_gas:
+        tx = self._ctx.holder_tx
+        if tx.is_fee_less:
             return req_cu_price
 
         pkt = CuCostPktData.unpack(tx.gas_limit)

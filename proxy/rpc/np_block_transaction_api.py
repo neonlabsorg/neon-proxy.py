@@ -162,7 +162,7 @@ class _RpcNeonIxModel(BaseJsonRpcModel):
             if (event.sol_tx_sig, event.sol_ix_idx, (event.sol_inner_ix_idx or 0))
             == (ix_meta.sol_tx_sig, ix_meta.sol_ix_idx, (ix_meta.sol_inner_ix_idx or 0))
         ]
-        neon_tx_fee = tx.calc_cost(gas_limit=ix_meta.neon_gas_used, value=0)
+        neon_tx_cost = tx.calc_cost(gas_limit=ix_meta.neon_gas_used, value=0)
 
         return cls(
             solanaInstructionIndex=ix_meta.sol_ix_idx,
@@ -176,7 +176,7 @@ class _RpcNeonIxModel(BaseJsonRpcModel):
             neonTotalEvmSteps=ix_meta.neon_total_step_cnt,
             neonGasUsed=ix_meta.neon_gas_used,
             neonTotalGasUsed=ix_meta.neon_total_gas_used,
-            neonTransactionFee=neon_tx_fee,
+            neonTransactionFee=neon_tx_cost,
             neonMiner=ix_meta.neon_tx_ix_miner,
             neonLogs=log_list,
         )
