@@ -87,8 +87,7 @@ class MpTxModel(BaseModel):
     @property
     def gas_price(self) -> int:
         # this property is used for sorting, and can be changed by the mempool logic
-        #   Operator is guaranteed to receive payment from the base fee per price
-        return self.order_gas_price or self.neon_tx.operator_fee_per_gas
+        return self.order_gas_price or self.neon_tx.effective_gas_price
 
     @property
     def gas_limit(self) -> int:
@@ -308,7 +307,7 @@ class MpTxStatusModel(BaseModel):
     def from_raw(cls, tx: MpTxModel, exec_pct_list: list[MpTxExecPctModel]) -> Self:
         return cls(
             neon_tx_hash=tx.neon_tx_hash,
-            gas_price=tx.neon_tx.base_fee_per_gas,
+            gas_price=tx.neon_tx.effective_gas_price,
             nonce=tx.nonce,
             cost=tx.neon_tx.cost,
             age_nsec=tx.process_time_nsec,

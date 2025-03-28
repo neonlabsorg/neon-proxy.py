@@ -381,20 +381,16 @@ class NeonTxModel(BaseModel):
         return (not self.from_address.is_empty) and (not self.error)
 
     @cached_property
-    def has_priority_fee(self) -> bool:
-        return EthTx.has_priority_fee(self)
-
-    @cached_property
     def base_fee_per_gas(self) -> int:
         return EthTx.calc_base_fee_per_gas(self)
 
     @cached_property
-    def operator_fee_per_gas(self) -> int:
-        return EthTx.calc_operator_fee_per_gas(self)
+    def effective_gas_price(self) -> int:
+        return EthTx.calc_effective_gas_price(self)
 
     @cached_property
-    def effective_gas_price(self) -> int:
-        return self.gas_price if self.is_legacy_tx else self.max_fee_per_gas
+    def is_fee_less(self) -> bool:
+        return self.effective_gas_price == 0
 
     @cached_property
     def cost(self) -> int:

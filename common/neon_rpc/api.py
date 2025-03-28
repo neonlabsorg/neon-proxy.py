@@ -447,20 +447,16 @@ class CoreApiTxModel(_BaseRespModel):
         return EthTx.calc_cost(self)
 
     @cached_property
-    def has_priority_fee(self) -> bool:
-        return EthTx.has_priority_fee(self)
-
-    @cached_property
-    def base_fee_per_gas(self) -> int:
-        return EthTx.calc_base_fee_per_gas(self)
-
-    @cached_property
-    def operator_fee_per_gas(self) -> int:
-        return EthTx.calc_operator_fee_per_gas(self)
+    def effective_gas_price(self) -> int:
+        return EthTx.calc_effective_gas_price(self)
 
     @cached_property
     def effective_gas_limit(self) -> int:
         return EthTx.calc_effective_gas_limit(self, NeonProg)
+
+    @cached_property
+    def is_fee_less(self) -> bool:
+        return self.effective_gas_price == 0
 
 
 class CoreApiBlockModel(_BaseModel):
