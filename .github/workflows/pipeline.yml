@@ -186,7 +186,7 @@ jobs:
     runs-on: ["self-hosted", "k8s-prod"]
     steps:
     - name: Create instance
-      uses: neonlabsorg/dynamic-ci-cd/.github/actions/create-instance
+      uses: neonlabsorg/dynamic-ci-cd/.github/actions/create-instance@main
       id: create-instance
       with:
         project-repository: ${{ github.event.repository.name }}
@@ -412,7 +412,7 @@ jobs:
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
     steps:
     - name: Delete instances
-      uses: neonlabsorg/dynamic-ci-cd/.github/actions/delete-instance
+      uses: neonlabsorg/dynamic-ci-cd/.github/actions/delete-instance@main
       id: delete-instance
       with:
         project-repository: ${{ github.event.repository.name }}
