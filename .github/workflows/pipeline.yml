@@ -187,7 +187,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GHTOKEN }}
     - name: Create instance
       uses: neonlabsorg/dynamic-ci-cd/actions/create-instance@main
       id: create-instance
