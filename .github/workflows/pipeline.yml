@@ -187,9 +187,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        repository: 'neonlabsorg/dynamic-ci-cd'
+        ref: 'main'
         token: ${{ secrets.GHTOKEN }}
+        path: dynamic-ci-cd
     - name: Create instance
-      uses: neonlabsorg/dynamic-ci-cd/actions/create-instance@main
+      uses: ./dynamic-ci-cd/actions/create-instance
       id: create-instance
       with:
         project-repository: ${{ github.event.repository.name }}
