@@ -185,6 +185,7 @@ jobs:
     timeout-minutes: 25
     runs-on: ["self-hosted", "k8s-prod"]
     steps:
+    - uses: actions/checkout@v4
     - name: Create instance
       uses: neonlabsorg/dynamic-ci-cd/actions/create-instance@main
       id: create-instance
