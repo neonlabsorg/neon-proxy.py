@@ -297,8 +297,9 @@ class NpCallApi(NeonProxyApi):
         ctx: HttpRequestCtx,
         tx: RpcEthTxRequest,
         block_tag: RpcBlockRequest = RpcBlockRequest.latest(),
-        _object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
+        object_state: _RpcEthStateRequest = _RpcEthStateRequest.default(),
     ) -> EthBinStrField:
+        _ = object_state  # ignore input parameter
         chain_id = self._validate_layer0_chain_id(ctx, isinstance(tx.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
         resp = await self._core_api_client.emulate_neon_call(
