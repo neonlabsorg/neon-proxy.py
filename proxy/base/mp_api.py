@@ -103,7 +103,7 @@ class MpTxModel(BaseModel):
 
     @cached_method
     def to_string(self) -> str:
-        return f"{self.neon_tx_hash}:0x{self.nonce:x}:0x{self.chain_id:x}:{self.gas_price}"
+        return f"{self.neon_tx_hash}:0x{self.chain_id:x}:0x{self.nonce:x}:{self.gas_price}"
 
     def set_gas_price(self, value: int) -> None:
         object.__setattr__(self, "order_gas_price", value)
