@@ -166,6 +166,8 @@ class NeonTxModel(BaseModel):
                 raise ValueError("Solana payer should not be present.")
 
         if not self.is_legacy_tx:
+            if self.max_fee_per_gas and (not self.max_priority_fee_per_gas):
+                raise ValueError("max priority fee per gas should be present.")
             if self.max_priority_fee_per_gas > self.max_fee_per_gas:
                 raise ValueError("max priority fee per gas higher than max fee per gas.")
             if self.chain_id is None:
