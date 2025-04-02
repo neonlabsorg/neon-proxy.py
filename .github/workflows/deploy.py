@@ -140,8 +140,8 @@ def specify_image_tags(git_sha,
     # test_image_tag
     if evm_tag and is_image_exist(NEON_TESTS_IMAGE, evm_tag):
         neon_test_tag = evm_tag
-    elif "refs/tags/" in git_ref:
-        neon_test_tag = re.sub(r'\.[0-9]*$', '.x', proxy_tag)
+    elif is_proxy_release:
+        neon_test_tag = proxy_tag
         if not is_image_exist(NEON_TESTS_IMAGE, neon_test_tag):
             raise RuntimeError(f"{NEON_TESTS_IMAGE} image with {neon_test_tag} tag isn't found")
     elif is_image_exist(NEON_TESTS_IMAGE, proxy_tag):
