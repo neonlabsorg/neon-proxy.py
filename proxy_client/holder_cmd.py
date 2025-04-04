@@ -190,7 +190,7 @@ class HolderHandler(BaseNPCmdHandler):
             holder_addr = SolPubKey.from_raw(arg_space.holder)
             holder: HolderAccountModel = await core_api_client.get_holder_account(holder_addr)
             key_list = await op_client.get_signer_key_list(req_id)
-            await self._holder_func.destroy_holder(core_api_client, key_list, op_client, req_id, holder)
+            await self._holder_func.destroy_holder(key_list, op_client, req_id, holder)
 
         return 0
 
@@ -203,7 +203,7 @@ class HolderHandler(BaseNPCmdHandler):
             signer_key_list = await op_client.get_signer_key_list(req_id)
             holder_list = await self._holder_func.get_legacy_holder_list(core_api_client, signer_key_list)
             for holder in holder_list:
-                result = await self._holder_func.destroy_holder(core_api_client, signer_key_list, op_client, req_id, holder)
+                result = await self._holder_func.destroy_holder(signer_key_list, op_client, req_id, holder)
                 total_hlcount += 1 if result else 0
             _LOG.info("destroy %d legacy holder accounts", total_hlcount)
         return 0

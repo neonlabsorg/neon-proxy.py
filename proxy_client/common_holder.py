@@ -152,7 +152,6 @@ class OpHolderFunc:
     @classmethod
     async def destroy_holder(
         cls,
-        core_api_client: CoreApiClient,
         signer_key_list: Sequence[SolPubKey],
         op_client: OpResourceClient,
         req_id: dict,
