@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 from bisect import bisect_left
 from typing import ClassVar, Final, Iterable, Sequence
@@ -7,10 +8,10 @@ from typing import ClassVar, Final, Iterable, Sequence
 from typing_extensions import Self
 
 from ..solana.block import SolRpcBlockInfo
-from ..utils.pydantic import BaseModel
 
 
-class CuPricePercentileModel(BaseModel):
+@dataclasses.dataclass(frozen=True)
+class CuPricePercentileModel:
     _PercentileStep: Final[int] = 10  # Percentiles are a multiple of 10.
     _PercentileCount: Final[int] = 11  # 100 / step + 1.
     _PercentileList: Final[Sequence[int]] = tuple([i * 10 for i in range(11)])  # 0, 10, ..., 100

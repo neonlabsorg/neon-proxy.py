@@ -83,7 +83,7 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
     scheduledParentTransactionHashes: list[EthTxHashField]
     scheduledChildTransactionHashes: list[EthTxHashField]
     #
-    _empty_root: Final[EthHash32Field] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+    EmptyRoot: Final[EthHash32Field] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
 
     @classmethod
     def from_raw(cls, neon_tx_meta: NeonTxMetaModel) -> Self:
@@ -110,7 +110,7 @@ class _RpcEthTxReceiptResp(BaseJsonRpcModel):
             gasUsed=rcpt.total_gas_used,
             cumulativeGasUsed=rcpt.sum_gas_used,
             contractAddress=tx.contract,
-            root=cls._empty_root,
+            root=cls.EmptyRoot,
             status=rcpt.status,
             logsBloom=rcpt.log_bloom,
             scheduledParentTransactionHashes=rcpt.parent_tx_list,
@@ -417,9 +417,9 @@ class _RpcBlockResp(BaseJsonRpcModel):
     timestamp: HexUIntField
     transactions: list[RpcEthTxResp | EthTxHashField]
 
-    _fake_hash: Final[EthHash32Field] = "0x" + "00" * 31 + "01"
-    _empty_root: Final[EthHash32Field] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
-    _sha3uncle_hash: Final[EthHash32Field] = "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
+    FakeHash: Final[EthHash32Field] = "0x" + "00" * 31 + "01"
+    EmptyRoot: Final[EthHash32Field] = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+    Sha3UncleHash: Final[EthHash32Field] = "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"
 
     @classmethod
     def from_raw(
@@ -450,16 +450,16 @@ class _RpcBlockResp(BaseJsonRpcModel):
 
         return cls(
             logsBloom=log_bloom,
-            transactionsRoot=cls._fake_hash if tx_list else cls._empty_root,
-            receiptsRoot=cls._fake_hash,
-            stateRoot=cls._fake_hash,
+            transactionsRoot=cls.FakeHash if tx_list else cls.EmptyRoot,
+            receiptsRoot=cls.FakeHash,
+            stateRoot=cls.FakeHash,
             #
             uncles=list(),
-            sha3Uncles=cls._sha3uncle_hash,
+            sha3Uncles=cls.Sha3UncleHash,
             difficulty=0,
             totalDifficulty=0,
             extraData=b"",
-            mixHash=cls._fake_hash,
+            mixHash=cls.FakeHash,
             size=1,
             #
             gasLimit=max(48_000_000_000_000, total_gas_used),

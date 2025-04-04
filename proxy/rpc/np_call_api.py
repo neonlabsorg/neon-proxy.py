@@ -103,16 +103,16 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
 
 class _RpcNeonSkdSubTxDraft(BaseEthCallModel):
     childTransaction: HexUIntField | None = None
-    _NoChildTxIdx: Final[int] = 0xFFFF
+    NoChildTxIdx: Final[int] = 0xFFFF
 
     def calc_child_idx(self, idx: int, tx_list_len: int) -> int:
         if (child_idx := idx + 1) >= tx_list_len:
-            child_idx = self._NoChildTxIdx
+            child_idx = self.NoChildTxIdx
         return if_none(self.childTransaction, child_idx)
 
     @classmethod
     def calc_has_child(cls, child_idx: int) -> bool:
-        return child_idx != cls._NoChildTxIdx
+        return child_idx != cls.NoChildTxIdx
 
     def to_clean_copy(self, idx: int, parent_cnt: int, tx_list_len: int) -> _RpcNeonSkdSubTxModel:
         param_dict = self.model_dump()
@@ -175,7 +175,7 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
     solTxList: list[_RpcSolTxModel] = Field(default_factory=list, validation_alias="preparatorySolanaTransactions")
     draftTxList: list[_RpcNeonSkdSubTxDraft] = Field(default_factory=list, validation_alias="transactions")
 
-    _maxTxListLen: Final[int] = 24
+    MaxTxListLen: Final[int] = 24
 
     @cached_property
     def txList(self) -> list[_RpcNeonSkdSubTxModel]:
@@ -203,8 +203,8 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
             raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
         elif not self.draftTxList:
             raise ValueError("transactions should be present")
-        elif len(self.draftTxList) > self._maxTxListLen:
-            raise ValueError(f"transaction list is too long, should be less than {self._maxTxListLen}")
+        elif len(self.draftTxList) > self.MaxTxListLen:
+            raise ValueError(f"transaction list is too long, should be less than {self.MaxTxListLen}")
 
         null_cnt = sum(map(lambda x: 1 if x.childTransaction is None else 0, self.draftTxList))
         if null_cnt not in (0, len(self.draftTxList)):
