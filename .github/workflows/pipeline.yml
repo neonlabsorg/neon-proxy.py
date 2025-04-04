@@ -200,6 +200,22 @@ jobs:
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
+    - name: Deploy proxy containers
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ steps.create-instance.outputs.public-ip-v4 }}
+        username: ${{ steps.create-instance.outputs.ssh-user }}
+        key: ${{ steps.create-instance.outputs.ssh-key }}
+        port: 22
+        script_path: ./.github/workflows/full_test_suite/proxy_init.sh
+    - name: Deploy solana containers
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ steps.create-instance.outputs.public-ip-v4 }}
+        username: ${{ steps.create-instance.outputs.ssh-user }}
+        key: ${{ steps.create-instance.outputs.ssh-key }}
+        port: 22
+        script_path: ./.github/workflows/full_test_suite/solana_init.sh
     outputs:
       solana_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
       proxy_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
