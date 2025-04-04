@@ -417,9 +417,15 @@ jobs:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
     steps:
-    - name: Delete instances
-      uses: neonlabsorg/dynamic-ci-cd/actions/delete-instance@main
-      id: delete-instance
+    - uses: actions/checkout@v4
+      with:
+        repository: 'neonlabsorg/dynamic-ci-cd'
+        ref: 'main'
+        token: ${{ secrets.GHTOKEN }}
+        path: dynamic-ci-cd
+    - name: Delete instance
+      uses: ./dynamic-ci-cd/actions/delete-instance
+      id: detele-instance
       with:
         project-repository: ${{ github.event.repository.name }}
         job-id: ${{ github.job }}
