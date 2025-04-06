@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthTxHash
-from common.ethereum.transaction import EthTx
+from common.ethereum.transaction import EthTx, EthTxType
 from common.neon.block import NeonBlockHdrModel
 from common.neon.cu_cost_packed import CuCostPktData
 from common.neon.neon_program import NeonProg, NeonIxMode
@@ -16,7 +16,6 @@ from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
 from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
-from common.solana.errors import SolTxSizeError
 from common.solana.hash import SolBlockHash
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -86,7 +85,6 @@ class _CuCostInfo:
 
 
 class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
-    _oz_gas_limit: Final[int] = 30_000  # openzeppelin gas-limit check
     _u64_max: Final[int] = int.from_bytes(bytes([0xFF] * 8), "big")
     _round_cu_coeff: Final[int] = SolCbProg.MaxCuPriceMult + 1
 
@@ -134,7 +132,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     async def _calc_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp, *, finish_gas: int = 0) -> RpcGasLimitResult:
         exec_gas = resp.used_gas
-        tx_size_gas = self._tx_size_gas(core_tx, resp)
+        tx_size_gas = self._tx_size_gas(core_tx)
         alt_gas = self._alt_gas(resp)
 
         base_gas = exec_gas + tx_size_gas + alt_gas + finish_gas
@@ -157,34 +155,24 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             raw_meta_list=resp.raw_meta_list,
         )
 
-    def _tx_size_gas(self, core_tx: CoreApiTxModel, resp: EmulNeonCallResp) -> int:
+    def _tx_size_gas(self, core_tx: CoreApiTxModel) -> int:
         eth_tx = self._eth_tx_from_core_tx(core_tx)
-        if (len(rlp_tx := eth_tx.to_bytes()) > SolTx.PktSize) or core_tx.to_address.is_empty:
-            return self._holder_tx_gas(rlp_tx)
-
-        sol_tx = self._sol_tx_from_eth_tx(eth_tx, resp)
-        try:
-            sol_tx.sign(self._payer)
-            sol_tx.serialize()  # <- there will be exception about size
-
-            if resp.used_gas < self._oz_gas_limit:
-                return 0
-        except SolTxSizeError:
-            pass
-        except BaseException as exc:
-            _LOG.error("error on pack solana tx", exc_info=exc)
-
+        rlp_tx = eth_tx.to_bytes()
         return self._holder_tx_gas(rlp_tx)
 
     @classmethod
     def _eth_tx_from_core_tx(cls, core_tx: CoreApiTxModel) -> EthTx:
         return EthTx(
+            type=EthTxType.DynamicGas,
             nonce=cls._u64_max,
-            gas_price=cls._u64_max,
+            max_fee_per_gas=cls._u64_max,
+            max_priority_fee_per_gas=cls._u64_max,
             gas_limit=core_tx.gas_limit,
             to_address=core_tx.to_address.to_bytes(),
-            value=core_tx.value or 1,
+            value=core_tx.value or cls._u64_max,
             call_data=core_tx.call_data.to_bytes(),
+            chain_id=cls._u64_max,
+            access_list=list(),
             v=245022934 * 1024 + 35,
             r=0x1820182018201820182018201820182018201820182018201820182018201820,
             s=0x1820182018201820182018201820182018201820182018201820182018201820,
@@ -234,7 +222,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             raise EthError(code=3, message=f"too many accounts: {acc_cnt} > {self._cfg.max_tx_account_cnt}")
 
         if acc_cnt >= SolAltProg.MaxTxAccountCnt:
-            return 5000 * 12  # ALT ix: create + ceil(256/30) extend + deactivate + close
+            return 5000 * 12  # ALT ix: create + ceil((256-27)/27) extend + deactivate + close
         return 0
 
     async def _sol_cu_gas(self, resp: EmulNeonCallResp, base_gas: int) -> _CuCostInfo:
