@@ -235,7 +235,7 @@ class NeonProg:
     TreasuryGas: Final[int] = 0
     BaseGas: Final[int] = SignatureGas + 0
     MinIterCnt: Final[int] = 3      # Begin + 1-Execution + Finalization
-    MinTxCost: Final[int] = 25_000  # Begin(10'000) + 1-Execution(10'000) + Finalization(5'000)
+    MinTxCost: Final[int] = 30_000  # Begin(10'000) + 1-Execution(10'000) + Finalization(10'000)
     GasLimitMultiplierWoChainId: Final[int] = 1
     # Live time for Tree Account
     TreeAccountSlotOut: Final[int] = 0
