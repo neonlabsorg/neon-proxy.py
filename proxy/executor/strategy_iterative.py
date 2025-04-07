@@ -11,6 +11,7 @@ from typing_extensions import Self
 from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonTxBlockInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
+from common.neon.transaction_decoder import SolNeonTxIxMetaInfo
 from common.neon.transaction_model import NeonSkdTxStatus
 from common.neon_rpc.errors import SolNeonSkdTxWrongStateError
 from common.solana.cb_program import SolCbProg
@@ -462,18 +463,18 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         tx_state_list = self._ctx.sol_tx_list_sender.success_tx_state_list
         for tx_state in tx_state_list:
-            if tx_state.is_finalized:
+            if not tx_state.has_sol_neon_ix:
+                continue
+            elif tx_state.is_finalized:
                 status = tx_state.neon_tx_return.status
                 _LOG.debug("found NeonTx.Return(%d) in %s", status, tx_state.tx)
                 continue
             elif tx_state.status != tx_state.status.GoodReceipt:
                 continue
-            elif not (ix := tx_state.sol_neon_ix):
-                _LOG.warning("no? NeonTx instruction in %s", tx_state.tx)
-                continue
 
             completed_iter_cnt += 1
 
+            ix: SolNeonTxIxMetaInfo = tx_state.sol_neon_ix
             if total_gas_used < ix.neon_total_gas_used:
                 total_gas_used, completed_evm_step_cnt = ix.neon_total_gas_used, ix.neon_total_step_cnt
 

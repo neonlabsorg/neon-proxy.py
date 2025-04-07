@@ -39,11 +39,11 @@ class SolNeonTxSendState(SolTxSendState):
 class SolNeonTxListSender(SolTxListSender):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._neon_tx_ret_cnt = 0
+        self._done_ret_cnt = 0
 
     def clear(self) -> None:
         super().clear()
-        self._neon_tx_ret_cnt = 0
+        self._done_ret_cnt = 0
         self._get_success_tx_state_list.reset_cache(self)
 
     @property
@@ -69,7 +69,10 @@ class SolNeonTxListSender(SolTxListSender):
 
         if not (tx_return := tx_error_parser.get_neon_tx_return()).is_empty:
             tx_status = status.GoodReceipt
-            self._neon_tx_ret_cnt += 1
+            self._done_ret_cnt += 1
+        elif tx_error_parser.is_done_error():
+            tx_status = status.GoodReceipt
+            self._done_ret_cnt += 1
         elif data := tx_error_parser.get_skd_tx_use_wrong_holder_error():
             tx_status, tx_error = status.ErrorReceipt, SolNeonSkdTxUseWrongHolderError(data)
         elif tx_error_parser.check_if_neon_account_already_exists():
@@ -104,4 +107,4 @@ class SolNeonTxListSender(SolTxListSender):
         return SolNeonTxSendState(tx_status, tx, None, None)
 
     def _is_done(self) -> bool:
-        return self._neon_tx_ret_cnt > 0
+        return self._done_ret_cnt > 0

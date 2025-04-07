@@ -68,13 +68,25 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         err_list = tuple([
             code.StorageAccountFinalized,
             code.ScheduledTxAlreadyComplete,
-            code.ScheduledTxAlreadyInProgress,
-            code.TreeAccountTxInvalidStatus,
         ])
         # fmt: on
         if self._find_evm_error(err_list):
             return NeonTxLogReturnInfo(NeonTxEventModel.Type.Lost, 1, NeonTxLogReturnInfo.Failed)
         return NeonTxLogReturnInfo.default()
+
+    @cached_method
+    def is_done_error(self) -> bool:
+        if not self.sol_neon_ix:
+            return False
+
+        code = NeonTxErrorLogInfo.ErrorCode
+        # fmt: off
+        err_list = tuple([
+            code.ScheduledTxAlreadyInProgress,
+            code.TreeAccountTxInvalidStatus,
+        ])
+        # fmt: on
+        return True if self._find_evm_error(err_list) else False
 
     @cached_method
     def get_skd_tx_use_wrong_holder_error(self) -> CancelErrorData | None:
