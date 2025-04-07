@@ -46,7 +46,7 @@ export DEVNET_SOLANA_URL=${devnet_solana_url}
 # Receive docker-compose file and create override file
 cd /tmp
 
-cat > docker-compose-ci.override.yml<<EOF
+cat > solana-docker-compose-ci.override.yml<<EOF
 version: "3"
 
 services:
@@ -78,5 +78,5 @@ services:
 EOF
 
 # wake up Solana
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml pull nginx solana
-docker-compose -f docker-compose-ci.yml -f docker-compose-ci.override.yml up -d nginx solana
+docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
+docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
