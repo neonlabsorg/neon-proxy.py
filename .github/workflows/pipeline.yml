@@ -196,7 +196,6 @@ jobs:
       id: create-instance
       with:
         project-repository: ${{ github.event.repository.name }}
-        job-id: ${{ github.job }}
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
