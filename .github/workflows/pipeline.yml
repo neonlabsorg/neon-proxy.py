@@ -200,6 +200,12 @@ jobs:
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
+    - name: Debug
+      run: ls -la
+      shell: bash
+    - name: Debug
+      run: pwd
+      shell: bash
     - name: Deploy proxy containers
       uses: appleboy/ssh-action@v1
       with:
