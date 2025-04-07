@@ -209,6 +209,14 @@ jobs:
     - name: Debug
       run: pwd
       shell: bash
+    - name: Debug
+      run: echo $SOLANA_INSTANCE $PROXY_INSTANCE $SSH_INSTANCE_KEY $SSH_INSTANCE_USER
+      shell: bash
+      env:
+        SOLANA_INSTANCE: ${{ steps.create-instance.outputs.public-ip-v4 }}
+        PROXY_INSTANCE: ${{ steps.create-instance.outputs.public-ip-v4 }}
+        SSH_INSTANCE_KEY: ${{ steps.create-instance.outputs.ssh-key }}
+        SSH_INSTANCE_USER: ${{ steps.create-instance.outputs.ssh-user }}
     - name: Deploy proxy containers
       uses: appleboy/ssh-action@v1
       with:
