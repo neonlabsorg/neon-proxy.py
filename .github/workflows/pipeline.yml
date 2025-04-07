@@ -200,6 +200,9 @@ jobs:
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
+    - uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
     - name: Debug
       run: ls -la
       shell: bash
