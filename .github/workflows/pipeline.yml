@@ -210,22 +210,8 @@ jobs:
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
-        source: "docker-compose/docker-compose-ci.yml"
-        target: "/tmp/docker-compose-ci.yml"
-    - name: Debug
-      run: ls -la
-      shell: bash
-    - name: Debug
-      run: pwd
-      shell: bash
-    - name: Debug
-      run: echo $SOLANA_INSTANCE $PROXY_INSTANCE $SSH_INSTANCE_KEY $SSH_INSTANCE_USER
-      shell: bash
-      env:
-        SOLANA_INSTANCE: ${{ steps.create-instance.outputs.public-ip-v4 }}
-        PROXY_INSTANCE: ${{ steps.create-instance.outputs.public-ip-v4 }}
-        SSH_INSTANCE_KEY: ${{ steps.create-instance.outputs.ssh-key }}
-        SSH_INSTANCE_USER: ${{ steps.create-instance.outputs.ssh-user }}
+        source: "./docker-compose/docker-compose-ci.yml"
+        target: "/tmp/"
     - name: Deploy solana containers
       uses: appleboy/ssh-action@v1
       with:
