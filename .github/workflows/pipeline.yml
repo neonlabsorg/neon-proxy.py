@@ -220,11 +220,6 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         script_path: ./.github/workflows/full_test_suite/solana_init.sh
-        script: |
-          echo "Moving script to /tmp and running as root..."
-          mv solana_init.sh /tmp/solana_init.sh
-          chmod +x /tmp/solana_init.sh
-          sudo -u /tmp/solana_init.sh
         envs: REVISION,NEON_EVM_COMMIT,FAUCET_COMMIT,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
@@ -240,11 +235,6 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         script_path: ./.github/workflows/full_test_suite/proxy_init.sh
-        script: |
-          echo "Moving script to /tmp and running as root..."
-          mv proxy_init.sh /tmp/proxy_init.sh
-          chmod +x /tmp/proxy_init.sh
-          sudo -u /tmp/proxy_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
