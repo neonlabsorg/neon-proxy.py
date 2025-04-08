@@ -81,5 +81,5 @@ services:
 EOF
 
 # wake up Solana
-docker-compose -f /docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
-docker-compose -f /docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
+docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
+docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
