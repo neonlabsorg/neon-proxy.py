@@ -2,6 +2,7 @@
 
 if [ "$(whoami)" != "root" ]
 then
+    sudo chsh -s /bin/bash root
     sudo su -s "$0"
     exit
 fi
