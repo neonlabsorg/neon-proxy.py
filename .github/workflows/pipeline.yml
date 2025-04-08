@@ -212,6 +212,9 @@ jobs:
         source: "./docker-compose/*"
         target: "/tmp/"
     - name: Debug
+      run: pwd
+      shell: bash
+    - name: Debug
       run: ls -la docker-compose
       shell: bash
     - name: Deploy solana containers
