@@ -209,8 +209,11 @@ jobs:
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
-        source: "./docker-compose/docker-compose-ci.yml"
+        source: "docker-compose/docker-compose-ci.yml"
         target: "/tmp/"
+    - name: Debug
+      run: ls -la docker-compose
+      shell: bash
     - name: Deploy solana containers
       uses: appleboy/ssh-action@v1
       with:

@@ -47,6 +47,7 @@ export DEVNET_SOLANA_URL=${devnet_solana_url}
 cd /tmp
 
 ls -la /tmp
+pwd
 
 cat > solana-docker-compose-ci.override.yml<<EOF
 version: "3"

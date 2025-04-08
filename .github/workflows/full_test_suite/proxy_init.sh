@@ -20,6 +20,7 @@ sudo chmod +x /usr/local/bin/docker-compose
 cd /tmp
 
 ls -la /tmp
+pwd
 
 # Set required environment variables
 export REVISION=${proxy_image_tag}
