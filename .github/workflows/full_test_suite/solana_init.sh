@@ -2,7 +2,7 @@
 
 if [ "$EUID" -ne 0 ]; then
     echo "Script needs to be run as root. Re-executing with sudo..."
-    exec sudo "$0" "$@"
+    exec sudo bash "$0" "$@"
 fi
 
 # Install docker
