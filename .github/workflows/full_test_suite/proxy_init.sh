@@ -33,6 +33,7 @@ echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Set required environment variables
+cat > /root/.bashrc <<- EOM
 export REVISION=$REVISION
 export SOLANA_URL=$SOLANA_URL
 export SOLANA_WS_URL=$SOLANA_WS_URL
@@ -41,6 +42,7 @@ export FAUCET_COMMIT=$FAUCET_COMMIT
 export CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL
 export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
 export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
+EOM
 
 # Generate docker-compose override file
 cat > proxy-docker-compose-ci.override.yml <<EOF
@@ -85,10 +87,10 @@ EOF
 
 
 # Get list of services
-SERVICES=$(sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
+SERVICES=$(/bin/bash -c sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
-sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
+/bin/bash -c sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
 
 
 function wait_service() {
@@ -141,7 +143,7 @@ wait_service "solana" $SOLANA_URL $SOLANA_DATA $SOLANA_RESULT
 
 
 # Up all services
-sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml up -d $SERVICES
+/bin/bash -c sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml up -d $SERVICES
 
 
 # Check if Proxy is available
@@ -151,4 +153,4 @@ PROXY_RESULT='"number"'
 
 wait_service "proxy" $PROXY_URL "$PROXY_DATA" $PROXY_RESULT "show_docker_logs_if_fail"
 
-sudo docker rm -f solana
+# /bin/bash -c sudo docker rm -f solana
