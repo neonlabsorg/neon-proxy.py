@@ -211,6 +211,7 @@ jobs:
         port: 22
         source: "/runner/_work/neon-proxy.py/neon-proxy.py/docker-compose/docker-compose-ci.yml"
         target: "/tmp/"
+        strip_components: 1
     - name: Debug
       run: pwd
       shell: bash
