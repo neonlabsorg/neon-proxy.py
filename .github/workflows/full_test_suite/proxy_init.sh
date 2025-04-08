@@ -2,23 +2,24 @@
 
 
 # Install docker
-sudo apt-get remove docker docker-engine docker.io containerd runc
-sudo apt-get update
-sudo apt-get -y install ca-certificates curl gnupg lsb-release
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-sudo apt-get -y install docker-ce docker-ce-cli containerd.io
+apt-get remove docker docker-engine docker.io containerd runc
+apt-get update
+apt-get -y install ca-certificates curl gnupg lsb-release
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt-get update
+apt-get -y install docker-ce docker-ce-cli containerd.io
 
-sudo apt-get -y install pbzip2
+apt-get -y install pbzip2
 
 # Install docker-compose
-sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
 
 
 cd /tmp
 
+whoami
 ls -la /tmp
 pwd
 
@@ -33,7 +34,7 @@ echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Set required environment variables
-sudo cat > /root/.bashrc <<- EOM
+bash -c "cat > /root/.bashrc <<- EOF
 export REVISION=$REVISION
 export SOLANA_URL=$SOLANA_URL
 export SOLANA_WS_URL=$SOLANA_WS_URL
@@ -42,7 +43,7 @@ export FAUCET_COMMIT=$FAUCET_COMMIT
 export CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL
 export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
 export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
-EOM
+EOF"
 
 # Generate docker-compose override file
 cat > proxy-docker-compose-ci.override.yml <<EOF
@@ -87,10 +88,10 @@ EOF
 
 
 # Get list of services
-SERVICES=$(/bin/bash -c sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
+SERVICES=$(/bin/bash -c docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
-/bin/bash -c sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
+/bin/bash -c docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
 
 
 function wait_service() {
@@ -143,7 +144,7 @@ wait_service "solana" $SOLANA_URL $SOLANA_DATA $SOLANA_RESULT
 
 
 # Up all services
-/bin/bash -c sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml up -d $SERVICES
+bash -c docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml up -d $SERVICES
 
 
 # Check if Proxy is available
@@ -153,4 +154,4 @@ PROXY_RESULT='"number"'
 
 wait_service "proxy" $PROXY_URL "$PROXY_DATA" $PROXY_RESULT "show_docker_logs_if_fail"
 
-# /bin/bash -c sudo docker rm -f solana
+# bash -c docker rm -f solana
