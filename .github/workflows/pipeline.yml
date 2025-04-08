@@ -210,7 +210,7 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         source: "docker-compose/docker-compose-ci.yml"
-        target: "/"
+        target: "/tmp/"
         strip_components: 1
     - name: Debug
       run: pwd
