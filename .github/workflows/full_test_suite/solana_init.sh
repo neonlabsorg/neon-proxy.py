@@ -45,7 +45,7 @@ echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Set required environment variables
-cat > /root/.bashrc <<- EOM
+sudo cat > /root/.bashrc <<- EOM
 export REVISION=$REVISION
 export NEON_EVM_COMMIT=$NEON_EVM_COMMIT
 export FAUCET_COMMIT=$FAUCET_COMMIT

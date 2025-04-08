@@ -33,7 +33,7 @@ echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Set required environment variables
-cat > /root/.bashrc <<- EOM
+sudo cat > /root/.bashrc <<- EOM
 export REVISION=$REVISION
 export SOLANA_URL=$SOLANA_URL
 export SOLANA_WS_URL=$SOLANA_WS_URL
