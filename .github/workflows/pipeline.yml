@@ -203,14 +203,14 @@ jobs:
       with:
           fetch-depth: 0
     - name: Copy docker-compose-ci.yml
-      uses: appleboy/scp-action@v0.1.7
+      uses: garygrossgarten/github-action-scp@release
       with:
+        local: docker-compose/docker-compose-ci.yml
+        remote: /tmp/docker-compose-ci.yml
         host: ${{ steps.create-instance.outputs.public-ip-v4 }}
         username: ${{ steps.create-instance.outputs.ssh-user }}
-        key: ${{ steps.create-instance.outputs.ssh-key }}
+        privateKey: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
-        source: "docker-compose/docker-compose-ci.yml"
-        target: "/tmp"
     - name: Debug
       run: ls -la docker-compose
       shell: bash
