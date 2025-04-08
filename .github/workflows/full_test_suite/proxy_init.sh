@@ -1,10 +1,8 @@
 #!/bin/bash
 
-if [ "$(whoami)" != "root" ]
-then
-    sudo chsh -s /bin/bash root
-    sudo su -s "$0"
-    exit
+if [ "$EUID" -ne 0 ]; then
+    echo "Script needs to be run as root. Re-executing with sudo..."
+    exec sudo "$0" "$@"
 fi
 
 # Install docker
