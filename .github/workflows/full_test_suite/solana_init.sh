@@ -44,6 +44,13 @@ echo "FAUCET_COMMIT=$FAUCET_COMMIT"
 echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
+# Set required environment variables
+export REVISION=$REVISION
+export NEON_EVM_COMMIT=$NEON_EVM_COMMIT
+export FAUCET_COMMIT=$FAUCET_COMMIT
+export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
+export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
+
 # Receive docker-compose file and create override file
 cd /tmp
 
