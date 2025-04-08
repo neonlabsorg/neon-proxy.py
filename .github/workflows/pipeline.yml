@@ -210,7 +210,7 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         source: "/runner/_work/neon-proxy.py/neon-proxy.py/docker-compose/docker-compose-ci.yml"
-        target: "/tmp/docker-compose-ci.yml"
+        target: "/tmp/"
     - name: Debug
       run: pwd
       shell: bash
