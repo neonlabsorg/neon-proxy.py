@@ -22,16 +22,15 @@ cd /tmp
 ls -la /tmp
 pwd
 
-# Set required environment variables
-export REVISION=${proxy_image_tag}
-export SOLANA_URL=http:\/\/${solana_ip}:8080
-export SOLANA_WS_URL=http:\/\/${solana_ip}:8900
-export NEON_EVM_COMMIT=${neon_evm_commit}
-export FAUCET_COMMIT=${faucet_model_commit}
-export CI_PP_SOLANA_URL=${ci_pp_solana_url}
-export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
-export DEVNET_SOLANA_URL=${devnet_solana_url}
-
+echo "Print envs for debug"
+echo "REVISION=$REVISION"
+echo "SOLANA_URL=$SOLANA_URL"
+echo "SOLANA_WS_URL=$SOLANA_WS_URL"
+echo "NEON_EVM_COMMIT=$NEON_EVM_COMMIT"
+echo "FAUCET_COMMIT=$FAUCET_COMMIT"
+echo "CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL"
+echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
+echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Generate docker-compose override file
 cat > proxy-docker-compose-ci.override.yml <<EOF

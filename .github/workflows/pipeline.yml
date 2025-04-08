@@ -212,12 +212,6 @@ jobs:
         source: "docker-compose/docker-compose-ci.yml"
         target: "/tmp/"
         strip_components: 1
-    - name: Debug
-      run: pwd
-      shell: bash
-    - name: Debug
-      run: ls -la docker-compose
-      shell: bash
     - name: Deploy solana containers
       uses: appleboy/ssh-action@v1
       with:
@@ -226,6 +220,13 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         script_path: ./.github/workflows/full_test_suite/solana_init.sh
+        envs: REVISION,NEON_EVM_COMMIT,FAUCET_COMMIT,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
+      env:
+        REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
+        NEON_EVM_COMMIT: ${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }}
+        FAUCET_COMMIT: ${{ needs.build-image.outputs.faucet_tag }}
+        DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
+        DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
     - name: Deploy proxy containers
       uses: appleboy/ssh-action@v1
       with:
@@ -234,6 +235,16 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         script_path: ./.github/workflows/full_test_suite/proxy_init.sh
+        envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
+      env:
+        REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
+        SOLANA_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8899/"
+        SOLANA_WS_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8900/"
+        NEON_EVM_COMMIT: ${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }}
+        FAUCET_COMMIT: ${{ needs.build-image.outputs.faucet_tag }}
+        CI_PP_SOLANA_URL: ${{secrets.DEVNET_INTERNAL_RPC}}
+        DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
+        DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
     outputs:
       solana_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
       proxy_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}

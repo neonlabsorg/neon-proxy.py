@@ -37,11 +37,12 @@ sudo apt-get -y install docker-ce docker-ce-cli containerd.io
 sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
 
-export REVISION=${proxy_image_tag}
-export NEON_EVM_COMMIT=${neon_evm_commit}
-export FAUCET_COMMIT=${faucet_model_commit}
-export DOCKERHUB_ORG_NAME=${dockerhub_org_name}
-export DEVNET_SOLANA_URL=${devnet_solana_url}
+echo "Print envs for debug"
+echo "REVISION=$REVISION"
+echo "NEON_EVM_COMMIT=$NEON_EVM_COMMIT"
+echo "FAUCET_COMMIT=$FAUCET_COMMIT"
+echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
+echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Receive docker-compose file and create override file
 cd /tmp
