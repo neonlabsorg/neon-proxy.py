@@ -213,13 +213,18 @@ jobs:
         target: "/tmp/"
         strip_components: 1
     - name: Deploy solana containers
-      uses: appleboy/ssh-action@v1
+      uses: appleboy/ssh-action@v1.2.2
       with:
         host: ${{ steps.create-instance.outputs.public-ip-v4 }}
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         script_path: ./.github/workflows/full_test_suite/solana_init.sh
+        script: |
+          echo "Moving script to /tmp and running as root..."
+          mv solana_init.sh /tmp/solana_init.sh
+          chmod +x /tmp/solana_init.sh
+          sudo -i /tmp/solana_init.sh
         envs: REVISION,NEON_EVM_COMMIT,FAUCET_COMMIT,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
@@ -228,13 +233,18 @@ jobs:
         DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
         DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
     - name: Deploy proxy containers
-      uses: appleboy/ssh-action@v1
+      uses: appleboy/ssh-action@v1.2.2
       with:
         host: ${{ steps.create-instance.outputs.public-ip-v4 }}
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         script_path: ./.github/workflows/full_test_suite/proxy_init.sh
+        script: |
+          echo "Moving script to /tmp and running as root..."
+          mv proxy_init.sh /tmp/proxy_init.sh
+          chmod +x /tmp/proxy_init.sh
+          sudo -i /tmp/proxy_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
