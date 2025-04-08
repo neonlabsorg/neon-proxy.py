@@ -210,7 +210,7 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         source: "docker-compose/docker-compose-ci.yml"
-        target: "/tmp/"
+        target: "/tmp"
     - name: Debug
       run: ls -la docker-compose
       shell: bash
