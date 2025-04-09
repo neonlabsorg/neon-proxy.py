@@ -202,14 +202,14 @@ jobs:
     - uses: actions/checkout@v4
       with:
           fetch-depth: 0
-    - name: Copy docker-compose-ci.yml
+    - name: Copy docker-compose files
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ steps.create-instance.outputs.public-ip-v4 }}
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
-        source: "docker-compose/docker-compose-ci.yml"
+        source: "docker-compose/*"
         target: "/tmp/"
         strip_components: 1
     - name: Deploy solana containers

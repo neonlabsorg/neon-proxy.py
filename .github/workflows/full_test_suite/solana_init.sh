@@ -13,7 +13,6 @@ sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-
 sudo chmod a+x /usr/local/bin/docker-compose
 sudo chmod 666 /var/run/docker.sock
 
-
 # Tune instance for Solana requirements(must be applied before start services)
 sudo bash -c "cat >/etc/sysctl.d/20-solana-udp-buffers.conf<<EOF
 # Increase UDP buffer size
