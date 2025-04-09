@@ -185,14 +185,14 @@ jobs:
     timeout-minutes: 25
     runs-on: ["self-hosted", "k8s-prod"]
     steps:
-    - uses: actions/checkout@v4
-      with:
-        repository: 'neonlabsorg/dynamic-ci-cd'
-        ref: 'main'
-        token: ${{ secrets.GHTOKEN }}
-        path: dynamic-ci-cd
+    # - uses: actions/checkout@v4
+    #   with:
+    #     repository: 'neonlabsorg/dynamic-ci-cd'
+    #     ref: 'main'
+    #     token: ${{ secrets.GHTOKEN }}
+    #     path: dynamic-ci-cd
     - name: Create instance
-      uses: ./dynamic-ci-cd/actions/create-instance
+      uses: neonlabsorg/dynamic-ci-cd/actions/create-instance/action.yml@main
       id: create-instance
       with:
         project-repository: ${{ github.event.repository.name }}
