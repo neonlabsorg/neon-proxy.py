@@ -8,7 +8,9 @@
 # echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 # sudo apt-get update
 sudo apt-get update
-sudo apt-get -y install docker docker-compose
+sudo apt-get -y install docker.io
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod a+x /usr/local/bin/docker-compose
 
 
 # Tune instance for Solana requirements(must be applied before start services)
@@ -84,5 +86,5 @@ services:
 EOF
 
 # wake up Solana
-sudo docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
-sudo docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
+docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
+docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
