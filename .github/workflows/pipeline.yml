@@ -219,6 +219,7 @@ jobs:
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
+        command_timeout: 20m
         script_path: ./.github/workflows/full_test_suite/solana_init.sh
         envs: REVISION,NEON_EVM_COMMIT,FAUCET_COMMIT,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
@@ -234,6 +235,7 @@ jobs:
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
+        command_timeout: 20m
         script_path: ./.github/workflows/full_test_suite/proxy_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
