@@ -34,7 +34,7 @@ EOF"
 # Install docker-compose
 sudo apt-get -y install docker-ce docker-ce-cli containerd.io
 sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x $(which docker-compose)
+sudo chmod +x /usr/local/bin/docker-compose
 
 echo "Print envs for debug"
 echo "REVISION=$REVISION"
@@ -51,6 +51,7 @@ export FAUCET_COMMIT=$FAUCET_COMMIT
 export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
 export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
 EOF"
+/bin/bash "$0" "$@"
 
 # Receive docker-compose file and create override file
 cd /tmp

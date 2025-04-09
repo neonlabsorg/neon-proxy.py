@@ -13,14 +13,13 @@ sudo apt-get -y install pbzip2
 
 # Install docker-compose
 sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x $(which docker-compose)
+sudo chmod +x /usr/local/bin/docker-compose
 
 
 cd /tmp
 
 whoami
 pwd
-printenv
 
 echo "Print envs for debug"
 echo "REVISION=$REVISION"
@@ -43,6 +42,7 @@ export CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL
 export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
 export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
 EOF"
+/bin/bash "$0" "$@"
 
 # Generate docker-compose override file
 cat > proxy-docker-compose-ci.override.yml <<EOF
