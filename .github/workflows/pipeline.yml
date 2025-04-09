@@ -212,7 +212,7 @@ jobs:
         source: "docker-compose/*"
         target: "/tmp/"
         strip_components: 1
-    - name: Deploy solana containers
+    - name: Deploy containers
       uses: appleboy/ssh-action@v1.2.2
       with:
         host: ${{ steps.create-instance.outputs.public-ip-v4 }}
@@ -220,23 +220,7 @@ jobs:
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
         command_timeout: 20m
-        script_path: ./.github/workflows/full_test_suite/solana_init.sh
-        envs: REVISION,NEON_EVM_COMMIT,FAUCET_COMMIT,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
-      env:
-        REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
-        NEON_EVM_COMMIT: ${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }}
-        FAUCET_COMMIT: ${{ needs.build-image.outputs.faucet_tag }}
-        DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
-        DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
-    - name: Deploy proxy containers
-      uses: appleboy/ssh-action@v1.2.2
-      with:
-        host: ${{ steps.create-instance.outputs.public-ip-v4 }}
-        username: ${{ steps.create-instance.outputs.ssh-user }}
-        key: ${{ steps.create-instance.outputs.ssh-key }}
-        port: 22
-        command_timeout: 20m
-        script_path: ./.github/workflows/full_test_suite/proxy_init.sh
+        script_path: ./.github/workflows/stand_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
