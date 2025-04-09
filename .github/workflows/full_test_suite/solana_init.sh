@@ -11,6 +11,7 @@ sudo apt-get update
 sudo apt-get -y install docker.io
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod a+x /usr/local/bin/docker-compose
+sudo chmod 666 /var/run/docker.sock
 
 
 # Tune instance for Solana requirements(must be applied before start services)
