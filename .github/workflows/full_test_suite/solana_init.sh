@@ -1,12 +1,14 @@
 #!/bin/bash
 
 # Install docker
-sudo apt-get remove docker docker-engine docker.io containerd runc
+# sudo apt-get remove docker docker-engine docker.io containerd runc
+# sudo apt-get update
+# sudo apt-get -y install ca-certificates curl gnupg lsb-release pbzip2
+# curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+# echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# sudo apt-get update
 sudo apt-get update
-sudo apt-get -y install ca-certificates curl gnupg lsb-release pbzip2
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
+sudo apt-get -y install docker docker-compose
 
 
 # Tune instance for Solana requirements(must be applied before start services)
@@ -29,13 +31,6 @@ sudo bash -c "cat >/etc/security/limits.d/90-solana-nofiles.conf<<EOF
 # Increase process file descriptor count limit
 * - nofile 1000000
 EOF"
-
-
-# Install docker-compose
-sudo apt-get -y install docker-ce docker-ce-cli containerd.io
-sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-sudo usermod -aG docker $(whoami)
 
 echo "Print envs for debug"
 echo "REVISION=$REVISION"
@@ -89,7 +84,5 @@ services:
 EOF
 
 # wake up Solana
-REVISION=$REVISION NEON_EVM_COMMIT=$NEON_EVM_COMMIT FAUCET_COMMIT=$FAUCET_COMMIT DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL \
 sudo docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
-REVISION=$REVISION NEON_EVM_COMMIT=$NEON_EVM_COMMIT FAUCET_COMMIT=$FAUCET_COMMIT DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL \
 sudo docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
