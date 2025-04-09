@@ -31,8 +31,6 @@ echo "CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL"
 echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
-# Set required environment variables
-bash -c "cat > ~/.bashrc <<- EOF
 export REVISION=$REVISION
 export SOLANA_URL=$SOLANA_URL
 export SOLANA_WS_URL=$SOLANA_WS_URL
@@ -41,8 +39,6 @@ export FAUCET_COMMIT=$FAUCET_COMMIT
 export CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL
 export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
 export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
-EOF"
-bash "$0" "$@"
 
 # Generate docker-compose override file
 cat > proxy-docker-compose-ci.override.yml <<EOF
