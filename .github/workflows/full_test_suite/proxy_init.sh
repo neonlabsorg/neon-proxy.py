@@ -1,31 +1,26 @@
 #!/bin/bash
 
-if [ "$EUID" -ne 0 ]; then
-    echo "Script needs to be run as root. Re-executing with sudo..."
-    exec sudo /bin/bash "$0" "$@"
-fi
-
 # Install docker
-apt-get remove docker docker-engine docker.io containerd runc
-apt-get update
-apt-get -y install ca-certificates curl gnupg lsb-release
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-apt-get update
-apt-get -y install docker-ce docker-ce-cli containerd.io
+sudo apt-get remove docker docker-engine docker.io containerd runc
+sudo apt-get update
+sudo apt-get -y install ca-certificates curl gnupg lsb-release
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get -y install docker-ce docker-ce-cli containerd.io
 
-apt-get -y install pbzip2
+sudo apt-get -y install pbzip2
 
 # Install docker-compose
-curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x $(which docker-compose)
 
 
 cd /tmp
 
 whoami
-ls -la /tmp
 pwd
+printenv
 
 echo "Print envs for debug"
 echo "REVISION=$REVISION"
@@ -38,7 +33,7 @@ echo "DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME"
 echo "DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL"
 
 # Set required environment variables
-bash -c "cat > /root/.bashrc <<- EOF
+bash -c "cat > ~/.bashrc <<- EOF
 export REVISION=$REVISION
 export SOLANA_URL=$SOLANA_URL
 export SOLANA_WS_URL=$SOLANA_WS_URL
@@ -92,10 +87,10 @@ EOF
 
 
 # Get list of services
-SERVICES=$(/bin/bash -c docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
+SERVICES=$(docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
-/bin/bash -c docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
+docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
 
 
 function wait_service() {
