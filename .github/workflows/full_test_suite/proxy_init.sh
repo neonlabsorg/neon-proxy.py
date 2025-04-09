@@ -42,7 +42,7 @@ export CI_PP_SOLANA_URL=$CI_PP_SOLANA_URL
 export DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME
 export DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL
 EOF"
-/bin/bash "$0" "$@"
+bash "$0" "$@"
 
 # Generate docker-compose override file
 cat > proxy-docker-compose-ci.override.yml <<EOF
