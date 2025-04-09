@@ -87,10 +87,10 @@ EOF
 
 
 # Get list of services
-SERVICES=$(docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
+SERVICES=$(sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml config --services | grep -vP "solana|gas_tank|neon_test_invoke_program_loader")
 
 # Pull latest versions
-docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
+sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml pull $SERVICES
 
 
 function wait_service() {
@@ -143,7 +143,7 @@ wait_service "solana" $SOLANA_URL $SOLANA_DATA $SOLANA_RESULT
 
 
 # Up all services
-bash -c docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml up -d $SERVICES
+sudo docker-compose -f docker-compose-ci.yml -f proxy-docker-compose-ci.override.yml up -d $SERVICES
 
 
 # Check if Proxy is available
