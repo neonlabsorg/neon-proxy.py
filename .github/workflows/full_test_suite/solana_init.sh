@@ -89,5 +89,7 @@ services:
 EOF
 
 # wake up Solana
+REVISION=$REVISION NEON_EVM_COMMIT=$NEON_EVM_COMMIT FAUCET_COMMIT=$FAUCET_COMMIT DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL \
 sudo docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml pull nginx solana
+REVISION=$REVISION NEON_EVM_COMMIT=$NEON_EVM_COMMIT FAUCET_COMMIT=$FAUCET_COMMIT DOCKERHUB_ORG_NAME=$DOCKERHUB_ORG_NAME DEVNET_SOLANA_URL=$DEVNET_SOLANA_URL \
 sudo docker-compose -f docker-compose-ci.yml -f solana-docker-compose-ci.override.yml up -d nginx solana
