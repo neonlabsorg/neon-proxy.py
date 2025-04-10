@@ -191,12 +191,6 @@ jobs:
         ref: 'main'
         token: ${{ secrets.GHTOKEN }}
         path: .github/workflows
-    - name: Debug
-      run: ls -la .github/workflows
-      shell: bash
-    - name: Debug
-      run: pwd
-      shell: bash
     - name: Create instance
       uses: ./.github/workflows/actions/create-instance
       id: create-instance
@@ -228,6 +222,9 @@ jobs:
         command_timeout: 20m
         script_path: ./.github/workflows/stand_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
+    - uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
         SOLANA_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8899/"
