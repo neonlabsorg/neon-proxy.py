@@ -198,7 +198,7 @@ jobs:
       run: pwd
       shell: bash
     - name: Create instance
-      uses: .github/workflows/actions/create-instance
+      uses: ./.github/workflows/actions/create-instance
       id: create-instance
       with:
         project-repository: ${{ github.event.repository.name }}
