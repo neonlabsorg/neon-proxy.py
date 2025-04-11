@@ -187,6 +187,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+          fetch-depth: 0
+    - uses: actions/checkout@v4
+      with:
         repository: 'neonlabsorg/dynamic-ci-cd'
         ref: 'main'
         token: ${{ secrets.GHTOKEN }}
@@ -199,9 +202,6 @@ jobs:
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
-    - uses: actions/checkout@v4
-      with:
-          fetch-depth: 0
     - name: Copy docker-compose files
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -230,9 +230,6 @@ jobs:
         CI_PP_SOLANA_URL: ${{secrets.DEVNET_INTERNAL_RPC}}
         DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
         DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
-    - uses: actions/checkout@v4
-      with:
-          fetch-depth: 0
     outputs:
       solana_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
       proxy_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
