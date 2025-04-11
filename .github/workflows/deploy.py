@@ -64,6 +64,8 @@ GH_ORG_NAME = os.environ.get("GH_ORG_NAME")
 CONTAINERS = ['proxy', 'solana', 'dbcreation', 'faucet', 'gas_tank', 'indexer']
 
 docker_client = docker.APIClient()
+VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
+RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 
