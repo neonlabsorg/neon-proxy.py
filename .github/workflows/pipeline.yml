@@ -221,9 +221,6 @@ jobs:
         port: 22
         script_path: ./.github/workflows/stand_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
-    - uses: actions/checkout@v4
-      with:
-          fetch-depth: 0
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
         SOLANA_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8899/"
@@ -233,6 +230,9 @@ jobs:
         CI_PP_SOLANA_URL: ${{secrets.DEVNET_INTERNAL_RPC}}
         DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
         DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
+    - uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
     outputs:
       solana_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
       proxy_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
