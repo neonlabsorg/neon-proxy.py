@@ -213,13 +213,12 @@ jobs:
         target: "/tmp/"
         strip_components: 1
     - name: Deploy containers
-      uses: appleboy/ssh-action@v1.2.2
+      uses: appleboy/ssh-action@v1
       with:
         host: ${{ steps.create-instance.outputs.public-ip-v4 }}
         username: ${{ steps.create-instance.outputs.ssh-user }}
         key: ${{ steps.create-instance.outputs.ssh-key }}
         port: 22
-        command_timeout: 20m
         script_path: ./.github/workflows/stand_init.sh
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
     - uses: actions/checkout@v4
