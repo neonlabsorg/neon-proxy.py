@@ -14,7 +14,6 @@ import json
 import typing as tp
 import logging
 from urllib.parse import urlparse
-from python_terraform import Terraform
 from paramiko import SSHClient
 from scp import SCPClient
 try:
@@ -65,10 +64,6 @@ GH_ORG_NAME = os.environ.get("GH_ORG_NAME")
 CONTAINERS = ['proxy', 'solana', 'dbcreation', 'faucet', 'gas_tank', 'indexer']
 
 docker_client = docker.APIClient()
-terraform = Terraform(working_dir=pathlib.Path(
-    __file__).parent / "full_test_suite")
-VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
-RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 
@@ -219,71 +214,6 @@ def finalize_image(proxy_sha_tag, proxy_tag):
     else:
         click.echo(f"Nothing to finalize, the tag {proxy_tag} is not version tag or latest")
 
-
-@cli.command(name="terraform_infrastructure")
-@click.option('--proxy_tag')
-@click.option('--evm_tag')
-@click.option('--faucet_tag')
-@click.option('--run_number')
-def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
-    os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
-    os.environ["TF_VAR_neon_evm_commit"] = evm_tag
-    os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
-    os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
-    os.environ["TF_VAR_devnet_solana_url"] = DEVNET_SOLANA_URL
-
-    thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
-
-    backend_config = {"bucket": TFSTATE_BUCKET,
-                      "key": thstate_key, "region": TFSTATE_REGION}
-    return_code, stdout, stderr = terraform.init(backend_config=backend_config)
-    if return_code != 0:
-        print("Terraform init failed:", stderr)
-
-    instance_types = ["ccx33", "ccx43", "ccx53", "cx42", "ccx63"]
-    locations = ["nbg1", "fsn1", "hel1"]
-    instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
-
-    retry_amount = 10
-    retry_amount = len(instances) if len(instances) > retry_amount else retry_amount # Verify that we can try all regions and locations
-
-    print("Possible instance options: ", instances)
-
-    instance_iterator = 0
-    retry_iterator = 0
-    while (retry_iterator < retry_amount):
-        return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=True, var={'server_type':instances[instance_iterator]["server_type"], 'location':instances[instance_iterator]["location"]})
-        click.echo(f"stdout: {stdout}")
-        with open(f"terraform.log", "w") as file:
-            if stdout:
-                file.write(stdout)
-            if stderr:
-                file.write(stderr)
-        if return_code == 0:
-            break
-        elif return_code != 0:
-            retry_iterator += 1
-            if "(resource_unavailable)" in stderr:
-                instance_iterator += 1
-                print("Resource_unavailable; ",instances[instance_iterator] ," Trying to recreate instances with another region / another instance type...")
-            else:
-                print("Retry because ", stderr, "; Retries left: ", retry_amount - retry_iterator)
-            time.sleep(3)
-
-    if retry_iterator >= retry_amount:
-        print("Retries left: ", retry_amount - retry_iterator)
-        print("Terraform apply failed:", stderr)
-        print("Terraform infrastructure is not built correctly")
-        sys.exit(1)
-        
-    output = terraform.output(json=True)
-    click.echo(f"output: {output}")
-    proxy_ip = output["proxy_ip"]["value"]
-    solana_ip = output["solana_ip"]["value"]
-    infra = dict(solana_ip=solana_ip, proxy_ip=proxy_ip)
-    set_github_env(infra)
-
-
 def set_github_env(envs: tp.Dict, upper=True) -> None:
     """Set environment for github action"""
     path = os.getenv("GITHUB_ENV", str())
@@ -292,36 +222,6 @@ def set_github_env(envs: tp.Dict, upper=True) -> None:
         with open(path, "a") as env_file:
             for key, value in envs.items():
                 env_file.write(f"\n{key.upper() if upper else key}={str(value)}")
-
-
-@cli.command(name="destroy_terraform")
-@click.option('--proxy_tag')
-@click.option('--run_number')
-def destroy_terraform(proxy_tag, run_number):
-    log = logging.getLogger()
-    log.handlers = []
-    handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(
-        '%(asctime)4s %(name)4s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)4s %(message)4s')
-    handler.setFormatter(formatter)
-    log.addHandler(handler)
-    log.setLevel(logging.INFO)
-
-    os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
-    os.environ["TF_VAR_devnet_solana_url"] = DEVNET_SOLANA_URL
-
-    def format_tf_output(output):
-        return re.sub(r'(?m)^', ' ' * TF_OUTPUT_OFFSET, str(output))
-
-    TF_OUTPUT_OFFSET = 16
-    os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
-    thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
-
-    backend_config = {"bucket": TFSTATE_BUCKET,
-                      "key": thstate_key, "region": TFSTATE_REGION}
-    terraform.init(backend_config=backend_config)
-    tf_destroy = terraform.apply('-destroy', skip_plan=True)
-    log.info(format_tf_output(tf_destroy))
 
 
 @cli.command(name="get_container_logs")
