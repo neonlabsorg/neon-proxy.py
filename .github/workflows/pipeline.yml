@@ -202,6 +202,8 @@ jobs:
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
+      env:
+        HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
     - name: Copy docker-compose files
       uses: appleboy/scp-action@v0.1.7
       with:
