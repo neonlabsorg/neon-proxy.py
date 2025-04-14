@@ -202,8 +202,7 @@ jobs:
         run-id: ${{github.run_id}}
         cpu: 8
         memory: 32
-      env:
-        HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
     - name: Copy docker-compose files
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -462,6 +461,7 @@ jobs:
         project-repository: ${{ github.event.repository.name }}
         job-id: ${{ github.job }}
         run-id: ${{github.run_id}}
+        hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
   finalize-image:
     runs-on: ["self-hosted", "k8s-prod"]
     needs:
