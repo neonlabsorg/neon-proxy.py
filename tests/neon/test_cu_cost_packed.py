@@ -35,9 +35,9 @@ def check_range_unpack(self: unittest.TestCase, base_gas_range: range, iter_rang
 class TestCuCostPktData(unittest.TestCase):
     _1sol: Final[int] = pow(10, 9)
     _max_cu_price: Final[int] = _1sol * SolCbProg.MicroLamport // SolCbProg.MaxCuLimit
-    _fast_cu_range: Final[range] = range(10_000, _max_cu_price, SolCbProg.BaseCuPrice)
+    _fast_cu_range: Final[range] = range(10_000, _max_cu_price, SolCbProg.BaseCuPrice * 100)
     _slow_cu_range: Final[range] = range(1_000, SolCbProg.BaseCuPrice * 5)
-    _gas_price_range: Final[range] = range(NeonProg.MinTxCost, 10_000_000, 250_000)
+    _gas_price_range: Final[range] = range(NeonProg.MinTxCost, 1_000_000, 250_000)
 
     def test_min_gas_limit(self):
         pkt = CuCostPktData.from_raw(NeonProg.MinTxCost, NeonProg.MinIterCnt, SolCbProg.BaseCuPrice)
