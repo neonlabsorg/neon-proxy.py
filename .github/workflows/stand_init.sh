@@ -82,10 +82,10 @@ services:
       resources:
         limits:
           cpus: '2'
-          memory: 2G
+          memory: 4G
         reservations:
           cpus: '2'
-          memory: 4G
+          memory: 2G
 
   faucet:
     container_name: faucet
