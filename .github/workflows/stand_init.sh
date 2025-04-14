@@ -46,6 +46,24 @@ services:
       - "8900:8900"
       - "8001:8001"
       - "8001-8009:8001-8009/udp"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+  
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 800M
+        reservations:
+          cpus: '0.1'
+          memory: 800M
   
   nginx:
     image: nginx:latest
@@ -70,6 +88,14 @@ services:
       SOLANA_WS_URL: $SOLANA_WS_URL
     ports:
       - "9090:9090"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '2'
+          memory: 4G
 
   faucet:
     container_name: faucet
@@ -77,12 +103,28 @@ services:
       SOLANA_URL: $SOLANA_URL
     ports:
       - "3333:3333"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 100M
+        reservations:
+          cpus: '0.1'
+          memory: 100M
 
   indexer:
     container_name: indexer
     environment:
       SOLANA_URL: $SOLANA_URL
       SOLANA_WS_URL: $SOLANA_WS_URL
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 200M
+        reservations:
+          cpus: '2'
+          memory: 200M
 
   postgres:
     container_name: postgres
