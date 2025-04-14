@@ -55,16 +55,6 @@ services:
           cpus: '2'
           memory: 2G
   
-  postgres:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.1'
-          memory: 800M
-        reservations:
-          cpus: '0.1'
-          memory: 800M
-  
   nginx:
     image: nginx:latest
     ports:
