@@ -25,15 +25,17 @@ class NeonEvmProtocol(IntEnum):
     v1014 = 1014  # 1.14 -> 1.014
     v1017 = 1017  # 1.17 -> 1.017
     v1018 = 1018  # 1.18 -> 1.018
+    v1019 = 1019  # 1.19 -> 1.019
+    v1020 = 1020  # 1.20 -> 1.020
 
 
 # fmt: off
-SUPPORTED_VERSION_SET = frozenset(
-    (
-        NeonEvmProtocol.v1017,
-        NeonEvmProtocol.v1018,
-    )
-)
+SUPPORTED_VERSION_SET = frozenset((
+    NeonEvmProtocol.v1017,
+    NeonEvmProtocol.v1018,
+    NeonEvmProtocol.v1019,
+    NeonEvmProtocol.v1020,
+))
 # fmt: on
 
 
