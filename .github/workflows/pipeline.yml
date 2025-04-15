@@ -311,7 +311,7 @@ jobs:
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
-      NUMPROCESSES: 12
+      NUMPROCESSES: 8
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
     steps:
@@ -328,7 +328,7 @@ jobs:
           --name=${{ env.CONTAINER }} $image /bin/bash
       - name: Run basic tests
         run: |
-          CMD="python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }}"
+          CMD="python3 ./clickfile.py run basic --network ${{ env.NETWORK }} --numprocesses ${{ env.NUMPROCESSES }} --amount 40000"
 
           if [[ "${{ env.GENERATE_COST_REPORT }}" == "true" ]]; then
             CMD="$CMD --cost_reports_dir reports/cost_reports"
