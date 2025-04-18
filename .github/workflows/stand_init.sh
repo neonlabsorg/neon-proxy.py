@@ -38,6 +38,7 @@ version: "3"
 
 services:
   solana:
+    container_name: solana
     environment:
       DEVNET_SOLANA_URL: $DEVNET_SOLANA_URL
     ports:
