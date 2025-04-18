@@ -459,7 +459,7 @@ jobs:
       with:
         python-version: '3.10.12'
     - run: pip install -r ./.github/workflows/requirements.txt
-    - run: ssh-keygen -R ${SOLANA_IP} -f ~/.ssh/known_hosts
+    - run: mkdir -p ~/.ssh && ssh-keygen -R ${SOLANA_IP} -f ~/.ssh/known_hosts
       shell: bash
       env:
         SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
