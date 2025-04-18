@@ -444,9 +444,6 @@ jobs:
       - build-image
     runs-on: ["self-hosted", "k8s-prod"]
     if: always()
-    env:
-      SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
-      PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -454,6 +451,19 @@ jobs:
         ref: 'main'
         token: ${{ secrets.GHTOKEN }}
         path: dynamic-ci-cd
+    - name: Get container logs
+      if: always()
+      run: python3 ./.github/workflows/deploy.py get_container_logs
+      env:
+        SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: FTS docker logs
+        path: ./logs/*
+    - name: Set output
+      id: vars
+      run: echo "bname=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - name: Delete instance
       uses: ./dynamic-ci-cd/actions/delete-instance
       id: detele-instance

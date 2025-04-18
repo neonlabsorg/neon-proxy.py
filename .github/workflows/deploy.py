@@ -232,27 +232,14 @@ def get_all_containers_logs():
     artifact_logs = "./logs"
     ssh_key = f"{home_path}/.ssh/ci-stands"
     os.mkdir(artifact_logs)
-    proxy_ip = os.environ.get("PROXY_IP")
     solana_ip = os.environ.get("SOLANA_IP")
-
     subprocess.run(
         f'ssh-keygen -R {solana_ip} -f {home_path}/.ssh/known_hosts', shell=True)
-    subprocess.run(
-        f'ssh-keygen -R {proxy_ip} -f {home_path}/.ssh/known_hosts', shell=True)
-    subprocess.run(
-        f'ssh-keyscan -H {solana_ip} >> {home_path}/.ssh/known_hosts', shell=True)
-    subprocess.run(
-        f'ssh-keyscan -H {proxy_ip} >> {home_path}/.ssh/known_hosts', shell=True)
     ssh_client = SSHClient()
     ssh_client.load_system_host_keys()
     ssh_client.connect(hostname=solana_ip, username='root',
                        key_filename=ssh_key, timeout=120)
-
-    upload_remote_logs(ssh_client, "tmp_solana_1", artifact_logs)
-
-    ssh_client.connect(hostname=proxy_ip, username='root',
-                       key_filename=ssh_key, timeout=120)
-    services = ["postgres", "dbcreation", "indexer", "proxy", "faucet"]
+    services = ["tmp_solana_1", "postgres", "dbcreation", "indexer", "proxy", "faucet"]
     for service in services:
         upload_remote_logs(ssh_client, service, artifact_logs)
 
