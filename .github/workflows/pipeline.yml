@@ -232,6 +232,7 @@ jobs:
         DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
         DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
     outputs:
+      ssh_user: ${{ steps.create-instance.outputs.ssh-user }}
       ssh_key: ${{ steps.create-instance.outputs.ssh-key }}
       solana_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
       proxy_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
@@ -465,6 +466,7 @@ jobs:
       env:
         SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
         SSH_KEY: ${{ needs.prepare-infrastructure.outputs.ssh_key }}
+        SSH_USER: ${{ needs.prepare-infrastructure.outputs.ssh_user }}
     - uses: actions/upload-artifact@v4
       if: always()
       with:

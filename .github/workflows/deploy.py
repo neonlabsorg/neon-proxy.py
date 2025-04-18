@@ -232,13 +232,14 @@ def get_all_containers_logs():
     home_path = os.environ.get("HOME")
     artifact_logs = "./logs"
     ssh_key = os.environ.get("SSH_KEY")
+    ssh_user = os.environ.get("SSH_USER")
     private_key_file = io.StringIO(ssh_key)
     pkey = RSAKey.from_private_key(private_key_file)
     os.mkdir(artifact_logs)
     solana_ip = os.environ.get("SOLANA_IP")
     ssh_client = SSHClient()
     ssh_client.set_missing_host_key_policy(AutoAddPolicy())
-    ssh_client.connect(hostname=solana_ip, username='root',
+    ssh_client.connect(hostname=solana_ip, username=ssh_user,
                        pkey=pkey, timeout=120)
     services = ["solana", "postgres", "dbcreation", "indexer", "proxy", "faucet"]
     for service in services:
