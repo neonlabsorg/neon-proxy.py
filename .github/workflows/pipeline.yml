@@ -454,6 +454,10 @@ jobs:
         ref: 'main'
         token: ${{ secrets.GHTOKEN }}
         path: dynamic-ci-cd
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.10.12'
+    - run: pip install -r ./.github/workflows/requirements.txt
     - name: Get container logs
       if: always()
       run: python3 ./.github/workflows/deploy.py get_container_logs
