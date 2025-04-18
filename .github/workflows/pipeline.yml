@@ -459,11 +459,7 @@ jobs:
       with:
         python-version: '3.10.12'
     - run: pip install -r ./.github/workflows/requirements.txt
-    - run: mkdir -p ~/.ssh && ssh-keygen -R ${SOLANA_IP} -f ~/.ssh/known_hosts
-      shell: bash
-      env:
-        SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
-    - run: echo "${SSH_KEY}"" > ~/.ssh/ci-stands && chmod 0600 ~/.ssh/ci-stands
+    - run: mkdir -p ~/.ssh && echo "${SSH_KEY}"" > ~/.ssh/ci-stands && chmod 0600 ~/.ssh/ci-stands
       env:
         SSH_KEY: ${{ needs.prepare-infrastructure.outputs.ssh_key }}
     - name: Get container logs
