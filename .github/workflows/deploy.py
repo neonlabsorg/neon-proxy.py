@@ -233,8 +233,6 @@ def get_all_containers_logs():
     ssh_key = f"{home_path}/.ssh/ci-stands"
     os.mkdir(artifact_logs)
     solana_ip = os.environ.get("SOLANA_IP")
-    subprocess.run(
-        f'ssh-keygen -R {solana_ip} -f {home_path}/.ssh/known_hosts', shell=True)
     ssh_client = SSHClient()
     ssh_client.load_system_host_keys()
     ssh_client.connect(hostname=solana_ip, username='root',
