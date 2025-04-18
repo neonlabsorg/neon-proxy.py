@@ -239,7 +239,7 @@ def get_all_containers_logs():
     ssh_client.load_system_host_keys()
     ssh_client.connect(hostname=solana_ip, username='root',
                        key_filename=ssh_key, timeout=120)
-    services = ["tmp_solana_1", "postgres", "dbcreation", "indexer", "proxy", "faucet"]
+    services = ["solana", "postgres", "dbcreation", "indexer", "proxy", "faucet"]
     for service in services:
         upload_remote_logs(ssh_client, service, artifact_logs)
 
