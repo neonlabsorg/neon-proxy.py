@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import io
 import re
 import statistics
 import sys
