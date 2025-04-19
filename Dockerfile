@@ -3,7 +3,7 @@ ARG DOCKERHUB_ORG_NAME
 
 FROM ${DOCKERHUB_ORG_NAME}/evm_loader:${NEON_EVM_COMMIT} AS spl
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 WORKDIR /opt/neon-proxy
 
@@ -38,8 +38,9 @@ RUN \
 
 COPY ./requirements.txt .
 
-RUN pip3 install uv && \
-    uv venv && \
+RUN python3 -m venv .venv && \
+    . .venv/bin/activate && \
+    pip install uv && \
     uv pip install --upgrade pip && \
     uv pip install -r requirements.txt
 
