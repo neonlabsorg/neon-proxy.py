@@ -157,6 +157,10 @@ class OpHolderFunc:
             transactionHash=holder.neon_tx_hash.to_string(),
             transactionType=hex(holder.tx_type) if holder.tx_type is not None else None,
             transactionBody=tx,
+            block=dict(
+                slot=holder.block.slot,
+                time=holder.block.timestamp,
+            ),
             accountKeyList=[k.to_string() for k in holder.account_key_list],
         )
         print(json.dumps(obj, indent=2))
