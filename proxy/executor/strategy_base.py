@@ -277,10 +277,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             return req_cu_price
 
         pkt = CuCostPktData.unpack(tx.gas_limit)
+        avail_cu_price = (pkt.cu_price * SolCbProg.MaxCuLimit) // cu_limit
 
         # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
         # and neon-evm does not digest it.
-        cu_price = max(min(req_cu_price, pkt.cu_price), 1)
+        cu_price = max(min(req_cu_price, avail_cu_price), 1)
 
         # _LOG.debug(
         #     "use %s CU-price for %s CU-limit, %s accounts",
