@@ -276,10 +276,19 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         if tx.is_fee_less:
             return req_cu_price
 
+        # get cu-price from the gas-limit in the neon transaction
         pkt = CuCostPktData.unpack(tx.gas_limit)
         avail_cu_price = (pkt.cu_price * SolCbProg.MaxCuLimit) // cu_limit
 
-        # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped
+        # get additional cu-price from the gas-price difference
+        profitable_gas_price = self._ctx.token.profitable_gas_price
+        tx_gas_price = self._ctx.holder_tx.effective_gas_price
+        if (gas_price_diff := tx_gas_price - profitable_gas_price) > 0:
+            exec_cost_diff = NeonProg.BaseGas * gas_price_diff / profitable_gas_price
+            exec_diff_cu_price = int(SolCbProg.MicroLamport * exec_cost_diff / cu_limit)
+            avail_cu_price += exec_diff_cu_price
+
+        # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped,
         # and neon-evm does not digest it.
         cu_price = max(min(req_cu_price, avail_cu_price), 1)
 
