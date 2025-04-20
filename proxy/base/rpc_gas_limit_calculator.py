@@ -184,29 +184,9 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
         neon_prog.init_token_address(self._token_sol_addr)
         return neon_prog
 
-    def _sol_tx_from_eth_tx(self, eth_tx: EthTx, resp: EmulNeonCallResp) -> SolLegacyTx:
-        cb_prog = self._cb_prog
-
-        neon_prog = self._neon_prog
-        neon_prog.init_neon_tx(EthTxHash.from_raw(eth_tx.neon_tx_hash), eth_tx.to_bytes())
-        neon_prog.init_account_meta_list(resp.sol_account_meta_list)
-
-        neon_ix = neon_prog.make_tx_step_from_data_ix(NeonIxMode.Default, self._cfg.max_emulate_evm_step_cnt, 101)
-
-        ix_list = tuple([
-            cb_prog.make_cu_price_ix(cb_prog.BaseCuPrice),
-            cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize),
-            cb_prog.make_cu_limit_ix(cb_prog.MaxCuLimit),
-            neon_ix,
-        ])
-
-        sol_tx = SolLegacyTx(name="Estimate", ix_list=ix_list)
-        sol_tx.recent_block_hash = SolBlockHash.fake()
-        return sol_tx
-
     @staticmethod
     def _holder_tx_gas(rlp_tx: bytes) -> int:
-        return ((len(rlp_tx) // NeonProg.HolderMsgSize) + 1) * 5000
+        return ((len(rlp_tx) // NeonProg.HolderMsgSize) + 1) * NeonProg.SignatureGas
 
     def _alt_gas(self, resp: EmulNeonCallResp) -> int:
         """
@@ -221,7 +201,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             raise EthError(code=3, message=f"too many accounts: {acc_cnt} > {self._cfg.max_tx_account_cnt}")
 
         if acc_cnt >= SolAltProg.MaxTxAccountCnt:
-            return 5000 * 12  # ALT ix: create + ceil((256-27)/27) extend + deactivate + close
+            return NeonProg.SignatureGas * 12  # ALT ix: create + ceil((256-27)/27) extend + deactivate + close
         return 0
 
     async def _sol_cu_gas(self, resp: EmulNeonCallResp, base_gas: int) -> _CuCostInfo:
