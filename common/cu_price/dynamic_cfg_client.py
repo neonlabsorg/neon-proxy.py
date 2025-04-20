@@ -14,7 +14,7 @@ class DynamicFeeCfgClient(HttpClient):
     name: ClassVar[str] = "DynamicFeeCfg"
 
     def __init__(self, *args, **kwargs) -> None:
-        # solders doesn't have implementation for priority fee
+        # solders don't have implementation for priority fee
         super().__init__(*args, **kwargs)
 
         if self._cfg.dynamic_fee_cfg_url_list:

@@ -145,7 +145,7 @@ class SolAltTxBuilder:
             tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
             extend_alt_tx_list.append(tx)
 
-        # If list of accounts is small, including of first extend-tx into create-tx will decrease time of tx execution
+        # If a list of accounts is small, including of first extend-tx in create-tx will decrease the time of tx execution
         if not is_alt_exist:
             create_alt_tx_list[0].add(extend_alt_tx_list[0].ix_list[-1])
             extend_alt_tx_list = extend_alt_tx_list[1:]
@@ -153,7 +153,7 @@ class SolAltTxBuilder:
         return SolAltTxSet(create_alt_tx_list=create_alt_tx_list, extend_alt_tx_list=extend_alt_tx_list)
 
     async def update_alt(self, alt_list: SolAltInfo | Sequence[SolAltInfo]) -> None:
-        # Account keys in Account Lookup Table can be reordered, because ExtendLookup txs can be committed in any order
+        # Account keys in Account Lookup Table can be reordered because ExtendLookup txs can be committed in any order
         if isinstance(alt_list, SolAltInfo):
             alt_list = tuple([alt_list])
 

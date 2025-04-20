@@ -58,7 +58,7 @@ class BaseApiServer(HttpServer, abc.ABC):
     def _validate_unique_method_path(self) -> None:
         assert not self._is_started, "Server is already started"
 
-        # Build the full map of method, and validate uniques of the path
+        # Build the full map of the method and validate uniques of the path
         path_set: set[HttpURL] = set()
         for base_url, api_list in self._url_api_dict.items():
             if self._virtual_method_name and (not base_url.path.endswith("/")):

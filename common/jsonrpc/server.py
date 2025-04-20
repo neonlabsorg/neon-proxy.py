@@ -26,7 +26,6 @@ from ..http.api_sever import BaseApiServer, BaseApi
 from ..http.errors import HttpRouteError
 from ..http.server import HttpResp, HttpHeaderDict
 from ..http.utils import HttpURL, HttpRequestCtx
-from ..utils.json_logger import log_msg
 
 _LOG = logging.getLogger(__name__)
 

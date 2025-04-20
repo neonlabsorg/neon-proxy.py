@@ -4,7 +4,6 @@ import asyncio
 from typing import Sequence
 
 from common.cmd_client.cmd_handler import BaseCmdHandler
-from common.neon_rpc.api import EvmConfigModel
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction import SolTx

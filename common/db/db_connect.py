@@ -120,6 +120,7 @@ class DbConnection:
             except BaseException as exc:
                 stat.commit_stat(error_message=str(exc))
                 await self._on_fail_execute(retry, exc)
+        assert False, "unreached code"
 
     async def update_row(self, ctx: DbTxCtx, table_name: str, query: DbQuery, row: DbParamCont) -> None:
         async def _action(conn: _PgAsyncConn) -> None:
@@ -197,6 +198,7 @@ class DbConnection:
 
                     # if there were no re-raises, commit the current error
                     await asyncio.sleep(0.2)
+        assert False, "unreached code"
 
     async def _on_fail_execute(self, retry: int, exc: BaseException) -> None:
         if isinstance(exc, _pg_pool.PoolClosed):

@@ -89,8 +89,8 @@ class SolNotEmptyBlockFinder:
     async def _get_start_slot(self) -> int:
         first_slot = await self._sol_client.get_first_slot()
         if first_slot > 0:
-            # in any case the solana doesn't have a full history
-            # so, the Indexer can skip first 8192 blocks
+            # in any case the solana doesn't have a full history, so
+            #  the Indexer can skip the first 8192 blocks
             # the reason is to skip the working on edge case
             first_slot += 8192
         else:
