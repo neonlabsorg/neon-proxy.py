@@ -21,7 +21,6 @@ class ExecTokenModel(BaseModel):
     chain_id: int
     simple_cu_price: int
     profitable_gas_price: int
-    pct_gas_price: int
 
     @classmethod
     def from_raw(cls, gas_price: MpGasPriceModel, token: MpTokenGasPriceModel) -> Self:
@@ -29,7 +28,6 @@ class ExecTokenModel(BaseModel):
             chain_id=token.chain_id,
             simple_cu_price=gas_price.simple_cu_price,
             profitable_gas_price=token.profitable_gas_price,
-            pct_gas_price=token.pct_gas_price,
         )
 
 
