@@ -22,9 +22,8 @@ class SolCbProg:
     DefCuLimit: Final[int] = SOLANA_DEFAULT_CU_LIMIT
     # HEAP size
     MaxHeapSize: Final[int] = SOLANA_MAX_HEAP_SIZE
-    # CU prices less than 10_000 doesn't work
+    # CU prices less than 10_000 don't work
     BaseCuPrice: Final[int] = 10_500
-    MaxCuPriceMult: Final[int] = 999
     # Base unit
     MicroLamport: Final[int] = pow(10, 6)
 

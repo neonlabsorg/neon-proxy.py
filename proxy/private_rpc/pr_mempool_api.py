@@ -1,6 +1,6 @@
 from typing import ClassVar
 
-from common.ethereum.hash import EthAddressField
+from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.transaction_model import NeonTxModel
@@ -26,10 +26,10 @@ class PrMempoolApi(PrivateRpcApi):
         )
 
     @staticmethod
-    def _get_queue(tx_list: list[NeonTxModel]) -> dict[EthAddressField, dict[int, RpcEthTxResp]]:
+    def _get_queue(tx_list: list[NeonTxModel]) -> dict[EthAddress, dict[int, RpcEthTxResp]]:
         sender_addr = EthAddressField.default()
         sender_pool: dict[int, RpcEthTxResp] = dict()
-        sender_pool_dict: dict[EthAddressField, dict[int, RpcEthTxResp]] = dict()
+        sender_pool_dict: dict[EthAddress, dict[int, RpcEthTxResp]] = dict()
         for tx in tx_list:
             if sender_addr != tx.from_address:
                 if sender_pool:

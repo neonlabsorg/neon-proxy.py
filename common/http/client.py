@@ -153,9 +153,9 @@ class HttpClient:
 
     def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
         """
-        Exception handler for send request.
-        Can reraise the exception if it's needed.
-        By default, output to logs the exception message.
+        Exception handler for sent request.
+        Can re-raise the exception if it's necessary.
+        By default, output to log the exception message.
         """
 
         msg = dict(
@@ -181,7 +181,7 @@ async def _send_client_request(self: HttpClient, base_url_list: Sequence[HttpURL
 
     for retry in itertools.count():
         if self._is_stopped:
-            break
+            return ""
 
         request_url.build_url(next(base_url_list))
 
@@ -201,6 +201,7 @@ async def _send_client_request(self: HttpClient, base_url_list: Sequence[HttpURL
         await asyncio.sleep(1)
         if retry > 0:
             _LOG.debug("attempt %d on %s to repeat...", retry + 1, self.name)
+    assert False, "unreached code"
 
 
 @dataclass

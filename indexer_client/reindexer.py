@@ -127,6 +127,8 @@ class ReIndexHandler(BaseCmdHandler):
             await asyncio.sleep(1)
             return 0
 
+    assert False, "unreached code"
+
 
 class _FakeStatClient(StatClient):
     def __init__(self, cfg: Config) -> None:  # noqa

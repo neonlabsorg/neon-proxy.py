@@ -19,7 +19,6 @@ from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.ws_client import SolWatchTxSession
 from common.utils.cached import cached_property
 from common.utils.json_logger import log_msg, logging_context
 from .key_info import OpSignerInfo, OpHolderInfo, OpNeonBalanceInfo

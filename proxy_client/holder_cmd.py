@@ -239,10 +239,11 @@ class HolderHandler(BaseNPCmdHandler):
                 return True
         except BaseException as exc:
             _LOG.error("got error %s", str(exc))
-            return False
 
         finally:
             await op_client.free_resource(req_id, True, op_res)
+
+        return False
 
     async def _make_cancel_tx(self, holder: HolderAccountModel, op_res: OpResourceModel) -> SolLegacyTx:
         acct_meta_list = tuple(

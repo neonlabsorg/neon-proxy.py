@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import Callable, Awaitable, Any, Iterator, Union
+from typing import Callable, Awaitable, Any, Iterator, Union, AsyncGenerator
 
 from .api import (
     JsonRpcRequest,
@@ -122,8 +122,8 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
     assert method.has_self, "JsonRpcClient supports only object methods"
     assert method.RequestList is not None, "JsonRpcClient input batch list isn't defined"
 
-    async def _callback(self: JsonRpcClient, params_list: method.RequestList) -> Iterator[method.ReturnType]:
-        req_list = JsonRpcListRequest(None)
+    async def _callback(self: JsonRpcClient, params_list: method.RequestList) -> AsyncGenerator[Any, None]:
+        req_list = JsonRpcListRequest()
         for params in params_list:
             req_id = str(next(self._id))
             req_model = JsonRpcRequest(
