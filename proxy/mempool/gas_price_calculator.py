@@ -160,13 +160,18 @@ class MpGasPriceCalculator(MempoolComponent):
 
         # Populate data regardless if const_gas_price or not.
         profitable_price = int(net_price * (1 + fee_cfg.operator_fee))
-        suggested_price = profitable_price + 1  # skip EIP-1559, just set baseFeePerGas = 1 Alan
 
-        gas_price_deque = self._recent_gas_price_dict.setdefault(token.chain_id, deque())
+        # a minimal gas price is a profitable gas-price for the last X minutes
+        gas_price_deque = self._recent_gas_price_dict.setdefault(
+            token.chain_id,
+            deque(maxlen=self._recent_gas_price_cnt),
+        )
         gas_price_deque.append(profitable_price)
-        if len(gas_price_deque) > self._recent_gas_price_cnt:
-            gas_price_deque.popleft()
         min_price = min(gas_price_deque)
+
+        # increase the profitable gas-price by 5% to cover write-to-holder and ALT txs
+        profitable_price = int(profitable_price * 1.05)
+        suggested_price = profitable_price + 1  # skip EIP-1559, just set baseFeePerGas = 1 Alan
 
         return MpTokenGasPriceModel(
             chain_id=token.chain_id,
@@ -178,7 +183,6 @@ class MpGasPriceCalculator(MempoolComponent):
             is_const_gas_price=is_const_price,
             suggested_gas_price=suggested_price,
             profitable_gas_price=profitable_price,
-            pct_gas_price=max(net_price // 100, 1),
             min_acceptable_gas_price=fee_cfg.min_gas_price or 0,
             min_executable_gas_price=min_price,
         )
@@ -189,7 +193,9 @@ class MpGasPriceCalculator(MempoolComponent):
         block_list = await self._db.get_block_cu_price_list(block_cnt)
 
         return CuPricePercentileModel.get_weighted_percentile(
-            cu_price_pct, len(block_list), map(lambda v: v.cu_price_list, block_list),
+            cu_price_pct,
+            len(block_list),
+            map(lambda v: v.cu_price_list, block_list),
         )
 
     async def _update_pyth_acct_loop(self) -> None:
