@@ -173,7 +173,6 @@ class MpTokenGasPriceModel(BaseModel):
 
     suggested_gas_price: int
     profitable_gas_price: int
-    pct_gas_price: int
     is_const_gas_price: bool
     min_acceptable_gas_price: int
     min_executable_gas_price: int
@@ -190,7 +189,6 @@ class MpTokenGasPriceModel(BaseModel):
             is_const_gas_price=True,
             suggested_gas_price=0,
             profitable_gas_price=0,
-            pct_gas_price=1,
             min_acceptable_gas_price=0,
             min_executable_gas_price=0,
         )
