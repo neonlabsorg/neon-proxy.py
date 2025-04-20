@@ -66,7 +66,7 @@ class NeonIndexerApp:
             await self._run_reindexing()
 
             if self._is_indexing_disabled:
-                # if indexing is disabled just wait for finishing the reindexing processes
+                # if indexing is disabled, just wait for finishing the reindexing processes
                 await self._wait_reindexing()
             else:
                 await self._run_indexing()
@@ -319,7 +319,7 @@ class NeonIndexerApp:
     @cached_method
     def _get_cfg_start_slot(self) -> int:
         """
-        This function allow to skip a part of history.
+        This function allow skipping a part of history.
         - LATEST - start from the last block slot from Solana
         - CONTINUE - the first start from the LATEST, on next starts from the last parsed slot
         - INTEGER - the first start from the INTEGER, on next starts CONTINUE
@@ -447,7 +447,7 @@ class NeonIndexerApp:
 
         [I(S=1000), I(S=10), I(S=11), I(S=12), I(S=102)]
 
-        ReIndexer(0): [I(S=10), I(S=12),  I(S=1000)]
+        ReIndexer(0): [I(S=10), I(S=12), I(S=1000)]
         ReIndexer(1): [I(S=11), I(S=102)]
         """
 

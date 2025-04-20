@@ -205,6 +205,7 @@ class NeonTxExecutor(ExecutorComponent):
             except BaseException as exc:
                 _LOG.debug("unexpected fail on transaction execution: %s", str(exc), extra=self._msg_filter, exc_info=exc)
                 return await self._cancel_neon_tx(ctx, strategy, CancelErrorData.default())
+        assert False, "unreached code"
 
     async def _cancel_neon_tx(
         self,
@@ -233,6 +234,7 @@ class NeonTxExecutor(ExecutorComponent):
                 #     extra=self._msg_filter,
                 # )
                 return None
+        assert False, "unreached code"
 
     @staticmethod
     async def _done_exec_neon_tx(strategy: BaseTxStrategy) -> None:

@@ -70,7 +70,7 @@ class _Server:
             NEON_DB_CLICKHOUSE_URLS=";".join(self._cfg.ch_dsn_list),
             TRACER_DB_TYPE="clickhouse" if len(self._cfg.ch_dsn_list) > 0 else "none",
             SOLANA_KEY_FOR_CONFIG=self._cfg.sol_key_for_evm_cfg.to_string(),
-            SOLANA_TEST_ACCOUNTS_INDEX_MEMORY_LIMIT_MB="value",  # This needs to be set in order to disable disk
+            SOLANA_TEST_ACCOUNTS_INDEX_MEMORY_LIMIT_MB="value",  # This needs to be set to disable disk
             # storage for AccountsDb when running Solana Bank Emulator
             SOLANA_RAYON_THREADS="1",
         )

@@ -186,6 +186,7 @@ class SolClient(HttpClient):
                     raise SolRpcError(resp)
 
                 return resp
+        assert False, "unreachable"
 
     def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
         super()._exception_handler(url, request, retry, exc)
@@ -248,7 +249,7 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetSlotListResp)
         return tuple(resp.value)
 
-    async def get_slot(self, commit=SolCommit.Confirmed) -> int:
+    async def get_slot(self, commit: SolCommit=SolCommit.Confirmed) -> int:
         cfg = _SoldersRpcCtxCfg(commitment=commit.to_rpc_commit())
         req = _SoldersGetSlot(cfg, self._get_next_id())
         resp = await self._send_request(req, _SoldersGetSlotResp)

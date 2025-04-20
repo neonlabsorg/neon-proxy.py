@@ -237,7 +237,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
     # async def _estimate_cu_price(self) -> int:
     #     # We estimate the cu_price from the recent blocks.
-    #     # Solana currently does not really take into account writeable account list,
+    #     # Solana currently does not really take into account a writeable account list,
     #     # so the decent estimation level should be achieved by taking a weighted average from
     #     # the percentiles of compute unit prices across recent blocks.
     #     est_block_cnt = self._ctx.cfg.cu_price_estimator_block_cnt

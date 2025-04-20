@@ -117,8 +117,8 @@ class NeonTxExecApi(ExecutorApi):
                 finally:
                     await skd_tree_parser.stop()
 
-                if task := self._task_dict.pop(tx_hash, None):
-                    self._completed_task_list.append(task)
+                    if task := self._task_dict.pop(tx_hash, None):
+                        self._completed_task_list.append(task)
 
         self._task_dict[tx_hash] = asyncio.create_task(_new_task())
         return DestroyTreeAccountResp(result=True)
@@ -171,6 +171,7 @@ class NeonTxExecApi(ExecutorApi):
 
             finally:
                 await _free_res(request.req_id, op_res, ctx)
+        assert False, "unreached code"
 
     async def _exec_neon_skd_tree(self, request: ExecTxRequest) -> ExecTxDoneCode:
         tx = request.tx
@@ -312,6 +313,7 @@ class NeonTxExecApi(ExecutorApi):
             if not op_res.is_empty:
                 return op_res
             await asyncio.sleep(self._fail_sleep_sec)
+        assert False, "unreached code"
 
     async def _acquire_op_key(self, req_id: dict, chain_id) -> OpResourceModel:
         for _ in itertools.count():
@@ -319,6 +321,7 @@ class NeonTxExecApi(ExecutorApi):
             if not op_res.is_empty:
                 return op_res
             await asyncio.sleep(self._fail_sleep_sec)
+        assert False, "unreached code"
 
     async def _complete_task_list(self) -> None:
         task_list, self._completed_task_list = self._completed_task_list, list()
