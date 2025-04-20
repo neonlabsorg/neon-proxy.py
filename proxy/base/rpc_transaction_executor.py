@@ -6,6 +6,7 @@ from common.ethereum.hash import EthTxHashField, EthTxHash
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.errors import InvalidParamError
 from common.neon.address import NeonAddress
+from common.neon.neon_program import NeonProg
 from common.neon.transaction_model import NeonTxModel
 from common.neon_rpc.api import NeonAccountModel, NeonContractModel
 from common.utils.json_logger import logging_context
@@ -47,13 +48,11 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
                 return neon_tx.neon_tx_hash
 
             ctx_id = self._get_ctx_id(ctx)
-            sender_acct = await self._validate(ctx, neon_tx)
+            sender_acct = await self._validate(ctx, neon_tx, rlp_tx)
 
             resp = await self._mp_client.send_raw_transaction(ctx_id, sender_acct, rlp_tx)
 
-            if resp.code in (MpTxRespCode.Success, MpTxRespCode.AlreadyKnown):
-                return neon_tx.neon_tx_hash
-            elif resp.code == MpTxRespCode.NonceTooLow:
+            if resp.code == MpTxRespCode.NonceTooLow:
                 EthNonceTooLowError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender_acct.eth_address)
             elif resp.code == MpTxRespCode.Underprice:
                 raise EthError(message="replacement transaction underpriced")
@@ -61,6 +60,9 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
                 raise EthNonceTooHighError.raise_error(neon_tx.nonce, resp.state_tx_cnt, sender=sender_acct.eth_address)
             elif resp.code == MpTxRespCode.UnknownChainID:
                 raise EthWrongChainIdError()
+
+            if resp.code in (MpTxRespCode.Success, MpTxRespCode.AlreadyKnown):
+                return neon_tx.neon_tx_hash
             else:
                 raise EthError(message="unknown error")
 
@@ -79,7 +81,7 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
             return True
         return False
 
-    async def _validate(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel) -> NeonAccountModel:
+    async def _validate(self, ctx: HttpRequestCtx, neon_tx: NeonTxModel, rlp_tx: bytes) -> NeonAccountModel:
         global_price, token_price = await self._get_token_gas_price(ctx)
 
         chain_id = self._validate_chain_id(ctx, neon_tx)
@@ -89,8 +91,8 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         neon_contract = await self._core_api_client.get_neon_contract(sender, None)
 
         self._prevalidate_sender_eoa(neon_contract)
-        self._prevalidate_tx_size(neon_tx)
-        self._prevalidate_tx_gas_limit(neon_tx)
+        self._prevalidate_tx_size(rlp_tx)
+        self._prevalidate_tx_gas_limit(neon_tx, rlp_tx)
         await self._prevalidate_tx_gas_price(ctx, token_price, neon_tx)
         self._prevalidate_underpriced_tx_wo_chain_id(global_price, neon_tx)
         self._prevalidate_sender_balance(neon_tx, neon_acct)
@@ -122,11 +124,11 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
             raise EthError(message="sender not an eoa")
 
     @staticmethod
-    def _prevalidate_tx_size(neon_tx: NeonTxModel):
-        if len(neon_tx.call_data) > (127 * 1024):
+    def _prevalidate_tx_size(rlp_tx: bytes):
+        if len(rlp_tx) > (127 * 1024):
             raise EthError(message="transaction size is too big")
 
-    def _prevalidate_tx_gas_limit(self, neon_tx: NeonTxModel) -> None:
+    def _prevalidate_tx_gas_limit(self, neon_tx: NeonTxModel, rlp_tx: bytes) -> None:
         gas_limit = neon_tx.effective_gas_limit
         if gas_limit < 21_000:
             raise EthError(message="gas limit reached")
@@ -136,13 +138,17 @@ class RpcNeonTxExecutor(BaseRpcServerComponent):
         if neon_tx.cost > self._max_u256:
             raise EthError(message="transaction cost uint256 overflow")
 
+        holder_tx_cost = ((len(rlp_tx) // NeonProg.HolderMsgSize) + 1) * NeonProg.SignatureGas
+        if gas_limit - holder_tx_cost < NeonProg.MinTxCost:
+            raise EthError(message="gas limit reached")
+
     async def _prevalidate_tx_gas_price(
         self,
         ctx: HttpRequestCtx,
         token_price: MpTokenGasPriceModel,
         neon_tx: NeonTxModel,
     ) -> None:
-        # Operator can set minimum gas price to accept txs into mempool
+        # Operator can set a minimum gas price to accept txs into mempool
         min_gas_price = token_price.min_acceptable_gas_price
         tx_gas_price = neon_tx.effective_gas_price
         if tx_gas_price >= min_gas_price:
