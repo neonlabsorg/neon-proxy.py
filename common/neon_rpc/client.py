@@ -244,7 +244,7 @@ class CoreApiClient(HttpClient):
         sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
         emulator_block=CoreApiBlockModel.default(),
         block: NeonBlockHdrModel | None = None,
-    ) -> EmulNeonCallResp:  # noqa
+    ) -> EmulNeonCallResp:
         emul_sol_acct_dict = dict()
         if sol_account_dict:
             emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
@@ -292,6 +292,7 @@ class CoreApiClient(HttpClient):
                     raise
 
             return resp
+        assert False, "unreached code"
 
     async def emulate_multiple_neon_call(
         self,
@@ -304,7 +305,7 @@ class CoreApiClient(HttpClient):
         check_result: bool,
         preload_sol_address_list: Sequence[SolPubKey] = tuple(),
         block: NeonBlockHdrModel | None = None,
-    ) -> Sequence[EmulNeonCallResp]:  # noqa
+    ) -> Sequence[EmulNeonCallResp]:
         preload_sol_address_list = list(preload_sol_address_list)
         neon_tx_list = list(neon_tx_list)
         _RootType = EmulMultipleNeonCallResp
@@ -349,6 +350,7 @@ class CoreApiClient(HttpClient):
                 elif check_result:
                     raise
             return resp.root
+        assert False, "unreached code"
 
     async def emulate_sol_tx_list(
         self,
@@ -430,11 +432,12 @@ class CoreApiClient(HttpClient):
                     raise EthError(resp.error)
 
                 return resp_type.from_dict(resp.value)
+        assert False, "unreached code"
 
     def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
         super()._exception_handler(url, request, retry, exc)
 
-        # if the previous call has reraised an exception, this code isn't called
+        # if the previous call has re-raised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
         request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
         _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)

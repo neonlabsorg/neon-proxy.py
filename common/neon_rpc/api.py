@@ -129,7 +129,7 @@ class NeonAccountModel(_BaseRespModel):
     )
 
     @classmethod
-    def from_dict(cls, data: [str, Any], *, address: NeonAddress | None = None) -> Self:
+    def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
         if not address:
             return super().from_dict(data)
         return cls._from_acct(address, data)
@@ -147,7 +147,7 @@ class NeonAccountModel(_BaseRespModel):
         )
 
     @classmethod
-    def _from_acct(cls, address: NeonAddress, data: [str, Any]):
+    def _from_acct(cls, address: NeonAddress, data: dict[str, Any]):
         data["neon_address"] = address
         return cls.model_validate(data)
 
@@ -663,7 +663,7 @@ class EmulNeonCallResp(_BaseRespModel):
         return tuple([a.to_sol_account_meta() for a in self.raw_meta_list])
 
     @cached_property
-    def sol_address_list(self) -> list[SolPubKeyField]:
+    def sol_address_list(self) -> list[SolPubKey]:
         return [a.pubkey for a in self.raw_meta_list]
 
 

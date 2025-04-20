@@ -86,7 +86,6 @@ class _CuCostInfo:
 
 class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
     _u64_max: Final[int] = int.from_bytes(bytes([0xFF] * 8), "big")
-    _round_cu_coeff: Final[int] = SolCbProg.MaxCuPriceMult + 1
 
     # These values aren't used on real network, they are used only to generate temporary data
     _holder_addr = SolPubKey.new_unique()

@@ -327,7 +327,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             used_cu_limit = max(used_cu_limit, tx.meta.used_cu_limit)
             iter_cnt += 1
 
-        # not enough CU limit
+        # not enough CUs
         if not iter_cnt:
             max_used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
             ratio = min(threshold_cu_limit / max_used_cu_limit, 0.9)  # decrease by 10% in any case

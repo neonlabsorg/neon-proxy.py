@@ -133,8 +133,8 @@ def alt_strategy(cls):
             self._prep_stage_list.append(self._alt_stage)
 
         async def prep_before_exec(self) -> bool:
-            # it isn't critical to pass a fake signer, because signer isn't included into ALT
-            #  so the fake signer will be excluded from the ALT lists,
+            # It isn't critical to pass a fake signer.
+            # The signer isn't included in ALT, so the fake signer will be excluded from the ALT lists,
             #  and in the final version of tx it will be replaced with the real signer
             self._alt_stage.set_legacy_tx(self._build_test_legacy_tx())
             return await cls.prep_before_exec(self)

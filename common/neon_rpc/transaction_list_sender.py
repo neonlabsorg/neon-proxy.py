@@ -76,7 +76,7 @@ class SolNeonTxListSender(SolTxListSender):
         elif data := tx_error_parser.get_skd_tx_use_wrong_holder_error():
             tx_status, tx_error = status.ErrorReceipt, SolNeonSkdTxUseWrongHolderError(data)
         elif tx_error_parser.check_if_neon_account_already_exists():
-            # no exception: neon account exists - the goal is reached
+            # no exception: the neon account exists - the goal is reached
             tx_status = status.GoodReceipt
         elif data := tx_error_parser.get_require_resize_iter_error():
             tx_status, tx_error = status.ErrorReceipt, SolNeonRequireResizeIterError(data)
@@ -89,7 +89,7 @@ class SolNeonTxListSender(SolTxListSender):
         elif nonce_error := tx_error_parser.get_nonce_error():  # struct which I decode from evm_log_decoder
             state_tx_cnt, tx_nonce = nonce_error
             if tx_nonce < state_tx_cnt:
-                # sender is unknown - should be replaced on upper stack level
+                # the sender is unknown - should be replaced on the upper stack level
                 tx_status, tx_error = status.ErrorReceipt, EthNonceTooLowError(tx_nonce, state_tx_cnt)
             else:
                 tx_status, tx_error = status.ErrorReceipt, EthNonceTooHighError(tx_nonce, state_tx_cnt)

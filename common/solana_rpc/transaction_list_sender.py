@@ -160,15 +160,15 @@ class SolTxListSender:
             await self._wait_for_tx_receipt_list()
             _LOG.debug("retry %s waiting stat: %s", retry_idx, self._FmtStat(self))
 
-            # at this point the Sender has all receipts from the network,
-            #  some txs (blockhash errors for example) can require the resending
+            # at this point the Sender has all receipts from the network;
+            #  some txs (blockhash errors, for example) can require the resending
             self._get_tx_list_for_send()
 
         raise SolNoMoreRetriesError()
 
     async def _is_completed_commit_level(self) -> bool:
         """
-        Find the maximum block slot in the receipt list,
+        Find the maximum block slot in the receipt list
         and check the commitment level of the block.
         """
         commit_level = self._cfg.commit_type.to_level()
@@ -224,7 +224,7 @@ class SolTxListSender:
             raise SolBlockhashNotFound()
 
         self._blockhash = blockhash
-        # decrease the available block height, to remove edge conditions
+        # decrease the available block height to remove edge conditions
         self._valid_block_height = valid_block_height - 10
         return self._blockhash
 

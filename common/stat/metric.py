@@ -45,7 +45,7 @@ class StatSummary(_base.Summary, _RemoveValueMixin):
     def add(self, labels: _base.LabelsType, value: _base.NumericValueType) -> None:
         """Add a single observation to the summary"""
 
-        value = cast(float | int, value)  # typing check, no runtime behaviour.
+        value = cast(float | int, value)  # typing check, no runtime behavior.
         if type(value) not in (float, int):
             raise TypeError("Summary only works with digits (int, float)")
 
@@ -63,7 +63,7 @@ class StatSummary(_base.Summary, _RemoveValueMixin):
 
     def get(self, labels: _base.LabelsType) -> dict[str, _base.NumericValueType]:
         """
-        Get a dict of values, containing the sum, count and quantiles,
+        Get a dict of values containing the sum, count and quantiles,
         matching an arbitrary group of labels.
 
         :raises: KeyError if an item with matching labels is not present.
