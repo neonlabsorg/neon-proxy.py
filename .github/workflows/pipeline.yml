@@ -219,6 +219,7 @@ jobs:
         run: |
           echo "solana_ip=${{ env.SOLANA_IP }}" >> $GITHUB_OUTPUT
           echo "proxy_ip=${{ env.PROXY_IP }}" >> $GITHUB_OUTPUT
+          echo "default_cu_price=$(grep 'DEFAULT_CU_PRICE' ./docker-compose/docker-compose-ci.yml | grep -o '[0-9]\+')" | tee -a "$GITHUB_OUTPUT"
       - name: Run Solana docker compose
         uses: appleboy/ssh-action@v1.2.1
         with:
@@ -249,6 +250,7 @@ jobs:
     outputs:
       solana_ip: ${{ steps.share.outputs.solana_ip }}
       proxy_ip: ${{ steps.share.outputs.proxy_ip }}
+      default_cu_price: ${{ steps.share.outputs.default_cu_price }}
 
   openzeppelin-tests:
     if: needs.build-image.outputs.full_test_suite=='true'
@@ -311,6 +313,7 @@ jobs:
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
+      DEFAULT_CU_PRICE: ${{ needs.prepare-infrastructure.outputs.default_cu_price }}
       NUMPROCESSES: 12
       CONTAINER: basic-${{ github.run_id }}
       NETWORK: terraform
@@ -324,7 +327,7 @@ jobs:
         run: |
           image="${{ env.NEON_TEST_IMAGE }}:${{ needs.build-image.outputs.neon_test_tag }}"
           docker pull $image
-          docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} \
+          docker run -i -d -e PROXY_IP=${{ env.PROXY_IP }} -e SOLANA_IP=${{ env.SOLANA_IP }} -e DEFAULT_CU_PRICE=${{ env.DEFAULT_CU_PRICE }} \
           --name=${{ env.CONTAINER }} $image /bin/bash
       - name: Run basic tests
         run: |
