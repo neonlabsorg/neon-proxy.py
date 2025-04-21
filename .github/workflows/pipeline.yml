@@ -184,6 +184,7 @@ jobs:
       - build-image
     timeout-minutes: 25
     runs-on: ["self-hosted", "k8s-prod"]
+    if: always()
     steps:
     - uses: actions/checkout@v4
       with:
