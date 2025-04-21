@@ -225,7 +225,7 @@ jobs:
         envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
-        SOLANA_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8899/"
+        SOLANA_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8080/"
         SOLANA_WS_URL: "http://${{ steps.create-instance.outputs.public-ip-v4 }}:8900/"
         NEON_EVM_COMMIT: ${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }}
         FAUCET_COMMIT: ${{ needs.build-image.outputs.faucet_tag }}
