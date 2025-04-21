@@ -200,7 +200,7 @@ jobs:
       with:
         project-repository: ${{ github.event.repository.name }}
         run-id: ${{github.run_id}}
-        cpu: 8
+        cpu: 16
         memory: 32
         hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
     - name: Copy docker-compose files
