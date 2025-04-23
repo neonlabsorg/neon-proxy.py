@@ -104,7 +104,8 @@ class OpInfoHandler(BaseNPCmdHandler):
             op_client: OpResourceClient = await self._get_op_client()
             core_api_client: CoreApiClient = await self._get_core_api_client()
             signer_key_list = await op_client.get_signer_key_list(req_id)
-            await self._holder_func.print_holder_list(core_api_client, sol_client, signer_key_list, cmd)
+            holder_list = await self._holder_func.get_holder_list(core_api_client, signer_key_list, cmd)
+            await self._holder_func.print_holder_list(sol_client, holder_list)
         return 0
 
     async def _info_holder_cmd(self, arg_space) -> int:

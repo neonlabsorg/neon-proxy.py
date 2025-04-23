@@ -3,7 +3,6 @@ import logging
 from typing import Final
 
 from typing_extensions import Self
-
 from common.config.config import Config
 from common.neon.cancel_error import CancelErrorSource, NeonProxyCancelErrorCode
 from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
@@ -37,6 +36,8 @@ class HolderHandler(BaseNPCmdHandler):
     _cancel: Final[str] = "cancel"
     _destroy: Final[str] = "destroy"
     _unblock: Final[str] = "unblock"
+    _legacy_destroy: Final[str] = "legacy-destroy"
+    _legacy_list: Final[str] = "legacy-list"
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -98,6 +99,16 @@ class HolderHandler(BaseNPCmdHandler):
             help="address of the Holder",
         )
 
+        self._legacy_destroy_parser = self._cmd_parser.add_parser(
+            cls._legacy_destroy,
+            help="destroy all Legacy Holder Accounts")
+        self._subcmd_dict[self._legacy_destroy] = self._legacy_destroy_cmd
+
+        self._legacy_list_parser = self._cmd_parser.add_parser(
+            cls._legacy_list,
+            help="list all Legacy Holder Accounts")
+        self._subcmd_dict[self._legacy_list] = self._legacy_list_cmd
+
         return self
 
     async def _list_cmd(self, arg_space) -> int:
@@ -108,8 +119,20 @@ class HolderHandler(BaseNPCmdHandler):
             core_api_client: CoreApiClient = await self._get_core_api_client()
             sol_client: SolClient = await self._get_sol_client()
             signer_key_list = await op_client.get_signer_key_list(req_id)
-            await self._holder_func.print_holder_list(core_api_client, sol_client, signer_key_list, cmd)
+            holder_list = await self._holder_func.get_holder_list(core_api_client, signer_key_list, cmd)
+            await self._holder_func.print_holder_list(sol_client, holder_list)
         return 0
+
+    async def _legacy_list_cmd(self, arg_space) -> int:
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+        op_client: OpResourceClient = await self._get_op_client()
+        sol_client: SolClient = await self._get_sol_client()
+
+        req_id = self._gen_req_id()
+        with (logging_context(**req_id)):
+            signer_key_list = await op_client.get_signer_key_list(req_id)
+            holder_list = await self._holder_func.get_legacy_holder_list(core_api_client, signer_key_list)
+            await self._holder_func.print_holder_list(sol_client, holder_list)
 
     async def _info_cmd(self, arg_space) -> int:
         cmd = self._holder_func.parse_info_cmd(arg_space)
@@ -166,17 +189,23 @@ class HolderHandler(BaseNPCmdHandler):
         with logging_context(**req_id):
             holder_addr = SolPubKey.from_raw(arg_space.holder)
             holder: HolderAccountModel = await core_api_client.get_holder_account(holder_addr)
-            if holder.status == HolderAccountStatus.Empty:
-                _LOG.error("holder %s doesn't exist", holder_addr)
-                return 1
-
             key_list = await op_client.get_signer_key_list(req_id)
-            if holder.owner not in key_list:
-                _LOG.error("unknown Holder owner %s", holder.owner)
-                return 1
+            await self._holder_func.destroy_holder(key_list, op_client, req_id, holder)
 
-            await op_client.destroy_holder(req_id, holder.owner, holder.address)
+        return 0
 
+    async def _legacy_destroy_cmd(self, arg_space) -> int:
+        core_api_client: CoreApiClient = await self._get_core_api_client()
+        op_client: OpResourceClient = await self._get_op_client()
+        req_id = self._gen_req_id()
+        with (logging_context(**req_id)):
+            total_hlcount = 0
+            signer_key_list = await op_client.get_signer_key_list(req_id)
+            holder_list = await self._holder_func.get_legacy_holder_list(core_api_client, signer_key_list)
+            for holder in holder_list:
+                result = await self._holder_func.destroy_holder(signer_key_list, op_client, req_id, holder)
+                total_hlcount += 1 if result else 0
+            _LOG.info("destroy %d legacy holder accounts", total_hlcount)
         return 0
 
     async def _unblock_cmd(self, arg_space) -> int:
