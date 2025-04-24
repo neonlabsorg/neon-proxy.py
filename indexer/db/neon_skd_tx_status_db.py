@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Sequence
-
-from typing_extensions import Self
+from typing import Sequence, Self
 
 from common.db.db_connect import DbConnection, DbTxCtx, DbQueryBody, DbSql, DbSqlParam
 from common.ethereum.hash import EthTxHash
 from common.solana.pubkey import SolPubKey
-from ..base.objects import NeonIndexedBlockInfo, NeonIndexedSkdTxStatusInfo
 from ..base.history_skd_db import SkdTxDbTable
+from ..base.objects import NeonIndexedBlockInfo, NeonIndexedSkdTxStatusInfo
 
 _LOG = logging.getLogger(__name__)
 

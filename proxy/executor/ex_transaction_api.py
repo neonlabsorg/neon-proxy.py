@@ -15,7 +15,7 @@ from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
-from common.solana_rpc.errors import SolTxExecuteError
+from common.solana_rpc.errors import SolTxExecError
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context
 from .alt_destroyer import SolAltDestroyer
@@ -355,7 +355,7 @@ class NeonTxExecApi(ExecutorApi):
                     await self._db.destroy_tree_account(skd_tree_parser.address)
                     break
 
-        except SolTxExecuteError:
+        except SolTxExecError:
             pass
 
         except BaseException as exc:

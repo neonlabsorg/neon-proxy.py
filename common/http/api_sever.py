@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import ClassVar
-
-from typing_extensions import Self
+from typing import ClassVar, Self
 
 from .server import HttpServer
 from .utils import HttpURL, HttpStrOrURL

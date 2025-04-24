@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import ClassVar, Callable
-
-from typing_extensions import Self
+from typing import ClassVar, Callable, Self
 
 from ..config.config import Config
 from ..neon_rpc.client import CoreApiClient

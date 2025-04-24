@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 from enum import IntEnum
-from typing import Final, Sequence
+from typing import Final, Sequence, Self
 
 import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
-from typing_extensions import Self
 
 from .account import SolAccountModel
 from .errors import SolAltContentError

@@ -3,9 +3,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from types import NoneType
-from typing import Callable
-
-from typing_extensions import Self
+from typing import Callable, Self
 
 from ..http.utils import HttpMethod, http_validate_method_name
 from ..utils.pydantic import BaseModel

@@ -7,12 +7,11 @@ import typing
 from dataclasses import dataclass
 from inspect import Signature
 from types import NoneType
-from typing import Any, Callable, Sequence, Union, Annotated, Final
+from typing import Any, Callable, Sequence, Union, Annotated, Final, Self
 
 import aiohttp.typedefs
 from pydantic import PlainValidator
 from robyn import Request as HttpRequest
-from typing_extensions import Self
 
 from ..utils.cached import cached_property
 

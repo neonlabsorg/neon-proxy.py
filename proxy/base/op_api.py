@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Final
-
-from typing_extensions import Self, ClassVar
+from typing import Final, Self, ClassVar
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthAddressField, EthAddress

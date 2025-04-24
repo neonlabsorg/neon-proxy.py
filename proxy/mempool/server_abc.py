@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
-
-from typing_extensions import Self
+from typing import Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config

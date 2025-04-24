@@ -1,8 +1,6 @@
 import itertools
 import logging
-from typing import Final
-
-from typing_extensions import Self
+from typing import Final, Self
 
 from common.config.config import Config
 from common.neon.cancel_error import CancelErrorSource, NeonProxyCancelErrorCode

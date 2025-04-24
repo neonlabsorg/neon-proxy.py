@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 from enum import IntEnum
-from typing import Union, Any, ClassVar, Annotated
+from typing import Union, Any, ClassVar, Annotated, Self
 
 from pydantic import PlainValidator, PlainSerializer
-from typing_extensions import Self
 
 from .address import NeonAddress
 from .neon_program import NeonProg

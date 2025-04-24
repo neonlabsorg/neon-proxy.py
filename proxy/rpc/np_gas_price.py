@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import random
-from typing import ClassVar
+from typing import ClassVar, Final, Self
 
 from pydantic import Field, AliasChoices
-from typing_extensions import Final, Self
 
 from common.ethereum.errors import EthError, EthNonceTooLowError
 from common.ethereum.hash import EthAddressField, EthAddress

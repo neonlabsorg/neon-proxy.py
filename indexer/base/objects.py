@@ -6,10 +6,9 @@ import logging
 import time
 import typing
 from dataclasses import dataclass, field
-from typing import Iterator, Generator, ClassVar, Sequence
+from typing import Iterator, Generator, ClassVar, Sequence, Self
 
 from pydantic import Field
-from typing_extensions import Self
 
 from common.config.config import Config
 from common.ethereum.bin_str import EthBinStrField, EthBinStr

@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any, Annotated, Final, Sequence, ClassVar
+from typing import Any, Annotated, Final, Sequence, ClassVar, Self
 
 from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, ConfigDict
 from strenum import StrEnum
-from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress, EthHash32Field
@@ -692,18 +691,11 @@ class EmulSolTxListRequest(CoreApiRequest):
 class EmulSolTxMetaModel(_BaseRespModel):
     error: dict | None
     log_list: list[str] = Field(default_factory=list, validation_alias="logs")
-    used_cu_limit: DecUIntField = Field(validation_alias="executed_units")
+    cu_consumed: DecUIntField = Field(validation_alias="executed_units")
 
 
 class EmulSolTxListResp(_BaseRespModel):
     meta_list: list[EmulSolTxMetaModel] = Field(validation_alias="transactions")
-
-
-@dataclass(frozen=True)
-class EmulSolTxInfo:
-    tx: SolTx
-    meta: EmulSolTxMetaModel
-
 
 class NeonSkdTreeRequest(CoreApiRequest):
     payer: _AccountModel = Field(serialization_alias="origin")

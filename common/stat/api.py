@@ -1,8 +1,8 @@
 import enum
+from typing import Self, Annotated
 
 import strenum
 from pydantic import Field, PlainSerializer, PlainValidator
-from typing_extensions import Self, Annotated
 
 from ..utils.pydantic import BaseModel
 

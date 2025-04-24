@@ -26,8 +26,8 @@ from .api import (
     NeonContractModel,
     EmulSolAccountModel,
     EmulSolTxListResp,
-    EmulSolTxInfo,
     EmulSolTxListRequest,
+    EmulSolTxMetaModel,
     OpEarnAccountModel,
     NeonAccountStatus,
     EmulTraceCfgModel,
@@ -359,7 +359,7 @@ class CoreApiClient(HttpClient):
         account_cnt_limit: int,
         blockhash: SolBlockHash,
         tx_list: Sequence[SolTx],
-    ) -> Sequence[EmulSolTxInfo]:
+    ) -> Sequence[EmulSolTxMetaModel]:
         req = EmulSolTxListRequest(
             cu_limit=cu_limit,
             heap_size=heap_size,
@@ -370,7 +370,7 @@ class CoreApiClient(HttpClient):
         )
 
         resp: EmulSolTxListResp = await self._send_request("simulate_solana", req, EmulSolTxListResp)
-        return tuple([EmulSolTxInfo(tx, meta) for tx, meta in zip(tx_list, resp.meta_list)])
+        return tuple(resp.meta_list)
 
     async def get_neon_skd_tree(
         self,

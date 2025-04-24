@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union, Sequence
-
-from typing_extensions import Self
+from typing import Union, Sequence, Self
 
 from .cu_price_data_model import CuPricePercentileModel
 from ..ethereum.commit_level import EthCommit, EthCommitField

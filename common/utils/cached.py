@@ -3,9 +3,7 @@ from __future__ import annotations
 import inspect
 import time
 from dataclasses import dataclass
-from typing import Any
-
-from typing_extensions import Self
+from typing import Any, Self
 
 
 class CachedObject:

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Sequence, Self
 
 import solders.instruction as _ix
 import solders.message as _msg
 import solders.transaction as _tx
-from typing_extensions import Self
 
 from .alt_info import SolAltInfo
 from .alt_list_filter import SolAltListFilter

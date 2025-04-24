@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from typing import ClassVar, Any, Final, Sequence
+from typing import ClassVar, Any, Final, Sequence, Self
 
 from pydantic import Field
-from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.errors import EthWrongChainIdError, EthError

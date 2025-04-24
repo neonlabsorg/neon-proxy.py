@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Sequence, Final, ClassVar
-
-from typing_extensions import Self
+from typing import Sequence, Final, ClassVar, Self
 
 from .client import SolClient
 from .ws_client import SolWatchAccountSession, SolWatchSlotSession

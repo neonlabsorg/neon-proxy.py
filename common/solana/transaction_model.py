@@ -1,8 +1,7 @@
 from enum import IntEnum
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import PlainValidator, PlainSerializer
-from typing_extensions import Self
 
 from .transaction import SolTx
 from .transaction_legacy import SolLegacyTx

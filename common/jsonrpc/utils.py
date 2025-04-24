@@ -4,11 +4,10 @@ import collections
 import dataclasses
 import typing
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable, Sequence, Self
 
 import pydantic
 from pydantic import Field
-from typing_extensions import Self
 
 from .api import BaseJsonRpcModel, JsonRpcListMixin
 from ..http.utils import HttpMethod, http_validate_method_name

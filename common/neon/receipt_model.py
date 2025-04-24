@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Union
+from typing import Any, Union, Self
 
 from pydantic import Field
-from typing_extensions import Self
 
 from .evm_log_decoder import NeonTxEventModel, NeonTxLogReturnInfo
 from ..ethereum.hash import EthBlockHash, EthBlockHashField, EthTxHashField

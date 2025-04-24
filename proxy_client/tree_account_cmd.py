@@ -1,8 +1,6 @@
 import json
 import logging
-from typing import ClassVar, Final, Sequence
-
-from typing_extensions import Self
+from typing import ClassVar, Final, Sequence, Self
 
 from common.config.config import Config
 from common.ethereum.hash import EthAddress

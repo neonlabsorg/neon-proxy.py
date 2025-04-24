@@ -1,10 +1,9 @@
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, Self
 
 from eth_hash.auto import keccak
-from typing_extensions import Self
 
 from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Final, Annotated, Union, ClassVar
-
-from typing_extensions import Self
+from typing import Final, Annotated, Union, ClassVar, Self
 
 from ..utils.cached import cached_method
 from ..utils.format import hex_to_bytes, bytes_to_hex

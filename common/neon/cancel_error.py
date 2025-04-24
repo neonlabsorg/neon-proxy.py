@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import logging
-from typing import ClassVar, Final
+from typing import ClassVar, Final, Self
 
 from .evm_log_decoder import NeonTxErrorLogInfo
 from .neon_program import NeonProg
@@ -44,19 +44,23 @@ class CancelErrorData:
     _skipped: ClassVar[CancelErrorData | None] = None
 
     @classmethod
-    def default(cls) -> CancelErrorData:
+    def default(cls) -> Self:
         if not cls._default:
-            cls._default = cls(CancelErrorSource.Unknown, SolPubKey.default(), 0, "")
+            cls._default = cls(CancelErrorSource.Solana, SolPubKey.default(), SolCancelErrorCode.Unknown, "unknown")
         return cls._default
 
     @classmethod
-    def skipped(cls) -> CancelErrorData:
+    def skipped(cls) -> Self:
         if not cls._skipped:
             cls._skipped = cls(CancelErrorSource.NeonEVM, NeonProg.ID, NeonTxErrorLogInfo.ErrorCode.Custom, "Skipped")
         return cls._skipped
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> CancelErrorData:
+    def from_str(cls, message: str) -> Self:
+        return cls(CancelErrorSource.Solana, SolPubKey.default(), SolCancelErrorCode.Unknown, message)
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
         try:
             if (version := int(data[0])) != cls._version:
                 _LOG.warning("wrong CancelErrorData version: %s", version)

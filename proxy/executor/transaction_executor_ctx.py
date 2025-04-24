@@ -3,9 +3,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import logging
-from typing import Sequence, ClassVar
-
-from typing_extensions import Self
+from typing import Sequence, ClassVar, Self
 
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress

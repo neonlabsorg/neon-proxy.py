@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Sequence, Annotated, Union, ClassVar, Final
+from typing import Sequence, Annotated, Union, ClassVar, Final, Self
 
 import solders.pubkey as _pk
 from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
-from typing_extensions import Self
 
 from ..utils.cached import cached_method, cached_property
 

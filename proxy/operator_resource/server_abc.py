@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Sequence
-
-from typing_extensions import Self
+from typing import Sequence, Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config

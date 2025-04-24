@@ -5,11 +5,10 @@ import os
 import random
 import re
 from decimal import Decimal
-from typing import Final, Union, ClassVar, Sequence
+from typing import Final, Union, ClassVar, Sequence, Self
 from urllib.parse import urlparse
 
 from strenum import StrEnum
-from typing_extensions import Self
 
 from .constants import (
     NEON_EVM_PROGRAM_ID,

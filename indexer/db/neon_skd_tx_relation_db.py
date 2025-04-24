@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Sequence, ClassVar
-
-from typing_extensions import Self
+from typing import Sequence, ClassVar, Self
 
 from common.db.db_connect import DbConnection, DbTxCtx, DbSql, DbSqlParam, DbQueryBody
 from common.ethereum.hash import EthTxHash

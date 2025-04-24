@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Sequence, Final
 
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData, SolCancelErrorCode
+from ..neon_rpc.api import EmulSolTxMetaModel
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
@@ -18,6 +20,8 @@ from ..solana.transaction_meta import (
 )
 from ..utils.cached import cached_method, cached_property
 
+_LOG = logging.getLogger(__name__)
+
 
 class SolTxErrorParser:
     _log_truncated_msg: Final[str] = "Log truncated"
@@ -31,17 +35,22 @@ class SolTxErrorParser:
         SolRpcTxFieldErrorCode.InvalidAddressLookupTableData,
         SolRpcTxFieldErrorCode.InvalidAddressLookupTableIndex,
     ])
-    _alt_ix_error_list = tuple([
+    _alt_ix_error_list: Final[Sequence[SolRpcTxFieldErrorCode]] = tuple([
         SolRpcTxIxFieldErrorCode.InvalidInstructionData,
         SolRpcTxIxFieldErrorCode.InvalidAccountOwner,
         SolRpcTxIxFieldErrorCode.InvalidArgument,
+    ])
+    _writable_error_list: Final[Sequence[SolRpcTxFieldErrorCode]] = tuple([
+        SolRpcTxIxFieldErrorCode.PrivilegeEscalation,
+        SolRpcTxIxFieldErrorCode.ReadonlyDataModified,
+        SolRpcTxIxFieldErrorCode.ReadonlyLamportChange,
     ])
     # fmt: on
     _alt_fail_msg: Final[str] = "Program AddressLookupTab1e1111111111111111111111111 failed: "
     _prog_fail_re: Final[re.Pattern] = re.compile(r"Program (\w+) failed: (.*)")
     _custom_err_re: Final[re.Pattern] = re.compile(r"custom program error: 0x([0-9A-Fa-f]+)")
 
-    def __init__(self, tx: SolTx, receipt: SolRpcTxReceiptInfo) -> None:
+    def __init__(self, tx: SolTx | None, receipt: SolRpcTxReceiptInfo | EmulSolTxMetaModel | None) -> None:
         self._tx = tx
         self._receipt = receipt
 
@@ -57,10 +66,9 @@ class SolTxErrorParser:
                 code = int(code_match.group(1), 16) if code_match else SolCancelErrorCode.Unknown
                 return CancelErrorData(CancelErrorSource.Solana, addr, code, msg)
 
-        if self._check_if_error():
-            addr = SolPubKey.default()
-            code = SolCancelErrorCode.Unknown
-            return CancelErrorData(CancelErrorSource.Solana, addr, code, "Unknown error")
+        if msg := self._get_error_msg():
+            _LOG.warning("fail on get error from meta %s", self._receipt)
+            return CancelErrorData.from_str(msg)
         return None
 
     @cached_method
@@ -95,6 +103,8 @@ class SolTxErrorParser:
 
     @cached_property
     def cu_consumed(self) -> int | None:
+        if isinstance(self._receipt, EmulSolTxMetaModel):
+            return self._receipt.cu_consumed
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return getattr(self._receipt, "units_consumed", None)
         elif isinstance(self._receipt, SolRpcTxSlotInfo):
@@ -114,11 +124,7 @@ class SolTxErrorParser:
 
     @cached_method
     def check_if_writable_error(self) -> bool:
-        return self._get_tx_error() in (
-            SolRpcTxIxFieldErrorCode.PrivilegeEscalation,
-            SolRpcTxIxFieldErrorCode.ReadonlyDataModified,
-            SolRpcTxIxFieldErrorCode.ReadonlyLamportChange,
-        )
+        return self._get_tx_error() in self._writable_error_list
 
     @cached_method
     def get_num_slots_behind(self) -> int | None:
@@ -141,17 +147,22 @@ class SolTxErrorParser:
 
     @cached_method
     def _get_log_list(self) -> Sequence[str]:
-        if isinstance(self._receipt, SolRpcSendTxErrorInfo):
+        if isinstance(self._receipt, EmulSolTxMetaModel):
+            return self._receipt.log_list
+        elif isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return tuple(self._receipt.logs or list())
-        if isinstance(self._receipt, SolRpcTxSlotInfo):
+        elif isinstance(self._receipt, SolRpcTxSlotInfo):
             return tuple(self._receipt.transaction.meta.log_messages or list())
         return tuple()
 
     @cached_method
-    def _check_if_error(self) -> bool:
-        if isinstance(self._receipt, (SolRpcSendTxErrorInfo, SolRpcNodeUnhealthyErrorInfo)):
-            return True
-        if isinstance(self._receipt, SolRpcTxSlotInfo):
+    def _get_error_msg(self) -> str | None:
+        if isinstance(self._receipt, EmulSolTxMetaModel):
+            if self._receipt.error:
+                return str(self._receipt.error)
+        elif isinstance(self._receipt, (SolRpcSendTxErrorInfo, SolRpcNodeUnhealthyErrorInfo)):
+            return str(self._receipt.err)
+        elif isinstance(self._receipt, SolRpcTxSlotInfo):
             if self._receipt.transaction.meta.err:
-                return True
-        return False
+                return str(self._receipt.transaction.meta.err)
+        return None

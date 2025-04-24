@@ -1,6 +1,4 @@
-from typing import ClassVar, Final
-
-from typing_extensions import Self
+from typing import ClassVar, Final, Self
 
 from common.config.config import Config
 from common.neon_rpc.client import CoreApiClient

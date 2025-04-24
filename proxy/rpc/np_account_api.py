@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
-
-from typing_extensions import Self
+from typing import ClassVar, Self
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommit
