@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from typing_extensions import Self
+from typing import Self
 
 from common.ethereum.hash import EthAddress
 from common.utils.cached import cached_method

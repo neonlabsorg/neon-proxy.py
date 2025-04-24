@@ -4,9 +4,7 @@ import abc
 import asyncio
 import hashlib
 import logging
-from typing import Callable, ClassVar
-
-from typing_extensions import Self
+from typing import Callable, ClassVar, Self
 
 from common.config.config import Config
 from common.config.utils import LogMsgFilter

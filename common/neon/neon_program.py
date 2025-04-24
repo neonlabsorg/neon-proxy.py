@@ -3,9 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import ClassVar, Final, Sequence
-
-from typing_extensions import Self
+from typing import ClassVar, Final, Sequence, Self
 
 from .address import NeonAddress
 from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER, SOL_SIG_COST, DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME

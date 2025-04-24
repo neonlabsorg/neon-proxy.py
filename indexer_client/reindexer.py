@@ -1,8 +1,6 @@
 import asyncio
 import logging
-from typing import ClassVar, Callable
-
-from typing_extensions import Self
+from typing import ClassVar, Callable, Self
 
 from common.cmd_client.cmd_handler import BaseCmdHandler
 from common.config.config import Config

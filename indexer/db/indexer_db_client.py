@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Sequence
-
-from typing_extensions import Final
+from typing import Sequence, Final
 
 from common.config.config import Config
 from common.db.constant_db import ConstantDb

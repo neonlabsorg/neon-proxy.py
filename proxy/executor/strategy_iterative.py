@@ -4,9 +4,7 @@ import dataclasses
 import itertools
 import logging
 from dataclasses import dataclass
-from typing import Final, ClassVar
-
-from typing_extensions import Self
+from typing import Final, ClassVar, Self
 
 from common.neon.cancel_error import CancelErrorData
 from common.neon.evm_log_decoder import NeonTxBlockInfo
@@ -301,7 +299,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         tx_list = tuple(self._build_cu_tx(self._build_tx_ix(base_cfg), base_cfg) for _ in range(base_cfg.iter_cnt))
         # emulate
         try:
-            emul_tx_list = await self._emulate_tx_list(tx_list)
+            meta_list = await self._emulate_tx_list(tx_list)
         except SolCbExceededError:
             # _LOG.debug("%s: use default %d EVM steps")
             return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()
@@ -312,31 +310,31 @@ class IterativeTxStrategy(BaseTxStrategy):
         max_diff: Final[int] = 250_000
         evm_step_cnt: Final[int] = base_cfg.evm_step_cnt
 
-        iter_cnt, used_cu_limit = 0, 0
-        for tx in emul_tx_list:
-            if tx.meta.used_cu_limit > threshold_cu_limit:
+        iter_cnt, cu_consumed = 0, 0
+        for meta in meta_list:
+            if meta.cu_consumed > threshold_cu_limit:
                 break
-            elif tx.meta.error:
+            elif meta.error:
                 # last iteration with error
                 if not iter_cnt:
                     return base_cfg.update(iter_cnt=1)
                 break
-            elif iter_cnt and abs(tx.meta.used_cu_limit - used_cu_limit) > max_diff:
+            elif iter_cnt and abs(meta.cu_consumed - cu_consumed) > max_diff:
                 break
 
-            used_cu_limit = max(used_cu_limit, tx.meta.used_cu_limit)
+            cu_consumed = max(cu_consumed, meta.cu_consumed)
             iter_cnt += 1
 
         # not enough CUs
         if not iter_cnt:
-            max_used_cu_limit = max(map(lambda x: x.meta.used_cu_limit, emul_tx_list))
-            ratio = min(threshold_cu_limit / max_used_cu_limit, 0.9)  # decrease by 10% in any case
+            max_cu_consumed = max(map(lambda m: m.cu_consumed, meta_list))
+            ratio = min(threshold_cu_limit / max_cu_consumed, 0.9)  # decrease by 10% in any case
             new_evm_step_cnt = max(int(evm_step_cnt * ratio), evm_step_cnt_per_iter)
 
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
             return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
 
-        round_cu_limit = self._round_cu_limit(used_cu_limit, max_cu_limit)
+        round_cu_limit = self._round_cu_limit(cu_consumed, max_cu_limit)
         _LOG.debug(
             "%s: %s mode, %d EVM steps, %d CUs, %d iterations",
             hdr,

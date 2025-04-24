@@ -3,24 +3,20 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-from typing import Sequence, Final, ClassVar
-from typing_extensions import Self
+from typing import Sequence, Final, ClassVar, Self
 
 from common.ethereum.errors import EthError
-from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx, EthTxType
 from common.neon.block import NeonBlockHdrModel
 from common.neon.cu_cost_packed import CuCostPktData
-from common.neon.neon_program import NeonProg, NeonIxMode
+from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
 from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
-from common.solana.hash import SolBlockHash
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
-from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
 from .rpc_server_abc import BaseRpcServerComponent
 

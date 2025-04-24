@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import PlainValidator, PlainSerializer
-from typing_extensions import Self
 
 from common.ethereum.hash import EthTxHashField
 from common.neon.address import NeonAddress, NeonAddressField

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import Self
+
 import solders.message as _msg
 import solders.transaction as _tx
-from typing_extensions import Self
 
 from .signature import SolTxSig
 from .signer import SolSigner

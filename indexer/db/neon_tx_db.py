@@ -4,9 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Sequence
-
-from typing_extensions import Self
+from typing import Sequence, Self
 
 from common.db.db_connect import DbConnection, DbTxCtx, DbSql, DbSqlParam, DbQueryBody
 from common.ethereum.hash import EthTxHash

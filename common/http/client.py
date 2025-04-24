@@ -5,10 +5,9 @@ import itertools
 import logging
 import random
 from dataclasses import dataclass
-from typing import Sequence, ClassVar
+from typing import Sequence, ClassVar, Self
 
 import aiohttp.client as _cl
-from typing_extensions import Self
 
 from .utils import HttpURL, HttpStrOrURL
 from ..config.config import Config

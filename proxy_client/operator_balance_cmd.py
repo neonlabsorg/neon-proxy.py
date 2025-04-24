@@ -2,9 +2,7 @@ import asyncio
 import itertools
 import logging
 from dataclasses import dataclass
-from typing import ClassVar, Final, Sequence
-
-from typing_extensions import Self
+from typing import ClassVar, Final, Sequence, Self
 
 from common.config.config import Config
 from common.ethereum.bin_str import EthBinStr

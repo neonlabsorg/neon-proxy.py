@@ -17,7 +17,7 @@ from common.solana_rpc.errors import (
     SolNoMoreRetriesError,
     SolBlockhashNotFound,
     SolWritableError,
-    SolTxExecuteError,
+    SolTxExecError,
 )
 from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
@@ -193,7 +193,7 @@ class NeonTxExecutor(ExecutorComponent):
                 await asyncio.sleep(self._wait_sec)
                 await ctx.holder_validator.refresh()
 
-            except SolTxExecuteError as exc:
+            except SolTxExecError as exc:
                 # _LOG.debug("execution fail: %s", str(exc), extra=self._msg_filter)
                 return await self._cancel_neon_tx(ctx, strategy, exc.data)
 

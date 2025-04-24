@@ -2,9 +2,9 @@ import abc
 import asyncio
 import multiprocessing as _mp
 import threading as _th
+from typing import Self
 
 import uvloop as _uv
-from typing_extensions import Self
 
 
 class _Loop(_uv.Loop):

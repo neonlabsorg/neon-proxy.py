@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Sequence, Self
 
-from typing_extensions import Self
-
-from .pubkey import SolPubKey, SolPubKeyField
-from .transaction_legacy import SolLegacyTx
-from .errors import SolAltContentError
 from .alt_list_filter import SolAltListFilter
 from .alt_program import SolAltID, SolAltAccountInfo
+from .errors import SolAltContentError
+from .pubkey import SolPubKey, SolPubKeyField
+from .transaction_legacy import SolLegacyTx
 from ..utils.pydantic import BaseModel
 
 

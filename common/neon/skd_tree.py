@@ -1,4 +1,4 @@
-from typing_extensions import Self
+from typing import Self
 
 from .address import NeonAddress
 from .neon_program import NeonProg

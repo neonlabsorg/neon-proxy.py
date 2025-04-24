@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union, Annotated, ClassVar
+from typing import Union, Annotated, ClassVar, Self
 
 import solders.rpc.responses as _resp
 import solders.signature as _sig
 from pydantic import PlainValidator, PlainSerializer
-from typing_extensions import Self
 
 from common.utils.cached import cached_method, cached_property
 

@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
-from typing import Sequence
-from typing_extensions import Self
+from typing import Sequence, Self
 
 from common.db.db_connect import DbConnection, DbTxCtx
 from common.solana.transaction_decoder import SolTxCostModel

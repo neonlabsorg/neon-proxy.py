@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Union, Annotated, ClassVar
+from typing import Union, Annotated, ClassVar, Self
 
 import solders.hash as _hash
 from pydantic import PlainValidator, PlainSerializer
-from typing_extensions import Self
 
 from ..utils.cached import cached_method
 

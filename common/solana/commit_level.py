@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from solders.commitment_config import CommitmentLevel as SolRpcCommit
 from strenum import StrEnum
-from typing_extensions import Self
+from typing import Self
 
 from ..utils.cached import cached_method
 

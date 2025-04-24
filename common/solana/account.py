@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import ClassVar, Union
+from typing import ClassVar, Union, Self
 
 import solders.account as _acct
 from pydantic import Field, AliasChoices
-from typing_extensions import Self
 
 from .pubkey import SolPubKey, SolPubKeyField
 from ..utils.pydantic import Base64Field, BaseModel

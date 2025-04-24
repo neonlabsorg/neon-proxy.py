@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, Any, Iterator, Iterable, TypeVar
+from typing import Literal, Any, Iterator, Iterable, TypeVar, Self
 
 from pydantic import Field
-from typing_extensions import Self
 
 from ..http.utils import HttpRequestIdField
 from ..utils.pydantic import BaseModel, RootModel

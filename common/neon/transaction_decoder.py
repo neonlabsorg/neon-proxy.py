@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Iterator, Sequence
-
-from typing_extensions import Self
+from typing import Iterator, Sequence, Self
 
 from .evm_log_decoder import (
     NeonEvmLogDecoder,
@@ -48,7 +46,7 @@ class SolNeonTxIxMetaModel(BaseModel):
     used_heap_size: int
 
     cu_limit: int
-    used_cu_limit: int
+    cu_consumed: int
 
     @cached_method
     def to_string(self) -> str:
@@ -106,18 +104,18 @@ class SolNeonTxIxMetaInfo:
     heap_size: int
     used_heap_size: int
     cu_limit: int
-    used_cu_limit: int
+    cu_consumed: int
 
+    neon_log: NeonTxLogInfo
     log_msg_list: Sequence[str]
 
     # protected:
-    _neon_log: NeonTxLogInfo
     _sol_tx: SolTxMetaInfo
     _sol_tx_ix: SolTxIxMetaInfo
 
     @classmethod
     def from_raw(cls, sol_tx: SolTxMetaInfo, sol_tx_ix: SolTxIxMetaInfo, sol_log: SolTxIxLogInfo) -> Self:
-        neon_log = NeonEvmLogDecoder().decode(sol_tx_ix, sol_log.log_msg_list)
+        neon_log = NeonEvmLogDecoder.decode(sol_log.log_msg_list, sol_tx_ix)
         ix_code, ix_data = cls._decode_ix_data(sol_tx_ix)
 
         return cls(
@@ -126,11 +124,11 @@ class SolNeonTxIxMetaInfo:
             heap_size=sol_tx.sol_tx_cu.heap_size,
             used_heap_size=sol_tx.sol_tx_cu.heap_size,
             cu_limit=sol_log.cu_limit or sol_tx.sol_tx_cu.cu_limit,
-            used_cu_limit=sol_log.used_cu_limit or sol_tx.sol_tx_cu.cu_limit,
+            cu_consumed=sol_log.cu_consumed or sol_tx.sol_tx_cu.cu_limit,
             log_msg_list=sol_log.log_msg_list,
             #
             # protected:
-            _neon_log=neon_log,
+            neon_log=neon_log,
             _sol_tx=sol_tx,
             _sol_tx_ix=sol_tx_ix,
         )
@@ -173,39 +171,39 @@ class SolNeonTxIxMetaInfo:
 
     @property
     def neon_tx_hash(self) -> EthTxHash:
-        return self._neon_log.neon_tx_hash
+        return self.neon_log.neon_tx_hash
 
     @property
     def neon_tx_ix_miner(self) -> EthAddress:
-        return self._neon_log.tx_ix_miner
+        return self.neon_log.tx_ix_miner
 
     @property
     def neon_tx_ix_step_cnt(self) -> int:
-        return self._neon_log.tx_ix_step.step_cnt
+        return self.neon_log.tx_ix_step.step_cnt
 
     @property
     def neon_total_step_cnt(self) -> int:
-        return self._neon_log.tx_ix_step.total_step_cnt
+        return self.neon_log.tx_ix_step.total_step_cnt
 
     @property
     def neon_tx_ix_gas_used(self) -> int:
-        return self._neon_log.tx_ix_gas.gas_used
+        return self.neon_log.tx_ix_gas.gas_used
 
     @property
     def neon_total_gas_used(self) -> int:
-        return self._neon_log.tx_ix_gas.total_gas_used
+        return self.neon_log.tx_ix_gas.total_gas_used
 
     @property
     def neon_tx_ix_priority_fee(self) -> int:
-        return self._neon_log.tx_ix_priority_fee.priority_fee_paid
+        return self.neon_log.tx_ix_priority_fee.priority_fee_paid
 
     @property
     def neon_tx_ix_base_fee(self) -> int:
-        return self._neon_log.tx_ix_base_fee.base_fee_paid
+        return self.neon_log.tx_ix_base_fee.base_fee_paid
 
     @property
     def neon_tx_error_list(self) -> Sequence[NeonTxErrorLogInfo]:
-        return self._neon_log.tx_error_list
+        return self.neon_log.tx_error_list
 
     def to_string(self) -> str:
         return self._sol_tx_ix.to_string()
@@ -227,23 +225,23 @@ class SolNeonTxIxMetaInfo:
 
     @property
     def neon_tx_block(self) -> NeonTxBlockInfo:
-        return self._neon_log.tx_block
+        return self.neon_log.tx_block
 
     @property
     def neon_tx_return(self) -> NeonTxLogReturnInfo:
-        return self._neon_log.tx_return
+        return self.neon_log.tx_return
 
     @property
     def iter_neon_tx_event(self) -> Iterator[NeonTxEventModel]:
-        return iter(self._neon_log.tx_event_list)
+        return iter(self.neon_log.tx_event_list)
 
     @property
     def is_log_truncated(self) -> bool:
-        return self._neon_log.is_truncated
+        return self.neon_log.is_truncated
 
     @property
     def is_already_finalized(self) -> bool:
-        return self._neon_log.is_already_finalized
+        return self.neon_log.is_already_finalized
 
     @property
     def account_key_cnt(self) -> int:

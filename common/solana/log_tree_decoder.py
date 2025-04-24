@@ -4,9 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Iterator, Final, ClassVar, Sequence
-
-from typing_extensions import Self
+from typing import Iterator, Final, ClassVar, Sequence, Self
 
 from .pubkey import SolPubKey
 from .transaction import SolTxMessageInfo
@@ -44,7 +42,7 @@ class SolTxIxLogInfo:
     status: Status
 
     cu_limit: int
-    used_cu_limit: int
+    cu_consumed: int
 
     error: str | None
 
@@ -65,7 +63,7 @@ class SolTxIxLogInfo:
             level=level,
             status=cls.Status.Unknown,
             cu_limit=0,
-            used_cu_limit=0,
+            cu_consumed=0,
             error=None,
             log_list=tuple(),
             inner_log_list=tuple(),
@@ -206,7 +204,7 @@ class _SolLogDecoderCtx:
     _inner_ix_list: SolRpcTxInnerIxList | None
     _inner_ix_iter: Iterator[SolRpcTxIxInfo] | None
 
-    _BIG_INDEX: ClassVar[int] = 2**64
+    _BIG_INDEX: ClassVar[int] = pow(2, 64)
 
     def _next_ix(self) -> SolRpcTxIxInfo | None:
         ix_idx, ix = next(self._ix_iter, (self._BIG_INDEX, None))
@@ -233,7 +231,7 @@ class _SolTxIxLogDraft:
     level: int
 
     cu_limit: int
-    used_cu_limit: int
+    cu_consumed: int
 
     status: SolTxIxLogInfo.Status
     error: str | None
@@ -249,7 +247,7 @@ class _SolTxIxLogDraft:
             # default:
             status=SolTxIxLogInfo.Status.Unknown,
             cu_limit=0,
-            used_cu_limit=0,
+            cu_consumed=0,
             error=None,
             log_list=list(),
             inner_log_list=list(),
@@ -264,7 +262,7 @@ class _SolTxIxLogDraft:
             prog_id=self.prog_id,
             level=self.level,
             cu_limit=self.cu_limit,
-            used_cu_limit=self.used_cu_limit,
+            cu_consumed=self.cu_consumed,
             status=self.status,
             error=self.error,
             log_list=tuple(self.log_list),
@@ -325,7 +323,7 @@ class _SolCuLogDecoder:
 
     @classmethod
     def decode(cls, log: _SolTxIxLogDraft, raw: str) -> bool:
-        if (log.cu_limit, log.used_cu_limit) != (0, 0):
+        if (log.cu_limit, log.cu_consumed) != (0, 0):
             return False
 
         match = cls._re.match(raw)
@@ -333,5 +331,5 @@ class _SolCuLogDecoder:
             return False
 
         log.cu_limit = int(match[3])
-        log.used_cu_limit = int(match[2])
+        log.cu_consumed = int(match[2])
         return True

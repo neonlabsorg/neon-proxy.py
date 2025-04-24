@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from typing import Union, Sequence, ClassVar
+from typing import Union, Sequence, ClassVar, Self
 
 import solders.transaction_status as _tx
-from typing_extensions import Self
 
 from .commit_level import SolCommit
 from .hash import SolBlockHash

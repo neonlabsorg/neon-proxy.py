@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import time
 from enum import IntEnum
-from typing import Annotated, ClassVar
+from typing import Annotated, ClassVar, Self
 
 from pydantic import Field, PlainValidator, PlainSerializer
-from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthTxHashField, EthTxHash, EthAddress

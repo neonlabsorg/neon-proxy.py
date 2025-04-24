@@ -3,12 +3,11 @@ from __future__ import annotations
 import abc
 import logging
 from dataclasses import dataclass
-from typing import Callable, Awaitable, Union
+from typing import Callable, Awaitable, Union, Self
 
 import robyn.robyn as _rb
 import robyn.router as _rt
 import robyn.status_codes as _st
-from typing_extensions import Self
 
 from .errors import HttpRouteError
 from .utils import HttpMethod, HttpURL, HttpStrOrURL, HttpRequestCtx

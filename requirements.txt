@@ -21,5 +21,4 @@ ecdsa==0.19.1
 rlp==4.1.0
 rusty-rlp==0.4.0
 
-typing-extensions==4.13.2
 strenum==0.4.15
