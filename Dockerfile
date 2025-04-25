@@ -23,19 +23,6 @@ RUN apt update && \
             postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
-ENV SSL_URL=http://security.ubuntu.com/ubuntu/pool/main/o/openssl
-ENV SSL_VER=1.1.1f-1ubuntu2
-
-RUN \
-    curl ${SSL_URL}/libssl1.1_${SSL_VER}_amd64.deb -O && \
-    curl ${SSL_URL}/openssl_${SSL_VER}_amd64.deb -O && \
-    apt install -y --allow-downgrades \
-        ./libssl1.1_${SSL_VER}_amd64.deb \
-        ./openssl_${SSL_VER}_amd64.deb && \
-    rm -f \
-        ./libssl1.1_${SSL_VER}_amd64.deb \
-        ./openssl_${SSL_VER}_amd64.deb
-
 COPY ./requirements.txt .
 
 RUN python3 -m venv .venv && \
