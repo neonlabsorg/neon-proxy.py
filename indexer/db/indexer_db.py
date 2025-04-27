@@ -300,10 +300,9 @@ class IndexerDb:
         slot_list: Sequence[int],
     ) -> None:
         block_range = self._finalized_slot, last_slot, block_list, slot_list
-        for db_table in self._history_db_list:
-            # it doesn't matter in which order will be removed old records from secondary tables,
-            #   so do it on the independent db connections
-            await db_table.finalize_block_list(None, *block_range)
+        # it doesn't matter in which order old records will be removed from secondary tables,
+        #   so do it on the independent db connections
+        await asyncio.gather(*[db.finalize_block_list(None, *block_range) for db in self._history_db_list])
         # the branch switching should be atomic
         await self._sol_block_db.finalize_block_list(ctx, *block_range)
 
@@ -376,3 +375,9 @@ class IndexerDb:
 
     async def get_stuck_neon_alt_list(self) -> tuple[int | None, Sequence[dict]]:
         return await self._stuck_neon_alt_db.get_obj_list(None, True)
+
+    async def delete_old_block(self, to_slot: int) -> None:
+        await self._sol_block_db.delete_old_block_list(None, to_slot)
+        start_slot = await self._sol_block_db.get_min_slot(None)
+        await self._constant_db.set(None, self._start_slot_name, start_slot)
+        await asyncio.gather(*[db.delete_old_block_list(None, to_slot) for db in self._history_db_list])

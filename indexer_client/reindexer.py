@@ -1,8 +1,6 @@
 import asyncio
 import logging
-from typing import ClassVar, Callable
-
-from typing_extensions import Self
+from typing import ClassVar, Self
 
 from common.cmd_client.cmd_handler import BaseCmdHandler
 from common.config.config import Config
@@ -13,16 +11,13 @@ from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
 from common.utils.json_logger import logging_context
 from indexer.db.indexer_db import IndexerDb, IndexerDbSlotRange
 from indexer.indexing.indexer import Indexer
-from indexer.stat.client import StatClient
+from indexer.stat.client import FakeStatClient
 
 _LOG = logging.getLogger(__name__)
 
 
 class ReIndexHandler(BaseCmdHandler):
     command: ClassVar[str] = "reindex"
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
 
     @classmethod
     async def new_arg_parser(cls, cfg: Config, cmd_list_parser) -> Self:
@@ -108,7 +103,7 @@ class ReIndexHandler(BaseCmdHandler):
                 term_slot=arg_space.to_slot,
             )
 
-            stat_client = _FakeStatClient(self._cfg)
+            stat_client = FakeStatClient(self._cfg)
             db: IndexerDb = await self._new_client(
                 IndexerDb,
                 self._cfg,
@@ -126,19 +121,3 @@ class ReIndexHandler(BaseCmdHandler):
 
             await asyncio.sleep(1)
             return 0
-
-    assert False, "unreached code"
-
-
-class _FakeStatClient(StatClient):
-    def __init__(self, cfg: Config) -> None:  # noqa
-        self._cfg = cfg
-
-    async def start(self) -> None:
-        pass
-
-    async def stop(self) -> None:
-        pass
-
-    def _put_to_queue(self, call: Callable, data) -> None:
-        pass

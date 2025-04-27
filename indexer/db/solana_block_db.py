@@ -37,6 +37,7 @@ class SolBlockDb(HistoryDbTable):
         self._deactivate_query = DbQueryBody()
         self._activate_query = DbQueryBody()
         self._cu_price_list_query = DbQueryBody()
+        self._min_slot_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -199,6 +200,19 @@ class SolBlockDb(HistoryDbTable):
             latest_slot=DbSqlParam("latest_slot"),
         )
 
+        min_slot_sql = DbSql(
+            """;
+            SELECT 
+              min(block_slot) as block_slot
+            FROM
+              {table_name}
+            WHERE
+              is_active = True
+            """
+        ).format(
+            table_name=self._table_name,
+        )
+
         (
             self._block_time_query,
             self._block_by_slot_query,
@@ -207,6 +221,7 @@ class SolBlockDb(HistoryDbTable):
             self._deactivate_query,
             self._activate_query,
             self._cu_price_list_query,
+            self._min_slot_query,
         ) = await self._db.sql_to_query(
             block_time_sql,
             block_by_slot_sql,
@@ -215,6 +230,7 @@ class SolBlockDb(HistoryDbTable):
             deactivate_sql,
             activate_sql,
             cu_price_list_sql,
+            min_slot_sql,
         )
 
     @staticmethod
@@ -232,7 +248,7 @@ class SolBlockDb(HistoryDbTable):
         return block_hash or cls._generate_fake_block_hash(slot)
 
     async def _generate_block_time(self, ctx: DbTxCtx, slot: int) -> int | None:
-        # Search the nearest block before requested block
+        # Search the nearest block before the requested block
         rec = await self._fetch_one(ctx, self._block_time_query, _BySlot(slot), record_type=_BlockTimeRecord)
         if not rec:
             _LOG.warning("failed to get nearest blocks for block %s", slot)
@@ -355,6 +371,10 @@ class SolBlockDb(HistoryDbTable):
         )
         return tuple([rec.to_neon_block() for rec in rec_list])
 
+    async def get_min_slot(self, ctx: DbTxCtx) -> int:
+        rec = await self._fetch_one(ctx, self._min_slot_query, None, record_type=_MinSlotRecord)
+        return rec.block_slot
+
 
 @dataclass(frozen=True)
 class _Record:
@@ -422,3 +442,8 @@ class _SlotCuPriceRecord:
 
     def to_neon_block(self) -> NeonBlockCuPriceInfo:
         return NeonBlockCuPriceInfo.from_raw(slot=self.slot, cu_price_list=self.cu_price_list)
+
+
+@dataclass(frozen=True)
+class _MinSlotRecord:
+    block_slot: int
