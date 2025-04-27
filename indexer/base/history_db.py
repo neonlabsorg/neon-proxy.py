@@ -10,6 +10,7 @@ class HistoryDbTable(BaseDbTable):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._clean_query = DbQueryBody()
+        self._delete_old_query = DbQueryBody()
 
     async def start(self) -> None:
         await super().start()
@@ -27,7 +28,24 @@ class HistoryDbTable(BaseDbTable):
             to_slot=DbSqlParam("to_slot"),
             slot_list=DbSqlParam("slot_list"),
         )
-        self._clean_query = await self._db.sql_to_query(clean_sql)
+
+        delete_old_sql = DbSql(
+            """;
+            DELETE FROM 
+                {table_name} 
+            WHERE block_slot < {to_slot}
+            """
+        ).format(
+            table_name=self._table_name,
+            to_slot=DbSqlParam("to_slot"),
+        )
+        (
+            self._clean_query,
+            self._delete_old_query,
+        ) = await self._db.sql_to_query(
+            clean_sql,
+            delete_old_sql,
+        )
 
     async def finalize_block_list(
         self,
@@ -39,9 +57,21 @@ class HistoryDbTable(BaseDbTable):
     ) -> None:
         await self._update_row(ctx, self._clean_query, _BySlotRange(from_slot, to_slot, list(slot_list)))
 
+    async def delete_old_block_list(
+        self,
+        ctx: DbTxCtx,
+        to_slot: int
+    ) -> None:
+        await self._update_row(ctx, self._delete_old_query, _ToSlot(to_slot))
+
 
 @dataclass(frozen=True)
 class _BySlotRange:
     from_slot: int
     to_slot: int
     slot_list: list[int]
+
+
+@dataclass(frozen=True)
+class _ToSlot:
+    to_slot: int

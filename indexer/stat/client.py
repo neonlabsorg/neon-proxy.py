@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Callable
 
 from common.app_data.client import AppDataClient
 from common.config.config import Config
@@ -49,3 +49,17 @@ class StatClient(AppDataClient, BaseStatClient, RpcStatClient):
 
     @AppDataClient.method(name="commitReindexDone")
     async def _commit_done_reindex_stat(self, data: NeonDoneReindexStat) -> None: ...
+
+
+class FakeStatClient(StatClient):
+    def __init__(self, cfg: Config) -> None:  # noqa
+        self._cfg = cfg
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
+    def _put_to_queue(self, call: Callable, data) -> None:
+        pass
