@@ -64,7 +64,7 @@ COPY test-operator-keypairs/id.json /root/.config/solana/
 COPY . .
 
 # disable Robyn command line parser
-COPY patch/disable_robyn_argument_parser.py .venv/lib64/python3.10/site-packages/robyn/argument_parser.py
+COPY patch/disable_robyn_argument_parser.py .venv/lib64/python3.12/site-packages/robyn/argument_parser.py
 
 ARG PROXY_REVISION
 RUN sed -i 's/NEON_PROXY_REVISION_TO_BE_REPLACED/'${PROXY_REVISION}'/g' ./common/config/constants.py
