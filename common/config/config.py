@@ -890,7 +890,7 @@ class Config:
 
     @cached_property
     def indexer_block_lag_to_reindex(self) -> int:
-        return self._env_num(self.indexer_block_lag_to_reindex_name, 0, 0, 10_240)
+        return self._env_num(self.indexer_block_lag_to_reindex_name, 512, 0, 10_240)
 
     @cached_property
     def stuck_object_blockout(self) -> int:
