@@ -74,6 +74,7 @@ SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 def is_image_exist(image, tag):
     response = requests.get(
         url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag}")
+    print(f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag} response: {response.status_code}")
     return response.status_code == 200
 
 
