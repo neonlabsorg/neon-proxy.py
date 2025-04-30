@@ -74,6 +74,7 @@ SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 def is_image_exist(image, tag):
     response = requests.get(
         url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag}")
+    print(f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag} response: {response.status_code}")
     return response.status_code == 200
 
 
@@ -126,11 +127,11 @@ def specify_image_tags(git_sha,
 
     # evm_tag and evm_sha_tag
     if evm_sha_tag:
-        evm_sha_tag = evm_sha_tag
-        evm_tag = evm_tag
+        evm_sha_tag_ = evm_sha_tag
+        evm_tag_ = evm_tag
     else:
-        evm_sha_tag = ""
-        evm_tag = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
+        evm_sha_tag_ = ""
+        evm_tag_ = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
 
     # faucet_tag
     faucet_tag = proxy_tag if is_image_exist("neon-faucet", proxy_tag) else default_faucet_tag
@@ -153,8 +154,8 @@ def specify_image_tags(git_sha,
                proxy_sha_tag=proxy_sha_tag,
                proxy_pr_version_branch=proxy_pr_version_branch,
                is_proxy_release=is_proxy_release,
-               evm_tag=evm_tag,
-               evm_sha_tag=evm_sha_tag,
+               evm_tag=evm_tag_,
+               evm_sha_tag=evm_sha_tag_,
                faucet_tag=faucet_tag,
                neon_test_tag=neon_test_tag)
     set_github_env(env)
