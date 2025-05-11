@@ -4,23 +4,20 @@ import asyncio
 import dataclasses
 import logging
 from typing import Sequence, Final, ClassVar
+
 from typing_extensions import Self
 
 from common.ethereum.errors import EthError
-from common.ethereum.hash import EthTxHash
 from common.ethereum.transaction import EthTx, EthTxType
 from common.neon.block import NeonBlockHdrModel
 from common.neon.cu_cost_packed import CuCostPktData
-from common.neon.neon_program import NeonProg, NeonIxMode
+from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
-from common.solana.account import SolAccountModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
-from common.solana.hash import SolBlockHash
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
-from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
 from .rpc_server_abc import BaseRpcServerComponent
 
@@ -98,28 +95,38 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     async def estimate(
         self,
+        sol_tx_list: Sequence[SolTx],
         core_tx: CoreApiTxModel,
-        sol_account_dict: dict[SolPubKey, SolAccountModel],
         block: NeonBlockHdrModel | None = None,
+        check_result: bool = True,
     ) -> RpcGasLimitResult:
-        resp = await self._core_api_client.emulate_neon_call(
-            core_tx,
-            check_result=True,
-            sol_account_dict=sol_account_dict,
-            block=block,
-        )
+        if not sol_tx_list:
+            resp = await self._core_api_client.emulate_neon_call(
+                core_tx,
+                check_result=check_result,
+                block=block,
+            )
+        else:
+            resp_list = await self._core_api_client.emulate_multiple_neon_call(
+                sol_tx_list,
+                [core_tx],
+                check_result=check_result,
+                block=block,
+            )
+            resp = resp_list[0]
         return await self._calc_gas(core_tx, resp)
 
     async def estimate_skd_tree(
         self,
         sol_tx_list: Sequence[SolTx],
         core_tx_list: Sequence[CoreApiTxModel],
-        block: NeonBlockHdrModel | None = None,
+        block: NeonBlockHdrModel | None,
+        check_result: bool,
     ) -> Sequence[RpcGasLimitResult]:
         resp_list = await self._core_api_client.emulate_multiple_neon_call(
             sol_tx_list,
             core_tx_list,
-            check_result=True,
+            check_result=check_result,
             block=block,
         )
         # fmt: off
