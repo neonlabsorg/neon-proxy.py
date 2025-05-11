@@ -17,7 +17,6 @@ from common.neon.neon_program import NeonProg
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonTxModel, NeonTxType
 from common.neon_rpc.api import EmulAccountMetaModel, CoreApiTxModel
-from common.solana.account import SolAccountModel
 from common.solana.instruction import SolTxIx, SolAccountMeta
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.sys_program import SolSysProg
@@ -81,7 +80,6 @@ class _RpcEmulatorResp(BaseJsonRpcModel):
     gasExecutionUsed: int
     gasFinishUsed: int
     gasSolanaPriorityUsed: int
-
 
     solanaComputeUnitPrice: int
     numEvmSteps: int
@@ -189,19 +187,23 @@ class _RpcSolTxModel(BaseJsonRpcModel):
 
 
 class _RpcNeonSkdTxRequest(BaseEthGasModel):
-    txType: HexUIntField = Field(default=NeonTxType.Scheduled.value, validation_alias="type")
-    scheduledSolanaPayer: SolPubKeyField
-    solTxList: list[_RpcSolTxModel] = Field(default_factory=list, validation_alias="preparatorySolanaTransactions")
-    draftTxList: list[_RpcNeonSkdSubTxDraft] = Field(default_factory=list, validation_alias="transactions")
-    showDetail: bool = Field(default=False, validation_alias="showGasDetails")
+    tx_type: HexUIntField = Field(default=NeonTxType.Scheduled.value, validation_alias="type")
+    sol_payer: SolPubKeyField = Field(validation_alias="scheduledSolanaPayer")
+    draft_sol_tx_list: list[_RpcSolTxModel] = Field(
+        default_factory=list,
+        validation_alias="preparatorySolanaTransactions",
+    )
+    draft_tx_list: list[_RpcNeonSkdSubTxDraft] = Field(default_factory=list, validation_alias="transactions")
+    show_detail: bool = Field(default=False, validation_alias="showGasDetails")
+    check_result: bool = Field(default=True, validation_alias="checkResult")
 
     MaxTxListLen: Final[int] = 24
 
     @cached_property
-    def txList(self) -> list[_RpcNeonSkdSubTxModel]:
-        tx_list_len = len(self.draftTxList)
+    def tx_list(self) -> list[_RpcNeonSkdSubTxModel]:
+        tx_list_len = len(self.draft_tx_list)
         parent_cnt_list: list[int] = [0] * tx_list_len
-        for idx, tx in enumerate(self.draftTxList):
+        for idx, tx in enumerate(self.draft_tx_list):
             child_idx = tx.calc_child_idx(idx, tx_list_len)
             if not tx.calc_has_child(child_idx):
                 pass
@@ -212,22 +214,22 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
             else:
                 parent_cnt_list[child_idx] += 1
 
-        return [tx.to_clean_copy(idx, parent_cnt_list[idx], tx_list_len) for idx, tx in enumerate(self.draftTxList)]
+        return [tx.to_clean_copy(idx, parent_cnt_list[idx], tx_list_len) for idx, tx in enumerate(self.draft_tx_list)]
 
     def model_post_init(self, _ctx: Any) -> None:
-        if not NeonTxType.is_scheduled_tx(self.txType):
+        if not NeonTxType.is_scheduled_tx(self.tx_type):
             raise ValueError(f"type should be {NeonTxType.Scheduled.value}")
-        elif self.scheduledSolanaPayer.is_empty:
+        elif self.sol_payer.is_empty:
             raise ValueError("scheduledSolanaPayer should be present")
         elif self.maxPriorityFeePerGas > self.maxFeePerGas:
             raise ValueError("maxPriorityFeePerGas should be not greater than maxFeePerGas")
-        elif not self.draftTxList:
+        elif not self.draft_tx_list:
             raise ValueError("transactions should be present")
-        elif len(self.draftTxList) > self.MaxTxListLen:
+        elif len(self.draft_tx_list) > self.MaxTxListLen:
             raise ValueError(f"transaction list is too long, should be less than {self.MaxTxListLen}")
 
-        null_cnt = sum(map(lambda x: 1 if x.childTransaction is None else 0, self.draftTxList))
-        if null_cnt not in (0, len(self.draftTxList)):
+        null_cnt = sum(map(lambda x: 1 if x.childTransaction is None else 0, self.draft_tx_list))
+        if null_cnt not in (0, len(self.draft_tx_list)):
             raise ValueError("childTransaction should be present for all or none of the transactions")
 
     def validate_chain_id(self, chain_id: int) -> None:
@@ -235,12 +237,12 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
             raise EthWrongChainIdError()
 
     def to_core_tx_list(self, chain_id: int) -> list[CoreApiTxModel]:
-        payer = NeonAddress.from_raw(self.scheduledSolanaPayer, chain_id).eth_address
+        payer = NeonAddress.from_raw(self.sol_payer, chain_id).eth_address
         return [
             CoreApiTxModel(
-                from_address=self.scheduledSolanaPayer if tx.fromAddress == payer else tx.fromAddress,
+                from_address=self.sol_payer if tx.fromAddress == payer else tx.fromAddress,
                 payer=payer,
-                solanaPayer=self.scheduledSolanaPayer,
+                solanaPayer=self.sol_payer,
                 to_address=tx.toAddress,
                 nonce=self.nonce,
                 value=tx.value,
@@ -249,12 +251,12 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
                 gas_price=(self.maxFeePerGas - self.maxPriorityFeePerGas),
                 chain_id=chain_id,
             )
-            for tx in self.txList
+            for tx in self.tx_list
         ]
 
     @cached_method
     def to_sol_tx_list(self) -> list[SolTx]:
-        return [tx.to_sol_tx() for tx in self.solTxList]
+        return [tx.to_sol_tx() for tx in self.draft_sol_tx_list]
 
 
 class _RpcSkdTxEstimateResp(BaseJsonRpcModel):
@@ -268,19 +270,24 @@ class _RpcSkdTxEstimateResp(BaseJsonRpcModel):
 
 
 class _RpcNeonCallRequest(BaseJsonRpcModel):
-    sol_account_dict: dict[SolPubKeyField, SolAccountModel] = Field(
-        default_factory=dict,
-        validation_alias="solanaOverrides",
+    draft_sol_tx_list: list[_RpcSolTxModel] = Field(
+        default_factory=list,
+        validation_alias="preparatorySolanaTransactions",
     )
     show_detail: bool | None = Field(default=None, validation_alias="showGasDetails")
+    check_result: bool = Field(default=True, validation_alias="checkResult")
 
     _default: ClassVar[_RpcNeonCallRequest | None] = None
 
     @classmethod
     def default(cls) -> Self:
         if not cls._default:
-            cls._default = cls(solanaOverrides=dict())  # noqa
+            cls._default = cls()
         return cls._default
+
+    @cached_method
+    def to_sol_tx_list(self) -> list[SolTx]:
+        return [tx.to_sol_tx() for tx in self.draft_sol_tx_list]
 
 
 class NpCallApi(NeonProxyApi):
@@ -317,7 +324,8 @@ class NpCallApi(NeonProxyApi):
     ) -> HexUIntField:
         chain_id = self._validate_layer0_chain_id(ctx, isinstance(call.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-        gas_limit = await self._gas_limit_calc.estimate(call.to_core_tx(chain_id), dict(), block)
+        sol_tx_list = tuple()
+        gas_limit = await self._gas_limit_calc.estimate(sol_tx_list, call.to_core_tx(chain_id), block)
         return gas_limit.total_gas
 
     @NeonProxyApi.method(name="neon_estimateGas")
@@ -346,7 +354,7 @@ class NpCallApi(NeonProxyApi):
         raw_tx: RpcEthTxRequest | EthBinStrField,
         neon_call: _RpcNeonCallRequest,
         block_tag: RpcBlockRequest,
-        show_detail: bool,
+        def_show_detail: bool,
     ) -> _RpcEmulatorResp | int:
         block = await self.get_block_by_tag(block_tag)
 
@@ -371,9 +379,10 @@ class NpCallApi(NeonProxyApi):
 
             tx = CoreApiTxModel.from_neon_tx(neon_tx)
 
-        gas_limit = await self._gas_limit_calc.estimate(tx, neon_call.sol_account_dict, block)
+        sol_tx_list = neon_call.to_sol_tx_list()
+        gas_limit = await self._gas_limit_calc.estimate(sol_tx_list, tx, block, neon_call.check_result)
 
-        if if_none(neon_call.show_detail, show_detail):
+        if if_none(neon_call.show_detail, def_show_detail):
             return _RpcEmulatorResp.from_raw(gas_limit)
         return gas_limit.total_gas
 
@@ -389,7 +398,7 @@ class NpCallApi(NeonProxyApi):
 
         block = await self.get_block_by_tag(block_tag)
 
-        sender_addr = NeonAddress.from_raw(call.scheduledSolanaPayer, chain_id)
+        sender_addr = NeonAddress.from_raw(call.sol_payer, chain_id)
         sender_acct = await self._core_api_client.get_neon_account(sender_addr, block)
         if if_none(call.nonce, sender_acct.state_tx_cnt) != sender_acct.state_tx_cnt:
             raise EthError("nonce mismatch")
@@ -409,23 +418,23 @@ class NpCallApi(NeonProxyApi):
             nonce=sender_acct.state_tx_cnt,
             treasuryIndex=treasury_index,
             accountList=[
-                call.scheduledSolanaPayer,
+                call.sol_payer,
                 sender_acct.sol_address,
                 treasury_addr,
                 skd_tree_addr.address,
                 NeonProg.DepositAddress,
                 SolSysProg.ID,
             ],
-            gasList=[_RpcEmulatorResp.from_raw(g) if call.showDetail else g.total_gas for g in gas_limit_list],
+            gasList=[_RpcEmulatorResp.from_raw(g) if call.show_detail else g.total_gas for g in gas_limit_list],
         )
 
     async def _estimate_skd_tree_gas(
         self,
         call: _RpcNeonSkdTxRequest,
         chain_id: int,
-        block: NeonBlockHdrModel
+        block: NeonBlockHdrModel,
     ) -> Sequence[RpcGasLimitResult]:
-        tx_list = call.txList
+        tx_list = call.tx_list
         core_tx_list = call.to_core_tx_list(chain_id)
         sol_tx_list = call.to_sol_tx_list()
 
@@ -445,7 +454,8 @@ class NpCallApi(NeonProxyApi):
             core_tx_branch_list.append(core_tx_branch)
 
         if len(core_tx_branch_list) == 1:
-            return list(await self._gas_limit_calc.estimate_skd_tree(sol_tx_list, core_tx_list, block))
+            res_list = await self._gas_limit_calc.estimate_skd_tree(sol_tx_list, core_tx_list, block, call.check_result)
+            return list(res_list)
 
         # run in parallel the gas estimation tasks for all branches
         # fmt: off
@@ -454,6 +464,7 @@ class NpCallApi(NeonProxyApi):
                 sol_tx_list,
                 list(map(lambda x: x[1], core_tx_branch)),
                 block,
+                call.check_result,
             )
             for core_tx_branch in core_tx_branch_list
         ]
