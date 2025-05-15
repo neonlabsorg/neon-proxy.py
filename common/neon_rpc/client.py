@@ -271,6 +271,7 @@ class CoreApiClient(HttpClient):
             req = EmulNeonCallRequest(
                 tx=tx,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+                evm_account_limit=self._cfg.max_tx_account_cnt,
                 token_list=self._token_list,
                 trace_cfg=emul_trace_cfg,
                 preload_sol_address_list=preload_sol_address_list,
@@ -331,6 +332,7 @@ class CoreApiClient(HttpClient):
                 sol_tx_request=sol_tx_req,
                 neon_tx_list=neon_tx_list,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+                evm_account_limit=self._cfg.max_tx_account_cnt,
                 token_list=self._token_list,
                 preload_sol_address_list=preload_sol_address_list,
                 slot=self._get_slot(block),
