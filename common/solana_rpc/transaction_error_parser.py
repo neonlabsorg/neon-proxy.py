@@ -101,6 +101,10 @@ class SolTxErrorParser:
                 return True
         return False
 
+    @cached_method
+    def check_if_unsupported_prog(self) -> bool:
+        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.UnsupportedProgramId
+
     @cached_property
     def cu_consumed(self) -> int | None:
         if isinstance(self._receipt, EmulSolTxMetaModel):
