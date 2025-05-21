@@ -15,7 +15,11 @@ from ..neon.neon_program import NeonProg
 from ..neon.transaction_decoder import SolNeonTxIxMetaInfo, SolNeonTxMetaInfo
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
 from ..solana.transaction_decoder import SolTxMetaInfo
-from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcSendTxErrorInfo
+from ..solana.transaction_meta import (
+    SolRpcTxSlotInfo,
+    SolRpcSendTxErrorInfo,
+    SolRpcTxIxFieldErrorCode,
+)
 from ..solana_rpc.transaction_error_parser import SolTxErrorParser
 from ..utils.cached import cached_method, cached_property
 
@@ -48,6 +52,10 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     ])
     _missing_acct_error_list: Final[Sequence[NeonTxErrorLogInfo.ErrorCode]] = tuple([
         NeonTxErrorLogInfo.ErrorCode.AccountMissing,
+    ])
+    _unsupported_prog_error_list: Final[Sequence[SolRpcTxIxFieldErrorCode]] = tuple([
+        SolRpcTxIxFieldErrorCode.InvalidAccountData,
+        SolRpcTxIxFieldErrorCode.IncorrectProgramId,
     ])
     # fmt: on
 
@@ -104,6 +112,17 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         if not self.sol_neon_ix:
             return False
         return True if self._find_evm_error(self._done_error_list) else False
+
+    @cached_method
+    def check_if_unsupported_prog(self) -> bool:
+        if super().check_if_unsupported_prog():
+            return True
+        elif self._get_tx_error() not in self._unsupported_prog_error_list:
+            return False
+        elif not (cancel_data := super().get_error()):
+            return False
+
+        return cancel_data.address == NeonProg.ID
 
     @cached_method
     def get_skd_tx_use_wrong_holder_error(self) -> CancelErrorData | None:

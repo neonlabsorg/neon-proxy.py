@@ -18,6 +18,7 @@ from common.solana_rpc.errors import (
     SolBlockhashNotFound,
     SolWritableError,
     SolTxExecError,
+    SolUnsupportedProgError,
 )
 from .errors import StuckTxError, WrongStrategyError
 from .server_abc import ExecutorComponent
@@ -184,7 +185,7 @@ class NeonTxExecutor(ExecutorComponent):
             except (WrongStrategyError, SolTxSizeError):
                 return None
 
-            except (SolNeonMissingAccountError, SolWritableError):
+            except (SolNeonMissingAccountError, SolWritableError, SolUnsupportedProgError):
                 ctx.mark_skip_simple_strategy()
                 if strategy.is_simple:
                     return None

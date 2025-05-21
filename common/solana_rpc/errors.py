@@ -79,6 +79,18 @@ class SolWritableError(SolTxExecError):
         )
 
 
+class SolUnsupportedProgError(SolTxExecError):
+    def __init__(self) -> None:
+        super().__init__(
+            CancelErrorData(
+                CancelErrorSource.NeonProxy,
+                SolPubKey.default(),
+                NeonProxyCancelErrorCode.UnsupportedProgError,
+                "Unsupported program error"
+            )
+        )
+
+
 class SolNoMoreRetriesError(SolTxExecError):
     def __init__(self) -> None:
         super().__init__(
