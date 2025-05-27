@@ -103,6 +103,9 @@ class SolNeonTxListSender(SolTxListSender):
             tx_state = super()._decode_tx_status(tx, tx_receipt)
             tx_status, tx_error = tx_state.status, tx_state.error
 
+        if tx_status == status.ErrorReceipt:
+            _LOG.debug("Error receipt: %s", tx_receipt)
+
         return SolNeonTxSendState(tx_status, tx, tx_receipt, tx_error, tx_error_parser.sol_neon_ix, tx_return)
 
     @classmethod
