@@ -161,12 +161,25 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Set proxy image tag
+        id: proxy-tag
+        shell: bash
+        run: |
+          branch="${GITHUB_REF##*/}"
+          if [[ "$IMAGE_TAG" == "latest" ]]; then
+            echo "proxy_tag=$branch" >> "$GITHUB_OUTPUT"
+          else
+            echo "proxy_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          IMAGE_TAG: ${{ steps.tags.outputs.proxy_tag }}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           network: host
           push: true
           tags: |
+            "${{vars.DOCKERHUB_ORG_NAME}}/neon-proxy.py:${{ steps.proxy-tag.outputs.proxy_tag }}"
             "${{vars.DOCKERHUB_ORG_NAME}}/neon-proxy.py:${{ steps.tags.outputs.proxy_sha_tag }}"
           build-args: | 
             NEON_EVM_COMMIT=${{ steps.tags.outputs.evm_sha_tag || steps.tags.outputs.evm_tag }}
