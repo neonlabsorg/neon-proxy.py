@@ -167,8 +167,8 @@ jobs:
           network: host
           push: true
           tags: |
-            "${{vars.DOCKERHUB_ORG_NAME}}/neon_proxy:${{ steps.tags.outputs.proxy_tag }}"
-            "${{vars.DOCKERHUB_ORG_NAME}}/neon_proxy:${{ steps.tags.outputs.proxy_sha_tag }}"
+            "${{vars.DOCKERHUB_ORG_NAME}}/neon-proxy.py:${{ steps.tags.outputs.proxy_tag }}"
+            "${{vars.DOCKERHUB_ORG_NAME}}/neon-proxy.py:${{ steps.tags.outputs.proxy_sha_tag }}"
           build-args: | 
             NEON_EVM_COMMIT=${{ steps.tags.outputs.evm_sha_tag || steps.tags.outputs.evm_tag }}
             DOCKERHUB_ORG_NAME=${{vars.DOCKERHUB_ORG_NAME}}
