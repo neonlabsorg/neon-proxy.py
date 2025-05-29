@@ -214,6 +214,9 @@ jobs:
         cpu: 16
         memory: 32
         hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
+    - name: Wait for instance
+      shell: bash
+      run: sleep 5
     - name: Copy docker-compose files
       uses: appleboy/scp-action@v0.1.7
       with:
