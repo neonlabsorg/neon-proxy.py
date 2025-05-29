@@ -171,16 +171,6 @@ jobs:
             NEON_EVM_COMMIT=${{ steps.tags.outputs.evm_sha_tag || steps.tags.outputs.evm_tag }}
             DOCKERHUB_ORG_NAME=${{vars.DOCKERHUB_ORG_NAME}}
             PROXY_REVISION=${{ steps.tags.outputs.proxy_sha_tag }}
-      # - name: Build docker image
-      #   run: |
-      #     python3 ./.github/workflows/deploy.py build_docker_image \
-      #     --evm_tag=${{ steps.tags.outputs.evm_sha_tag || steps.tags.outputs.evm_tag }} \
-      #     --proxy_tag=${{ steps.tags.outputs.proxy_sha_tag }}
-      # - name: Publish image
-      #   run: |
-      #     python3 ./.github/workflows/deploy.py publish_image \
-      #     --proxy_sha_tag=${{ steps.tags.outputs.proxy_sha_tag }} \
-      #     --proxy_tag=${{ steps.tags.outputs.proxy_tag }}
   deploy-check:
     needs:
       - build-image
