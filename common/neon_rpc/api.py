@@ -686,6 +686,9 @@ class EmulSolTxListRequest(CoreApiRequest):
     verify: bool
     blockhash: CoreApiHexStrField
     tx_list: list[CoreApiHexStrField] = Field(serialization_alias="transactions")
+    sol_account_dict: dict[SolPubKeyField, EmulSolAccountModel | None] | None = Field(
+        serialization_alias="solana_overrides"
+    )
 
 
 class EmulSolTxMetaModel(_BaseRespModel):

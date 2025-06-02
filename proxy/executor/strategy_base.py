@@ -336,6 +336,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                 acct_cnt_limit,
                 blockhash,
                 tx_list,
+                None,
             )
             return meta_list[0] if is_single_tx else meta_list
         except SolError:

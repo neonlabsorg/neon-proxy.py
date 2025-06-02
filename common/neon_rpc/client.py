@@ -359,7 +359,12 @@ class CoreApiClient(HttpClient):
         account_cnt_limit: int,
         blockhash: SolBlockHash,
         tx_list: Sequence[SolTx],
+        sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
     ) -> Sequence[EmulSolTxMetaModel]:
+        emul_sol_acct_dict = dict()
+        if sol_account_dict:
+            emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
+
         req = EmulSolTxListRequest(
             cu_limit=cu_limit,
             heap_size=heap_size,
@@ -367,6 +372,7 @@ class CoreApiClient(HttpClient):
             verify=False,
             blockhash=blockhash.to_bytes(),
             tx_list=list(map(lambda tx: tx.to_bytes(), tx_list)),
+            sol_account_dict=emul_sol_acct_dict,
         )
 
         resp: EmulSolTxListResp = await self._send_request("simulate_solana", req, EmulSolTxListResp)
