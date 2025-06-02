@@ -68,7 +68,7 @@ jobs:
   set-variables:
     outputs:
       pull_request: ${{ steps.set-vars.outputs.pull_request }}
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     steps:
       - name: Set variables
         id: set-vars
