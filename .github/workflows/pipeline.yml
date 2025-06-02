@@ -80,7 +80,7 @@ jobs:
           fi;
 
   build-image:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     outputs:
       proxy_tag: ${{ steps.tags.outputs.proxy_tag }}
       proxy_sha_tag: ${{ steps.tags.outputs.proxy_sha_tag }}
@@ -164,7 +164,7 @@ jobs:
   deploy-check:
     needs:
       - build-image
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -183,7 +183,7 @@ jobs:
     needs:
       - build-image
     timeout-minutes: 25
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     if: always()
     steps:
     - uses: actions/checkout@v4
@@ -242,7 +242,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
@@ -294,7 +294,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
@@ -412,7 +412,7 @@ jobs:
       always() && 
       contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.dapps-tests.result)
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
     steps:
@@ -445,7 +445,7 @@ jobs:
       - requests-report
       - dapps-tests
       - build-image
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     if: always()
     steps:
     - uses: actions/checkout@v4
@@ -485,7 +485,7 @@ jobs:
         run-id: ${{github.run_id}}
         hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
   finalize-image:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     needs:
       - build-image
       - openzeppelin-tests
@@ -512,7 +512,7 @@ jobs:
           --proxy_sha_tag=${{ needs.build-image.outputs.proxy_sha_tag }} \
           --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
   notification:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["self-hosted", "build-runner"]
     needs:
       - finalize-image
       - openzeppelin-tests
