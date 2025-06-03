@@ -64,7 +64,7 @@ class NeonSkdTxDb(SkdTxDbTable):
             """
               AND c.is_active = False
             WHERE
-              a.block_slot >= {slot}
+              a.block_slot > {slot}
               AND a.index = 0
               AND d.neon_sig IS NOT NULL
             ORDER BY
