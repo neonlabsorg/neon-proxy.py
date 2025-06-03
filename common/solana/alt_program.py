@@ -59,7 +59,7 @@ class SolAltProg:
 
     # CU limits for instructions
     CuLimitCreate: Final[int] = 25_000
-    CuLimitExtend: Final[int] = 12_000
+    CuLimitExtend: Final[int] = 20_000
     CuLimitDeactivate: Final[int] = 10_000
     CuLimitClose: Final[int] = 10_000
 
