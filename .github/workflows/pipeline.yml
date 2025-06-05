@@ -205,7 +205,7 @@ jobs:
         memory: 32
         hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
     - name: Install docker
-      uses: ./dynamic-ci-cd/actions/prepare-docker-instance
+      uses: ./dynamic-ci-cd/.github/workflows/actions/prepare-docker-instance
       id: prepare-docker-instance
       with:
           host: ${{ steps.create-instance.outputs.public-ip-v4 }}
@@ -227,7 +227,7 @@ jobs:
         DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
 
     - name: Run docker containers
-      uses: ./dynamic-ci-cd/actions/run-docker-containers
+      uses: ./dynamic-ci-cd/.github/workflows/actions/run-docker-containers
       id: run-docker-containerss
       with:
           docker_host: ${{ steps.create-instance.outputs.public-ip-v4 }}
