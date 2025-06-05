@@ -2,14 +2,22 @@ version: "3"
 
 services:
   solana:
+    container_name: solana
     image: ${DOCKERHUB_ORG_NAME}/evm_loader:${NEON_EVM_COMMIT}
     environment:
       SOLANA_URL: http://127.0.0.1:8899
+      DEVNET_SOLANA_URL: ${DEVNET_SOLANA_URL}
     hostname: solana
     networks:
       - net
     expose:
       - 8899
+    ports:
+      - "8899:8899"
+      - "9900:9900"
+      - "8900:8900"
+      - "8001:8001"
+      - "8001-8009:8001-8009/udp"
     healthcheck:
       # Must be available from outside (calling without -u causes premature result)
       test: [ CMD-SHELL, "./wait-for-neon.sh" ]
@@ -18,6 +26,22 @@ services:
       retries: 20
       start_period: 5s
     entrypoint: /opt/solana-run-neon.sh
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8080:8080"
+    expose:
+      - 8080
+    hostname: nginx
+    container_name: nginx
+    volumes:
+        - /var/log/nginx:/var/log/nginx
+        - /tmp/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - net
+    entrypoint: >
+      /bin/sh -c "echo 'Nginx Configuration:' && cat /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
 
   postgres:
     image: postgres:17.0
@@ -55,9 +79,11 @@ services:
         condition: service_healthy
 
   proxy:
+    container_name: proxy
     image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
+      SOLANA_WS_URL: http://solana:8900/
       FAUCET_URL: http://faucet:3333
       PROXY_URL: http://proxy:9090/solana
       POSTGRES_DB: neon-db
@@ -82,13 +108,7 @@ services:
       COMMIT_LEVEL: Confirmed
       SOLANA_KEY_FOR_EVM_CONFIG: BMp6gEnveANdvSvspESJUrNczuHz1GF5UQKjVLCkAZih
       SOLANA_BLOCK_SEC: "0.1"
-      # An example of HashiCorp configuration, operator key in base64 lies in the secret_key field
-      #   vault kv put -mount=secret neon-proxy/operator-key-2 secret_key=bdSWJ+WwVWdk2XMoxX25monC....A7g+IyA==
-#      HVAC_URL: http://vault:8200
-#      HVAC_TOKEN: local-test-hvac-token
-#      HVAC_MOUNT: secret
-#      HVAC_PATH: neon-proxy/
-      #
+      
     hostname: proxy
     depends_on:
       solana:
@@ -98,6 +118,8 @@ services:
     expose:
       - 8888
       - 9090
+    ports:
+      - "9090:9090"
     networks:
       - net
     entrypoint: proxy/run-test-proxy.sh
@@ -110,6 +132,7 @@ services:
 
   faucet:
     restart: always
+    container_name: faucet
     image: ${DOCKERHUB_ORG_NAME}/faucet:${FAUCET_COMMIT}
     environment:
       FAUCET_RPC_BIND: 0.0.0.0
@@ -134,40 +157,21 @@ services:
       - 3333
     networks:
       - net
+    ports:
+      - "3333:3333"
     entrypoint: ./run-test-faucet.sh
     depends_on:
       solana:
         condition: service_healthy
 
-#  gas_tank:
-#    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
-#    environment:
-#      POSTGRES_DB: neon-db
-#      POSTGRES_USER: neon-proxy
-#      POSTGRES_PASSWORD: neon-proxy-pass
-#      POSTGRES_HOST: postgres
-#      POSTGRES_TIMEOUT: 5
-#      SOLANA_URL: http://solana:8899
-#      NEON_EVM_PROGRAM: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
-#      INDEXER_ERC20_WRAPPER_WHITELIST: ANY
-#      START_SLOT: LATEST
-#    hostname: gas_tank
-#    entrypoint: proxy/run-gas-tank.sh
-#    networks:
-#      - net
-#    depends_on:
-#      solana:
-#        condition: service_healthy
-#      dbcreation:
-#        condition: service_completed_successfully
-#      faucet:
-#        condition: service_started
 #
   indexer:
     restart: always
+    container_name: indexer
     image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
       SOLANA_URL: http://solana:8899
+      SOLANA_WS_URL: http://solana:8900/
       POSTGRES_DB: neon-db
       POSTGRES_USER: neon-proxy
       POSTGRES_PASSWORD: neon-proxy-pass
@@ -189,17 +193,6 @@ services:
       - net
     entrypoint: indexer/run-indexer.sh
 
-#  hashicorp:
-#    container_name: vault
-#    image: hashicorp/vault:latest
-#    hostname: vault
-#    expose:
-#      - 8200
-#    ports:
-#      - 8200:8200
-#    networks:
-#      - net
-#    entrypoint: vault server -dev -dev-listen-address=0.0.0.0:8200 -dev-root-token-id=local-test-hvac-token
 networks:
   net:
 
