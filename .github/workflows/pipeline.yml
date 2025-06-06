@@ -211,21 +211,20 @@ jobs:
           host: ${{ steps.create-instance.outputs.public-ip-v4 }}
           ssh-user: ${{ steps.create-instance.outputs.ssh-user }}
           ssh-key: ${{ steps.create-instance.outputs.ssh-key }}
-    - name: Read docker-compose.yaml file content into variable
+    - name: Read docker-compose.yaml file content into variable (no envsubst)
       id: read_compose_file
       shell: bash
       run: |
-        rendered=$(envsubst < ./docker-compose/docker-compose-ci.yml)
-        echo "value<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$rendered" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        rendered="$(cat ./docker-compose/docker-compose-ci.yml)"
+        # Evaluate the content using variable expansion
+        eval "echo \"value<<EOF"$'\n'"$rendered"$'\n'"EOF\"" >> "$GITHUB_OUTPUT"
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
         NEON_EVM_COMMIT: ${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }}
         FAUCET_COMMIT: ${{ needs.build-image.outputs.faucet_tag }}
-        CI_PP_SOLANA_URL: ${{secrets.DEVNET_INTERNAL_RPC}}
-        DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
-        DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
+        CI_PP_SOLANA_URL: ${{ secrets.DEVNET_INTERNAL_RPC }}
+        DOCKERHUB_ORG_NAME: ${{ vars.DOCKERHUB_ORG_NAME }}
+        DEVNET_SOLANA_URL: ${{ secrets.DEVNET_SOLANA_URL }}
 
     - name: Run docker containers
       uses: ./dynamic-ci-cd/.github/workflows/actions/run-docker-containers
