@@ -14,6 +14,7 @@ services:
       - 8899
     ports:
       - "8899:8899"
+      - "8080:8899"
       - "9900:9900"
       - "8900:8900"
       - "8001:8001"
@@ -26,52 +27,6 @@ services:
       retries: 20
       start_period: 5s
     entrypoint: /opt/solana-run-neon.sh
-
-  nginx:
-    image: nginx:latest
-    ports:
-      - "8080:8080"
-    expose:
-      - 8080
-    hostname: nginx
-    container_name: nginx
-    networks:
-      - net
-    entrypoint: >
-      /bin/sh -c "
-        mkdir -p /etc/nginx;
-        cat <<'EOF' > /etc/nginx/nginx.conf
-        events {
-            worker_connections 1024;
-        }
-
-        http {
-            log_format json_combined escape=json
-              '{ \"@timestamp\": \"$time_iso8601\", '
-              '\"remote_addr\": \"$remote_addr\", '
-              '\"request\": \"$request\", '
-              '\"status\": \"$status\", '
-              '\"body_bytes_sent\": \"$body_bytes_sent\", '
-              '\"http_referer\": \"$http_referer\", '
-              '\"http_user_agent\": \"$http_user_agent\", '
-              '\"request_time\": \"$request_time\", '
-              '\"jsonrpc_method\": \"$request_body\" }';
-
-            access_log /var/log/access.log json_combined;
-
-            server {
-                listen 8080;
-                location / {
-                    return 200 'NGINX is running\n';
-                    add_header Content-Type text/plain;
-                }
-            }
-        }
-      EOF
-        echo 'Generated /etc/nginx/nginx.conf:'
-        cat /etc/nginx/nginx.conf
-        nginx -g 'daemon off;'
-      "
 
   postgres:
     image: postgres:17.0
