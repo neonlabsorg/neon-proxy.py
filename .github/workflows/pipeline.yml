@@ -213,6 +213,7 @@ jobs:
           ssh-key: ${{ steps.create-instance.outputs.ssh-key }}
     - name: Read docker-compose.yaml file content into variable
       id: read_compose_file
+      shell: bash
       run: |
         rendered=$(envsubst < ./docker-compose/docker-compose-ci.yml)
         echo "value<<EOF" >> "$GITHUB_OUTPUT"
