@@ -38,46 +38,40 @@ services:
     networks:
       - net
     entrypoint: >
-      /bin/sh -c '
-        cat <<EOF > /etc/nginx/nginx.conf
+      /bin/sh -c "
+        mkdir -p /etc/nginx;
+        cat <<'EOF' > /etc/nginx/nginx.conf
         events {
             worker_connections 1024;
         }
 
         http {
             log_format json_combined escape=json
-              "{ \\"@timestamp\\": \\"\\$time_iso8601\\", "
-              "\\"remote_addr\\": \\"\\$remote_addr\\", "
-              "\\"request\\": \\"\\$request\\", "
-              "\\"status\\": \\"\\$status\\", "
-              "\\"body_bytes_sent\\": \\"\\$body_bytes_sent\\", "
-              "\\"http_referer\\": \\"\\$http_referer\\", "
-              "\\"http_user_agent\\": \\"\\$http_user_agent\\", "
-              "\\"request_time\\": \\"\\$request_time\\", "
-              "\\"jsonrpc_method\\": \\"\\$request_body\\" }";
+              '{ \"@timestamp\": \"$time_iso8601\", '
+              '\"remote_addr\": \"$remote_addr\", '
+              '\"request\": \"$request\", '
+              '\"status\": \"$status\", '
+              '\"body_bytes_sent\": \"$body_bytes_sent\", '
+              '\"http_referer\": \"$http_referer\", '
+              '\"http_user_agent\": \"$http_user_agent\", '
+              '\"request_time\": \"$request_time\", '
+              '\"jsonrpc_method\": \"$request_body\" }';
 
-            access_log /var/log/nginx/access.log json_combined buffer=8k flush=20s;
+            access_log /var/log/access.log json_combined;
 
             server {
                 listen 8080;
-
                 location / {
-                    proxy_pass http://solana:8899;
-                    proxy_set_header Host \\$host;
-                    proxy_set_header X-Real-IP \\$remote_addr;
-                    proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \\$scheme;
-                }
-
-                location /logs {
-                    alias /var/log/nginx/;
+                    return 200 'NGINX is running\n';
+                    add_header Content-Type text/plain;
                 }
             }
         }
       EOF
-        echo "NGINX config loaded:";
-        cat /etc/nginx/nginx.conf;
-        nginx -g "daemon off;";'
+        echo 'Generated /etc/nginx/nginx.conf:'
+        cat /etc/nginx/nginx.conf
+        nginx -g 'daemon off;'
+      "
 
   postgres:
     image: postgres:17.0
