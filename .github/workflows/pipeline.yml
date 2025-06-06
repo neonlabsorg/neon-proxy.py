@@ -68,7 +68,7 @@ jobs:
   set-variables:
     outputs:
       pull_request: ${{ steps.set-vars.outputs.pull_request }}
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     steps:
       - name: Set variables
         id: set-vars
@@ -80,7 +80,7 @@ jobs:
           fi;
 
   build-image:
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     outputs:
       proxy_tag: ${{ steps.tags.outputs.proxy_tag }}
       proxy_sha_tag: ${{ steps.tags.outputs.proxy_sha_tag }}
@@ -166,7 +166,7 @@ jobs:
   deploy-check:
     needs:
       - build-image
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -185,7 +185,7 @@ jobs:
     needs:
       - build-image
     timeout-minutes: 25
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     if: always()
     steps:
     - uses: actions/checkout@v4
@@ -206,34 +206,46 @@ jobs:
         cpu: 16
         memory: 32
         hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
-    - name: Copy docker-compose files
-      uses: appleboy/scp-action@v0.1.7
+    - name: Install docker
+      uses: ./dynamic-ci-cd/.github/workflows/actions/prepare-docker-instance
+      id: prepare-docker-instance
       with:
-        host: ${{ steps.create-instance.outputs.public-ip-v4 }}
-        username: ${{ steps.create-instance.outputs.ssh-user }}
-        key: ${{ steps.create-instance.outputs.ssh-key }}
-        port: 22
-        source: "docker-compose/*"
-        target: "/tmp/"
-        strip_components: 1
-    - name: Deploy containers
-      uses: appleboy/ssh-action@v1
-      with:
-        host: ${{ steps.create-instance.outputs.public-ip-v4 }}
-        username: ${{ steps.create-instance.outputs.ssh-user }}
-        key: ${{ steps.create-instance.outputs.ssh-key }}
-        port: 22
-        script_path: ./.github/workflows/stand_init.sh
-        envs: REVISION,SOLANA_URL,SOLANA_WS_URL,NEON_EVM_COMMIT,FAUCET_COMMIT,CI_PP_SOLANA_URL,DOCKERHUB_ORG_NAME,DEVNET_SOLANA_URL
+          host: ${{ steps.create-instance.outputs.public-ip-v4 }}
+          ssh-user: ${{ steps.create-instance.outputs.ssh-user }}
+          ssh-key: ${{ steps.create-instance.outputs.ssh-key }}
+    - name: Install envsubst
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y gettext
+    - name: Read docker-compose.yaml file content into variable
+      id: read_compose_file
+      shell: bash
+      run: |
+        rendered=$(envsubst < ./docker-compose/docker-compose-ci.yml)
+        echo "value<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$rendered" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
       env:
         REVISION: ${{ needs.build-image.outputs.proxy_sha_tag }}
-        SOLANA_URL: "http://nginx:8080/"
-        SOLANA_WS_URL: "http://solana:8900/"
         NEON_EVM_COMMIT: ${{ needs.build-image.outputs.evm_sha_tag || needs.build-image.outputs.evm_tag }}
         FAUCET_COMMIT: ${{ needs.build-image.outputs.faucet_tag }}
         CI_PP_SOLANA_URL: ${{secrets.DEVNET_INTERNAL_RPC}}
         DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
         DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
+
+    - name: Debug
+      shell: bash
+      run: echo "${{ steps.read_compose_file.outputs.value }}"
+
+    - name: Run docker containers
+      uses: ./dynamic-ci-cd/.github/workflows/actions/run-docker-containers
+      id: run-docker-containerss
+      with:
+          docker_host: ${{ steps.create-instance.outputs.public-ip-v4 }}
+          docker_ca_cert: ${{ steps.prepare-docker-instance.outputs.docker_ca_cert }}
+          docker_cert: ${{ steps.prepare-docker-instance.outputs.docker_cert }}
+          docker_key: ${{ steps.prepare-docker-instance.outputs.docker_key }}
+          docker_containers_wait_for_ready_seconds: 30
+          docker_compose: ${{ steps.read_compose_file.outputs.value }}
     outputs:
       ssh_user: ${{ steps.create-instance.outputs.ssh-user }}
       ssh_key: ${{ steps.create-instance.outputs.ssh-key }}
@@ -244,7 +256,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
@@ -296,7 +308,7 @@ jobs:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
@@ -414,7 +426,7 @@ jobs:
       always() && 
       contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.dapps-tests.result)
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
     steps:
@@ -447,7 +459,7 @@ jobs:
       - requests-report
       - dapps-tests
       - build-image
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     if: always()
     steps:
     - uses: actions/checkout@v4
@@ -487,7 +499,7 @@ jobs:
         run-id: ${{github.run_id}}
         hcloud-token: ${{ secrets.HCLOUD_TOKEN }}
   finalize-image:
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     needs:
       - build-image
       - openzeppelin-tests
@@ -514,7 +526,7 @@ jobs:
           --proxy_sha_tag=${{ needs.build-image.outputs.proxy_sha_tag }} \
           --proxy_tag=${{ needs.build-image.outputs.proxy_tag }}
   notification:
-    runs-on: ["self-hosted", "neon-hosted"]
+    runs-on: ["self-hosted", "k8s-prod"]
     needs:
       - finalize-image
       - openzeppelin-tests
