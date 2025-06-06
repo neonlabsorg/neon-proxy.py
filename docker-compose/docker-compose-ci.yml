@@ -35,9 +35,6 @@ services:
       - 8080
     hostname: nginx
     container_name: nginx
-    configs:
-      - source: nginx_conf
-        target: /etc/nginx/nginx.conf
     networks:
       - net
     entrypoint: >
@@ -234,8 +231,4 @@ services:
 
 networks:
   net:
-
-configs:
-  nginx_conf:
-    file: ./docker-compose/nginx.conf
 
