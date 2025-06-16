@@ -251,12 +251,13 @@ jobs:
       ssh_key: ${{ steps.create-instance.outputs.ssh-key }}
       solana_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
       proxy_ip: ${{ steps.create-instance.outputs.public-ip-v4 }}
+
   openzeppelin-tests:
     if: needs.build-image.outputs.full_test_suite=='true'
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: ["gha-runner-scale-set"]
+    runs-on: ["gha-runner-scale-set-large"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
@@ -304,11 +305,12 @@ jobs:
       - name: canceling the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
+
   basic-tests:
     needs:
       - prepare-infrastructure
       - build-image
-    runs-on: ["gha-runner-scale-set"]
+    runs-on: ["gha-runner-scale-set-large"]
     env:
       SOLANA_IP: ${{ needs.prepare-infrastructure.outputs.solana_ip }}
       PROXY_IP: ${{ needs.prepare-infrastructure.outputs.proxy_ip }}
