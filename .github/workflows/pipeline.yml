@@ -343,7 +343,7 @@ jobs:
           docker exec -i ${{ env.CONTAINER }} $CMD
       - name: "Generate allure report"
         if: always()
-        uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@develop
+        uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@feat/aws-dynamic-ci-cd
         with:
           container: ${{ env.CONTAINER }}
           network: ${{ env.NETWORK }}
@@ -398,7 +398,7 @@ jobs:
       - set-variables
       - prepare-infrastructure
       - build-image
-    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@feat/aws-dynamic-ci-cd
     secrets: inherit
     with:
       network: custom
