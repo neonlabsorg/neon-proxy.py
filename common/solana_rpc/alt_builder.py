@@ -150,6 +150,28 @@ class SolAltTxBuilder:
 
         return SolAltTxSet(create_alt_tx_list=create_alt_tx_list, extend_alt_tx_list=extend_alt_tx_list)
 
+    def build_alt_custom_tx_set(self, alt: SolAltInfo) -> SolAltTxSet:
+        # List of accounts to write to the Address Lookup Table
+        acct_list = list(alt.new_account_key_set)
+
+        # List of txs to extend the Address Lookup Table
+        custom_alt_tx_list: list[SolLegacyTx] = list()
+        max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
+        while acct_list:
+            acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
+            ix_list = tuple(
+                [
+                    self._cb_prog.make_cu_price_ix(self._cu_price),
+                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitExtend),
+                    self._alt_prog.make_custom_alt_ix(alt.ident, acct_list_part),
+                ]
+            )
+            tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
+            custom_alt_tx_list.append(tx)
+
+        return SolAltTxSet(create_alt_tx_list=custom_alt_tx_list, extend_alt_tx_list=list())
+
+
     async def update_alt(self, alt_list: SolAltInfo | Sequence[SolAltInfo]) -> None:
         # Account keys in Account Lookup Table can be reordered because ExtendLookup txs can be committed in any order
         if isinstance(alt_list, SolAltInfo):

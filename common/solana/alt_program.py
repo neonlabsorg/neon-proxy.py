@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 from enum import IntEnum
-from typing import Final, Sequence, Self
+from typing import Final, Sequence, List, Self
 
 import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
 
 from .account import SolAccountModel
 from .errors import SolAltContentError
-from .instruction import SolTxIx
+from .instruction import SolTxIx, SolAccountMeta
 from .pubkey import SolPubKey, SolPubKeyField
 from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
@@ -104,6 +104,23 @@ class SolAltProg:
                 authority_address=self._payer,
                 new_addresses=list(account_key_list),
             )
+        )
+
+    def make_custom_alt_ix(self, ident: SolAltID, account_key_list: Sequence[SolPubKey]) -> SolTxIx:
+        assert len(account_key_list), "No accounts for ALT extending"
+        accounts: List[SolAccountMeta] = [
+            SolAccountMeta(pubkey=ident.address, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=SolPubKey.from_string('11111111111111111111111111111111'), is_signer=False, is_writable=False),
+        ]
+        for account_key in account_key_list:
+            accounts.append(SolAccountMeta(pubkey=account_key, is_signer=False, is_writable=False))
+
+        return SolTxIx(
+            accounts=accounts,
+            program_id=SolPubKey.from_string('2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv'),
+            data=ident.recent_slot.to_bytes(8, "little"),
         )
 
     def make_deactivate_alt_ix(self, ident: SolAltID) -> SolTxIx:

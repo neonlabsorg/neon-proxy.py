@@ -53,7 +53,7 @@ class AltTxPrepStage(BaseTxPrepStage):
             return list()
 
         actual_alt = await self._extend_alt(actual_alt, alt_list)
-        alt_tx_set = self._alt_builder.build_alt_tx_set(actual_alt)
+        alt_tx_set = self._alt_builder.build_alt_custom_tx_set(actual_alt)
 
         self._alt_dict[actual_alt.address] = actual_alt
         self._ctx.add_alt_id(actual_alt.ident)

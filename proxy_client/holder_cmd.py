@@ -293,7 +293,7 @@ class HolderHandler(BaseNPCmdHandler):
         alt_tx_builder = SolAltTxBuilder(self._cfg, sol_client, slot_session, payer, self._cu_price)
         fake_alt: SolAltInfo = alt_tx_builder.build_fake_alt(legacy_tx)
         alt: SolAltInfo = await alt_tx_builder.rebuild_to_real_alt(fake_alt)
-        alt_tx_set = alt_tx_builder.build_alt_tx_set(alt)
+        alt_tx_set = alt_tx_builder.build_alt_custom_tx_set(alt)
 
         for tx_list in alt_tx_set.tx_list_list:
             await self._send_tx_list(req_id, payer, tx_list, timeout_sec)
