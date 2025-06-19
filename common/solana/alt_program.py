@@ -52,7 +52,12 @@ class SolAltID(BaseModel):
 
 
 class SolAltProg:
+    # System Programs
     ID: Final[SolPubKey] = SolPubKey.from_raw(_alt.ID)
+    ProgramSystem: Final[SolPubKey] = SolPubKey.from_string('11111111111111111111111111111111')
+    ProgramSystemALT: Final[SolPubKey] = SolPubKey.from_string('AddressLookupTab1e1111111111111111111111111')
+    ProgramALTUpdater: Final[SolPubKey] = SolPubKey.from_string('2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv')
+
     MaxRequiredSigCnt: Final[int] = 19
     MaxTxAccountCnt: Final[int] = 27
     MaxAltAccountCnt: Final[int] = _alt.LOOKUP_TABLE_MAX_ADDRESSES
@@ -109,26 +114,20 @@ class SolAltProg:
         )
 
     def make_custom_alt_ix(self, ident: SolAltID, account_key_list: Sequence[SolPubKey]) -> SolTxIx:
-        #assert len(account_key_list), "No accounts for ALT extending"
-        _LOG.error("ALT Program:: ident.address %s", ident.address.to_string())
-        _LOG.error("ALT Program:: self._payer %s", self._payer.to_string())
-        _LOG.error("ALT Program:: ident.recent_slot %d", ident.recent_slot)
-
-
         accounts: List[SolAccountMeta] = [
             SolAccountMeta(pubkey=ident.address, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=SolPubKey.from_string('11111111111111111111111111111111'), is_signer=False, is_writable=False),
-            SolAccountMeta(pubkey=SolPubKey.from_string('AddressLookupTab1e1111111111111111111111111'), is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=self.ProgramSystem, is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=self.ProgramSystemALT, is_signer=False, is_writable=False),
         ]
         for account_key in account_key_list:
             accounts.append(SolAccountMeta(pubkey=account_key, is_signer=False, is_writable=False))
 
         return SolTxIx(
-            accounts=accounts,
-            program_id=SolPubKey.from_string('2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv'),
+            program_id=self.ProgramALTUpdater,
             data=ident.recent_slot.to_bytes(8, "little"),
+            accounts=accounts,
         )
 
     def make_deactivate_alt_ix(self, ident: SolAltID) -> SolTxIx:
