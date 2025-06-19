@@ -6,6 +6,7 @@ from typing import Final, Sequence, List, Self
 
 import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
+from ..solana.sys_program import SolSysProg
 
 from .account import SolAccountModel
 from .errors import SolAltContentError
@@ -59,6 +60,7 @@ class SolAltProg:
     # CU limits for instructions
     CuLimitCreate: Final[int] = 25_000
     CuLimitExtend: Final[int] = 20_000
+    CuLimitCustom: Final[int] = 80_000
     CuLimitDeactivate: Final[int] = 10_000
     CuLimitClose: Final[int] = 10_000
 
@@ -107,12 +109,18 @@ class SolAltProg:
         )
 
     def make_custom_alt_ix(self, ident: SolAltID, account_key_list: Sequence[SolPubKey]) -> SolTxIx:
-        assert len(account_key_list), "No accounts for ALT extending"
+        #assert len(account_key_list), "No accounts for ALT extending"
+        _LOG.error("ALT Program:: ident.address %s", ident.address.to_string())
+        _LOG.error("ALT Program:: self._payer %s", self._payer.to_string())
+        _LOG.error("ALT Program:: ident.recent_slot %d", ident.recent_slot)
+
+
         accounts: List[SolAccountMeta] = [
-            SolAccountMeta(pubkey=ident.address, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=ident.address, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=SolPubKey.from_string('11111111111111111111111111111111'), is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=SolPubKey.from_string('AddressLookupTab1e1111111111111111111111111'), is_signer=False, is_writable=False),
         ]
         for account_key in account_key_list:
             accounts.append(SolAccountMeta(pubkey=account_key, is_signer=False, is_writable=False))

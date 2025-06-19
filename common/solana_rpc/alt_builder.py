@@ -162,7 +162,7 @@ class SolAltTxBuilder:
             ix_list = tuple(
                 [
                     self._cb_prog.make_cu_price_ix(self._cu_price),
-                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitExtend),
+                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitCustom),
                     self._alt_prog.make_custom_alt_ix(alt.ident, acct_list_part),
                 ]
             )
