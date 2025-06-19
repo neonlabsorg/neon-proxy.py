@@ -6,7 +6,6 @@ from typing import Final, Sequence, List, Self
 
 import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
-from ..solana.sys_program import SolSysProg
 
 from .account import SolAccountModel
 from .errors import SolAltContentError
@@ -52,11 +51,10 @@ class SolAltID(BaseModel):
 
 
 class SolAltProg:
-    # System Programs
+    # Program Pubkeys
     ID: Final[SolPubKey] = SolPubKey.from_raw(_alt.ID)
-    ProgramSystem: Final[SolPubKey] = SolPubKey.from_string('11111111111111111111111111111111')
-    ProgramSystemALT: Final[SolPubKey] = SolPubKey.from_string('AddressLookupTab1e1111111111111111111111111')
-    ProgramALTUpdater: Final[SolPubKey] = SolPubKey.from_string('2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv')
+    IDSystem: Final[SolPubKey] = SolPubKey.from_raw(_sys.ID)
+    IDALTUpdater: Final[SolPubKey] = SolPubKey.from_string('2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv')
 
     MaxRequiredSigCnt: Final[int] = 19
     MaxTxAccountCnt: Final[int] = 27
@@ -118,14 +116,14 @@ class SolAltProg:
             SolAccountMeta(pubkey=ident.address, is_signer=False, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
             SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
-            SolAccountMeta(pubkey=self.ProgramSystem, is_signer=False, is_writable=False),
-            SolAccountMeta(pubkey=self.ProgramSystemALT, is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=self.IDSystem, is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=self.ID, is_signer=False, is_writable=False),
         ]
         for account_key in account_key_list:
             accounts.append(SolAccountMeta(pubkey=account_key, is_signer=False, is_writable=False))
 
         return SolTxIx(
-            program_id=self.ProgramALTUpdater,
+            program_id=self.IDALTUpdater,
             data=ident.recent_slot.to_bytes(8, "little"),
             accounts=accounts,
         )
