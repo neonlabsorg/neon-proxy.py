@@ -54,7 +54,7 @@ class SolAltProg:
     # Program Pubkeys
     ID: Final[SolPubKey] = SolPubKey.from_raw(_alt.ID)
     IDSystem: Final[SolPubKey] = SolPubKey.from_raw(_sys.ID)
-    IDALTUpdater: Final[SolPubKey] = SolPubKey.from_string('2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv')
+    IDALTUpdater: Final[SolPubKey] = SolPubKey.from_string('7pZR1DbAc9KQm2eJEDUTMKaf92LKchWNzNF6iJhcv7zy')
 
     MaxRequiredSigCnt: Final[int] = 19
     MaxTxAccountCnt: Final[int] = 27
