@@ -30,6 +30,8 @@ SOLANA_MAX_CU_LIMIT: Final[int] = int(os.environ.get("SOLANA_MAX_CU_LIMIT", str(
 NEON_EVM_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw(
     os.environ.get("NEON_EVM_PROGRAM", os.environ.get("EVM_LOADER"))  # EVM_LOADER for compatibility only
 )
+NEON_ALT_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw(os.environ.get("NEON_ALT_PROGRAM"))
+
 DEFAULT_TOKEN_NAME: Final[str] = os.environ.get("DEFAULT_TOKEN_NAME", "neon").strip().upper()
 LAYER0_TOKEN_NAME: Final[str] = os.environ.get("LAYER0_TOKEN_NAME", "sol").strip().upper()
 

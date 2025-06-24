@@ -9,7 +9,7 @@ from .ws_client import SolWatchAccountSession, SolWatchSlotSession
 from ..config.config import Config
 from ..config.constants import MIN_FINALIZE_SEC
 from ..solana.alt_info import SolAltInfo
-from ..solana.alt_program import SolAltProg, SolAltAccountInfo
+from ..solana.alt_program import SolAltProg, SolExtAltProg, SolAltAccountInfo
 from ..solana.cb_program import SolCbProg
 from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
@@ -74,6 +74,7 @@ class SolAltTxBuilder:
         self._sol_client = sol_client
         self._slot_session = slot_session
         self._alt_prog = SolAltProg(owner)
+        self._ext_alt_prog = SolExtAltProg(owner)
         self._cb_prog = SolCbProg()
         self._cu_price = cu_price
 
@@ -162,8 +163,8 @@ class SolAltTxBuilder:
             ix_list = tuple(
                 [
                     self._cb_prog.make_cu_price_ix(self._cu_price),
-                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitCustom),
-                    self._alt_prog.make_custom_alt_ix(alt.ident, acct_list_part),
+                    self._cb_prog.make_cu_limit_ix(self._ext_alt_prog.CuLimit),
+                    self._ext_alt_prog.make_update_alt_ix(alt.ident, acct_list_part),
                 ]
             )
             tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
