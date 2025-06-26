@@ -112,13 +112,13 @@ class SolAltTxBuilder:
     def can_merge_alt(dst_alt: SolAltInfo, src_alt: SolAltInfo) -> bool:
         return len(dst_alt.account_key_list) + len(src_alt.account_key_list) < SolAltProg.MaxAltAccountCnt
 
-    def build_ext_alt_tx_set(self, alt: SolAltInfo) -> SolAltTxSet:
+    def build_alt_tx_set(self, alt: SolAltInfo) -> SolAltTxSet:
         # List of accounts to write to the Address Lookup Table
         acct_list = list(alt.new_account_key_set)
 
         # List of txs to create or update the Address Lookup Table using external Alt Updater program
-        ext_alt_tx_list: list[SolLegacyTx] = list()
-        max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
+        alt_tx_list: list[SolLegacyTx] = list()
+        max_tx_acct_cnt = SolExtAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
             ix_list = tuple(
@@ -129,9 +129,9 @@ class SolAltTxBuilder:
                 ]
             )
             tx = SolLegacyTx(name=self._update_name, ix_list=ix_list)
-            ext_alt_tx_list.append(tx)
+            alt_tx_list.append(tx)
 
-        return SolAltTxSet(create_alt_tx_list=ext_alt_tx_list, extend_alt_tx_list=list())
+        return SolAltTxSet(create_alt_tx_list=alt_tx_list, extend_alt_tx_list=list())
 
     async def update_alt(self, alt_list: SolAltInfo | Sequence[SolAltInfo]) -> None:
         # Account keys in Account Lookup Table can be reordered because ExtendLookup txs can be committed in any order

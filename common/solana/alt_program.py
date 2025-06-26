@@ -53,9 +53,7 @@ class SolAltID(BaseModel):
 
 
 class SolAltProg:
-    # Program Pubkeys
     ID: Final[SolPubKey] = SolPubKey.from_raw(_alt.ID)
-
     MaxRequiredSigCnt: Final[int] = 19
     MaxTxAccountCnt: Final[int] = 27
     MaxAltAccountCnt: Final[int] = _alt.LOOKUP_TABLE_MAX_ADDRESSES
@@ -130,6 +128,7 @@ class SolAltProg:
 
 class SolExtAltProg:
     ID: Final[SolPubKey] = NEON_ALT_PROGRAM_ID
+    MaxTxAccountCnt: Final[int] = 27
     CuLimit: Final[int] = 52_000
 
     def __init__(self, payer: SolPubKey) -> None:
