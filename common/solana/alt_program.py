@@ -130,7 +130,7 @@ class SolAltProg:
 
 class SolExtAltProg:
     ID: Final[SolPubKey] = NEON_ALT_PROGRAM_ID
-    CuLimit: Final[int] = 65_000
+    CuLimit: Final[int] = 60_000
 
     def __init__(self, payer: SolPubKey) -> None:
         self._payer = payer
