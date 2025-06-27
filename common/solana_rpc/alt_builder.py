@@ -118,7 +118,7 @@ class SolAltTxBuilder:
 
         # List of txs to create or update the Address Lookup Table using external Alt Updater program
         alt_tx_list: list[SolLegacyTx] = list()
-        max_tx_acct_cnt = SolExtAltProg.MaxTxAccountCnt
+        max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
             ix_list = tuple(
