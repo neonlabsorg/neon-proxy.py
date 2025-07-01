@@ -462,7 +462,7 @@ def calculate_stats(stats):
 @click.option("--solana_ip", default="localhost", help="Solana IP")
 def parse_logs(solana_ip):
     try:
-        content = requests.get(f"http://{solana_ip}:8080/logs/access.log").text
+        content = requests.get(f"http://{solana_ip}:8100/logs/access.log").text
     except requests.exceptions.InvalidURL as e:
         print(f"Error: {e}")
         sys.exit(1)
