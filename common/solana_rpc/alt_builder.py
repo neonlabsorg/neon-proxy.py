@@ -9,7 +9,7 @@ from .ws_client import SolWatchAccountSession, SolWatchSlotSession
 from ..config.config import Config
 from ..config.constants import MIN_FINALIZE_SEC
 from ..solana.alt_info import SolAltInfo
-from ..solana.alt_program import SolAltProg, SolAltAccountInfo
+from ..solana.alt_program import SolAltProg, SolExtAltProg, SolAltAccountInfo
 from ..solana.cb_program import SolCbProg
 from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
@@ -59,6 +59,8 @@ class SolAltTxSet:
 class SolAltTxBuilder:
     _create_name: Final[str] = "CreateLookupTable"
     _extend_name: Final[str] = "ExtendLookupTable"
+    _update_name: Final[str] = "AltUpdater"
+
     _wait_nsec: Final[int] = int(MIN_FINALIZE_SEC * 1e9)
     _recent_slot_dict: ClassVar[dict[SolPubKey, int]] = dict()
 
@@ -74,6 +76,7 @@ class SolAltTxBuilder:
         self._sol_client = sol_client
         self._slot_session = slot_session
         self._alt_prog = SolAltProg(owner)
+        self._ext_alt_prog = SolExtAltProg(owner)
         self._cb_prog = SolCbProg()
         self._cu_price = cu_price
 
@@ -110,45 +113,25 @@ class SolAltTxBuilder:
         return len(dst_alt.account_key_list) + len(src_alt.account_key_list) < SolAltProg.MaxAltAccountCnt
 
     def build_alt_tx_set(self, alt: SolAltInfo) -> SolAltTxSet:
-        is_alt_exist = alt.is_exist
-
-        # Tx to create an Address Lookup Table
-        create_alt_tx_list: list[SolLegacyTx] = list()
-        if not is_alt_exist:
-            ix_list = tuple(
-                [
-                    self._cb_prog.make_cu_price_ix(self._cu_price),
-                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitCreate),
-                    self._alt_prog.make_create_alt_ix(alt.ident),
-                ]
-            )
-            create_alt_tx = SolLegacyTx(name=self._create_name, ix_list=ix_list)
-            create_alt_tx_list.append(create_alt_tx)
-
         # List of accounts to write to the Address Lookup Table
         acct_list = list(alt.new_account_key_set)
 
-        # List of txs to extend the Address Lookup Table
-        extend_alt_tx_list: list[SolLegacyTx] = list()
+        # List of txs to create or update the Address Lookup Table using external Alt Updater program
+        alt_tx_list: list[SolLegacyTx] = list()
         max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
             ix_list = tuple(
                 [
                     self._cb_prog.make_cu_price_ix(self._cu_price),
-                    self._cb_prog.make_cu_limit_ix(self._alt_prog.CuLimitExtend),
-                    self._alt_prog.make_extend_alt_ix(alt.ident, acct_list_part),
+                    self._cb_prog.make_cu_limit_ix(self._ext_alt_prog.CuLimit),
+                    self._ext_alt_prog.make_update_alt_ix(alt.ident, acct_list_part),
                 ]
             )
-            tx = SolLegacyTx(name=self._extend_name, ix_list=ix_list)
-            extend_alt_tx_list.append(tx)
+            tx = SolLegacyTx(name=self._update_name, ix_list=ix_list)
+            alt_tx_list.append(tx)
 
-        # If a list of accounts is small, including of first extend-tx in create-tx will decrease the time of tx execution
-        if not is_alt_exist:
-            create_alt_tx_list[0].add(extend_alt_tx_list[0].ix_list[-1])
-            extend_alt_tx_list = extend_alt_tx_list[1:]
-
-        return SolAltTxSet(create_alt_tx_list=create_alt_tx_list, extend_alt_tx_list=extend_alt_tx_list)
+        return SolAltTxSet(create_alt_tx_list=alt_tx_list, extend_alt_tx_list=list())
 
     async def update_alt(self, alt_list: SolAltInfo | Sequence[SolAltInfo]) -> None:
         # Account keys in Account Lookup Table can be reordered because ExtendLookup txs can be committed in any order
