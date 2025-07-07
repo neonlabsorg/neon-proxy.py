@@ -604,6 +604,7 @@ class EmulTraceCfgModel(_BaseModel):
 class EmulNeonCallRequest(CoreApiRequest):
     tx: CoreApiTxModel
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
+    evm_account_limit: DecUIntField = Field(serialization_alias="account_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
     trace_cfg: EmulTraceCfgModel | None = Field(serialization_alias="trace_config")
     preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
@@ -670,6 +671,7 @@ class EmulMultipleNeonCallRequest(CoreApiRequest):
     sol_tx_request: EmulSolTxListRequest = Field(serialization_alias="solana_tx")
     neon_tx_list: list[CoreApiTxModel] = Field(serialization_alias="tx")
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
+    evm_account_limit: DecUIntField = Field(serialization_alias="account_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
     preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
     slot: DecUIntField | None
