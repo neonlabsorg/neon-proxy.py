@@ -46,7 +46,8 @@ RUN chmod +x /spl/bin/create-test-accounts.sh
 # TODO: rename
 COPY --from=spl /opt/neon-api /spl/bin/neon-core-api
 
-COPY test-operator-keypairs/id.json /root/.config/solana/
+COPY --from=spl /opt/operator-keypairs/* /opt/neon-proxy/test-operator-keypairs/
+RUN mkdir -p /root/.config/solana/ && cp /opt/neon-proxy/test-operator-keypairs/id.json /root/.config/solana/
 
 COPY . .
 
