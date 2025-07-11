@@ -398,7 +398,7 @@ jobs:
       - set-variables
       - prepare-infrastructure
       - build-image
-    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@develop
+    uses: neonlabsorg/neon-tests/.github/workflows/dapps_reusable.yml@NDEV-3835-cost-report-validation-refactor
     secrets: inherit
     with:
       network: custom
