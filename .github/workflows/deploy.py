@@ -191,11 +191,12 @@ def build_docker_image(evm_tag,  proxy_tag, skip_pull):
 @cli.command(name="publish_image")
 @click.option('--proxy_sha_tag')
 @click.option('--proxy_tag')
-def publish_image(proxy_sha_tag, proxy_tag):
+@click.option('--evm_tag')
+def publish_image(proxy_sha_tag, proxy_tag, evm_tag):
     push_image_with_tag(proxy_sha_tag, proxy_sha_tag)
     # push latest and version tags only on the finalizing step
     if proxy_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is None:
-        push_image_with_tag(proxy_sha_tag, proxy_tag)
+        push_image_with_tag(proxy_sha_tag, f"evm-triggered-{evm_tag}")
 
 
 def push_image_with_tag(sha, tag):
