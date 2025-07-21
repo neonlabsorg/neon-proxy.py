@@ -162,7 +162,7 @@ jobs:
         run: |
           python3 ./.github/workflows/deploy.py publish_image \
           --proxy_sha_tag=${{ steps.tags.outputs.proxy_sha_tag }} \
-          --proxy_tag=${{ steps.tags.outputs.proxy_tag }}
+          --proxy_tag=${{ steps.tags.outputs.proxy_tag }} \
           --evm_tag=${{ steps.tags.outputs.evm_tag }}
   deploy-check:
     needs:
