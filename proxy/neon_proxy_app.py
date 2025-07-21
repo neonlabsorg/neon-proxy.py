@@ -7,8 +7,8 @@ from common.config.config import Config
 from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
-from common.neon_rpc.client import CoreApiClient
-from common.neon_rpc.server import CoreApiServer
+from common.neon_rpc.client import CoreApiClient, CoreRpcClient
+from common.neon_rpc.server import CoreApiServer, CoreRpcServer
 from common.solana_rpc.client import SolClient
 from common.utils.json_logger import Logger
 from gas_tank.db.gas_less_accounts_db import GasLessAccountDb
@@ -46,11 +46,15 @@ class NeonProxyApp:
         db = IndexerDbClient(cfg, db_conn)
         gas_tank = GasLessAccountDb(db_conn)
 
-        # Init Core Api
-        self._core_api_server = CoreApiServer(cfg)
+        # Init Core Api Server
+        #self._core_api_server = CoreApiServer(cfg)
+
+        # Init Core Rpc Server
+        self._core_rpc_server = CoreRpcServer(cfg)
 
         # Init clients
-        core_api_client = CoreApiClient(cfg, sol_client, self._stat_client)
+        core_api_client = CoreRpcClient(cfg, sol_client, self._stat_client).connect(host="127.0.0.1", port=3100)
+        #core_api_client = CoreApiClient(cfg, sol_client, self._stat_client)
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)
@@ -121,7 +125,8 @@ class NeonProxyApp:
 
     def start(self) -> int:
         try:
-            self._core_api_server.start()
+            #self._core_api_server.start()
+            self._core_rpc_server.start()
             self._exec_server.start()
             self._op_server.start()
             self._mp_server.start()
@@ -143,7 +148,8 @@ class NeonProxyApp:
             self._mp_server.stop()
             self._op_server.stop()
             self._exec_server.stop()
-            self._core_api_server.stop()
+            #self._core_api_server.stop()
+            self._core_rpc_server.stop()
             return 0
 
         except BaseException as exc:

@@ -19,7 +19,7 @@ from ..utils.json_logger import log_msg
 _LOG = logging.getLogger(__name__)
 
 
-class _Server:
+class _BaseServer:
     # skip date-time
     _skip_len: Final[int] = len("2024-02-20T21:59:26.318980Z ")
     # 7-bit C1 ANSI sequences
@@ -38,12 +38,9 @@ class _Server:
         re.VERBOSE,
     )
 
-    def __init__(self, cfg: Config, idx: int, solana_url: str):
+    def __init__(self, cfg: Config):
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        port = cfg.neon_core_api_port + idx
-        self._host = f"{cfg.neon_core_api_ip}:{port}"
-        self._solana_url = solana_url
         self._process: mp.Process | None = None
         self._stop_event = mp.Event()
 
@@ -63,7 +60,6 @@ class _Server:
 
         new_env = dict(
             RUST_LOG=log_level,
-            SOLANA_URL=self._solana_url,
             NEON_API_LISTENER_ADDR=self._host,
             COMMITMENT=SolCommit.Processed,
             EVM_LOADER=str(NeonProg.ID),
@@ -74,6 +70,8 @@ class _Server:
             # storage for AccountsDb when running Solana Bank Emulator
             SOLANA_RAYON_THREADS="1",
         )
+        if hasattr(self, "_solana_url"):
+            new_env["SOLANA_URL"] = self._solana_url
 
         env = dict(os.environ)
         env.update(new_env)
@@ -81,16 +79,15 @@ class _Server:
         return env
 
     def _run(self):
-        cmd = [self._cfg.neon_core_api_server_bin, "-H", self._host]
         env = self._create_env()
 
         while not self._stop_event.is_set():
-            self._run_host_api(cmd, env)
+            self._run_host_api(self._run_cmd, env)
             time.sleep(1)
 
     def _run_host_api(self, cmd_line: list[str], env: dict[str, Any]):
         try:
-            _LOG.info(log_msg("start Neon Core API service at the {Host}", Host=self._host))
+            _LOG.info(log_msg(f"start Neon Core service with command: {cmd_line}", cmd_line=cmd_line))
             process = subprocess.Popen(
                 cmd_line,
                 stdout=subprocess.PIPE,
@@ -115,9 +112,25 @@ class _Server:
             _LOG.error(log_msg("unexpected error in Neon Core API: {Error}", Error=str(exc)), extra=self._msg_filter)
 
 
+class _ApiServer(_BaseServer):
+    def __init__(self, cfg: Config, idx: int, solana_url: str):
+        super().__init__(cfg)
+        port = cfg.neon_core_api_port + idx
+        self._host = f"{cfg.neon_core_api_ip}:{port}"
+        self._solana_url = solana_url
+        self._run_cmd = [self._cfg.neon_core_api_server_bin, "-H", self._host]
+
+
+class _RpcServer(_BaseServer):
+    def __init__(self, cfg: Config):
+        super().__init__(cfg)
+        self._host = "0.0.0.0:3100"
+        self._run_cmd = ["/spl/bin/neon-core-rpc", "/spl/lib"]
+
+
 class CoreApiServer:
     def __init__(self, cfg: Config) -> None:
-        self._instance_list: list[_Server] = list()
+        self._instance_list: list[_ApiServer] = list()
 
         if cfg.external_neon_core_api:
             return
@@ -125,7 +138,7 @@ class CoreApiServer:
         idx = itertools.count()
         for _ in range(cfg.neon_core_api_server_cnt):
             for url in cfg.sol_url_list:
-                self._instance_list.append(_Server(cfg, next(idx), url))
+                self._instance_list.append(_ApiServer(cfg, next(idx), url))
 
     def start(self) -> None:
         for instance in self._instance_list:
@@ -134,3 +147,14 @@ class CoreApiServer:
     def stop(self) -> None:
         for instance in self._instance_list:
             instance.stop()
+
+
+class CoreRpcServer:
+    def __init__(self, cfg: Config) -> None:
+        self._instance = _RpcServer(cfg)
+
+    def start(self) -> None:
+        self._instance.start()
+
+    def stop(self) -> None:
+        self._instance.stop()
