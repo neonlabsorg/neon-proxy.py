@@ -12,8 +12,8 @@ from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.client import CoreApiClient
-from common.neon_rpc.server import CoreApiServer
+from common.neon_rpc.client import CoreRpcClient
+from common.neon_rpc.server import CoreRpcServer
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
@@ -36,13 +36,13 @@ class NeonIndexerApp:
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        self._core_api_server = CoreApiServer(cfg)
+        self._core_rpc_server = CoreRpcServer(cfg)
         self._stat_server = StatServer(cfg)
         self._db: IndexerDb | None = None
 
         self._stat_client = StatClient(self._cfg)
         self._sol_client = SolClient(cfg, self._stat_client)
-        self._core_api_client = CoreApiClient(cfg, self._sol_client, self._stat_client)
+        self._core_api_client = CoreRpcClient(cfg, self._sol_client, self._stat_client)
 
         self._first_slot: None | int = None
         self._finalized_slot = 0
@@ -55,9 +55,9 @@ class NeonIndexerApp:
 
     async def _run(self) -> int:
         try:
-            self._core_api_server.start()
+            self._core_rpc_server.start()
             self._stat_server.start()
-            await self._core_api_client.start()
+            await self._core_api_client.connect(host="127.0.0.1", port=3100).start()
 
             await self._init_chain_id()
             await self._init_finalized_slot()
@@ -74,7 +74,7 @@ class NeonIndexerApp:
             await self._db.stop()
             await self._core_api_client.stop()
             self._stat_server.stop()
-            self._core_api_server.stop()
+            self._core_rpc_server.stop()
             return 0
 
         except BaseException as exc:
@@ -519,13 +519,13 @@ class _ReIndexer:
         try:
             stat_client = StatClient(self._cfg)
             sol_client = SolClient(self._cfg, stat_client)
-            core_api_client = CoreApiClient(self._cfg, sol_client, stat_client)
+            core_api_client = CoreRpcClient(self._cfg, sol_client, stat_client)
 
             db_conn = DbConnection(self._cfg, stat_client)
             db = IndexerDb(self._cfg, db_conn)
 
             await sol_client.start()
-            await core_api_client.start()
+            await core_api_client.connect(host="127.0.0.1", port=3100).start()
             await stat_client.start()
             await db.start()
         except BaseException as exc:
