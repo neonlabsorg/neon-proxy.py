@@ -50,7 +50,7 @@ class NeonProxyApp:
         self._core_rpc_server = CoreRpcServer(cfg)
 
         # Init clients
-        self._core_api_client = CoreRpcClient(cfg, sol_client, self._stat_client).connect(host="127.0.0.1", port=3100)
+        self._core_api_client = CoreRpcClient(cfg, sol_client, self._stat_client)
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)

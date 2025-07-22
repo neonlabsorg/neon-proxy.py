@@ -701,11 +701,15 @@ class CoreApiClient(HttpClient):
 class CoreRpcClient(JsonRpcClient):
     def __init__(self, cfg: Config, sol_client: SolClient, stat_client: StatClient) -> None:
         super().__init__(cfg)
-        #_LOG.error("CoreRpcClient.__init__")
+
+        for idx in range(cfg.neon_core_api_server_cnt):
+            port = cfg.neon_core_api_port + idx
+            self.connect(host=cfg.neon_core_api_ip, port=port)
+
+        self.set_timeout_sec(120).set_max_retry_cnt(30)
         self._stat_client = stat_client
         self._sol_client = sol_client
         self._deployed_slot = -1
-        #self._api_client = CoreApiClient(cfg, self._sol_client, self._stat_client)
 
     async def get_core_api_version(self) -> str:
         try:

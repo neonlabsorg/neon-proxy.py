@@ -57,7 +57,7 @@ class NeonIndexerApp:
         try:
             self._core_rpc_server.start()
             self._stat_server.start()
-            await self._core_api_client.connect(host="127.0.0.1", port=3100).start()
+            await self._core_api_client.start()
 
             await self._init_chain_id()
             await self._init_finalized_slot()
@@ -525,7 +525,7 @@ class _ReIndexer:
             db = IndexerDb(self._cfg, db_conn)
 
             await sol_client.start()
-            await core_api_client.connect(host="127.0.0.1", port=3100).start()
+            await core_api_client.start()
             await stat_client.start()
             await db.start()
         except BaseException as exc:
