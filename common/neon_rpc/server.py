@@ -19,7 +19,7 @@ from ..utils.json_logger import log_msg
 _LOG = logging.getLogger(__name__)
 
 
-class _BaseServer:
+class _BaseInstance:
     # skip date-time
     _skip_len: Final[int] = len("2024-02-20T21:59:26.318980Z ")
     # 7-bit C1 ANSI sequences
@@ -38,11 +38,15 @@ class _BaseServer:
         re.VERBOSE,
     )
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, idx: int):
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
         self._process: mp.Process | None = None
         self._stop_event = mp.Event()
+        port = cfg.neon_core_api_port + idx
+        self._host: str = f"{cfg.neon_core_api_ip}:{port}"
+        self._run_cmd: list[str] = []
+        self._solana_url: str | None = None
 
     def start(self) -> None:
         self._process = process = mp.Process(target=self._run)
@@ -70,8 +74,8 @@ class _BaseServer:
             # storage for AccountsDb when running Solana Bank Emulator
             SOLANA_RAYON_THREADS="1",
         )
-        if hasattr(self, "_solana_url"):
-            new_env["SOLANA_URL"] = self._solana_url
+        if self._solana_url:
+            new_env["SOLANA_URL"]=self._solana_url
 
         env = dict(os.environ)
         env.update(new_env)
@@ -87,7 +91,8 @@ class _BaseServer:
 
     def _run_host_api(self, cmd_line: list[str], env: dict[str, Any]):
         try:
-            _LOG.info(log_msg(f"start Neon Core service with command: {cmd_line}", cmd_line=cmd_line))
+            _LOG.info(log_msg(f"start Neon Core service with command: {cmd_line}",
+                              cmd_line=cmd_line))
             process = subprocess.Popen(
                 cmd_line,
                 stdout=subprocess.PIPE,
@@ -112,25 +117,22 @@ class _BaseServer:
             _LOG.error(log_msg("unexpected error in Neon Core API: {Error}", Error=str(exc)), extra=self._msg_filter)
 
 
-class _ApiServer(_BaseServer):
+class _ApiInstance(_BaseInstance):
     def __init__(self, cfg: Config, idx: int, solana_url: str):
-        super().__init__(cfg)
-        port = cfg.neon_core_api_port + idx
-        self._host = f"{cfg.neon_core_api_ip}:{port}"
+        super().__init__(cfg, idx)
         self._solana_url = solana_url
-        self._run_cmd = [self._cfg.neon_core_api_server_bin, "-H", self._host]
+        self._run_cmd = [cfg.neon_core_api_server_bin, "-H", self._host]
 
 
-class _RpcServer(_BaseServer):
-    def __init__(self, cfg: Config):
-        super().__init__(cfg)
-        self._host = "0.0.0.0:3100"
-        self._run_cmd = ["/spl/bin/neon-core-rpc", "/spl/lib"]
+class _RpcInstance(_BaseInstance):
+    def __init__(self, cfg: Config, idx: int):
+        super().__init__(cfg, idx)
+        self._run_cmd = [cfg.neon_core_api_server_bin, cfg.neon_core_api_server_libdir]
 
 
 class CoreApiServer:
     def __init__(self, cfg: Config) -> None:
-        self._instance_list: list[_ApiServer] = list()
+        self._instance_list: list[_ApiInstance] = list()
 
         if cfg.external_neon_core_api:
             return
@@ -138,7 +140,7 @@ class CoreApiServer:
         idx = itertools.count()
         for _ in range(cfg.neon_core_api_server_cnt):
             for url in cfg.sol_url_list:
-                self._instance_list.append(_ApiServer(cfg, next(idx), url))
+                self._instance_list.append(_ApiInstance(cfg, next(idx), url))
 
     def start(self) -> None:
         for instance in self._instance_list:
@@ -151,10 +153,19 @@ class CoreApiServer:
 
 class CoreRpcServer:
     def __init__(self, cfg: Config) -> None:
-        self._instance = _RpcServer(cfg)
+        self._instance_list: list[_RpcInstance] = list()
+
+        if cfg.external_neon_core_api:
+            return
+
+        idx = itertools.count()
+        for _ in range(cfg.neon_core_api_server_cnt):
+            self._instance_list.append(_RpcInstance(cfg, next(idx)))
 
     def start(self) -> None:
-        self._instance.start()
+        for instance in self._instance_list:
+            instance.start()
 
     def stop(self) -> None:
-        self._instance.stop()
+        for instance in self._instance_list:
+            instance.stop()
