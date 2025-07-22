@@ -129,6 +129,7 @@ def specify_image_tags(git_sha,
     if evm_sha_tag:
         evm_sha_tag_ = evm_sha_tag
         evm_tag_ = evm_tag
+        proxy_tag = f"evm-triggered-{proxy_tag}"
     else:
         evm_sha_tag_ = ""
         tag = evm_tag if evm_tag else default_evm_tag
@@ -193,15 +194,11 @@ def build_docker_image(evm_tag,  proxy_tag, skip_pull):
 @click.option('--proxy_sha_tag')
 @click.option('--proxy_tag')
 @click.option('--evm_tag')
-def publish_image(proxy_sha_tag, proxy_tag, evm_tag):
+def publish_image(proxy_sha_tag, proxy_tag):
     push_image_with_tag(proxy_sha_tag, proxy_sha_tag)
     # push latest and version tags only on the finalizing step
     if proxy_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is None:
-        if is_image_exist("evm_loader", proxy_tag):
-            tag = f"evm-triggered-{proxy_tag}"
-        else:
-            tag = evm_tag
-        push_image_with_tag(proxy_sha_tag, tag)
+        push_image_with_tag(proxy_sha_tag, proxy_tag)
 
 
 def push_image_with_tag(sha, tag):
