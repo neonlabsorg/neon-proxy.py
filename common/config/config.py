@@ -169,9 +169,10 @@ class Config:
     # Neon Core API configuration
     sol_key_for_evm_cfg_name: Final[str] = "SOLANA_KEY_FOR_EVM_CONFIG"
     neon_core_api_server_cnt_name: Final[str] = "CORE_API_SERVER_COUNT"
-    neon_core_api_ip_name = "CORE_API_IP"
-    neon_core_api_port_name = "CORE_API_PORT"
-    neon_core_api_server_ver_name = "CORE_API_VERSION"
+    neon_core_api_ip_name: Final[str] = "CORE_API_IP"
+    neon_core_api_port_name: Final[str] = "CORE_API_PORT"
+    neon_core_api_server_ver_name: Final[str] = "CORE_API_VERSION"
+    neon_core_api_server_libdir_name: Final[str] = "CORE_API_LIBDIR"
     # Postgres DB settings
     pg_host_name: Final[str] = "POSTGRES_HOST"
     pg_db_name: Final[str] = "POSTGRES_DB"
@@ -623,11 +624,11 @@ class Config:
         return self._env_num(self.mp_lost_alt_timeout_sec_name, 6 * self._1hour, 1 * self._1hour)
 
     ########################
-    # Neon Core API settings
+    # Neon Core API/RPC settings
 
     @cached_property
     def neon_core_api_ip(self) -> str:
-        return os.environ.get(self.neon_core_api_ip_name, "127.0.0.1")
+        return os.environ.get(self.neon_core_api_ip_name, self.base_service_ip)
 
     @cached_property
     def neon_core_api_port(self) -> int:
@@ -636,7 +637,7 @@ class Config:
 
     @cached_property
     def external_neon_core_api(self) -> bool:
-        return self.neon_core_api_ip_name in os.environ
+        return self.neon_core_api_ip not in ["127.0.0.1", "localhost"]
 
     @cached_property
     def neon_core_api_server_cnt(self) -> int:
@@ -648,10 +649,14 @@ class Config:
 
     @cached_property
     def neon_core_api_server_bin(self) -> str:
-        cmd_bin = "neon-core-api"
+        cmd_bin = "neon-core-rpc"
         if not (ver := self.neon_core_api_server_ver):
             return cmd_bin
         return cmd_bin + "-" + ver
+
+    @cached_property
+    def neon_core_api_server_libdir(self) -> str:
+        return os.environ.get(self.neon_core_api_server_libdir_name, "/spl/lib")
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
@@ -1019,7 +1024,7 @@ class Config:
             self.neon_core_api_ip_name: self.neon_core_api_ip,
             self.neon_core_api_port_name: self.neon_core_api_port,
             self.neon_core_api_server_ver_name: self.neon_core_api_server_ver,
-            "EXTERNAL_NEON_CORE_API": self.external_neon_core_api,
+            self.neon_core_api_server_libdir_name: self.neon_core_api_server_libdir,
             # Postgres DB settings
             self.pg_host_name: self.pg_host,
             self.pg_db_name: self.pg_db,
