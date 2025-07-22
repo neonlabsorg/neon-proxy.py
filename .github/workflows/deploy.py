@@ -197,7 +197,11 @@ def publish_image(proxy_sha_tag, proxy_tag, evm_tag):
     push_image_with_tag(proxy_sha_tag, proxy_sha_tag)
     # push latest and version tags only on the finalizing step
     if proxy_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, proxy_tag) is None:
-        push_image_with_tag(proxy_sha_tag, f"evm-triggered-{evm_tag}")
+        if is_image_exist("evm_loader", proxy_tag):
+            tag = f"evm-triggered-{proxy_tag}"
+        else:
+            tag = evm_tag
+        push_image_with_tag(proxy_sha_tag, tag)
 
 
 def push_image_with_tag(sha, tag):
