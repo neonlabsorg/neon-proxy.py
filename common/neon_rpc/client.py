@@ -549,7 +549,7 @@ class CoreRpcClient(JsonRpcClient):
     @JsonRpcClient.method(name="emulate")
     async def _emulate(self, req: EmulNeonCallRequest) -> EmulNeonCallResp: ...
 
-    @JsonRpcClient.method(name="emulate_mutiple")
+    @JsonRpcClient.method(name="emulate_multiple")
     async def _emulate_multiple(self, req: EmulMultipleNeonCallRequest) -> EmulMultipleNeonCallResp: ...
 
     @JsonRpcClient.method(name="simulate_solana")
