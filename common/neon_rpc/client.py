@@ -120,7 +120,7 @@ class GetConfigResponse(CoreApiResponse):
         NEON_TREASURY_POOL_COUNT: str
         NEON_TREASURY_POOL_SEED: str
         NEON_TREE_ACCOUNT_DESTROY_FEE: str
-        NEON_TREE_ACCOUNT_FINISH_TRANSACTION_GAS: str
+        NEON_TREE_ACCOUNT_FINISH_TRANSACTION_FEE: str
         NEON_TREE_ACCOUNT_TIMEOUT: str
     version: str
     revision: str
