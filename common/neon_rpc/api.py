@@ -117,7 +117,7 @@ NeonAccountStatusField = Annotated[NeonAccountStatus, PlainValidator(NeonAccount
 
 
 class NeonAccountModel(_BaseRespModel):
-    neon_address: NeonAddressField
+    neon_address: NeonAddressField = Field(NeonAddressField.default())
     user_sol_address: SolPubKeyField = Field(SolPubKey.default(), validation_alias="user_pubkey")
     status: NeonAccountStatusField
     state_tx_cnt: DecUIntField = Field(validation_alias=AliasChoices("trx_count", "state_tx_cnt"))
@@ -165,7 +165,7 @@ class NeonContractRequest(CoreApiRequest):
 
 
 class NeonContractModel(_BaseRespModel):
-    neon_address: NeonAddressField
+    neon_address: NeonAddressField = Field(NeonAddressField.default())
     code: EthBinStrField
     sol_address: SolPubKeyField = Field(validation_alias="solana_address")
 
@@ -269,7 +269,7 @@ class TokenModel(_BaseRespModel):
 
 
 class EvmConfigModel(_BaseRespModel):
-    deployed_slot: DecIntField
+    deployed_slot: DecIntField = Field(default=-1)
 
     evm_param_dict: dict[str, str] = Field(validation_alias=AliasChoices("config", "evm_param_dict"))
     token_list: list[TokenModel] = Field(validation_alias=AliasChoices("chains", "token_list"))
@@ -486,7 +486,7 @@ class CoreApiBlockModel(_BaseModel):
 
 
 class HolderAccountModel(_BaseRespModel):
-    address: SolPubKeyField
+    address: SolPubKeyField = Field(default=SolPubKey.default())
 
     status: HolderAccountStatusField
     size: DecUIntField = Field(default=0, validation_alias="len")
@@ -495,7 +495,7 @@ class HolderAccountModel(_BaseRespModel):
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
     tx_type: DecUIntField = Field(default=0)
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
-    block: CoreApiBlockModel
+    block: CoreApiBlockModel = Field(default=CoreApiBlockModel.default())
 
     chain_id: DecUIntField = Field(default=0)
     evm_step_cnt: DecUIntField = Field(default=0, validation_alias="steps_executed")
@@ -510,8 +510,14 @@ class HolderAccountModel(_BaseRespModel):
             block=CoreApiBlockModel.default(),
         )
 
+    #@classmethod
+    #def from_dict(cls, data: dict[str, Any], *, address: SolPubKey | None = None, def_chain_id: int = 0) -> Self:
+    #    if not address:
+    #        return super().from_dict(data)
+    #    return cls.from_addr(address, def_chain_id, data)
+
     @classmethod
-    def from_dict(cls, address: SolPubKey, def_chain_id: int, data: dict) -> Self:  # noqa
+    def from_addr(cls, address: NeonAddress, def_chain_id: int, data: dict[str, Any]) -> Self:
         data["address"] = address
         data["block"] = CoreApiBlockModel.from_raw(data.pop("block_params", None))
         data["chain_id"] = data.get("chain_id", def_chain_id)
