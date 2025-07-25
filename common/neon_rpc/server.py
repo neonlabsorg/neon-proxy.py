@@ -38,7 +38,7 @@ class _BaseInstance:
         re.VERBOSE,
     )
 
-    def __init__(self, cfg: Config, idx: int):
+    def __init__(self, cfg: Config, idx: int, solana_url: str):
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
         self._process: mp.Process | None = None
@@ -46,7 +46,7 @@ class _BaseInstance:
         port = cfg.neon_core_api_port + idx
         self._host: str = f"{cfg.neon_core_api_ip}:{port}"
         self._run_cmd: list[str] = []
-        self._solana_url: str | None = None
+        self._solana_url: str = solana_url
 
     def start(self) -> None:
         self._process = process = mp.Process(target=self._run)
@@ -117,52 +117,31 @@ class _BaseInstance:
             _LOG.error(log_msg("unexpected error in Neon Core API: {Error}", Error=str(exc)), extra=self._msg_filter)
 
 
-class _ApiInstance(_BaseInstance):
+class ApiInstance(_BaseInstance):
     def __init__(self, cfg: Config, idx: int, solana_url: str):
-        super().__init__(cfg, idx)
-        self._solana_url = solana_url
+        super().__init__(cfg, idx, solana_url)
         self._run_cmd = [cfg.neon_core_api_server_bin, "-H", self._host]
 
 
-class _RpcInstance(_BaseInstance):
+class RpcInstance(_BaseInstance):
     def __init__(self, cfg: Config, idx: int, solana_url: str):
-        super().__init__(cfg, idx)
-        self._solana_url = solana_url
+        super().__init__(cfg, idx, solana_url)
         self._run_cmd = [cfg.neon_core_api_server_bin, cfg.neon_core_api_server_libdir]
 
 
-class CoreApiServer:
-    def __init__(self, cfg: Config) -> None:
-        self._instance_list: list[_ApiInstance] = list()
-
+class CoreServer:
+    def __init__(self, cfg: Config, instance) -> None:
+        if not issubclass(instance, _BaseInstance):
+            _LOG.error(log_msg("unexpected class passed as an CoreServer instance argument"))
+            return
         if cfg.external_neon_core_api:
             return
 
+        self._instance_list = list()
         idx = itertools.count()
         for _ in range(cfg.neon_core_api_server_cnt):
             for url in cfg.sol_url_list:
-                self._instance_list.append(_ApiInstance(cfg, next(idx), url))
-
-    def start(self) -> None:
-        for instance in self._instance_list:
-            instance.start()
-
-    def stop(self) -> None:
-        for instance in self._instance_list:
-            instance.stop()
-
-
-class CoreRpcServer:
-    def __init__(self, cfg: Config) -> None:
-        self._instance_list: list[_RpcInstance] = list()
-
-        if cfg.external_neon_core_api:
-            return
-
-        idx = itertools.count()
-        for _ in range(cfg.neon_core_api_server_cnt):
-            for url in cfg.sol_url_list:
-                self._instance_list.append(_RpcInstance(cfg, next(idx), url))
+                self._instance_list.append(instance(cfg, next(idx), url))
 
     def start(self) -> None:
         for instance in self._instance_list:
