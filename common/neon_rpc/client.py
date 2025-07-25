@@ -84,28 +84,18 @@ class CoreRpcClient(JsonRpcClient):
         self._stat_client = stat_client
         self._sol_client = sol_client
         self._deployed_slot = -1
-
-    async def get_core_api_version(self) -> str:
-        try:
-            resp = await self._get_build_info()
-            return "Neon-Core-API/v" + resp.crate_info.version + "-" + resp.version_control.commit_id
-        except BaseException as exc:
-            _LOG.error("error on reading EVM build info", exc_info=exc)
-            return "Neon-Core-API/UNKNOWN"
+        self._token_list_cache: list[TokenModel] = list()
 
     async def get_evm_cfg(self) -> EvmConfigModel | None:
         try:
             # Load the BPF program account to get the address of the BPF executable account
-            acct = await self._sol_client.get_account(NeonProg.ID)
-            if acct.is_empty:
-                raise ValueError(f"Account {NeonProg.ID} doesn't exists")
-            prog = BpfLoader2ProgModel.from_data(acct.data)
+            exec_addr = await self._get_evm_exec_addr()
 
             # Load the header of the executable account to get the deployed slot
             min_size = BpfLoader2ExecModel.minimum_size
-            acct = await self._sol_client.get_account(prog.exec_address, min_size)
+            acct = await self._sol_client.get_account(exec_addr, min_size)
             if acct.is_empty:
-                _LOG.error("NeonEVM program %s doesn't exists", prog.exec_addr)
+                _LOG.error("NeonEVM program %s doesn't exists", exec_addr)
                 return None
             exec_info = BpfLoader2ExecModel.from_data(acct.data)
 
@@ -116,6 +106,14 @@ class CoreRpcClient(JsonRpcClient):
         except BaseException as exc:
             _LOG.error("error on reading EVM config", exc_info=exc)
             return None
+
+    async def get_core_api_version(self) -> str:
+        try:
+            resp = await self._get_build_info()
+            return "Neon-Core-API/v" + resp.crate_info.version + "-" + resp.version_control.commit_id
+        except BaseException as exc:
+            _LOG.error("error on reading EVM build info", exc_info=exc)
+            return "Neon-Core-API/UNKNOWN"
 
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
         try:
@@ -378,6 +376,15 @@ class CoreRpcClient(JsonRpcClient):
 
     @JsonRpcClient.method(name="simulate_solana")
     async def _simulate_solana(self, req: EmulSolTxListRequest) -> EmulSolTxListResp: ...
+
+    async def _get_evm_exec_addr(self) -> SolPubKey:
+        # Load the BPF program account to get the address of the BPF executable account
+        acct = await self._sol_client.get_account(NeonProg.ID)
+        if acct.is_empty:
+            raise ValueError(f"Account {NeonProg.ID} doesn't exists")
+
+        prog = BpfLoader2ProgModel.from_data(acct.data)
+        return prog.exec_address
 
     @staticmethod
     def _check_emulator_result(resp: EmulNeonCallResp) -> None:
