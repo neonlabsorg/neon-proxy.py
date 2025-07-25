@@ -9,7 +9,7 @@ import uuid
 from typing import List, Sequence, Final, TypeVar, ClassVar, Union
 from pydantic import StrictInt, StrictStr, AliasChoices, Field, ConfigDict, Base64Bytes
 
-from common.neon_rpc.api import (
+from .api import (
     CoreApiResp,
     EvmConfigModel,
     BpfLoader2ExecModel,
@@ -42,31 +42,31 @@ from common.neon_rpc.api import (
     CoreApiRequest,
     TokenModel,
 )
-from common.jsonrpc.client import JsonRpcClient
-from common.config.config import Config
-from common.config.constants import ONE_BLOCK_SEC
-from common.ethereum import revert_message
-from common.ethereum.commit_level import EthCommit
-from common.ethereum.errors import EthError
-from common.ethereum.hash import EthAddress, EthHash32
-from common.http.client import HttpClient, HttpClientRequest
-from common.http.errors import PydanticValidationError
-from common.http.utils import HttpURL
-from common.neon.address import NeonAddress
-from common.neon.block import NeonBlockHdrModel
-from common.neon.neon_program import NeonProg
-from common.solana.account import SolAccountModel
-from common.solana.cb_program import SolCbProg
-from common.solana.errors import SolAltError
-from common.solana.hash import SolBlockHash
-from common.solana.pubkey import SolPubKey
-from common.solana.transaction import SolTx
-from common.solana_rpc.client import SolClient
-from common.stat.client_rpc import RpcStatClient, RpcClientRequest
-from common.utils.cached import cached_method
-from common.utils.format import if_none
-from common.utils.json_logger import log_msg
-from common.utils.pydantic import BaseModel, RootModel, HexUIntField
+from ..jsonrpc.client import JsonRpcClient
+from ..config.config import Config
+from ..config.constants import ONE_BLOCK_SEC
+from ..ethereum import revert_message
+from ..ethereum.commit_level import EthCommit
+from ..ethereum.errors import EthError
+from ..ethereum.hash import EthAddress, EthHash32
+from ..http.client import HttpClient, HttpClientRequest
+from ..http.errors import PydanticValidationError
+from ..http.utils import HttpURL
+from ..neon.address import NeonAddress
+from ..neon.block import NeonBlockHdrModel
+from ..neon.neon_program import NeonProg
+from ..solana.account import SolAccountModel
+from ..solana.cb_program import SolCbProg
+from ..solana.errors import SolAltError
+from ..solana.hash import SolBlockHash
+from ..solana.pubkey import SolPubKey
+from ..solana.transaction import SolTx
+from ..solana_rpc.client import SolClient
+from ..stat.client_rpc import RpcStatClient, RpcClientRequest
+from ..utils.cached import cached_method
+from ..utils.format import if_none
+from ..utils.json_logger import log_msg
+from ..utils.pydantic import BaseModel, RootModel, HexUIntField
 from proxy.stat.client import StatClient
 
 _LOG = logging.getLogger(__name__)
