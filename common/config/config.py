@@ -637,7 +637,7 @@ class Config:
 
     @cached_property
     def external_neon_core_api(self) -> bool:
-        return self.neon_core_api_ip not in ["127.0.0.1", "localhost"]
+        return self.neon_core_api_ip_name in os.environ
 
     @cached_property
     def neon_core_api_server_cnt(self) -> int:
