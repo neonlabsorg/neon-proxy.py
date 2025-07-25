@@ -125,8 +125,9 @@ class _ApiInstance(_BaseInstance):
 
 
 class _RpcInstance(_BaseInstance):
-    def __init__(self, cfg: Config, idx: int):
+    def __init__(self, cfg: Config, idx: int, solana_url: str):
         super().__init__(cfg, idx)
+        self._solana_url = solana_url
         self._run_cmd = [cfg.neon_core_api_server_bin, cfg.neon_core_api_server_libdir]
 
 
@@ -160,7 +161,8 @@ class CoreRpcServer:
 
         idx = itertools.count()
         for _ in range(cfg.neon_core_api_server_cnt):
-            self._instance_list.append(_RpcInstance(cfg, next(idx)))
+            for url in cfg.sol_url_list:
+                self._instance_list.append(_RpcInstance(cfg, next(idx), url))
 
     def start(self) -> None:
         for instance in self._instance_list:
