@@ -121,16 +121,7 @@ class CoreRpcClient(JsonRpcClient):
         try:
             req = HolderAccountRequest.from_raw(address)
             resp = await self._get_holder(req)
-            return HolderAccountModel.from_addr(address,
-                                                NeonProg.DefaultChainId,
-                                                {
-                                                    "status": resp.status,
-                                                    "len": resp.size,
-                                                    "owner": resp.owner,
-                                                    "tx": resp.neon_tx_hash,
-                                                    "tx_type": resp.tx_type,
-                                                    "steps_executed": resp.evm_step_cnt
-                                                })
+            return HolderAccountModel.from_cls(resp, address, NeonProg.DefaultChainId)
         except BaseException as exc:
             _LOG.error("error on reading holder account", exc_info=exc)
             return HolderAccountModel.new_empty(address)
@@ -143,14 +134,7 @@ class CoreRpcClient(JsonRpcClient):
         try:
             req = NeonAccountListRequest.from_raw(address_list, self._get_slot(block))
             resp = await self._get_balance(req)
-            return tuple([NeonAccountModel(sol_address=data.sol_address,
-                                           contract_sol_address=data.contract_sol_address,
-                                           state_tx_cnt=data.state_tx_cnt,
-                                           balance=data.balance,
-                                           status=data.status,
-                                           user_sol_address=data.user_sol_address,
-                                           neon_address=a)
-                          for a, data in zip(address_list, resp)])
+            return tuple([NeonAccountModel.from_cls(data, addr) for addr, data in zip(address_list, resp)])
         except BaseException as exc:
             _LOG.error("error on reading Neon account list", exc_info=exc)
             return tuple([NeonAccountModel.new_empty(addr) for addr in address_list])

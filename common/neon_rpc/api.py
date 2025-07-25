@@ -128,6 +128,18 @@ class NeonAccountModel(_BaseRespModel):
     )
 
     @classmethod
+    def from_cls(cls, model: NeonAccountModel, address: NeonAddress) -> Self:
+        return cls(
+            sol_address=model.sol_address,
+            contract_sol_address=model.contract_sol_address,
+            state_tx_cnt=model.state_tx_cnt,
+            balance=model.balance,
+            status=model.status,
+            user_sol_address=model.user_sol_address,
+            neon_address=address
+        )
+
+    @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
         if not address:
             return super().from_dict(data)
@@ -510,11 +522,18 @@ class HolderAccountModel(_BaseRespModel):
             block=CoreApiBlockModel.default(),
         )
 
-    #@classmethod
-    #def from_dict(cls, data: dict[str, Any], *, address: SolPubKey | None = None, def_chain_id: int = 0) -> Self:
-    #    if not address:
-    #        return super().from_dict(data)
-    #    return cls.from_addr(address, def_chain_id, data)
+    @classmethod
+    def from_cls(cls, model: HolderAccountModel, address: SolPubKey, def_chain_id: int) -> Self:
+        return cls(
+            status=model.status,
+            len=model.size,
+            owner=model.owner,
+            tx=model.neon_tx_hash,
+            tx_type=model.tx_type,
+            steps_executed=model.evm_step_cnt,
+            address=address,
+            chain_id=def_chain_id,
+        )
 
     @classmethod
     def from_addr(cls, address: NeonAddress, def_chain_id: int, data: dict[str, Any]) -> Self:
