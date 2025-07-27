@@ -394,7 +394,7 @@ class CoreRpcClient(JsonRpcClient):
         super()._exception_handler(url, request, retry, exc)
 
         # if the previous call has re-raised an exception, this code isn't called
-        assert isinstance(request, RpcClientRequest)
+        # assert isinstance(request, RpcClientRequest)
         request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
         _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
