@@ -390,13 +390,13 @@ class CoreRpcClient(JsonRpcClient):
         prog = BpfLoader2ProgModel.from_data(acct.data)
         return prog.exec_address
 
-    def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
-        super()._exception_handler(url, request, retry, exc)
-
-        # if the previous call has re-raised an exception, this code isn't called
-        # assert isinstance(request, RpcClientRequest)
-        request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
-        _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
+    #def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+    #    super()._exception_handler(url, request, retry, exc)
+    #
+    #    # if the previous call has re-raised an exception, this code isn't called
+    #    # assert isinstance(request, RpcClientRequest)
+    #    request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
+    #    _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @staticmethod
     def _check_emulator_result(resp: EmulNeonCallResp) -> None:
