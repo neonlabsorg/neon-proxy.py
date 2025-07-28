@@ -8,7 +8,7 @@ from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
 from common.neon_rpc.client import CoreRpcClient
-from common.neon_rpc.server import RpcInstance, CoreServer
+from common.neon_rpc.server import CoreRpcServer
 from common.solana_rpc.client import SolClient
 from common.utils.json_logger import Logger
 from gas_tank.db.gas_less_accounts_db import GasLessAccountDb
@@ -47,7 +47,7 @@ class NeonProxyApp:
         gas_tank = GasLessAccountDb(db_conn)
 
         # Init Core Rpc Server
-        self._core_rpc_server = CoreServer(cfg, RpcInstance)
+        self._core_rpc_server = CoreRpcServer(cfg)
 
         # Init clients
         self._core_api_client = CoreRpcClient(cfg, sol_client, self._stat_client)

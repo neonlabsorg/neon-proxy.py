@@ -13,7 +13,7 @@ from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.client import CoreRpcClient
-from common.neon_rpc.server import RpcInstance, CoreServer
+from common.neon_rpc.server import CoreRpcServer
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
@@ -36,7 +36,7 @@ class NeonIndexerApp:
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        self._core_rpc_server = CoreServer(cfg, RpcInstance)
+        self._core_rpc_server = CoreRpcServer(cfg)
         self._stat_server = StatServer(cfg)
         self._db: IndexerDb | None = None
 
