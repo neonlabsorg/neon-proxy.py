@@ -2,14 +2,23 @@ version: "3"
 
 services:
   solana:
+    container_name: solana
     image: ${DOCKERHUB_ORG_NAME}/evm_loader:${NEON_EVM_COMMIT}
     environment:
       SOLANA_URL: http://127.0.0.1:8899
+      DEVNET_SOLANA_URL: ${DEVNET_SOLANA_URL}
     hostname: solana
     networks:
       - net
     expose:
       - 8899
+    ports:
+      - "8899:8899"
+      - "8080:8899"
+      - "9900:9900"
+      - "8900:8900"
+      - "8001:8001"
+      - "8001-8009:8001-8009/udp"
     healthcheck:
       # Must be available from outside (calling without -u causes premature result)
       test: [ CMD-SHELL, "./wait-for-neon.sh" ]
@@ -41,7 +50,7 @@ services:
   dbcreation:
     image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
-      SOLANA_URL: http://solana:8899
+      SOLANA_URL: http://nginx:8100
       POSTGRES_DB: neon-db
       POSTGRES_USER: neon-proxy
       POSTGRES_PASSWORD: neon-proxy-pass
@@ -55,9 +64,11 @@ services:
         condition: service_healthy
 
   proxy:
+    container_name: proxy
     image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
-      SOLANA_URL: http://solana:8899
+      SOLANA_URL: http://nginx:8100
+      SOLANA_WS_URL: http://solana:8900/
       FAUCET_URL: http://faucet:3333
       PROXY_URL: http://proxy:9090/solana
       POSTGRES_DB: neon-db
@@ -82,13 +93,6 @@ services:
       COMMIT_LEVEL: Confirmed
       SOLANA_KEY_FOR_EVM_CONFIG: BMp6gEnveANdvSvspESJUrNczuHz1GF5UQKjVLCkAZih
       SOLANA_BLOCK_SEC: "0.1"
-      # An example of HashiCorp configuration, operator key in base64 lies in the secret_key field
-      #   vault kv put -mount=secret neon-proxy/operator-key-2 secret_key=bdSWJ+WwVWdk2XMoxX25monC....A7g+IyA==
-#      HVAC_URL: http://vault:8200
-#      HVAC_TOKEN: local-test-hvac-token
-#      HVAC_MOUNT: secret
-#      HVAC_PATH: neon-proxy/
-      #
     hostname: proxy
     depends_on:
       solana:
@@ -98,6 +102,8 @@ services:
     expose:
       - 8888
       - 9090
+    ports:
+      - "9090:9090"
     networks:
       - net
     entrypoint: proxy/run-test-proxy.sh
@@ -110,6 +116,7 @@ services:
 
   faucet:
     restart: always
+    container_name: faucet
     image: ${DOCKERHUB_ORG_NAME}/faucet:${FAUCET_COMMIT}
     environment:
       FAUCET_RPC_BIND: 0.0.0.0
@@ -120,7 +127,7 @@ services:
       NEON_ERC20_TOKENS: '["0xB521b9F3484deF53545F276F1DAA50ef0Ca82E2d", "0x8a2a66CA0E5D491A001957edD45A6350bC76D708", "0x914782059DC42d4E590aeFCfdbF004B2EcBB9fAA", "0x7A7510b9b18241C788a7aAE8299D1fA6010D8128"]'
       NEON_ERC20_MAX_AMOUNT: 1000
       FAUCET_SOLANA_ENABLE: 'true'
-      SOLANA_URL: http://solana:8899
+      SOLANA_URL: http://nginx:8100
       NEON_OPERATOR_KEYFILE: /root/.config/solana/id.json
       NEON_ETH_MAX_AMOUNT: 50000
       TEST_FAUCET_INIT_NEON_BALANCE: 100000000
@@ -134,40 +141,21 @@ services:
       - 3333
     networks:
       - net
+    ports:
+      - "3333:3333"
     entrypoint: ./run-test-faucet.sh
     depends_on:
       solana:
         condition: service_healthy
 
-#  gas_tank:
-#    image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
-#    environment:
-#      POSTGRES_DB: neon-db
-#      POSTGRES_USER: neon-proxy
-#      POSTGRES_PASSWORD: neon-proxy-pass
-#      POSTGRES_HOST: postgres
-#      POSTGRES_TIMEOUT: 5
-#      SOLANA_URL: http://solana:8899
-#      NEON_EVM_PROGRAM: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
-#      INDEXER_ERC20_WRAPPER_WHITELIST: ANY
-#      START_SLOT: LATEST
-#    hostname: gas_tank
-#    entrypoint: proxy/run-gas-tank.sh
-#    networks:
-#      - net
-#    depends_on:
-#      solana:
-#        condition: service_healthy
-#      dbcreation:
-#        condition: service_completed_successfully
-#      faucet:
-#        condition: service_started
 #
   indexer:
     restart: always
+    container_name: indexer
     image: ${DOCKERHUB_ORG_NAME}/neon-proxy.py:${REVISION}
     environment:
-      SOLANA_URL: http://solana:8899
+      SOLANA_URL: http://nginx:8100
+      SOLANA_WS_URL: http://solana:8900/
       POSTGRES_DB: neon-db
       POSTGRES_USER: neon-proxy
       POSTGRES_PASSWORD: neon-proxy-pass
@@ -188,18 +176,47 @@ services:
     networks:
       - net
     entrypoint: indexer/run-indexer.sh
+  
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8100:8100"
+    expose:
+      - 8100
+    hostname: nginx
+    container_name: nginx
+    networks:
+      - net
+    depends_on:
+      solana:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "service", "nginx", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+          # Remove the default symlinks and create real files
+          rm -f /var/log/nginx/access.log /var/log/nginx/error.log
+          mkdir -p /var/log/nginx
+          touch /var/log/nginx/access.log /var/log/nginx/error.log
+          chmod 644 /var/log/nginx/*.log
 
-#  hashicorp:
-#    container_name: vault
-#    image: hashicorp/vault:latest
-#    hostname: vault
-#    expose:
-#      - 8200
-#    ports:
-#      - 8200:8200
-#    networks:
-#      - net
-#    entrypoint: vault server -dev -dev-listen-address=0.0.0.0:8200 -dev-root-token-id=local-test-hvac-token
+          mkdir -p /etc/nginx
+
+          cat <<'B64_6aNrXoWaZDlEyGr6ZXXd2gduGOX4rCml' | base64 -d > /etc/nginx/nginx.conf
+          ZXZlbnRzIHsKICAgIHdvcmtlcl9jb25uZWN0aW9ucyAxMDI0Owp9CgpodHRwIHsKICAgIGxvZ19mb3JtYXQganNvbl9jb21iaW5lZCBlc2NhcGU9anNvbgogICAgICAneyAiQHRpbWVzdGFtcCI6ICIkdGltZV9pc284NjAxIiwgJwogICAgICAnInJlbW90ZV9hZGRyIjogIiRyZW1vdGVfYWRkciIsICcKICAgICAgJyJyZXF1ZXN0IjogIiRyZXF1ZXN0IiwgJwogICAgICAnInN0YXR1cyI6ICIkc3RhdHVzIiwgJwogICAgICAnImJvZHlfYnl0ZXNfc2VudCI6ICIkYm9keV9ieXRlc19zZW50IiwgJwogICAgICAnImh0dHBfcmVmZXJlciI6ICIkaHR0cF9yZWZlcmVyIiwgJwogICAgICAnImh0dHBfdXNlcl9hZ2VudCI6ICIkaHR0cF91c2VyX2FnZW50IiwgJwogICAgICAnInJlcXVlc3RfdGltZSI6ICIkcmVxdWVzdF90aW1lIiwgJwogICAgICAnImpzb25ycGNfbWV0aG9kIjogIiRyZXF1ZXN0X2JvZHkiIH0nOwoKICAgIGFjY2Vzc19sb2cgL3Zhci9sb2cvbmdpbngvYWNjZXNzLmxvZyBqc29uX2NvbWJpbmVkIGJ1ZmZlcj04ayBmbHVzaD0yMHM7CgogICAgc2VydmVyIHsKICAgICAgICBsaXN0ZW4gODEwMDsKCiAgICAgICAgbG9jYXRpb24gLyB7CiAgICAgICAgICAgIHByb3h5X3Bhc3MgaHR0cDovL3NvbGFuYTo4ODk5OwogICAgICAgICAgICBwcm94eV9zZXRfaGVhZGVyIEhvc3QgJGhvc3Q7CiAgICAgICAgICAgIHByb3h5X3NldF9oZWFkZXIgWC1SZWFsLUlQICRyZW1vdGVfYWRkcjsKICAgICAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLUZvcndhcmRlZC1Gb3IgJHByb3h5X2FkZF94X2ZvcndhcmRlZF9mb3I7CiAgICAgICAgICAgIHByb3h5X3NldF9oZWFkZXIgWC1Gb3J3YXJkZWQtUHJvdG8gJHNjaGVtZTsKICAgICAgICB9CgogICAgICAgIGxvY2F0aW9uIC9sb2dzIHsKICAgICAgICAgICAgYXV0b2luZGV4IG9uOwogICAgICAgICAgICBhbGlhcyAvdmFyL2xvZy9uZ2lueDsKICAgICAgICB9CiAgICB9Cn0=
+          B64_6aNrXoWaZDlEyGr6ZXXd2gduGOX4rCml
+
+          echo 'Generated /etc/nginx/nginx.conf:'
+          cat /etc/nginx/nginx.conf
+
+          nginx -g 'daemon off;'
+
 networks:
   net:
 

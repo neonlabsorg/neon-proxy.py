@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import io
 import re
 import statistics
 import sys
@@ -14,8 +15,7 @@ import json
 import typing as tp
 import logging
 from urllib.parse import urlparse
-from python_terraform import Terraform
-from paramiko import SSHClient
+from paramiko import SSHClient, AutoAddPolicy, RSAKey
 from scp import SCPClient
 try:
     import pandas as pd
@@ -65,8 +65,6 @@ GH_ORG_NAME = os.environ.get("GH_ORG_NAME")
 CONTAINERS = ['proxy', 'solana', 'dbcreation', 'faucet', 'gas_tank', 'indexer']
 
 docker_client = docker.APIClient()
-terraform = Terraform(working_dir=pathlib.Path(
-    __file__).parent / "full_test_suite")
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
@@ -76,6 +74,7 @@ SOLANA_REQUESTS_TITLE = "<summary>Solana Requests Statistics</summary>"
 def is_image_exist(image, tag):
     response = requests.get(
         url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag}")
+    print(f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag} response: {response.status_code}")
     return response.status_code == 200
 
 
@@ -128,11 +127,13 @@ def specify_image_tags(git_sha,
 
     # evm_tag and evm_sha_tag
     if evm_sha_tag:
-        evm_sha_tag = evm_sha_tag
-        evm_tag = evm_tag
+        evm_sha_tag_ = evm_sha_tag
+        evm_tag_ = evm_tag
+        # add evm-triggered-* prefix to proxy tag when pipeline is triggered from evm repo (evm_sha_tag != "")
+        proxy_tag = f"evm-triggered-{evm_tag}"
     else:
-        evm_sha_tag = ""
-        evm_tag = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
+        evm_sha_tag_ = ""
+        evm_tag_ = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
 
     # faucet_tag
     faucet_tag = proxy_tag if is_image_exist("neon-faucet", proxy_tag) else default_faucet_tag
@@ -155,8 +156,8 @@ def specify_image_tags(git_sha,
                proxy_sha_tag=proxy_sha_tag,
                proxy_pr_version_branch=proxy_pr_version_branch,
                is_proxy_release=is_proxy_release,
-               evm_tag=evm_tag,
-               evm_sha_tag=evm_sha_tag,
+               evm_tag=evm_tag_,
+               evm_sha_tag=evm_sha_tag_,
                faucet_tag=faucet_tag,
                neon_test_tag=neon_test_tag)
     set_github_env(env)
@@ -219,71 +220,6 @@ def finalize_image(proxy_sha_tag, proxy_tag):
     else:
         click.echo(f"Nothing to finalize, the tag {proxy_tag} is not version tag or latest")
 
-
-@cli.command(name="terraform_infrastructure")
-@click.option('--proxy_tag')
-@click.option('--evm_tag')
-@click.option('--faucet_tag')
-@click.option('--run_number')
-def terraform_build_infrastructure(proxy_tag, evm_tag, faucet_tag, run_number):
-    os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
-    os.environ["TF_VAR_neon_evm_commit"] = evm_tag
-    os.environ["TF_VAR_faucet_model_commit"] = faucet_tag
-    os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
-    os.environ["TF_VAR_devnet_solana_url"] = DEVNET_SOLANA_URL
-
-    thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
-
-    backend_config = {"bucket": TFSTATE_BUCKET,
-                      "key": thstate_key, "region": TFSTATE_REGION}
-    return_code, stdout, stderr = terraform.init(backend_config=backend_config)
-    if return_code != 0:
-        print("Terraform init failed:", stderr)
-
-    instance_types = ["ccx33", "ccx43", "ccx53", "cx42", "ccx63"]
-    locations = ["nbg1", "fsn1", "hel1"]
-    instances = [{"server_type": i, "location": j} for i in instance_types for j in locations]
-
-    retry_amount = 10
-    retry_amount = len(instances) if len(instances) > retry_amount else retry_amount # Verify that we can try all regions and locations
-
-    print("Possible instance options: ", instances)
-
-    instance_iterator = 0
-    retry_iterator = 0
-    while (retry_iterator < retry_amount):
-        return_code, stdout, stderr = terraform.apply(skip_plan=True, capture_output=True, var={'server_type':instances[instance_iterator]["server_type"], 'location':instances[instance_iterator]["location"]})
-        click.echo(f"stdout: {stdout}")
-        with open(f"terraform.log", "w") as file:
-            if stdout:
-                file.write(stdout)
-            if stderr:
-                file.write(stderr)
-        if return_code == 0:
-            break
-        elif return_code != 0:
-            retry_iterator += 1
-            if "(resource_unavailable)" in stderr:
-                instance_iterator += 1
-                print("Resource_unavailable; ",instances[instance_iterator] ," Trying to recreate instances with another region / another instance type...")
-            else:
-                print("Retry because ", stderr, "; Retries left: ", retry_amount - retry_iterator)
-            time.sleep(3)
-
-    if retry_iterator >= retry_amount:
-        print("Retries left: ", retry_amount - retry_iterator)
-        print("Terraform apply failed:", stderr)
-        print("Terraform infrastructure is not built correctly")
-        sys.exit(1)
-        
-    output = terraform.output(json=True)
-    click.echo(f"output: {output}")
-    proxy_ip = output["proxy_ip"]["value"]
-    solana_ip = output["solana_ip"]["value"]
-    infra = dict(solana_ip=solana_ip, proxy_ip=proxy_ip)
-    set_github_env(infra)
-
-
 def set_github_env(envs: tp.Dict, upper=True) -> None:
     """Set environment for github action"""
     path = os.getenv("GITHUB_ENV", str())
@@ -294,63 +230,21 @@ def set_github_env(envs: tp.Dict, upper=True) -> None:
                 env_file.write(f"\n{key.upper() if upper else key}={str(value)}")
 
 
-@cli.command(name="destroy_terraform")
-@click.option('--proxy_tag')
-@click.option('--run_number')
-def destroy_terraform(proxy_tag, run_number):
-    log = logging.getLogger()
-    log.handlers = []
-    handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(
-        '%(asctime)4s %(name)4s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)4s %(message)4s')
-    handler.setFormatter(formatter)
-    log.addHandler(handler)
-    log.setLevel(logging.INFO)
-
-    os.environ["TF_VAR_dockerhub_org_name"] = DOCKERHUB_ORG_NAME
-    os.environ["TF_VAR_devnet_solana_url"] = DEVNET_SOLANA_URL
-
-    def format_tf_output(output):
-        return re.sub(r'(?m)^', ' ' * TF_OUTPUT_OFFSET, str(output))
-
-    TF_OUTPUT_OFFSET = 16
-    os.environ["TF_VAR_proxy_image_tag"] = proxy_tag
-    thstate_key = f'{TFSTATE_KEY_PREFIX}{proxy_tag}-{run_number}'
-
-    backend_config = {"bucket": TFSTATE_BUCKET,
-                      "key": thstate_key, "region": TFSTATE_REGION}
-    terraform.init(backend_config=backend_config)
-    tf_destroy = terraform.apply('-destroy', skip_plan=True)
-    log.info(format_tf_output(tf_destroy))
-
-
 @cli.command(name="get_container_logs")
 def get_all_containers_logs():
     home_path = os.environ.get("HOME")
     artifact_logs = "./logs"
-    ssh_key = f"{home_path}/.ssh/ci-stands"
+    ssh_key = os.environ.get("SSH_KEY")
+    ssh_user = os.environ.get("SSH_USER")
+    private_key_file = io.StringIO(ssh_key)
+    pkey = RSAKey.from_private_key(private_key_file)
     os.mkdir(artifact_logs)
-    proxy_ip = os.environ.get("PROXY_IP")
     solana_ip = os.environ.get("SOLANA_IP")
-
-    subprocess.run(
-        f'ssh-keygen -R {solana_ip} -f {home_path}/.ssh/known_hosts', shell=True)
-    subprocess.run(
-        f'ssh-keygen -R {proxy_ip} -f {home_path}/.ssh/known_hosts', shell=True)
-    subprocess.run(
-        f'ssh-keyscan -H {solana_ip} >> {home_path}/.ssh/known_hosts', shell=True)
-    subprocess.run(
-        f'ssh-keyscan -H {proxy_ip} >> {home_path}/.ssh/known_hosts', shell=True)
     ssh_client = SSHClient()
-    ssh_client.load_system_host_keys()
-    ssh_client.connect(hostname=solana_ip, username='root',
-                       key_filename=ssh_key, timeout=120)
-
-    upload_remote_logs(ssh_client, "tmp_solana_1", artifact_logs)
-
-    ssh_client.connect(hostname=proxy_ip, username='root',
-                       key_filename=ssh_key, timeout=120)
-    services = ["postgres", "dbcreation", "indexer", "proxy", "faucet"]
+    ssh_client.set_missing_host_key_policy(AutoAddPolicy())
+    ssh_client.connect(hostname=solana_ip, username=ssh_user,
+                       pkey=pkey, timeout=120)
+    services = ["solana", "postgres", "dbcreation", "indexer", "proxy", "faucet"]
     for service in services:
         upload_remote_logs(ssh_client, service, artifact_logs)
 
@@ -570,7 +464,7 @@ def calculate_stats(stats):
 @click.option("--solana_ip", default="localhost", help="Solana IP")
 def parse_logs(solana_ip):
     try:
-        content = requests.get(f"http://{solana_ip}:8080/logs/access.log").text
+        content = requests.get(f"http://{solana_ip}:8100/logs/access.log").text
     except requests.exceptions.InvalidURL as e:
         print(f"Error: {e}")
         sys.exit(1)
