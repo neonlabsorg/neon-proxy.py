@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-import unittest
-import pprint
-import asyncio
 import itertools
 import logging
-import uuid
 from typing import List, Sequence, Final, TypeVar, ClassVar, Union
-from pydantic import StrictInt, StrictStr, AliasChoices, Field, ConfigDict, Base64Bytes
 
 from .api import (
-    CoreApiResp,
     EvmConfigModel,
     BpfLoader2ExecModel,
     BpfLoader2ProgModel,
@@ -39,7 +33,6 @@ from .api import (
     CoreApiBlockModel,
     NeonSkdTreeModel,
     NeonSkdTreeRequest,
-    CoreApiRequest,
     TokenModel,
 )
 from ..jsonrpc.client import JsonRpcClient
@@ -50,7 +43,6 @@ from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
 from ..http.client import HttpClient, HttpClientRequest
-from ..http.errors import PydanticValidationError
 from ..http.utils import HttpURL
 from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
@@ -62,10 +54,7 @@ from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
-from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.cached import cached_method
-from ..utils.format import if_none
-from ..utils.json_logger import log_msg
 from ..utils.pydantic import BaseModel, RootModel, HexUIntField
 from proxy.stat.client import StatClient
 
@@ -152,7 +141,7 @@ class CoreRpcClient(JsonRpcClient):
     async def get_neon_contract(self, address: NeonAddress, block: NeonBlockHdrModel | None) -> NeonContractModel:
         req = NeonContractRequest(contract=address.eth_address, slot=self._get_slot(block))
         resp = await self._get_contract(req)
-        return NeonContractModel(neon_address=address, code=resp[0].code, solana_address=resp[0].sol_address)
+        return NeonContractModel(neon_address=address, code=resp[0].code, sol_address=resp[0].sol_address)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
         req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
@@ -390,12 +379,12 @@ class CoreRpcClient(JsonRpcClient):
         prog = BpfLoader2ProgModel.from_data(acct.data)
         return prog.exec_address
 
-    def __exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+    def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
         super()._exception_handler(url, request, retry, exc)
 
         # if the previous call has re-raised an exception, this code isn't called
-        # assert isinstance(request, RpcClientRequest)
-        request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
+        # assert isinstance(request, HttpClientRequest)
+        # request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
         _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @staticmethod

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
 from typing import Any, Annotated, Final, Sequence, ClassVar, Self
 
 from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, ConfigDict
@@ -17,7 +16,6 @@ from ..neon.transaction_model import NeonTxModel, NeonSkdTxStatusField, NeonSkdT
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
-from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex, if_none
 from ..utils.pydantic import HexUIntField, DecIntField, BaseModel as _BaseModel, RootModel, DecUIntField
@@ -179,7 +177,7 @@ class NeonContractRequest(CoreApiRequest):
 class NeonContractModel(_BaseRespModel):
     neon_address: NeonAddressField = Field(NeonAddressField.default())
     code: EthBinStrField
-    sol_address: SolPubKeyField = Field(validation_alias="solana_address")
+    sol_address: SolPubKeyField = Field(validation_alias=AliasChoices("sol_address", "solana_address"))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
