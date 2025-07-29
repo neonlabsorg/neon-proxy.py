@@ -390,13 +390,45 @@ class CoreRpcClient(JsonRpcClient):
         prog = BpfLoader2ProgModel.from_data(acct.data)
         return prog.exec_address
 
-    #def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
-    #    super()._exception_handler(url, request, retry, exc)
-    #
-    #    # if the previous call has re-raised an exception, this code isn't called
-    #    # assert isinstance(request, RpcClientRequest)
-    #    request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
-    #    _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
+    def __exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
+        super()._exception_handler(url, request, retry, exc)
+
+        # if the previous call has re-raised an exception, this code isn't called
+        # assert isinstance(request, RpcClientRequest)
+        request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
+        _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
+
+    @staticmethod
+    def _rpc_error_handler(method: str, code: int, message: str, error_list: Sequence[str] | None) -> str | None:
+        if code == 113:  # ClientError, Solana connection problem
+            return f"Solana connection error on {method}"
+        elif code != 265:  # SolanaSimulatorError
+            return None
+
+        sim_error: Final[str] = "Solana Simulator error "
+        sim_error_len: Final[int] = len(sim_error)
+        rpc_error: Final[str] = "RpcClientError"  # Solana connection problem
+        tx_error: Final[str] = "TransactionError"  # Transaction body problem
+        tx_error_len: Final[int] = len(tx_error)
+
+        error = message[sim_error_len:]
+        if error.startswith(rpc_error):
+            return f"Solana connection error on {method}"
+        elif not error.startswith(tx_error):
+            return None
+
+        sub_error = error[tx_error_len:]
+        alt_error_list: Final[tuple] = (
+            "(AddressLookupTableNotFound)",
+            "(InvalidAddressLookupTableOwner)",
+            "(InvalidAddressLookupTableData)",
+            "(InvalidAddressLookupTableIndex)",
+        )
+        for alt_error in alt_error_list:
+            if sub_error.startswith(alt_error):
+                raise SolAltError("Simulation error: " + alt_error)
+
+        return None
 
     @staticmethod
     def _check_emulator_result(resp: EmulNeonCallResp) -> None:

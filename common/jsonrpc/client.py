@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import itertools
-from typing import Callable, Awaitable, Any, Iterator, Union, AsyncGenerator
+import logging
+from typing import Callable, Awaitable, Any, Iterator, Sequence, Union, AsyncGenerator
 
 from .api import (
     JsonRpcRequest,
@@ -19,6 +20,7 @@ from ..http.client import HttpClient
 from ..http.errors import PydanticValidationError
 from ..utils.pydantic import BaseModel
 
+_LOG = logging.getLogger(__name__)
 
 class JsonRpcClient(HttpClient):
     def __init__(self, *args, **kwargs) -> None:
@@ -47,6 +49,12 @@ class JsonRpcClient(HttpClient):
         if is_batch:
             return _batch_registrator
         return _single_registrator
+
+    @staticmethod
+    def _rpc_error_handler(method: str, code: int, message: str, error_list: Sequence[str] | None) -> str | None:
+        _LOG.error("RPC Error: %d (%s)", code, message)
+        if error_list:
+            _LOG.error("RPC Error messages: %s", code, message, ', '.join(error_list))
 
 
 JsonRpcClientSender = Union[
@@ -86,7 +94,7 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
         if req_model.id != resp_model.id:
             raise ParseRespError(None, error_list=("Response id mismatch",))
 
-        return _extract_return(method, resp_model)
+        return _extract_return(self, method, resp_model)
 
     return _callback
 
@@ -149,7 +157,7 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
         for req, resp in zip(req_list, resp_list):
             if req.id != resp.id:
                 raise ParseRespError(None, error_list=f"Response id mismatch: {req.id} != {resp.id}")
-            yield _extract_return(method, resp)
+            yield _extract_return(self, method, resp)
 
     return _callback
 
@@ -160,12 +168,14 @@ def _params_model_to_params(method: JsonRpcMethod, params_model: BaseModel):
     return [param_value_dict[param_name] for param_name in method.param_name_list]
 
 
-def _extract_return(method: JsonRpcMethod, resp: JsonRpcResp) -> Any:
+def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, resp: JsonRpcResp) -> Any:
     if resp.is_error:
         error = resp.error
         error_list: list[str] | None = None
         if error.data is not None:
             error_list = error.data.get("errors", None)
+
+        self._rpc_error_handler(method.name, error.code, error.message, error_list)
 
         _JsonRpcError = JsonRpcErrorDict.get(error.code, BaseJsonRpcError)
         raise _JsonRpcError(
