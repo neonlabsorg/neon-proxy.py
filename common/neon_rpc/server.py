@@ -64,6 +64,7 @@ class _BaseInstance:
 
         new_env = dict(
             RUST_LOG=log_level,
+            SOLANA_URL=self._solana_url,
             NEON_API_LISTENER_ADDR=self._host,
             COMMITMENT=SolCommit.Processed,
             EVM_LOADER=str(NeonProg.ID),
@@ -74,9 +75,6 @@ class _BaseInstance:
             # storage for AccountsDb when running Solana Bank Emulator
             SOLANA_RAYON_THREADS="1",
         )
-        if self._solana_url:
-            new_env["SOLANA_URL"]=self._solana_url
-
         env = dict(os.environ)
         env.update(new_env)
 
