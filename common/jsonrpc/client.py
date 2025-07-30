@@ -1,8 +1,8 @@
 from __future__ import annotations
-import pprint
+import asyncio
 import itertools
 import logging
-from typing import Callable, Awaitable, Any, Iterator, Sequence, Union, AsyncGenerator, ClassVar
+from typing import Callable, Awaitable, Any, Final, Iterator, Sequence, Union, AsyncGenerator, ClassVar
 
 from .api import (
     JsonRpcRequest,
@@ -17,9 +17,10 @@ from .errors import (
 )
 from .utils import JsonRpcMethod
 from ..config.config import Config
+from ..config.constants import ONE_BLOCK_SEC
 from ..http.client import HttpClient
 from ..http.errors import PydanticValidationError
-from ..stat.client_rpc import RpcStatClient, RpcClientRequest
+from ..stat.client_rpc import RpcClientRequest
 from ..utils.pydantic import BaseModel
 from proxy.stat.client import StatClient
 
@@ -27,6 +28,7 @@ _LOG = logging.getLogger(__name__)
 
 class JsonRpcClient(HttpClient):
     name: ClassVar[str] = "JsonRpcClient"
+    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
 
     def __init__(self, cfg: Config, stat_client: StatClient | None = None) -> None:
         super().__init__(cfg)
@@ -93,18 +95,35 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
             stat_name=self.name,
             method=method.name,
         )
-        resp_json = await self._send_client_request(req)
-        _LOG.info("___ _register_single_sender:: stat_client: %s", pprint.pformat(self.name))
+        with req:
+            for retry in itertools.count():
+                req.start_timer()
 
-        try:
-            resp_model = JsonRpcResp.from_json(resp_json)
-        except PydanticValidationError as exc:
-            raise ParseRespError(exc)
+                if retry > 0:
+                    _LOG.debug("attempt %d to repeat %s...", retry + 1, method.name)
 
-        if req_id != resp_model.id:
-            raise ParseRespError(None, error_list=("Response id mismatch",))
+                resp_json = await self._send_client_request(req)
+                try:
+                    resp_model = JsonRpcResp.from_json(resp_json)
+                except PydanticValidationError as exc:
+                    req.commit_stat(error_message=str(exc))
+                    await asyncio.sleep(self._wait_sec)
+                    continue
+                    #raise ParseRespError(exc)
 
-        return _extract_return(self, method, resp_model)
+                if req_id != resp_model.id:
+                    req.commit_stat(error_message="Response id mismatch")
+                    await asyncio.sleep(self._wait_sec)
+                    continue
+                    #raise ParseRespError(None, error_list=("Response id mismatch",))
+
+                try:
+                    return _extract_return(self, method, req, resp_model)
+                except (PydanticValidationError, BaseJsonRpcError) as exc:
+                    await asyncio.sleep(self._wait_sec)
+                    continue
+
+        assert False, "unreached code"
 
     return _callback
 
@@ -136,7 +155,7 @@ def _predefined_to_params(method: JsonRpcMethod, args: list, **kwargs) -> list:
 
 def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_params: bool) -> Callable:
     method = JsonRpcMethod.from_handler(handler, name, predefined_params, is_batch=True)
-    # assert method.is_async_def, "JsonRpcClient supports only async methods"
+    assert method.is_async_def, "JsonRpcClient supports only async methods"
     assert method.has_self, "JsonRpcClient supports only object methods"
     assert method.RequestList is not None, "JsonRpcClient input batch list isn't defined"
 
@@ -160,7 +179,6 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
             method=method.name,
         )
         resp_json = await self._send_client_request(req)
-        _LOG.info("___ _register_batch_sender:: self.name: %s", pprint.pformat(self.name))
 
         try:
             resp_list = JsonRpcListResp.from_json(resp_json)
@@ -175,7 +193,7 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
         for req, resp in zip(req_list, resp_list):
             if req.id != resp.id:
                 raise ParseRespError(None, error_list=f"Response id mismatch: {req.id} != {resp.id}")
-            yield _extract_return(self, method, resp)
+            yield _extract_return(self, method, req, resp)
 
     return _callback
 
@@ -186,7 +204,7 @@ def _params_model_to_params(method: JsonRpcMethod, params_model: BaseModel):
     return [param_value_dict[param_name] for param_name in method.param_name_list]
 
 
-def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, resp: JsonRpcResp) -> Any:
+def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, req: RpcClientRequest, resp: JsonRpcResp) -> Any:
     if resp.is_error:
         error = resp.error
         error_list: list[str] | None = None
@@ -194,6 +212,7 @@ def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, resp: JsonRpcRes
             error_list = error.data.get("errors", None)
 
         err_msg = self._rpc_error_handler(method.name, error.code, error.message, error_list)
+        req.commit_stat(error_message=err_msg)
         _LOG.error(err_msg)
 
         _JsonRpcError = JsonRpcErrorDict.get(error.code, BaseJsonRpcError)
@@ -206,9 +225,13 @@ def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, resp: JsonRpcRes
     try:
         if method.ReturnValidator:
             return_model = method.ReturnValidator.from_dict(dict(result=resp.result))
-            return getattr(return_model, "result")
+            result = getattr(return_model, "result")
+        else:
+            result = method.ReturnType.from_dict(resp.result)  # noqa
 
-        return method.ReturnType.from_dict(resp.result)  # noqa
+        req.commit_stat()
+        return result
 
     except PydanticValidationError as exc:
+        req.commit_stat(error_message=str(exc))
         raise ParseRespError(exc)

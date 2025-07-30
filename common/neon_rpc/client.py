@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import List, Sequence, Final, TypeVar, ClassVar, Union
+from typing import Sequence, Final, TypeVar, ClassVar, Union
 
 from .api import (
     EvmConfigModel,
@@ -37,12 +37,11 @@ from .api import (
 )
 from ..jsonrpc.client import JsonRpcClient
 from ..config.config import Config
-from ..config.constants import ONE_BLOCK_SEC
 from ..ethereum import revert_message
 from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
-from ..http.client import HttpClient, HttpClientRequest
+from ..http.client import HttpClientRequest
 from ..http.utils import HttpURL
 from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
@@ -63,7 +62,6 @@ _RespType = TypeVar("_RespType", bound=Union[BaseModel, RootModel])
 
 class CoreRpcClient(JsonRpcClient):
     name: ClassVar[str] = "CoreRpcClient"
-    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
 
     def __init__(self, cfg: Config, sol_client: SolClient, stat_client: StatClient) -> None:
         super().__init__(cfg, stat_client)
