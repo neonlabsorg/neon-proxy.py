@@ -53,6 +53,7 @@ from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
+from ..stat.client_rpc import RpcClientRequest
 from ..utils.cached import cached_method
 from ..utils.pydantic import BaseModel, RootModel, HexUIntField
 from proxy.stat.client import StatClient
@@ -380,8 +381,8 @@ class CoreRpcClient(JsonRpcClient):
         super()._exception_handler(url, request, retry, exc)
 
         # if the previous call has re-raised an exception, this code isn't called
-        # assert isinstance(request, HttpClientRequest)
-        # request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
+        assert isinstance(request, RpcClientRequest)
+        request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
         _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @staticmethod
