@@ -52,10 +52,7 @@ class JsonRpcClient(HttpClient):
 
     @staticmethod
     def _rpc_error_handler(method: str, code: int, message: str, error_list: Sequence[str] | None) -> str | None:
-        _LOG.error("RPC Error: %d (%s)", code, message)
-        if error_list:
-            _LOG.error("RPC Error messages: %s", code, message, ', '.join(error_list))
-
+        return "RPC Error: %d (%s); Error list: %s" % (code, message, ', '.join(error_list))
 
 JsonRpcClientSender = Union[
     Callable[[JsonRpcClient, ...], Awaitable[JsonRpcResp]],
@@ -175,7 +172,8 @@ def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, resp: JsonRpcRes
         if error.data is not None:
             error_list = error.data.get("errors", None)
 
-        self._rpc_error_handler(method.name, error.code, error.message, error_list)
+        err_msg = self._rpc_error_handler(method.name, error.code, error.message, error_list)
+        _LOG.error(err_msg)
 
         _JsonRpcError = JsonRpcErrorDict.get(error.code, BaseJsonRpcError)
         raise _JsonRpcError(
