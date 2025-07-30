@@ -62,18 +62,17 @@ _LOG = logging.getLogger(__name__)
 _RespType = TypeVar("_RespType", bound=Union[BaseModel, RootModel])
 
 class CoreRpcClient(JsonRpcClient):
-    name: ClassVar[str] = "NeonCoreRpc"
+    name: ClassVar[str] = "CoreRpcClient"
     _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
 
     def __init__(self, cfg: Config, sol_client: SolClient, stat_client: StatClient) -> None:
-        super().__init__(cfg)
+        super().__init__(cfg, stat_client)
 
         for idx in range(cfg.neon_core_api_server_cnt):
             port = cfg.neon_core_api_port + idx
             self.connect(host=cfg.neon_core_api_ip, port=port)
 
         self.set_timeout_sec(120).set_max_retry_cnt(30)
-        self._stat_client = stat_client
         self._sol_client = sol_client
         self._deployed_slot = -1
         self._token_list_cache: list[TokenModel] = list()
@@ -455,5 +454,5 @@ class CoreRpcClient(JsonRpcClient):
 
 
 class CoreApiClient(CoreRpcClient):
-    name: ClassVar[str] = "NeonCoreApi"
+    name: ClassVar[str] = "CoreApiClient"
     pass

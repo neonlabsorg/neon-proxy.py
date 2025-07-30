@@ -1,8 +1,8 @@
 from __future__ import annotations
-
+import pprint
 import itertools
 import logging
-from typing import Callable, Awaitable, Any, Iterator, Sequence, Union, AsyncGenerator
+from typing import Callable, Awaitable, Any, Iterator, Sequence, Union, AsyncGenerator, ClassVar
 
 from .api import (
     JsonRpcRequest,
@@ -16,16 +16,22 @@ from .errors import (
     JsonRpcErrorDict,
 )
 from .utils import JsonRpcMethod
+from ..config.config import Config
 from ..http.client import HttpClient
 from ..http.errors import PydanticValidationError
+from ..stat.client_rpc import RpcStatClient, RpcClientRequest
 from ..utils.pydantic import BaseModel
+from proxy.stat.client import StatClient
 
 _LOG = logging.getLogger(__name__)
 
 class JsonRpcClient(HttpClient):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    name: ClassVar[str] = "JsonRpcClient"
+
+    def __init__(self, cfg: Config, stat_client: StatClient | None = None) -> None:
+        super().__init__(cfg)
         self._id = itertools.count()
+        self._stat_client: StatClient | None = stat_client
 
     @staticmethod
     def method(
@@ -74,21 +80,28 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
             else _kwargs_to_params(method, args, **kwargs)
         )
         req_id = str(next(self._id))
-        req_model = JsonRpcRequest(
+        req_json = JsonRpcRequest(
             id=req_id,
             jsonrpc="2.0",
             method=method.name,
             params=param_value_list,
-        )
-        req_json = req_model.to_json()
+        ).to_json()
 
-        resp_json = await self._send_raw_data_request(req_json)
+        req = RpcClientRequest.from_raw(
+            data=req_json,
+            stat_client=self._stat_client,
+            stat_name=self.name,
+            method=method.name,
+        )
+        resp_json = await self._send_client_request(req)
+        _LOG.info("___ _register_single_sender:: stat_client: %s", pprint.pformat(self.name))
+
         try:
             resp_model = JsonRpcResp.from_json(resp_json)
         except PydanticValidationError as exc:
             raise ParseRespError(exc)
 
-        if req_model.id != resp_model.id:
+        if req_id != resp_model.id:
             raise ParseRespError(None, error_list=("Response id mismatch",))
 
         return _extract_return(self, method, resp_model)
@@ -140,7 +153,15 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
             req_list.append(req_model)
         req_json = req_list.to_json()
 
-        resp_json = await self._send_raw_data_request(req_json)
+        req = RpcClientRequest.from_raw(
+            data=req_json,
+            stat_client=self._stat_client,
+            stat_name=self.name,
+            method=method.name,
+        )
+        resp_json = await self._send_client_request(req)
+        _LOG.info("___ _register_batch_sender:: self.name: %s", pprint.pformat(self.name))
+
         try:
             resp_list = JsonRpcListResp.from_json(resp_json)
         except PydanticValidationError as exc:
