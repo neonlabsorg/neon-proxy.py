@@ -117,12 +117,13 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
                     #continue
                     raise ParseRespError(None, error_list=("Response id mismatch",))
 
-                try:
-                    return _extract_return(self, method, req, resp_model)
-                except (PydanticValidationError, BaseJsonRpcError) as exc:
-                    #await asyncio.sleep(self._wait_sec)
-                    #continue
-                    raise BaseJsonRpcError from exc
+                return _extract_return(self, method, req, resp_model)
+                #try:
+                #    return _extract_return(self, method, req, resp_model)
+                #except (PydanticValidationError, BaseJsonRpcError) as exc:
+                #    #await asyncio.sleep(self._wait_sec)
+                #    #continue
+                #    raise BaseJsonRpcError from exc
 
         assert False, "unreached code"
 
@@ -201,15 +202,19 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
                     #continue
                     raise ParseRespError(None, error_list=(f"Wrong number of answers: {len(params_list)} != {len(resp_list)}",))
 
-                try:
-                    for req_model, resp in zip(req_list, resp_list):
-                        if req_model.id != resp.id:
-                            raise ParseRespError(None, error_list=f"Response id mismatch: {req_model.id} != {resp.id}")
-                        yield _extract_return(self, method, req, resp)
-                except (PydanticValidationError, BaseJsonRpcError) as exc:
-                    #await asyncio.sleep(self._wait_sec)
-                    #continue
-                    raise BaseJsonRpcError from exc
+                for req_model, resp in zip(req_list, resp_list):
+                    if req_model.id != resp.id:
+                        raise ParseRespError(None, error_list=f"Response id mismatch: {req_model.id} != {resp.id}")
+                    yield _extract_return(self, method, req, resp)
+                #try:
+                #    for req_model, resp in zip(req_list, resp_list):
+                #        if req_model.id != resp.id:
+                #            raise ParseRespError(None, error_list=f"Response id mismatch: {req_model.id} != {resp.id}")
+                #        yield _extract_return(self, method, req, resp)
+                #except (PydanticValidationError, BaseJsonRpcError) as exc:
+                #    #await asyncio.sleep(self._wait_sec)
+                #    #continue
+                #    raise BaseJsonRpcError from exc
 
         assert False, "unreached code"
 
