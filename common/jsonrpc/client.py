@@ -189,7 +189,7 @@ def _params_model_to_params(method: JsonRpcMethod, params_model: BaseModel):
 def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, req: RpcClientRequest, resp: JsonRpcResp) -> Any:
     if resp.is_error:
         error = resp.error
-        error_list: list[str] | None = None
+        error_list: list[str] = list()
         if error.data is not None:
             error_list = error.data.get("errors", None)
 
