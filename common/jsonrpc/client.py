@@ -155,7 +155,7 @@ def _predefined_to_params(method: JsonRpcMethod, args: list, **kwargs) -> list:
 
 def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_params: bool) -> Callable:
     method = JsonRpcMethod.from_handler(handler, name, predefined_params, is_batch=True)
-    assert method.is_async_def, "JsonRpcClient supports only async methods"
+    # assert method.is_async_def, "JsonRpcClient supports only async methods"
     assert method.has_self, "JsonRpcClient supports only object methods"
     assert method.RequestList is not None, "JsonRpcClient input batch list isn't defined"
 
