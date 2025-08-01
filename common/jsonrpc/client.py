@@ -205,7 +205,9 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
                         raise ParseRespError(None, error_list=error)
                     await asyncio.sleep(self._wait_sec)
                     continue
+            for req_model, resp_model in zip(req_list, resp_list):
                 yield _extract_return(self, method, req, resp_model)
+            break
 
     return _callback
 
