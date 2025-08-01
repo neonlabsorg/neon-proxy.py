@@ -207,8 +207,6 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
                     continue
                 yield _extract_return(self, method, req, resp_model)
 
-        assert False, "unreachable"
-
     return _callback
 
 
