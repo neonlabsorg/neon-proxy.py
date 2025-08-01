@@ -95,17 +95,30 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
             stat_name=self.name,
             method=method.name,
         )
-        resp_json = await self._send_client_request(req)
+        for retry in itertools.count():
+            req.start_timer()
+            if retry > 0:
+                _LOG.debug("attempt %d to repeat %s...", retry + 1, method)
 
-        try:
-            resp_model = JsonRpcResp.from_json(resp_json)
-        except PydanticValidationError as exc:
-            raise ParseRespError(exc)
+            resp_json = await self._send_client_request(req)
+            try:
+                resp = JsonRpcResp.from_json(resp_json)
+            except PydanticValidationError as exc:
+                req.commit_stat(error_message=str(exc))
+                if retry > self._max_retry_cnt:
+                    raise ParseRespError(exc)
+                await asyncio.sleep(self._wait_sec)
+                continue
 
-        if req_id != resp_model.id:
-            raise ParseRespError(None, error_list=("Response id mismatch",))
+            if req_id != resp.id:
+                req.commit_stat(error_message="Response id mismatch")
+                if retry > self._max_retry_cnt:
+                    raise ParseRespError(None, error_list=(f"Response id mismatch: {req_id} != {resp.id}",))
+                await asyncio.sleep(self._wait_sec)
+                continue
 
-        return _extract_return(self, method, req, resp_model)
+            return _extract_return(self, method, req, resp)
+        assert False, "unreachable"
 
     return _callback
 
