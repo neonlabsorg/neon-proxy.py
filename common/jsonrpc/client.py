@@ -118,6 +118,7 @@ def _register_single_sender(handler: JsonRpcClientSender, name: str, predefined_
                 continue
 
             return _extract_return(self, method, req, resp)
+
         assert False, "unreachable"
 
     return _callback
@@ -173,22 +174,40 @@ def _register_batch_sender(handler: JsonRpcClientSender, name: str, predefined_p
             stat_name=self.name,
             method=method.name,
         )
-        resp_json = await self._send_client_request(req)
+        for retry in itertools.count():
+            req.start_timer()
+            if retry > 0:
+                _LOG.debug("attempt %d to repeat %s...", retry + 1, method)
 
-        try:
-            resp_list = JsonRpcListResp.from_json(resp_json)
-        except PydanticValidationError as exc:
-            raise ParseRespError(exc)
+            resp_json = await self._send_client_request(req)
+            try:
+                resp_list = JsonRpcListResp.from_json(resp_json)
+            except PydanticValidationError as exc:
+                req.commit_stat(error_message=str(exc))
+                if retry > self._max_retry_cnt:
+                    raise ParseRespError(exc)
+                await asyncio.sleep(self._wait_sec)
+                continue
 
-        if len(params_list) != len(resp_list):
-            raise ParseRespError(
-                None, error_list=f"Wrong number of answers: {len(params_list)} != {len(resp_list)} "
-            )
+            if len(params_list) != len(resp_list):
+                error: str = f"Wrong number of answers: {len(params_list)} != {len(resp_list)}"
+                req.commit_stat(error_message=error)
+                if retry > self._max_retry_cnt:
+                    raise ParseRespError(None, error_list=error)
+                await asyncio.sleep(self._wait_sec)
+                continue
 
-        for req_model, resp in zip(req_list, resp_list):
-            if req_model.id != resp.id:
-                raise ParseRespError(None, error_list=f"Response id mismatch: {req_model.id} != {resp.id}")
-            yield _extract_return(self, method, req, resp)
+            for req_model, resp_model in zip(req_list, resp_list):
+                if req_model.id != resp_model.id:
+                    error: str =f"Response id mismatch: {req_model.id} != {resp_model.id}"
+                    req.commit_stat(error_message=error)
+                    if retry > self._max_retry_cnt:
+                        raise ParseRespError(None, error_list=error)
+                    await asyncio.sleep(self._wait_sec)
+                    continue
+                yield _extract_return(self, method, req, resp_model)
+
+        assert False, "unreachable"
 
     return _callback
 
