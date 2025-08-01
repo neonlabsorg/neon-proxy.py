@@ -130,7 +130,7 @@ def specify_image_tags(git_sha,
         evm_sha_tag_ = evm_sha_tag
         evm_tag_ = evm_tag
         # add evm-triggered-* prefix to proxy tag when pipeline is triggered from evm repo (evm_sha_tag != "")
-        proxy_tag = f"evm-triggered-{proxy_tag}"
+        proxy_tag = f"evm-triggered-{evm_tag}"
     else:
         evm_sha_tag_ = ""
         evm_tag_ = proxy_tag if is_image_exist("evm_loader", proxy_tag) else default_evm_tag
