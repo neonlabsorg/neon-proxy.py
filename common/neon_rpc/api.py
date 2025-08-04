@@ -124,6 +124,10 @@ class NeonAccountModel(_BaseRespModel):
     contract_sol_address: SolPubKeyField = Field(
         validation_alias=AliasChoices("contract_solana_address", "contract_sol_address")
     )
+    container_sol_address: SolPubKeyField = Field(
+        default=SolPubKey.default(),
+        validation_alias=AliasChoices("container_address", "container_sol_address")
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
@@ -139,6 +143,7 @@ class NeonAccountModel(_BaseRespModel):
             status=NeonAccountStatus.Empty,
             sol_address=SolPubKey.default(),
             contract_sol_address=SolPubKey.default(),
+            container_sol_address=SolPubKey.default(),
             state_tx_cnt=0,
             balance=0,
         )

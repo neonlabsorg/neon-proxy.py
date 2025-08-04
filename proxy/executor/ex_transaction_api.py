@@ -338,9 +338,12 @@ class NeonTxExecApi(ExecutorApi):
             ctx = NeonExecTxCtx(self._server, op_res, stuck_req, None, skd_tree_parser)
 
             base_tx_acct_set = NeonBaseTxAccountSet(
-                payer=payer_acct.sol_address,
-                sender=payer_acct.sol_address,
-                receiver=SolPubKey.default(),
+                raw_payer=payer_acct.sol_address,
+                raw_payer_container=payer_acct.container_sol_address,
+                raw_sender=payer_acct.sol_address,
+                raw_sender_container=payer_acct.container_sol_address,
+                raw_receiver=SolPubKey.default(),
+                raw_receiver_container=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
                 payer_balance=payer_acct.balance,
             )

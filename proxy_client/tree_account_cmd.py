@@ -127,9 +127,12 @@ class TreeAccountHandler(BaseNPCmdHandler):
             core_api_client: CoreApiClient = await self._get_core_api_client()
             payer_acct = await core_api_client.get_neon_account(skd_tree_addr.neon_address, None)
             tx_sol_addr = NeonBaseTxAccountSet(
-                payer=payer_acct.sol_address,
-                sender=SolPubKey.default(),
-                receiver=SolPubKey.default(),
+                raw_payer=payer_acct.sol_address,
+                raw_payer_container=payer_acct.container_address,
+                raw_sender=SolPubKey.default(),
+                raw_sender_container=SolPubKey.default(),
+                raw_receiver=SolPubKey.default(),
+                raw_receiver_container=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
                 payer_balance=0,
             )
