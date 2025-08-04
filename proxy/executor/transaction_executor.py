@@ -283,15 +283,20 @@ class NeonTxExecutor(ExecutorComponent):
         addr_list = [ctx.payer, ctx.sender, ctx.receiver]
         acct_list = await self._core_api_client.get_neon_account_list(addr_list, None)
 
+        payer, sender, receiver = acct_list
+
         if not ctx.is_stuck_tx:
-            state_tx_cnt = acct_list[0].state_tx_cnt
+            state_tx_cnt = payer.state_tx_cnt
             EthNonceTooHighError.raise_if_error(ctx.holder_tx.nonce, state_tx_cnt, sender=ctx.sender.eth_address)
 
         base_tx_acct_set = NeonBaseTxAccountSet(
-            payer=acct_list[0].sol_address,
-            sender=acct_list[1].sol_address,
-            receiver=acct_list[2].sol_address,
-            receiver_contract=acct_list[2].contract_sol_address,
-            payer_balance=acct_list[0].balance,
+            raw_payer=payer.sol_address,
+            raw_payer_container=payer.container_sol_address,
+            raw_sender=sender.sol_address,
+            raw_sender_container=sender.container_sol_address,
+            raw_receiver=receiver.sol_address,
+            raw_receiver_container=receiver.container_sol_address,
+            receiver_contract=receiver.contract_sol_address,
+            payer_balance=payer.balance,
         )
         ctx.set_tx_sol_address(base_tx_acct_set)
