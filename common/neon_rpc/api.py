@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
 from typing import Any, Annotated, Final, Sequence, ClassVar, Self
 
 from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, ConfigDict
@@ -17,7 +16,6 @@ from ..neon.transaction_model import NeonTxModel, NeonSkdTxStatusField, NeonSkdT
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
-from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex, if_none
 from ..utils.pydantic import HexUIntField, DecIntField, BaseModel as _BaseModel, RootModel, DecUIntField
@@ -117,7 +115,7 @@ NeonAccountStatusField = Annotated[NeonAccountStatus, PlainValidator(NeonAccount
 
 
 class NeonAccountModel(_BaseRespModel):
-    neon_address: NeonAddressField
+    neon_address: NeonAddressField = Field(NeonAddressField.default())
     user_sol_address: SolPubKeyField = Field(SolPubKey.default(), validation_alias="user_pubkey")
     status: NeonAccountStatusField
     state_tx_cnt: DecUIntField = Field(validation_alias=AliasChoices("trx_count", "state_tx_cnt"))
@@ -126,6 +124,18 @@ class NeonAccountModel(_BaseRespModel):
     contract_sol_address: SolPubKeyField = Field(
         validation_alias=AliasChoices("contract_solana_address", "contract_sol_address")
     )
+
+    @classmethod
+    def from_cls(cls, model: NeonAccountModel, address: NeonAddress) -> Self:
+        return cls(
+            sol_address=model.sol_address,
+            contract_sol_address=model.contract_sol_address,
+            state_tx_cnt=model.state_tx_cnt,
+            balance=model.balance,
+            status=model.status,
+            user_sol_address=model.user_sol_address,
+            neon_address=address
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
@@ -165,9 +175,9 @@ class NeonContractRequest(CoreApiRequest):
 
 
 class NeonContractModel(_BaseRespModel):
-    neon_address: NeonAddressField
+    neon_address: NeonAddressField = Field(NeonAddressField.default())
     code: EthBinStrField
-    sol_address: SolPubKeyField = Field(validation_alias="solana_address")
+    sol_address: SolPubKeyField = Field(validation_alias=AliasChoices("sol_address", "solana_address"))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
@@ -269,7 +279,7 @@ class TokenModel(_BaseRespModel):
 
 
 class EvmConfigModel(_BaseRespModel):
-    deployed_slot: DecIntField
+    deployed_slot: DecIntField = Field(default=-1)
 
     evm_param_dict: dict[str, str] = Field(validation_alias=AliasChoices("config", "evm_param_dict"))
     token_list: list[TokenModel] = Field(validation_alias=AliasChoices("chains", "token_list"))
@@ -486,7 +496,7 @@ class CoreApiBlockModel(_BaseModel):
 
 
 class HolderAccountModel(_BaseRespModel):
-    address: SolPubKeyField
+    address: SolPubKeyField = Field(default=SolPubKey.default())
 
     status: HolderAccountStatusField
     size: DecUIntField = Field(default=0, validation_alias="len")
@@ -495,7 +505,7 @@ class HolderAccountModel(_BaseRespModel):
     neon_tx_hash: EthTxHashField = Field(default=EthTxHash.default(), validation_alias="tx")
     tx_type: DecUIntField = Field(default=0)
     tx: CoreApiTxModel | None = Field(default=None, validation_alias="tx_data")
-    block: CoreApiBlockModel
+    block: CoreApiBlockModel = Field(default=CoreApiBlockModel.default())
 
     chain_id: DecUIntField = Field(default=0)
     evm_step_cnt: DecUIntField = Field(default=0, validation_alias="steps_executed")
@@ -511,7 +521,20 @@ class HolderAccountModel(_BaseRespModel):
         )
 
     @classmethod
-    def from_dict(cls, address: SolPubKey, def_chain_id: int, data: dict) -> Self:  # noqa
+    def from_cls(cls, model: HolderAccountModel, address: SolPubKey, def_chain_id: int) -> Self:
+        return cls(
+            status=model.status,
+            len=model.size,
+            owner=model.owner,
+            tx=model.neon_tx_hash,
+            tx_type=model.tx_type,
+            steps_executed=model.evm_step_cnt,
+            address=address,
+            chain_id=def_chain_id,
+        )
+
+    @classmethod
+    def from_addr(cls, address: NeonAddress, def_chain_id: int, data: dict[str, Any]) -> Self:
         data["address"] = address
         data["block"] = CoreApiBlockModel.from_raw(data.pop("block_params", None))
         data["chain_id"] = data.get("chain_id", def_chain_id)

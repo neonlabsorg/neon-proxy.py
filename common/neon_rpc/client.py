@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import itertools
 import logging
 from typing import Sequence, Final, TypeVar, ClassVar, Union
 
 from .api import (
-    CoreApiResp,
     EvmConfigModel,
     BpfLoader2ExecModel,
     BpfLoader2ProgModel,
@@ -35,17 +33,15 @@ from .api import (
     CoreApiBlockModel,
     NeonSkdTreeModel,
     NeonSkdTreeRequest,
-    CoreApiRequest,
     TokenModel,
 )
+from ..jsonrpc.client import JsonRpcClient
 from ..config.config import Config
-from ..config.constants import ONE_BLOCK_SEC
 from ..ethereum import revert_message
 from ..ethereum.commit_level import EthCommit
 from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
-from ..http.client import HttpClient, HttpClientRequest
-from ..http.errors import PydanticValidationError
+from ..http.client import HttpClientRequest
 from ..http.utils import HttpURL
 from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
@@ -57,41 +53,32 @@ from ..solana.hash import SolBlockHash
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
-from ..stat.client_rpc import RpcStatClient, RpcClientRequest
+from ..stat.client_rpc import RpcClientRequest
 from ..utils.cached import cached_method
-from ..utils.format import if_none
-from ..utils.json_logger import log_msg
-from ..utils.pydantic import BaseModel, RootModel
+from ..utils.pydantic import BaseModel, RootModel, HexUIntField
+from proxy.stat.client import StatClient
 
 _LOG = logging.getLogger(__name__)
 _RespType = TypeVar("_RespType", bound=Union[BaseModel, RootModel])
 
+class CoreRpcClient(JsonRpcClient):
+    name: ClassVar[str] = "CoreRpcClient"
 
-class CoreApiClient(HttpClient):
-    name: ClassVar[str] = "NeonCoreApi"
-    _wait_sec: Final[float] = max(ONE_BLOCK_SEC / 5, 0.05)
+    def __init__(self, cfg: Config, sol_client: SolClient, stat_client: StatClient) -> None:
+        super().__init__(cfg, stat_client)
 
-    def __init__(self, cfg: Config, sol_client: SolClient, stat_client: RpcStatClient) -> None:
-        super().__init__(cfg)
-
-        client_cnt = len(cfg.sol_url_list) * cfg.neon_core_api_server_cnt
-        base_port = cfg.neon_core_api_port
-        for idx in range(client_cnt):
-            port = base_port + idx
-            self.connect(host=cfg.neon_core_api_ip, port=port, path="/api/")
+        for idx in range(cfg.neon_core_api_server_cnt):
+            port = cfg.neon_core_api_port + idx
+            self.connect(host=cfg.neon_core_api_ip, port=port)
 
         self.set_timeout_sec(120).set_max_retry_cnt(30)
-
-        self._stat_client = stat_client
         self._sol_client = sol_client
-
         self._deployed_slot = -1
         self._token_list_cache: list[TokenModel] = list()
 
-        self._raise_for_status = False
-
     async def get_evm_cfg(self) -> EvmConfigModel | None:
         try:
+            # Load the BPF program account to get the address of the BPF executable account
             exec_addr = await self._get_evm_exec_addr()
 
             # Load the header of the executable account to get the deployed slot
@@ -100,79 +87,46 @@ class CoreApiClient(HttpClient):
             if acct.is_empty:
                 _LOG.error("NeonEVM program %s doesn't exists", exec_addr)
                 return None
-
             exec_info = BpfLoader2ExecModel.from_data(acct.data)
 
-            _LOG.debug("get EVM config on the slot: %s", exec_info.deployed_slot)
-            resp: CoreApiResp = await self._send_request("config")
-            if not isinstance(resp.value, dict):
-                _LOG.error(
-                    "error on reading EVM config: %s",
-                    if_none(resp.error, resp.value),
-                    extra=self._msg_filter,
-                )
-                return None
-            evm_cfg = EvmConfigModel.from_dict(resp.value, deployed_slot=exec_info.deployed_slot)
-
-            _LOG.debug("get EVM config: %s", evm_cfg)
-            return evm_cfg
+            # Load EVM config and return it with deployed slot
+            resp = await self._get_config()
+            model = EvmConfigModel.from_dict(resp.to_dict(), deployed_slot=exec_info.deployed_slot)
+            return model
         except BaseException as exc:
             _LOG.error("error on reading EVM config", exc_info=exc)
             return None
 
     @cached_method
     async def get_core_api_version(self) -> str:
-        method = "build-info"
-
-        request = RpcClientRequest.from_raw(
-            data="",
-            stat_client=self._stat_client,
-            stat_name=self.name,
-            method=method,
-        )
-
-        resp_json = await self._send_client_request(request, path=HttpURL(method))
         try:
-            resp = CoreApiBuildModel.from_json(resp_json)
+            resp = await self._get_build_info()
             return "Neon-Core-API/v" + resp.crate_info.version + "-" + resp.version_control.commit_id
-
-        except PydanticValidationError as exc:
-            _LOG.debug("bad response from neon-core-api", exc_info=exc, extra=self._msg_filter)
-
-        return "Neon-Core-API/UNKNOWN"
+        except BaseException as exc:
+            _LOG.error("error on reading EVM build info", exc_info=exc)
+            return "Neon-Core-API/UNKNOWN"
 
     async def get_holder_account(self, address: SolPubKey) -> HolderAccountModel:
-        req = HolderAccountRequest.from_raw(address)
-        resp: CoreApiResp = await self._send_request("holder", req)
-        if not isinstance(resp.value, dict):
-            _LOG.error(
-                log_msg(
-                    "error on reading holder account {Address}: {Error}",
-                    Address=address,
-                    Error=if_none(resp.error, resp.value),
-                ),
-                extra=self._msg_filter,
-            )
+        try:
+            req = HolderAccountRequest.from_raw(address)
+            resp = await self._get_holder(req)
+            return HolderAccountModel.from_cls(resp, address, NeonProg.DefaultChainId)
+        except BaseException as exc:
+            _LOG.error("error on reading holder account", exc_info=exc)
             return HolderAccountModel.new_empty(address)
-        return HolderAccountModel.from_dict(address, NeonProg.DefaultChainId, resp.value)
 
     async def get_neon_account_list(
-        self,
-        address_list: Sequence[NeonAddress],
-        block: NeonBlockHdrModel | None,
+            self,
+            address_list: Sequence[NeonAddress],
+            block: NeonBlockHdrModel | None,
     ) -> Sequence[NeonAccountModel]:
-        req = NeonAccountListRequest.from_raw(address_list, self._get_slot(block))
-        resp: CoreApiResp = await self._send_request("balance", req)
-        if not isinstance(resp.value, list):
-            msg = log_msg(
-                "error on reading balance accounts {Addresses}: {Error}",
-                Addresses=address_list,
-                Error=if_none(resp.error, resp.value),
-            )
-            _LOG.error(msg, extra=self._msg_filter)
+        try:
+            req = NeonAccountListRequest.from_raw(address_list, self._get_slot(block))
+            resp = await self._get_balance(req)
+            return tuple([NeonAccountModel.from_cls(data, addr) for addr, data in zip(address_list, resp)])
+        except BaseException as exc:
+            _LOG.error("error on reading Neon account list", exc_info=exc)
             return tuple([NeonAccountModel.new_empty(addr) for addr in address_list])
-
-        return tuple([NeonAccountModel.from_dict(data, address=a) for a, data in zip(address_list, resp.value)])
 
     async def get_neon_account(self, address: NeonAddress, block: NeonBlockHdrModel | None) -> NeonAccountModel:
         acct_list = await self.get_neon_account_list([address], block)
@@ -184,13 +138,22 @@ class CoreApiClient(HttpClient):
 
     async def get_neon_contract(self, address: NeonAddress, block: NeonBlockHdrModel | None) -> NeonContractModel:
         req = NeonContractRequest(contract=address.eth_address, slot=self._get_slot(block))
-        resp: CoreApiResp = await self._send_request("contract", req)
-        return NeonContractModel.from_dict(resp.value[0], address=address)
+        resp = await self._get_contract(req)
+        return NeonContractModel(neon_address=address, code=resp[0].code, sol_address=resp[0].sol_address)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
         req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
-        resp: CoreApiResp = await self._send_request("storage", req)
-        return EthHash32.from_raw(bytes(resp.value))
+        resp = await self._get_storage_at(req)
+        return EthHash32.from_raw(bytes(resp))
+
+    async def get_neon_skd_tree(
+        self,
+        payer: NeonAddress,
+        nonce: int,
+        block: NeonBlockHdrModel | None = None,
+    ) -> NeonSkdTreeModel:
+        req = NeonSkdTreeRequest.from_raw(payer=payer, nonce=nonce, slot=self._get_slot(block))
+        return await self._get_transaction_tree(req)
 
     async def get_earn_account(
         self,
@@ -278,7 +241,7 @@ class CoreApiClient(HttpClient):
                 sol_account_dict=emul_sol_acct_dict,
                 slot=self._get_slot(block),
             )
-            resp: EmulNeonCallResp = await self._send_request("emulate", req, EmulNeonCallResp)
+            resp = await self._emulate(req)
             if (not retry) and (not preload_sol_address_list) and self._cfg.reemulate_on_full_account_list:
                 preload_sol_address_list = resp.sol_address_list
                 continue
@@ -294,6 +257,7 @@ class CoreApiClient(HttpClient):
 
             return resp
         assert False, "unreached code"
+
 
     async def emulate_multiple_neon_call(
         self,
@@ -337,7 +301,7 @@ class CoreApiClient(HttpClient):
                 preload_sol_address_list=preload_sol_address_list,
                 slot=self._get_slot(block),
             )
-            resp: _RootType = await self._send_request("emulate_multiple", req, _RootType)
+            resp = await self._emulate_multiple(req)
             if (not retry) and (not preload_sol_address_list) and self._cfg.reemulate_on_full_account_list:
                 preload_sol_address_list = _get_full_preload_addr_list(resp)
                 continue
@@ -353,6 +317,7 @@ class CoreApiClient(HttpClient):
                     raise
             return resp.root
         assert False, "unreached code"
+
 
     async def emulate_sol_tx_list(
         self,
@@ -370,71 +335,47 @@ class CoreApiClient(HttpClient):
             blockhash=blockhash.to_bytes(),
             tx_list=list(map(lambda tx: tx.to_bytes(), tx_list)),
         )
-
-        resp: EmulSolTxListResp = await self._send_request("simulate_solana", req, EmulSolTxListResp)
+        resp: EmulSolTxListResp = await self._simulate_solana(req)
         return tuple(resp.meta_list)
 
-    async def get_neon_skd_tree(
-        self,
-        payer: NeonAddress,
-        nonce: int,
-        block: NeonBlockHdrModel | None = None,
-    ) -> NeonSkdTreeModel:
-        req = NeonSkdTreeRequest.from_raw(payer=payer, nonce=nonce, slot=self._get_slot(block))
-        resp: NeonSkdTreeModel = await self._send_request("transaction_tree", req, NeonSkdTreeModel)
-        return resp
+    @JsonRpcClient.method(name="build_info")
+    async def _get_build_info(self) -> CoreApiBuildModel: ...
 
-    async def _send_request(
-        self,
-        method: str,
-        request: CoreApiRequest | None = None,
-        resp_type: type[_RespType] | None = None,
-    ) -> _RespType | None:
-        rpc_request = RpcClientRequest.from_raw(
-            data=request.to_json() if request else "",
-            stat_client=self._stat_client,
-            stat_name=self.name,
-            method=method,
-        )
+    @JsonRpcClient.method(name="config")
+    async def _get_config(self) -> EvmConfigModel: ...
 
-        with rpc_request:
-            for retry in itertools.count():
-                rpc_request.start_timer()
+    @JsonRpcClient.method(name="balance")
+    async def _get_balance(self, req: NeonAccountListRequest) -> Sequence[NeonAccountModel]: ...
 
-                if retry > 0:
-                    _LOG.debug("attempt %d to repeat %s...", retry + 1, method)
+    @JsonRpcClient.method(name="contract")
+    async def _get_contract(self, req: NeonContractRequest) -> Sequence[NeonContractModel]: ...
 
-                resp_json = await self._send_client_request(rpc_request, path=HttpURL(method))
-                try:
-                    resp = CoreApiResp.from_json(resp_json)
+    @JsonRpcClient.method(name="holder")
+    async def _get_holder(self, req: HolderAccountRequest) -> HolderAccountModel: ...
 
-                except PydanticValidationError as exc:
-                    _LOG.warning("bad response from neon-core-api %s", str(exc), extra=self._msg_filter)
-                    rpc_request.commit_stat(error_message=str(exc))
-                    await asyncio.sleep(self._wait_sec)
-                    continue
+    @JsonRpcClient.method(name="get_storage_at")
+    async def _get_storage_at(self, req: NeonStorageAtRequest) -> Sequence[HexUIntField]: ...
 
-                if err_msg := self._get_retry_error(method, resp):
-                    rpc_request.commit_stat(error_message=err_msg)
-                    await asyncio.sleep(self._wait_sec)
-                    continue
-                elif resp.result == resp.result.Error:
-                    # unknown error case
-                    # ctx_id = request.ctx_id if request else None
-                    # err_msg = f"got error on {method} ({ctx_id}): {resp.error_code} - {resp.error}"
-                    # rpc_request.commit_stat(error_message=err_msg)
-                    # _LOG.warning("%s", err_msg, extra=self._msg_filter)
-                    pass
+    @JsonRpcClient.method(name="transaction_tree")
+    async def _get_transaction_tree(self, req: NeonSkdTreeRequest) -> NeonSkdTreeModel: ...
 
-                rpc_request.commit_stat()
+    @JsonRpcClient.method(name="emulate")
+    async def _emulate(self, req: EmulNeonCallRequest) -> EmulNeonCallResp: ...
 
-                if resp_type is None:
-                    return resp
-                elif resp.error:
-                    raise EthError(resp.error)
+    @JsonRpcClient.method(name="emulate_multiple")
+    async def _emulate_multiple(self, req: EmulMultipleNeonCallRequest) -> EmulMultipleNeonCallResp: ...
 
-                return resp_type.from_dict(resp.value)
-        assert False, "unreached code"
+    @JsonRpcClient.method(name="simulate_solana")
+    async def _simulate_solana(self, req: EmulSolTxListRequest) -> EmulSolTxListResp: ...
+
+    async def _get_evm_exec_addr(self) -> SolPubKey:
+        # Load the BPF program account to get the address of the BPF executable account
+        acct = await self._sol_client.get_account(NeonProg.ID)
+        if acct.is_empty:
+            raise ValueError(f"Account {NeonProg.ID} doesn't exists")
+
+        prog = BpfLoader2ProgModel.from_data(acct.data)
+        return prog.exec_address
 
     def _exception_handler(self, url: HttpURL, request: HttpClientRequest, retry: int, exc: BaseException) -> None:
         super()._exception_handler(url, request, retry, exc)
@@ -445,13 +386,10 @@ class CoreApiClient(HttpClient):
         _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @staticmethod
-    def _get_retry_error(method: str, resp: CoreApiResp) -> str | None:
-        if resp.result != resp.result.Error:
-            return None
-
-        if resp.error_code == 113:  # ClientError, Solana connection problem
+    def _rpc_error_handler(method: str, code: int, message: str, error_list: Sequence[str] | None) -> str | None:
+        if code == 113:  # ClientError, Solana connection problem
             return f"Solana connection error on {method}"
-        elif resp.error_code != 265:  # SolanaSimulatorError
+        elif code != 265:  # SolanaSimulatorError
             return None
 
         sim_error: Final[str] = "Solana Simulator error "
@@ -460,7 +398,7 @@ class CoreApiClient(HttpClient):
         tx_error: Final[str] = "TransactionError"  # Transaction body problem
         tx_error_len: Final[int] = len(tx_error)
 
-        error = resp.error[sim_error_len:]
+        error = message[sim_error_len:]
         if error.startswith(rpc_error):
             return f"Solana connection error on {method}"
         elif not error.startswith(tx_error):
@@ -479,15 +417,6 @@ class CoreApiClient(HttpClient):
 
         return None
 
-    async def _get_evm_exec_addr(self) -> SolPubKey:
-        # Load the BPF program account to get the address of the BPF executable account
-        acct = await self._sol_client.get_account(NeonProg.ID)
-        if acct.is_empty:
-            raise ValueError(f"Account {NeonProg.ID} doesn't exists")
-
-        prog = BpfLoader2ProgModel.from_data(acct.data)
-        return prog.exec_address
-
     @staticmethod
     def _check_emulator_result(resp: EmulNeonCallResp) -> None:
         if resp.exit_code == EmulNeonCallExitCode.Revert:
@@ -504,7 +433,6 @@ class CoreApiClient(HttpClient):
                 )
 
         if resp.exit_code != EmulNeonCallExitCode.Succeed:
-            # _LOG.debug("got failed emulate exit code: %s", resp.exit_code)
             raise EthError(code=3, message=resp.exit_code)
 
     def _get_slot(self, block: NeonBlockHdrModel | None) -> int | None:
@@ -521,3 +449,9 @@ class CoreApiClient(HttpClient):
             self._deployed_slot = NeonProg.DeployedSlot
             self._token_list_cache = [TokenModel.from_raw(token) for token in NeonProg.TokenList]
         return self._token_list_cache
+
+
+
+class CoreApiClient(CoreRpcClient):
+    name: ClassVar[str] = "CoreApiClient"
+    pass
