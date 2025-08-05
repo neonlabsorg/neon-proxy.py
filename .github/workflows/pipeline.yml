@@ -182,6 +182,10 @@ jobs:
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
   prepare-infrastructure:
+    env:
+      AWS_ACCESS_KEY_ID: ${{secrets.CI_AWS_ACCESS_KEY_ID}}
+      AWS_DEFAULT_REGION: "eu-central-1"
+      AWS_SECRET_ACCESS_KEY: ${{secrets.CI_AWS_SECRET_ACCESS_KEY}}
     needs:
       - build-image
     timeout-minutes: 25
@@ -457,6 +461,10 @@ jobs:
           --token=${{ secrets.GHTOKEN }}
 
   destroy-terraform:
+    env:
+      AWS_ACCESS_KEY_ID: ${{secrets.CI_AWS_ACCESS_KEY_ID}}
+      AWS_DEFAULT_REGION: "eu-central-1"
+      AWS_SECRET_ACCESS_KEY: ${{secrets.CI_AWS_SECRET_ACCESS_KEY}}
     needs:
       - prepare-infrastructure
       - openzeppelin-tests
