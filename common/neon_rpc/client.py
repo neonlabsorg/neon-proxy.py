@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Sequence, Final, TypeVar, ClassVar, Union
+from typing import Sequence, Final, TypeVar, ClassVar, Union, Any
 
 from .api import (
     EvmConfigModel,
@@ -91,8 +91,7 @@ class CoreRpcClient(JsonRpcClient):
 
             # Load EVM config and return it with deployed slot
             resp = await self._get_config()
-            model = EvmConfigModel.from_dict(resp.to_dict(), deployed_slot=exec_info.deployed_slot)
-            return model
+            return EvmConfigModel.from_dict(resp, deployed_slot=exec_info.deployed_slot)
         except BaseException as exc:
             _LOG.error("error on reading EVM config", exc_info=exc)
             return None
@@ -110,20 +109,20 @@ class CoreRpcClient(JsonRpcClient):
         try:
             req = HolderAccountRequest.from_raw(address)
             resp = await self._get_holder(req)
-            return HolderAccountModel.from_cls(resp, address, NeonProg.DefaultChainId)
+            return HolderAccountModel.from_dict(resp, address=address, def_chain_id=NeonProg.DefaultChainId)
         except BaseException as exc:
             _LOG.error("error on reading holder account", exc_info=exc)
             return HolderAccountModel.new_empty(address)
 
     async def get_neon_account_list(
-            self,
-            address_list: Sequence[NeonAddress],
-            block: NeonBlockHdrModel | None,
+        self,
+        address_list: Sequence[NeonAddress],
+        block: NeonBlockHdrModel | None,
     ) -> Sequence[NeonAccountModel]:
         try:
             req = NeonAccountListRequest.from_raw(address_list, self._get_slot(block))
-            resp = await self._get_balance(req)
-            return tuple([NeonAccountModel.from_cls(data, addr) for addr, data in zip(address_list, resp)])
+            resp = await self._get_balance_list(req)
+            return tuple([NeonAccountModel.from_dict(data, address=addr) for addr, data in zip(address_list, resp)])
         except BaseException as exc:
             _LOG.error("error on reading Neon account list", exc_info=exc)
             return tuple([NeonAccountModel.new_empty(addr) for addr in address_list])
@@ -139,7 +138,7 @@ class CoreRpcClient(JsonRpcClient):
     async def get_neon_contract(self, address: NeonAddress, block: NeonBlockHdrModel | None) -> NeonContractModel:
         req = NeonContractRequest(contract=address.eth_address, slot=self._get_slot(block))
         resp = await self._get_contract(req)
-        return NeonContractModel(neon_address=address, code=resp[0].code, sol_address=resp[0].sol_address)
+        return NeonContractModel.from_dict(resp[0], address=address)
 
     async def get_storage_at(self, contract: EthAddress, index: int, block: NeonBlockHdrModel | None) -> EthHash32:
         req = NeonStorageAtRequest(contract=contract, index=index, slot=self._get_slot(block))
@@ -342,16 +341,16 @@ class CoreRpcClient(JsonRpcClient):
     async def _get_build_info(self) -> CoreApiBuildModel: ...
 
     @JsonRpcClient.method(name="config")
-    async def _get_config(self) -> EvmConfigModel: ...
+    async def _get_config(self) -> dict[str, Any]: ...
 
     @JsonRpcClient.method(name="balance")
-    async def _get_balance(self, req: NeonAccountListRequest) -> Sequence[NeonAccountModel]: ...
+    async def _get_balance_list(self, req: NeonAccountListRequest) -> Sequence[dict[str, Any]]: ...
 
     @JsonRpcClient.method(name="contract")
-    async def _get_contract(self, req: NeonContractRequest) -> Sequence[NeonContractModel]: ...
+    async def _get_contract(self, req: NeonContractRequest) -> Sequence[dict[str, Any]]: ...
 
     @JsonRpcClient.method(name="holder")
-    async def _get_holder(self, req: HolderAccountRequest) -> HolderAccountModel: ...
+    async def _get_holder(self, req: HolderAccountRequest) -> dict[str, Any]: ...
 
     @JsonRpcClient.method(name="get_storage_at")
     async def _get_storage_at(self, req: NeonStorageAtRequest) -> Sequence[HexUIntField]: ...
@@ -451,7 +450,5 @@ class CoreRpcClient(JsonRpcClient):
         return self._token_list_cache
 
 
-
 class CoreApiClient(CoreRpcClient):
     name: ClassVar[str] = "CoreApiClient"
-    pass
