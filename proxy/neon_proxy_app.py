@@ -7,8 +7,8 @@ from common.config.config import Config
 from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
-from common.neon_rpc.client import CoreApiClient
-from common.neon_rpc.server import CoreApiServer
+from common.neon_rpc.client import CoreRpcClient
+from common.neon_rpc.server import CoreServer, RpcInstance
 from common.solana_rpc.client import SolClient
 from common.utils.json_logger import Logger
 from gas_tank.db.gas_less_accounts_db import GasLessAccountDb
@@ -46,11 +46,11 @@ class NeonProxyApp:
         db = IndexerDbClient(cfg, db_conn)
         gas_tank = GasLessAccountDb(db_conn)
 
-        # Init Core Api
-        self._core_api_server = CoreApiServer(cfg)
+        # Init Core Rpc Server
+        self._core_rpc_server = CoreServer(cfg, RpcInstance)
 
         # Init clients
-        core_api_client = CoreApiClient(cfg, sol_client, self._stat_client)
+        self._core_api_client = CoreRpcClient(cfg, sol_client, self._stat_client)
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)
@@ -59,7 +59,7 @@ class NeonProxyApp:
         # Init Executor server
         self._exec_server = ExecutorServer(
             cfg=cfg,
-            core_api_client=core_api_client,
+            core_api_client=self._core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
             op_client=op_client,
@@ -71,7 +71,7 @@ class NeonProxyApp:
         # Init Resource server
         self._op_server = OpResourceServer(
             cfg=cfg,
-            core_api_client=core_api_client,
+            core_api_client=self._core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
             stat_client=self._stat_client,
@@ -80,7 +80,7 @@ class NeonProxyApp:
         # Init Mempool
         self._mp_server = MempoolServer(
             cfg=cfg,
-            core_api_client=core_api_client,
+            core_api_client=self._core_api_client,
             sol_client=sol_client,
             exec_client=exec_client,
             op_client=op_client,
@@ -98,7 +98,7 @@ class NeonProxyApp:
         if self._enable_private_rpc_server:
             self._private_rpc_server = PrivateRpcServer(
                 cfg=cfg,
-                core_api_client=core_api_client,
+                core_api_client=self._core_api_client,
                 sol_client=sol_client,
                 mp_client=mp_client,
                 cu_price_client=cu_price_client,
@@ -110,7 +110,7 @@ class NeonProxyApp:
         # Init external RPC API
         self._proxy_server = NeonProxy(
             cfg=cfg,
-            core_api_client=core_api_client,
+            core_api_client=self._core_api_client,
             sol_client=sol_client,
             mp_client=mp_client,
             cu_price_client=cu_price_client,
@@ -121,29 +121,29 @@ class NeonProxyApp:
 
     def start(self) -> int:
         try:
-            self._core_api_server.start()
+            self._core_rpc_server.start()
             self._exec_server.start()
             self._op_server.start()
             self._mp_server.start()
             self._stat_server.start()
             self._proxy_server.start()
-
             if self._enable_private_rpc_server:
                 self._private_rpc_server.start()
+            self._core_api_client.start()
 
             self._register_term_sig_handler()
             while self._recv_sig_num == signal.SIG_DFL:
                 time.sleep(1)
 
+            self._core_api_client.stop()
             if self._enable_private_rpc_server:
                 self._private_rpc_server.stop()
-
             self._proxy_server.stop()
             self._stat_server.stop()
             self._mp_server.stop()
             self._op_server.stop()
             self._exec_server.stop()
-            self._core_api_server.stop()
+            self._core_rpc_server.stop()
             return 0
 
         except BaseException as exc:
