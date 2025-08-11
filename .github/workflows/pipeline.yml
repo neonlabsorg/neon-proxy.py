@@ -1,4 +1,5 @@
 name: Build proxy docker image
+run-name: "CI / ${{ github.event_name == 'workflow_dispatch' && inputs.evm_tag || github.event_name == 'pull_request' && github.event.pull_request.title || 'unknown' }} / ${{ github.event_name }}"
 on:
   workflow_dispatch:
     inputs:

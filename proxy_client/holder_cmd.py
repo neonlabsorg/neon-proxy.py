@@ -263,9 +263,12 @@ class HolderHandler(BaseNPCmdHandler):
             acct_meta_list
         ).init_tx_sol_address(
             NeonBaseTxAccountSet(
-                payer=neon_acct.sol_address,
-                sender=neon_acct.sol_address,
-                receiver=SolPubKey.default(),
+                raw_payer=neon_acct.sol_address,
+                raw_payer_container=neon_acct.container_sol_address,
+                raw_sender=neon_acct.sol_address,
+                raw_sender_container=neon_acct.container_sol_address,
+                raw_receiver=SolPubKey.default(),
+                raw_receiver_container=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
                 payer_balance=0
             )
@@ -379,9 +382,12 @@ class HolderHandler(BaseNPCmdHandler):
             skd_tree_acct.address
         ).init_tx_sol_address(
             NeonBaseTxAccountSet(
-                payer=neon_acct.sol_address,
-                sender=neon_acct.sol_address,
-                receiver=SolPubKey.default(),
+                raw_payer=neon_acct.sol_address,
+                raw_payer_container=neon_acct.container_sol_address,
+                raw_sender=neon_acct.sol_address,
+                raw_sender_container=neon_acct.container_sol_address,
+                raw_receiver=SolPubKey.default(),
+                raw_receiver_container=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
                 payer_balance=0
             )

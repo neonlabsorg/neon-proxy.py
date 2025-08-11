@@ -1,22 +1,15 @@
 import multiprocessing
 import os
-import io
 import re
 import statistics
 import sys
-import time
 from collections import defaultdict
 
 import docker
-import subprocess
-import pathlib
 import requests
 import json
 import typing as tp
-import logging
 from urllib.parse import urlparse
-from paramiko import SSHClient, AutoAddPolicy, RSAKey
-from scp import SCPClient
 try:
     import pandas as pd
 except ImportError:
@@ -228,39 +221,6 @@ def set_github_env(envs: tp.Dict, upper=True) -> None:
         with open(path, "a") as env_file:
             for key, value in envs.items():
                 env_file.write(f"\n{key.upper() if upper else key}={str(value)}")
-
-
-@cli.command(name="get_container_logs")
-def get_all_containers_logs():
-    home_path = os.environ.get("HOME")
-    artifact_logs = "./logs"
-    ssh_key = os.environ.get("SSH_KEY")
-    ssh_user = os.environ.get("SSH_USER")
-    private_key_file = io.StringIO(ssh_key)
-    pkey = RSAKey.from_private_key(private_key_file)
-    os.mkdir(artifact_logs)
-    solana_ip = os.environ.get("SOLANA_IP")
-    ssh_client = SSHClient()
-    ssh_client.set_missing_host_key_policy(AutoAddPolicy())
-    ssh_client.connect(hostname=solana_ip, username=ssh_user,
-                       pkey=pkey, timeout=120)
-    services = ["solana", "postgres", "dbcreation", "indexer", "proxy", "faucet"]
-    for service in services:
-        upload_remote_logs(ssh_client, service, artifact_logs)
-
-
-def upload_remote_logs(ssh_client, service, artifact_logs):
-    scp_client = SCPClient(transport=ssh_client.get_transport())
-    click.echo(f"Upload logs for service: {service}")
-    ssh_client.exec_command(f"touch /tmp/{service}.log.bz2")
-    stdin, stdout, stderr = ssh_client.exec_command(
-        f'sudo docker logs {service} 2>&1 | pbzip2 -f > /tmp/{service}.log.bz2')
-    print(stdout.read())
-    print(stderr.read())
-    stdin, stdout, stderr = ssh_client.exec_command(f'ls -lh /tmp/{service}.log.bz2')
-    print(stdout.read())
-    print(stderr.read())
-    scp_client.get(f'/tmp/{service}.log.bz2', artifact_logs)
 
 
 @cli.command(name="deploy_check")
