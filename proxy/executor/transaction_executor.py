@@ -252,17 +252,9 @@ class NeonTxExecutor(ExecutorComponent):
     async def _emulate_neon_tx(self, ctx: NeonExecTxCtx, re_emulate: bool = False) -> None:
         # update evm config
         if re_emulate:
-            sender_balance = (await self._core_api_client.get_neon_account(ctx.sender, None)).balance
+            emul_resp = await self._core_api_client.emulate_from_holder(ctx.holder.address)
         else:
-            sender_balance = None
-
-        emul_resp = await self._core_api_client.emulate_neon_call(
-            ctx.holder_tx,
-            preload_sol_address_list=ctx.account_key_list,
-            check_result=False,
-            sender_balance=sender_balance,
-            emulator_block=ctx.holder_block,
-        )
+            emul_resp = await self._core_api_client.emulate_neon_call(ctx.holder_tx, check_result=False)
 
         ctx.set_emulator_result(emul_resp)
 

@@ -4,6 +4,7 @@ import itertools
 import logging
 from typing import Sequence, Final, TypeVar, ClassVar, Union, Any
 
+from proxy.stat.client import StatClient
 from .api import (
     EvmConfigModel,
     BpfLoader2ExecModel,
@@ -15,6 +16,7 @@ from .api import (
     NeonAccountListRequest,
     EmulNeonCallResp,
     EmulNeonCallRequest,
+    EmulFromHolderRequest,
     EmulMultipleNeonCallRequest,
     EmulMultipleNeonCallResp,
     CoreApiTxModel,
@@ -22,20 +24,16 @@ from .api import (
     NeonStorageAtRequest,
     NeonContractRequest,
     NeonContractModel,
-    EmulSolAccountModel,
-    EmulSolTxListResp,
-    EmulSolTxListRequest,
-    EmulSolTxMetaModel,
+    EmulSolTxIxRequest,
+    EmulSolTxIxListResp,
+    EmulSolTxRequest,
+    EmulSolTxIxMetaModel,
     OpEarnAccountModel,
     NeonAccountStatus,
-    EmulTraceCfgModel,
-    EmulNeonAccountModel,
-    CoreApiBlockModel,
     NeonSkdTreeModel,
     NeonSkdTreeRequest,
     TokenModel,
 )
-from ..jsonrpc.client import JsonRpcClient
 from ..config.config import Config
 from ..ethereum import revert_message
 from ..ethereum.commit_level import EthCommit
@@ -43,23 +41,22 @@ from ..ethereum.errors import EthError
 from ..ethereum.hash import EthAddress, EthHash32
 from ..http.client import HttpClientRequest
 from ..http.utils import HttpURL
+from ..jsonrpc.client import JsonRpcClient
 from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
-from ..solana.account import SolAccountModel
 from ..solana.cb_program import SolCbProg
 from ..solana.errors import SolAltError
-from ..solana.hash import SolBlockHash
+from ..solana.instruction import SolTxIx
 from ..solana.pubkey import SolPubKey
-from ..solana.transaction import SolTx
 from ..solana_rpc.client import SolClient
 from ..stat.client_rpc import RpcClientRequest
 from ..utils.cached import cached_method
 from ..utils.pydantic import BaseModel, RootModel, HexUIntField
-from proxy.stat.client import StatClient
 
 _LOG = logging.getLogger(__name__)
 _RespType = TypeVar("_RespType", bound=Union[BaseModel, RootModel])
+
 
 class CoreRpcClient(JsonRpcClient):
     name: ClassVar[str] = "CoreRpcClient"
@@ -201,55 +198,29 @@ class CoreRpcClient(JsonRpcClient):
         tx: CoreApiTxModel,
         *,
         check_result: bool,
-        sender_balance: int | None = None,
-        preload_sol_address_list: Sequence[SolPubKey] = tuple(),
-        sol_account_dict: dict[SolPubKey, SolAccountModel | None] | None = None,
-        emulator_block=CoreApiBlockModel.default(),
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:
-        emul_sol_acct_dict = dict()
-        if sol_account_dict:
-            emul_sol_acct_dict = {addr: EmulSolAccountModel.from_raw(raw) for addr, raw in sol_account_dict.items()}
-
-        if emulator_block.is_empty:
-            emulator_block = None
-        else:
-            _LOG.debug("use predefined block: %d, %d", emulator_block.slot, emulator_block.timestamp)
-
-        emul_neon_acct_dict = dict()
-        if (tx.nonce is not None) or (sender_balance is not None):
-            emul_balance = sender_balance + tx.cost if sender_balance is not None else None
-            if emul_balance:
-                _LOG.debug("use predefined balance: %s", emul_balance)
-            emul_neon_acct_dict[tx.from_address] = EmulNeonAccountModel(nonce=tx.nonce, balance=emul_balance)
-
-        emul_trace_cfg = None
-        if emul_neon_acct_dict or emulator_block:
-            emul_trace_cfg = EmulTraceCfgModel(neon_account_dict=emul_neon_acct_dict, block=emulator_block)
-
-        preload_sol_address_list = list(preload_sol_address_list)
-
         for retry in itertools.count():
             req = EmulNeonCallRequest(
                 tx=tx,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
                 evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
                 token_list=self._token_list,
-                trace_cfg=emul_trace_cfg,
-                preload_sol_address_list=preload_sol_address_list,
-                sol_account_dict=emul_sol_acct_dict,
+                trace_cfg=None,
+                preload_sol_address_list=list(),
+                sol_account_dict=None,
                 slot=self._get_slot(block),
             )
-            resp = await self._emulate(req)
-            if (not retry) and (not preload_sol_address_list) and self._cfg.reemulate_on_full_account_list:
-                preload_sol_address_list = resp.sol_address_list
-                continue
+            try:
+                resp = await self._emulate(req)
+            except BaseException as exc:
+                _LOG.debug("error on emulate_neon_call: %s", str(exc), exc_info=exc)
+                raise
 
             try:
                 self._check_emulator_result(resp)
             except EthError:
                 if not retry:
-                    preload_sol_address_list = resp.sol_address_list
                     continue
                 elif check_result:
                     raise
@@ -257,15 +228,27 @@ class CoreRpcClient(JsonRpcClient):
             return resp
         assert False, "unreached code"
 
+    async def emulate_from_holder(
+        self,
+        holder_address: SolPubKey,
+        block: NeonBlockHdrModel | None = None,
+    ) -> EmulNeonCallResp:
+        req = EmulFromHolderRequest(
+            holder_address=holder_address,
+            evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+            evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
+            token_list=self._token_list,
+            slot=self._get_slot(block),
+        )
+        return await self._emulate_from_holder(req)
 
     async def emulate_multiple_neon_call(
         self,
-        sol_tx_list: Sequence[SolTx],
+        sol_ix_list: Sequence[SolTxIx],
         neon_tx_list: Sequence[CoreApiTxModel],
         *,
         cu_limit=SolCbProg.MaxCuLimit,
         heap_size=SolCbProg.MaxHeapSize,
-        account_cnt_limit=0,
         check_result: bool,
         preload_sol_address_list: Sequence[SolPubKey] = tuple(),
         block: NeonBlockHdrModel | None = None,
@@ -277,18 +260,8 @@ class CoreRpcClient(JsonRpcClient):
         def _get_full_preload_addr_list(_resp: _RootType) -> list[SolPubKey]:
             return list(set(itertools.chain.from_iterable(x.sol_address_list for x in _resp.root)))
 
-        blockhash = SolBlockHash.fake()
-        for sol_tx in sol_tx_list:
-            sol_tx.set_recent_blockhash(blockhash)
-
-        sol_tx_req = EmulSolTxListRequest(
-            cu_limit=cu_limit,
-            heap_size=heap_size,
-            account_cnt_limit=account_cnt_limit or self._cfg.max_tx_account_cnt,
-            verify=False,
-            blockhash=blockhash.to_bytes(),
-            tx_list=list(map(lambda tx: tx.to_bytes(), sol_tx_list)),
-        )
+        sol_ix_list = list(map(lambda ix: EmulSolTxIxRequest.from_raw(ix), sol_ix_list))
+        sol_tx_req = EmulSolTxRequest(cu_limit=cu_limit, heap_size=heap_size, ix_list=sol_ix_list)
 
         for retry in itertools.count():
             req = EmulMultipleNeonCallRequest(
@@ -300,13 +273,19 @@ class CoreRpcClient(JsonRpcClient):
                 preload_sol_address_list=preload_sol_address_list,
                 slot=self._get_slot(block),
             )
-            resp = await self._emulate_multiple(req)
+            try:
+                resp = await self._emulate_multiple(req)
+            except BaseException as exc:
+                _LOG.debug("error on emulate_multiple_neon_call: %s", str(exc), exc_info=exc)
+                raise
+
             if (not retry) and (not preload_sol_address_list) and self._cfg.reemulate_on_full_account_list:
                 preload_sol_address_list = _get_full_preload_addr_list(resp)
                 continue
 
             try:
                 for r in resp.root:
+                    _LOG.debug("check emulator result: %s", r)
                     self._check_emulator_result(r)
             except EthError:
                 if not retry:
@@ -317,24 +296,15 @@ class CoreRpcClient(JsonRpcClient):
             return resp.root
         assert False, "unreached code"
 
-
     async def emulate_sol_tx_list(
         self,
         cu_limit: int,
         heap_size: int,
-        account_cnt_limit: int,
-        blockhash: SolBlockHash,
-        tx_list: Sequence[SolTx],
-    ) -> Sequence[EmulSolTxMetaModel]:
-        req = EmulSolTxListRequest(
-            cu_limit=cu_limit,
-            heap_size=heap_size,
-            account_cnt_limit=account_cnt_limit,
-            verify=False,
-            blockhash=blockhash.to_bytes(),
-            tx_list=list(map(lambda tx: tx.to_bytes(), tx_list)),
-        )
-        resp: EmulSolTxListResp = await self._simulate_solana(req)
+        sol_ix_list: Sequence[SolTxIx],
+    ) -> Sequence[EmulSolTxIxMetaModel]:
+        sol_ix_list = list(map(lambda ix: EmulSolTxIxRequest.from_raw(ix), sol_ix_list))
+        req = EmulSolTxRequest(cu_limit=cu_limit, heap_size=heap_size, ix_list=sol_ix_list)
+        resp: EmulSolTxIxListResp = await self._simulate_solana(req)
         return tuple(resp.meta_list)
 
     @JsonRpcClient.method(name="build_info")
@@ -361,11 +331,14 @@ class CoreRpcClient(JsonRpcClient):
     @JsonRpcClient.method(name="emulate")
     async def _emulate(self, req: EmulNeonCallRequest) -> EmulNeonCallResp: ...
 
+    @JsonRpcClient.method(name="emulate_from_holder")
+    async def _emulate_from_holder(self, req: EmulFromHolderRequest) -> EmulNeonCallResp: ...
+
     @JsonRpcClient.method(name="emulate_multiple")
     async def _emulate_multiple(self, req: EmulMultipleNeonCallRequest) -> EmulMultipleNeonCallResp: ...
 
     @JsonRpcClient.method(name="simulate_solana")
-    async def _simulate_solana(self, req: EmulSolTxListRequest) -> EmulSolTxListResp: ...
+    async def _simulate_solana(self, req: EmulSolTxRequest) -> EmulSolTxIxListResp: ...
 
     async def _get_evm_exec_addr(self) -> SolPubKey:
         # Load the BPF program account to get the address of the BPF executable account
@@ -382,7 +355,7 @@ class CoreRpcClient(JsonRpcClient):
         # if the previous call has re-raised an exception, this code isn't called
         assert isinstance(request, RpcClientRequest)
         request.commit_stat(error_message=str(exc) or "Unknown", start_timer=True)
-        _LOG.warning("bad neon-core-api response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
+        _LOG.warning("bad neon-core-rpc response on request %s: %s", request.data, str(exc), extra=self._msg_filter)
 
     @staticmethod
     def _rpc_error_handler(method: str, code: int, message: str, error_list: Sequence[str] | None) -> str | None:

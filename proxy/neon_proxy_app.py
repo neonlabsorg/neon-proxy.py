@@ -129,7 +129,6 @@ class NeonProxyApp:
             self._proxy_server.start()
             if self._enable_private_rpc_server:
                 self._private_rpc_server.start()
-            self._core_api_client.start()
 
             self._register_term_sig_handler()
             while self._recv_sig_num == signal.SIG_DFL:

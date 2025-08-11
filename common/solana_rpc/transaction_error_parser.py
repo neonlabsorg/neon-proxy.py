@@ -5,7 +5,7 @@ import re
 from typing import Sequence, Final
 
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData, SolCancelErrorCode
-from ..neon_rpc.api import EmulSolTxMetaModel
+from ..neon_rpc.api import EmulSolTxIxMetaModel
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
@@ -50,7 +50,7 @@ class SolTxErrorParser:
     _prog_fail_re: Final[re.Pattern] = re.compile(r"Program (\w+) failed: (.*)")
     _custom_err_re: Final[re.Pattern] = re.compile(r"custom program error: 0x([0-9A-Fa-f]+)")
 
-    def __init__(self, tx: SolTx | None, receipt: SolRpcTxReceiptInfo | EmulSolTxMetaModel | None) -> None:
+    def __init__(self, tx: SolTx | None, receipt: SolRpcTxReceiptInfo | EmulSolTxIxMetaModel | None) -> None:
         self._tx = tx
         self._receipt = receipt
 
@@ -107,7 +107,7 @@ class SolTxErrorParser:
 
     @cached_property
     def cu_consumed(self) -> int | None:
-        if isinstance(self._receipt, EmulSolTxMetaModel):
+        if isinstance(self._receipt, EmulSolTxIxMetaModel):
             return self._receipt.cu_consumed
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return getattr(self._receipt, "units_consumed", None)
@@ -151,7 +151,7 @@ class SolTxErrorParser:
 
     @cached_method
     def _get_log_list(self) -> Sequence[str]:
-        if isinstance(self._receipt, EmulSolTxMetaModel):
+        if isinstance(self._receipt, EmulSolTxIxMetaModel):
             return self._receipt.log_list
         elif isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return tuple(self._receipt.logs or list())
@@ -161,7 +161,7 @@ class SolTxErrorParser:
 
     @cached_method
     def _get_error_msg(self) -> str | None:
-        if isinstance(self._receipt, EmulSolTxMetaModel):
+        if isinstance(self._receipt, EmulSolTxIxMetaModel):
             if self._receipt.error:
                 return str(self._receipt.error)
         elif isinstance(self._receipt, (SolRpcSendTxErrorInfo, SolRpcNodeUnhealthyErrorInfo)):

@@ -296,10 +296,10 @@ class IterativeTxStrategy(BaseTxStrategy):
     async def _calc_cu_budget(self, hdr: str, base_cfg: SolIterListCfg) -> SolIterListCfg:
         evm_step_cnt_per_iter: Final[int] = self._ctx.neon_prog.EvmStepPerIter
 
-        tx_list = tuple(self._build_cu_tx(self._build_tx_ix(base_cfg), base_cfg) for _ in range(base_cfg.iter_cnt))
+        ix_list = tuple(self._build_tx_ix(base_cfg) for _ in range(base_cfg.iter_cnt))
         # emulate
         try:
-            meta_list = await self._emulate_tx_list(tx_list)
+            meta_list = await self._emulate_ix_list(ix_list)
         except SolCbExceededError:
             # _LOG.debug("%s: use default %d EVM steps")
             return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()

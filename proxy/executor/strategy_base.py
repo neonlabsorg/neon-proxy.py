@@ -8,9 +8,8 @@ from typing import Sequence, Final, ClassVar, Self
 from common.neon.cancel_error import CancelErrorData
 from common.neon.cu_cost_packed import CuCostPktData
 from common.neon.neon_program import NeonIxMode, NeonProg
-from common.neon_rpc.api import EmulSolTxMetaModel
+from common.neon_rpc.api import EmulSolTxIxMetaModel
 from common.solana.cb_program import SolCbProg
-from common.solana.commit_level import SolCommit
 from common.solana.errors import SolError
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -313,30 +312,21 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
 
-    async def _emulate_tx_list(self, tx_list: Sequence[SolTx] | SolTx) -> Sequence[EmulSolTxMetaModel] | EmulSolTxMetaModel:
-        if isinstance(tx_list, SolTx):
+    async def _emulate_ix_list(
+        self,
+        ix_list: Sequence[SolTxIx] | SolTxIx,
+    ) -> Sequence[EmulSolTxIxMetaModel] | EmulSolTxIxMetaModel:
+        if isinstance(ix_list, SolTxIx):
             is_single_tx: Final[bool] = True
-            tx_list = tuple([tx_list])
+            ix_list = tuple([ix_list])
         else:
             is_single_tx: Final[bool] = False
 
-        blockhash, _ = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
-        for tx in tx_list:
-            tx.set_recent_blockhash(blockhash)
-        tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
-
-        acct_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
-        cu_limit = SolCbProg.MaxCuLimit * len(tx_list)
+        cu_limit = SolCbProg.MaxCuLimit * len(ix_list)
         heap_size = SolCbProg.MaxHeapSize
 
         try:
-            meta_list = await self._core_api_client.emulate_sol_tx_list(
-                cu_limit,
-                heap_size,
-                acct_cnt_limit,
-                blockhash,
-                tx_list,
-            )
+            meta_list = await self._core_api_client.emulate_sol_tx_list(cu_limit, heap_size, ix_list)
             return meta_list[0] if is_single_tx else meta_list
         except SolError:
             raise
@@ -345,8 +335,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             raise SolCbExceededError(SolCbProg.MaxCuLimit * 2)
 
     async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
-        base_tx = self._build_cu_tx(ix, base_cfg)
-        meta = await self._emulate_tx_list(base_tx)
+        meta = await self._emulate_ix_list(ix)
         cu_consumed: Final[int] = meta.cu_consumed
 
         max_cu_limit: Final[int] = base_cfg.cu_limit
