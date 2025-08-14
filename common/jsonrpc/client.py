@@ -222,8 +222,10 @@ def _extract_return(self: JsonRpcClient, method: JsonRpcMethod, req: RpcClientRe
     if resp.is_error:
         error = resp.error
         error_list: list[str] = list()
-        if error.data is not None:
+        if isinstance(error.data, dict):
             error_list = error.data.get("errors", None)
+        elif isinstance(error.data, str):
+            error_list = [error.data]
 
         err_msg = self._rpc_error_handler(method.name, error.code, error.message, error_list)
         req.commit_stat(error_message=err_msg)

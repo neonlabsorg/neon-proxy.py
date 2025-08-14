@@ -18,7 +18,6 @@ from common.solana.signer import SolSigner
 from common.solana.transaction import SolTx
 from common.solana_rpc.transaction_list_sender import SolTxListSigner
 from common.utils.cached import cached_property, cached_method, reset_cached_method
-from common.utils.format import if_none
 from .holder_validator import HolderAccountValidator
 from .server_abc import ExecutorComponent, ExecutorServerAbc
 from .skd_tree_parser import NeonSkdTreeParser
@@ -388,16 +387,6 @@ class NeonExecTxCtx(ExecutorComponent):
     @property
     def has_external_sol_call(self) -> bool:
         return self._emul_resp.external_sol_call
-
-    @property
-    def holder_block(self) -> CoreApiBlockModel:
-        if self.is_stuck_tx:
-            return self.holder.block
-        elif not self._emul_resp:
-            return CoreApiBlockModel.default()
-        elif self._tx_exec_state.slot > if_none(self.holder.block.slot, 0):
-            return self._tx_exec_state.holder_block
-        return self.holder.block
 
     def set_tx_exec_state(self, state: NeonExecTxState) -> None:
         self._tx_exec_state = state

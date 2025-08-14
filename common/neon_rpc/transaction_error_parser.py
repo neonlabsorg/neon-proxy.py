@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Sequence, Final
 
-from .api import EmulSolTxMetaModel
+from .api import EmulSolTxIxMetaModel
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData
 from ..neon.evm_log_decoder import (
     NeonTxErrorLogInfo,
@@ -172,7 +172,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     def _evm_log_list(self) -> Sequence[str]:
         if self.sol_neon_ix:
             return self.sol_neon_ix.log_msg_list
-        elif isinstance(self._receipt, EmulSolTxMetaModel):
+        elif isinstance(self._receipt, EmulSolTxIxMetaModel):
             return self._receipt.log_list
         elif not isinstance(self._receipt, SolRpcSendTxErrorInfo):
             return tuple()
