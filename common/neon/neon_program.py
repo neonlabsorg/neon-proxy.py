@@ -19,16 +19,17 @@ _LOG = logging.getLogger(__name__)
 
 class NeonEvmProtocol(IntEnum):
     Unknown = -1
-    v1004 = 1004  # 1.4  -> 1.004
-    v1014 = 1014  # 1.14 -> 1.014
-    v1019 = 1019  # 1.19 -> 1.019
-    v1020 = 1020  # 1.20 -> 1.020
+    # Old deprecated protocols
+    _v1004 = 1004  # 1.4  -> 1.004
+    _v1014 = 1014  # 1.14 -> 1.014
+    # Existing protocols
+    v1020 = 1020  # Mainnet: 1.20 -> 1.020
+    v1021 = 1021  # Devnet:  1.21 -> 1.021
 
 
 # fmt: off
 SUPPORTED_VERSION_SET = frozenset((
-    NeonEvmProtocol.v1019,
-    NeonEvmProtocol.v1020,
+    NeonEvmProtocol.v1021,
 ))
 # fmt: on
 
@@ -65,7 +66,7 @@ class NeonEvmIxCode(IntEnum):
     SkdTxFinish = 0x49                         # 73
     SkdTxCreate = 0x4a                         # 74
     SkdTxCreateMultiple = 0x4b                 # 75
-    SkdTreeDestroy = 0x4c                        # 76
+    SkdTreeDestroy = 0x4c                      # 76
     SkdTxSkipFromAccount = 0x4d                # 77
     SkdTxSkipFromData = 0x4e                   # 78
 
