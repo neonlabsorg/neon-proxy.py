@@ -1,7 +1,7 @@
 from typing import ClassVar, Final, Self
 
 from common.config.config import Config
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from common.utils.json_logger import logging_context

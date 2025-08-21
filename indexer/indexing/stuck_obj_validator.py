@@ -3,7 +3,7 @@ import asyncio
 from common.config.config import Config
 from common.ethereum.hash import EthTxHash
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from ..base.objects import NeonIndexedBlockInfo, NeonIndexedHolderInfo, NeonIndexedTxInfo

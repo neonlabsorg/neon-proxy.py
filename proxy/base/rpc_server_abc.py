@@ -16,7 +16,7 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import JsonRpcListRequest, JsonRpcListResp, JsonRpcRequest, JsonRpcResp
 from common.jsonrpc.server import JsonRpcApi, JsonRpcServer
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.stat.api import RpcCallData
 from common.utils.cached import ttl_cached_method, cached_property

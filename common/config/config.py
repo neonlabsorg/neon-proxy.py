@@ -172,7 +172,7 @@ class Config:
     neon_core_api_ip_name: Final[str] = "CORE_API_IP"
     neon_core_api_port_name: Final[str] = "CORE_API_PORT"
     neon_core_api_server_ver_name: Final[str] = "CORE_API_VERSION"
-    neon_core_api_server_libdir_name: Final[str] = "CORE_API_LIBDIR"
+    neon_core_rpc_server_libdir_name: Final[str] = "CORE_RPC_LIBDIR"
     # Postgres DB settings
     pg_host_name: Final[str] = "POSTGRES_HOST"
     pg_db_name: Final[str] = "POSTGRES_DB"
@@ -650,14 +650,18 @@ class Config:
 
     @cached_property
     def neon_core_api_server_bin(self) -> str:
-        cmd_bin = "neon-core-rpc"
+        cmd_bin: Final[str] = "neon-core-api"
         if not (ver := self.neon_core_api_server_ver):
             return cmd_bin
         return cmd_bin + "-" + ver
 
     @cached_property
-    def neon_core_api_server_libdir(self) -> str:
-        return os.environ.get(self.neon_core_api_server_libdir_name, "/spl/lib")
+    def neon_core_rpc_server_bin(self) -> str:
+        return "neon-core-rpc"
+
+    @cached_property
+    def neon_core_rpc_server_libdir(self) -> str:
+        return os.environ.get(self.neon_core_rpc_server_libdir_name, "/spl/lib")
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
@@ -1030,7 +1034,7 @@ class Config:
             self.neon_core_api_ip_name: self.neon_core_api_ip,
             self.neon_core_api_port_name: self.neon_core_api_port,
             self.neon_core_api_server_ver_name: self.neon_core_api_server_ver,
-            self.neon_core_api_server_libdir_name: self.neon_core_api_server_libdir,
+            self.neon_core_rpc_server_libdir_name: self.neon_core_rpc_server_libdir,
             # Postgres DB settings
             self.pg_host_name: self.pg_host,
             self.pg_db_name: self.pg_db,
