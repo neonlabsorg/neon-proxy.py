@@ -5,7 +5,7 @@ from typing import Sequence, Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.signer import SolSigner
 from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property

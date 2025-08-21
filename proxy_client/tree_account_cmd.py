@@ -8,7 +8,7 @@ from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon_rpc.api import NeonSkdTreeModel
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey

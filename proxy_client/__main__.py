@@ -6,7 +6,6 @@ import sys
 from common.cmd_client.cmd_executor import BaseCmdExecutor
 from common.config.config import Config
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from proxy.base.mp_client import MempoolClient
 from .alt_cmd import AltHandler

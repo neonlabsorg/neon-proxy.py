@@ -59,7 +59,7 @@ _RespType = TypeVar("_RespType", bound=Union[BaseModel, RootModel])
 
 
 class CoreRpcClient(JsonRpcClient):
-    name: ClassVar[str] = "CoreRpcClient"
+    name: ClassVar[str] = "NeonCoreRpc"
 
     def __init__(self, cfg: Config, sol_client: SolClient, stat_client: StatClient) -> None:
         super().__init__(cfg, stat_client)
@@ -200,17 +200,18 @@ class CoreRpcClient(JsonRpcClient):
         check_result: bool,
         block: NeonBlockHdrModel | None = None,
     ) -> EmulNeonCallResp:
+        req = EmulNeonCallRequest(
+            tx=tx,
+            evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+            evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
+            token_list=self._token_list,
+            trace_cfg=None,
+            preload_sol_address_list=list(),
+            sol_account_dict=None,
+            slot=self._get_slot(block),
+        )
+
         for retry in itertools.count():
-            req = EmulNeonCallRequest(
-                tx=tx,
-                evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-                evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
-                token_list=self._token_list,
-                trace_cfg=None,
-                preload_sol_address_list=list(),
-                sol_account_dict=None,
-                slot=self._get_slot(block),
-            )
             try:
                 resp = await self._emulate(req)
             except BaseException as exc:
@@ -285,7 +286,6 @@ class CoreRpcClient(JsonRpcClient):
 
             try:
                 for r in resp.root:
-                    _LOG.debug("check emulator result: %s", r)
                     self._check_emulator_result(r)
             except EthError:
                 if not retry:
@@ -421,7 +421,3 @@ class CoreRpcClient(JsonRpcClient):
             self._deployed_slot = NeonProg.DeployedSlot
             self._token_list_cache = [TokenModel.from_raw(token) for token in NeonProg.TokenList]
         return self._token_list_cache
-
-
-class CoreApiClient(CoreRpcClient):
-    name: ClassVar[str] = "CoreApiClient"

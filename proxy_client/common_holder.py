@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from common.neon_rpc.api import HolderAccountModel
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from proxy.operator_resource.key_info import OpHolderInfo
