@@ -6,7 +6,7 @@ import uuid
 from typing import ClassVar, Callable, Self
 
 from ..config.config import Config
-from ..neon_rpc.client import CoreApiClient
+from ..neon_rpc.api_client import CoreApiClient
 from ..solana_rpc.client import SolClient
 from ..stat.api import RpcCallData
 from ..stat.client_rpc import RpcStatClient

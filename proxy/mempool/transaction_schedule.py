@@ -11,7 +11,7 @@ from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
 from common.neon.transaction_model import NeonTxModel
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.ws_client import SolWatchAccountSession

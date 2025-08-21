@@ -12,8 +12,8 @@ from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.client import CoreRpcClient
-from common.neon_rpc.server import CoreServer, RpcInstance
+from common.neon_rpc.api_client import CoreApiClient
+from common.neon_rpc.server import CoreServer, ApiInstance
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
@@ -36,13 +36,13 @@ class NeonIndexerApp:
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        self._core_rpc_server = CoreServer(cfg, RpcInstance)
+        self._core_rpc_server = CoreServer(cfg, ApiInstance)
         self._stat_server = StatServer(cfg)
         self._db: IndexerDb | None = None
 
         self._stat_client = StatClient(self._cfg)
         self._sol_client = SolClient(cfg, self._stat_client)
-        self._core_api_client = CoreRpcClient(cfg, self._sol_client, self._stat_client)
+        self._core_api_client = CoreApiClient(cfg, self._sol_client, self._stat_client)
 
         self._first_slot: None | int = None
         self._finalized_slot = 0
@@ -519,7 +519,7 @@ class _ReIndexer:
         try:
             stat_client = StatClient(self._cfg)
             sol_client = SolClient(self._cfg, stat_client)
-            core_api_client = CoreRpcClient(self._cfg, sol_client, stat_client)
+            core_api_client = CoreApiClient(self._cfg, sol_client, stat_client)
 
             db_conn = DbConnection(self._cfg, stat_client)
             db = IndexerDb(self._cfg, db_conn)

@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import time
-from typing import Any, Final
+from typing import Any, Final, Type
 
 from .log_level import get_core_api_log_level
 from ..config.config import Config
@@ -120,13 +120,15 @@ class ApiInstance(_BaseInstance):
         super().__init__(cfg, idx, solana_url)
         self._run_cmd = [cfg.neon_core_api_server_bin, "-H", self._host]
 
+
 class RpcInstance(_BaseInstance):
     def __init__(self, cfg: Config, idx: int, solana_url: str):
         super().__init__(cfg, idx, solana_url)
-        self._run_cmd = [cfg.neon_core_api_server_bin, cfg.neon_core_api_server_libdir]
+        self._run_cmd = [cfg.neon_core_rpc_server_bin, cfg.neon_core_rpc_server_libdir]
+
 
 class CoreServer:
-    def __init__(self, cfg: Config, instance) -> None:
+    def __init__(self, cfg: Config, Instance: Type[_BaseInstance]) -> None:
         self._instance_list: list[ApiInstance | RpcInstance] = list()
 
         if cfg.external_neon_core_api:
@@ -135,7 +137,7 @@ class CoreServer:
         idx = itertools.count()
         for _ in range(cfg.neon_core_api_server_cnt):
             for url in cfg.sol_url_list:
-                self._instance_list.append(instance(cfg, next(idx), url))
+                self._instance_list.append(Instance(cfg, next(idx), url))
 
     def start(self) -> None:
         for instance in self._instance_list:
