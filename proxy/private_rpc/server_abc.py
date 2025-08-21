@@ -8,7 +8,7 @@ from common.cu_price.client import CuPriceClient
 from common.ethereum.hash import EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.server import JsonRpcApi
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.utils.cached import cached_property
 from indexer.db.indexer_db_client import IndexerDbClient

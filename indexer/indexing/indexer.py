@@ -7,7 +7,7 @@ import multiprocessing as mp
 from common.config.config import Config, StartSlot
 from common.config.constants import MIN_FINALIZE_BLOCK
 from common.config.utils import LogMsgFilter
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.block import SolRpcBlockInfo
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient

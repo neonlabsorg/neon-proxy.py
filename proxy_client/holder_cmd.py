@@ -6,7 +6,7 @@ from common.config.config import Config
 from common.neon.cancel_error import CancelErrorSource, NeonProxyCancelErrorCode
 from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.alt_info import SolAltInfo
 from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolAccountMeta, SolTxIx
