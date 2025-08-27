@@ -237,6 +237,7 @@ class Config:
     # Integration Indexer with Tracer API
     slot_processing_delay_name: Final[str] = "SLOT_PROCESSING_DELAY"
     clickhouse_dsn_list_name: Final[str] = "CLICKHOUSE_DSN_LIST"
+    tracerdb_url_name: Final[str] = "TRACERDB_URL"
     # Reindexing settings
     reindex_start_slot_name: Final[str] = "REINDEX_START_SLOT"
     reindex_thread_cnt_name: Final[str] = "REINDEX_THREAD_COUNT"
@@ -473,7 +474,7 @@ class Config:
             + list(self.atlas_fee_url_list)
             + list(self.pyth_ws_url_list)
             + list(self.ch_dsn_list)
-            + [self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
+            + [self.tracerdb_url, self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
             + [self.pg_host, self.pg_db, self.pg_user, self.pg_password]
         )
         res_set = set([item for item in res_list if item and not item is self._pg_null_value])
@@ -925,6 +926,11 @@ class Config:
     def ch_dsn_list(self) -> Sequence[str]:
         """List of DSN addresses of clickhouse servers used by Tracer API node"""
         return tuple(self._env_dsn_list(self.clickhouse_dsn_list_name))
+    
+    @cached_property
+    def tracerdb_url(self) -> str | None:
+        """DSN address of TracerDB used by Tracer API node"""
+        return os.environ.get(self.tracerdb_url_name, None)
 
     ###########################
     # ReIndexing configuration
@@ -1076,6 +1082,7 @@ class Config:
             # Integration Indexer with Tracer API
             self.slot_processing_delay_name: self.slot_processing_delay,
             self.clickhouse_dsn_list_name: self.ch_dsn_list,
+            self.tracerdb_url_name: self.tracerdb_url,
             # Reindexing settings
             self.reindex_start_slot_name: self.reindex_start_slot,
             self.reindex_thread_cnt_name: self.reindex_thread_cnt,
