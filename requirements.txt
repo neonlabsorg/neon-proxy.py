@@ -15,7 +15,7 @@ eth-bloom==3.1.0
 eth-keys==0.7.0
 eth-account==0.13.7
 eth-hash==0.7.1
-eth-utils==5.3.0
+eth-utils==5.3.1
 safe-pysha3==1.0.5
 ecdsa==0.19.1
 rlp==4.1.0
