@@ -929,7 +929,7 @@ class Config:
     
     @cached_property
     def tracerdb_url(self) -> str | None:
-        """DSN address of TracerDB used by Tracer API node"""
+        """TracerDB URL used by Tracer API node"""
         return os.environ.get(self.tracerdb_url_name, None)
 
     ###########################
