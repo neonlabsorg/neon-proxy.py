@@ -1,7 +1,7 @@
 solders==0.26.0
 base58==2.1.1
 
-psycopg[binary,pool]==3.2.9
+psycopg[binary,pool]==3.2.10
 hvac==2.3.0
 aioprometheus==23.12.0
 pydantic==2.11.9
