@@ -172,6 +172,8 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     def _evm_log_list(self) -> Sequence[str]:
         if self.sol_neon_ix:
             return self.sol_neon_ix.log_msg_list
+        elif isinstance(self._receipt, SolRpcSendTxErrorInfo):
+            return self._receipt.log_list
         elif isinstance(self._receipt, EmulSolTxIxMetaModel):
             return self._receipt.log_list
         elif not isinstance(self._receipt, SolRpcSendTxErrorInfo):
