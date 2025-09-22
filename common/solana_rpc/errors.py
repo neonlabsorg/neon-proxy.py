@@ -90,6 +90,16 @@ class SolNoMoreRetriesError(SolTxExecuteError):
             )
         )
 
+class SolUnsupportedProgError(SolTxExecuteError):
+    def __init__(self) -> None:
+        super().__init__(
+            CancelErrorData(
+                CancelErrorSource.NeonProxy,
+                SolPubKey.default(),
+                NeonProxyCancelErrorCode.UnsupportedProgError,
+                "Unsupported program error"
+            )
+        )
 
 class SolUnknownReceiptError(SolTxExecuteError):
     pass

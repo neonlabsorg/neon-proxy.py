@@ -38,7 +38,7 @@ class _BaseRespModel(_BaseModel):
 
 def _gen_unique_id() -> str:
     value = str(uuid.uuid4())
-    _LOG.debug("generate ID %s for core-api", value)
+    _LOG.debug("generate ID %s for core-rpc", value)
     return value
 
 
@@ -689,20 +689,14 @@ class EmulSolTxListRequest(CoreApiRequest):
     tx_list: list[CoreApiHexStrField] = Field(serialization_alias="transactions")
 
 
-class EmulSolTxMetaModel(_BaseRespModel):
-    error: dict | None
+class EmulSolTxIxMetaModel(_BaseRespModel):
+    error: dict | str | None
     log_list: list[str] = Field(default_factory=list, validation_alias="logs")
-    used_cu_limit: DecUIntField = Field(validation_alias="executed_units")
+    cu_consumed: DecUIntField = Field(validation_alias="executed_units")
 
 
-class EmulSolTxListResp(_BaseRespModel):
-    meta_list: list[EmulSolTxMetaModel] = Field(validation_alias="transactions")
-
-
-@dataclass(frozen=True)
-class EmulSolTxInfo:
-    tx: SolTx
-    meta: EmulSolTxMetaModel
+class EmulSolTxIxListResp(_BaseRespModel):
+    meta_list: list[EmulSolTxIxMetaModel] = Field(validation_alias="instructions")
 
 
 class NeonSkdTreeRequest(CoreApiRequest):

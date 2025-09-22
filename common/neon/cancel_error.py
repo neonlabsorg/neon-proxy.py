@@ -26,6 +26,7 @@ class NeonProxyCancelErrorCode(enum.IntEnum):
     NoMoreRetriesError = enum.auto()
     WriteableError = enum.auto()
     CbExceedError = enum.auto()
+    UnsupportedProgError = enum.auto()
 
 
 class SolCancelErrorCode(enum.IntEnum):
