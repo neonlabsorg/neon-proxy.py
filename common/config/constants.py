@@ -13,20 +13,25 @@ SOL_SIG_COST: Final[int] = 5_000
 
 ######################################
 # Solana CB settings:
-_DEF_SOLANA_MAX_HEAP_SIZE: Final[int] = 256 * 1024
-SOLANA_MAX_HEAP_SIZE: Final[int] = int(os.environ.get("SOLANA_MAX_HEAP_SIZE", str(_DEF_SOLANA_MAX_HEAP_SIZE)))
+_SOL_DEF_HEAP_SIZE: Final[int] = 32 * 1024
+SOLANA_DEF_HEAP_SIZE: Final[int] = int(os.environ.get("SOLANA_MAX_HEAP_SIZE", str(_SOL_DEF_HEAP_SIZE)))
 
-_DEF_SOLANA_MAX_CU_LIMIT: Final[int] = 1_400_000
-SOLANA_MAX_CU_LIMIT: Final[int] = int(os.environ.get("SOLANA_MAX_CU_LIMIT", str(_DEF_SOLANA_MAX_CU_LIMIT)))
+_SOL_MAX_HEAP_SIZE: Final[int] = 256 * 1024
+SOLANA_MAX_HEAP_SIZE: Final[int] = int(os.environ.get("SOLANA_MAX_HEAP_SIZE", str(_SOL_MAX_HEAP_SIZE)))
 
-_DEF_SOLANA_DEFAULT_CU_LIMIT: Final[int] = 200_000
-SOLANA_DEFAULT_CU_LIMIT: Final[int] = int(os.environ.get("SOLANA_DEFAULT_CU_LIMIT", str(_DEF_SOLANA_DEFAULT_CU_LIMIT)))
+_SOL_DEF_CU_LIMIT: Final[int] = 200_000
+SOLANA_DEF_CU_LIMIT: Final[int] = int(os.environ.get("SOLANA_DEFAULT_CU_LIMIT", str(_SOL_DEF_CU_LIMIT)))
+
+_SOL_MAX_CU_LIMIT: Final[int] = 1_400_000
+SOLANA_MAX_CU_LIMIT: Final[int] = int(os.environ.get("SOLANA_MAX_CU_LIMIT", str(_SOL_MAX_CU_LIMIT)))
 
 ######################################
 # Neon settings:
 NEON_EVM_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw(
     os.environ.get("NEON_EVM_PROGRAM", os.environ.get("EVM_LOADER"))  # EVM_LOADER for compatibility only
 )
+NEON_ALT_PROGRAM_ID: Final[SolPubKey] = SolPubKey.from_raw(os.environ.get("NEON_ALT_PROGRAM"))
+
 DEFAULT_TOKEN_NAME: Final[str] = os.environ.get("DEFAULT_TOKEN_NAME", "neon").strip().upper()
 LAYER0_TOKEN_NAME: Final[str] = os.environ.get("LAYER0_TOKEN_NAME", "sol").strip().upper()
 
@@ -61,9 +66,10 @@ def _validate() -> None:
         return
     # If not rollup, solana mainnet defaults should be used.
     if (
-        SOLANA_MAX_HEAP_SIZE != _DEF_SOLANA_MAX_HEAP_SIZE
-        or SOLANA_MAX_CU_LIMIT != _DEF_SOLANA_MAX_CU_LIMIT
-        or SOLANA_DEFAULT_CU_LIMIT != _DEF_SOLANA_DEFAULT_CU_LIMIT
+        SOLANA_MAX_HEAP_SIZE != _SOL_MAX_HEAP_SIZE
+        or SOLANA_DEF_HEAP_SIZE != _SOL_DEF_HEAP_SIZE
+        or SOLANA_MAX_CU_LIMIT != _SOL_MAX_CU_LIMIT
+        or SOLANA_DEF_CU_LIMIT != _SOL_DEF_CU_LIMIT
     ):
         raise ValueError("Incorrect CB settings. Default CB Solana settings should be used for anything but rollup.")
 

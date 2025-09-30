@@ -3,9 +3,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from bisect import bisect_left
-from typing import ClassVar, Final, Iterable, Sequence
-
-from typing_extensions import Self
+from typing import ClassVar, Final, Iterable, Sequence, Self
 
 from ..solana.block import SolRpcBlockInfo
 

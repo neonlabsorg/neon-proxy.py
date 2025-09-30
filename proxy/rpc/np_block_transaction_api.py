@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import ClassVar, Final, Annotated, Literal, Any, Sequence
+from typing import ClassVar, Final, Annotated, Literal, Any, Sequence, Self
 
 from pydantic import Field, PlainValidator, PlainSerializer
 from strenum import StrEnum
-from typing_extensions import Self
 
 from common.ethereum import revert_message
 from common.ethereum.bin_str import EthBinStrField
@@ -169,7 +168,7 @@ class _RpcNeonIxModel(BaseJsonRpcModel):
             solanaInnerInstructionIndex=ix_meta.sol_inner_ix_idx,
             svmHeapSizeLimit=ix_meta.heap_size,
             svmCyclesLimit=ix_meta.cu_limit,
-            svmCyclesUsed=ix_meta.used_cu_limit,
+            svmCyclesUsed=ix_meta.cu_consumed,
             neonInstructionCode=ix_meta.neon_ix_code,
             neonInstructionName=NeonEvmIxCode(ix_meta.neon_ix_code).name,
             neonEvmSteps=ix_meta.neon_step_cnt,

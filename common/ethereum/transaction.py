@@ -3,13 +3,12 @@ from __future__ import annotations
 import abc
 import logging
 from enum import IntEnum
-from typing import Final
+from typing import Final, Self
 
 import eth_keys
 import rlp
 from eth_hash.auto import keccak
 from rlp.sedes import Binary, CountableList, List as ListClass
-from typing_extensions import Self
 
 from .errors import EthError
 from ..utils.cached import cached_property, cached_method

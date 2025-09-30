@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
-
-from typing_extensions import Self
+from typing import Sequence, Self
 
 from common.db.db_connect import DbConnection, DbTxCtx, DbSql, DbQueryBody, DbSqlParam
 from common.ethereum.hash import EthTxHash
@@ -186,7 +184,7 @@ class _Record:
             max_heap_size=sol_neon_ix.heap_size,
             used_heap_size=sol_neon_ix.used_heap_size,
             max_bpf_cycle_cnt=sol_neon_ix.cu_limit,
-            used_bpf_cycle_cnt=sol_neon_ix.used_cu_limit,
+            used_bpf_cycle_cnt=sol_neon_ix.cu_consumed,
         )
 
 
@@ -214,7 +212,7 @@ class _RecordWithCost(_Record):
             heap_size=self.max_heap_size,
             used_heap_size=self.used_heap_size,
             cu_limit=self.max_bpf_cycle_cnt,
-            used_cu_limit=self.used_bpf_cycle_cnt,
+            cu_consumed=self.used_bpf_cycle_cnt,
             sol_tx_cost=SolTxCostModel(
                 sol_tx_sig=self.sol_sig,
                 slot=self.block_slot,

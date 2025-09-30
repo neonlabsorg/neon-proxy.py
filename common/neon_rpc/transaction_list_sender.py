@@ -16,6 +16,7 @@ from ..neon.evm_log_decoder import NeonTxLogReturnInfo
 from ..neon.transaction_decoder import SolNeonTxIxMetaInfo
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxReceiptInfo
+from ..solana_rpc.errors import SolUnsupportedProgError
 from ..solana_rpc.transaction_list_sender import SolTxListSender, SolTxSendState
 from ..utils.cached import cached_property, reset_cached_method
 
@@ -75,6 +76,8 @@ class SolNeonTxListSender(SolTxListSender):
             self._done_ret_cnt += 1
         elif data := tx_error_parser.get_skd_tx_use_wrong_holder_error():
             tx_status, tx_error = status.ErrorReceipt, SolNeonSkdTxUseWrongHolderError(data)
+        elif tx_error_parser.check_if_unsupported_prog():
+            tx_status, tx_error = status.ErrorReceipt, SolUnsupportedProgError()
         elif tx_error_parser.check_if_neon_account_already_exists():
             # no exception: the neon account exists - the goal is reached
             tx_status = status.GoodReceipt
@@ -99,6 +102,9 @@ class SolNeonTxListSender(SolTxListSender):
         else:
             tx_state = super()._decode_tx_status(tx, tx_receipt)
             tx_status, tx_error = tx_state.status, tx_state.error
+
+        # if tx_status == status.ErrorReceipt:
+        #     _LOG.debug("Error receipt: %s", tx_receipt)
 
         return SolNeonTxSendState(tx_status, tx, tx_receipt, tx_error, tx_error_parser.sol_neon_ix, tx_return)
 

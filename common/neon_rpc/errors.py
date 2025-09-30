@@ -2,10 +2,10 @@ from ..neon.cancel_error import CancelErrorData, CancelErrorSource
 from ..neon.evm_log_decoder import NeonTxErrorLogInfo
 from ..neon.neon_program import NeonProg
 from ..neon.transaction_model import NeonSkdTxStatus
-from ..solana_rpc.errors import SolTxExecuteError
+from ..solana_rpc.errors import SolTxExecError
 
 
-class SolNeonTxExecuteError(SolTxExecuteError):
+class SolNeonTxExecuteError(SolTxExecError):
     pass
 
 

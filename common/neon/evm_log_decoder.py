@@ -7,10 +7,10 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Final, Sequence, Annotated, ClassVar, Self
+
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
-from typing import Final, Sequence, Annotated, ClassVar
-from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStrField
 from ..ethereum.hash import (
@@ -889,11 +889,12 @@ class NeonEvmLogDecoder:
         )
     }
 
-    def _find_decoder(self, line: str) -> tuple[_NeonEvmLogDecoder | None, Sequence[str]]:
-        if not line.startswith(self._start_line):
+    @classmethod
+    def _find_decoder(cls, line: str) -> tuple[_NeonEvmLogDecoder | None, Sequence[str]]:
+        if not line.startswith(cls._start_line):
             return None, tuple()
 
-        match = self._re_data.match(line)
+        match = cls._re_data.match(line)
         if match is None:
             return None, tuple()
 
@@ -902,25 +903,33 @@ class NeonEvmLogDecoder:
         if len(data_list) < 1:
             return None, tuple()
 
-        if not (decoder := self._log_decoder_dict.get(data_list[0], None)):
+        if not (decoder := cls._log_decoder_dict.get(data_list[0], None)):
             return None, tuple()
 
         return decoder, data_list[1:]
 
-    def decode(self, sol_tx_ix: SolTxIxMetaInfo, log_iter: Sequence[str]) -> NeonTxLogInfo:
+    @classmethod
+    def decode(cls, log_list: Sequence[str], sol_tx_ix=SolTxIxMetaInfo.default()) -> NeonTxLogInfo:
         """Extracts Neon transaction events from Solana transaction receipt"""
 
         log = _NeonTxLogDraft.from_raw(sol_tx_ix)
-        for msg in log_iter:
-            if msg == self._log_truncated_msg:
+        for msg in log_list:
+            if msg == cls._log_truncated_msg:
                 log.is_truncated = True
                 continue
-            elif msg == self._is_already_finalized_msg:
+            elif msg == cls._is_already_finalized_msg:
                 log.is_already_finalized = True
                 continue
 
-            _LogDecoder, data_list = self._find_decoder(msg)
+            _LogDecoder, data_list = cls._find_decoder(msg)
             if _LogDecoder:
                 _LogDecoder.decode(log, data_list)
 
         return log.to_clean_copy()
+
+    @classmethod
+    def safe_decode(cls, log_list: Sequence[str], sol_tx_ix=SolTxIxMetaInfo.default()) -> NeonTxLogInfo | None:
+        try:
+            return cls.decode(log_list, sol_tx_ix)
+        except (BaseException,):
+            return None

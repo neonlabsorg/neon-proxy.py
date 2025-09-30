@@ -63,7 +63,7 @@ class TestLayout(unittest.TestCase):
             "steps_executed": 0,
         }
 
-        result = HolderAccountModel.from_dict(self._TestSolPubKey, 111, json_data)
+        result = HolderAccountModel.from_dict(json_data, address=self._TestSolPubKey, def_chain_id=111)
         self.assertTrue(isinstance(result, HolderAccountModel))
         self.assertIs(result.address, self._TestSolPubKey)
         self.assertTrue(result.owner.is_empty)
@@ -87,7 +87,7 @@ class TestLayout(unittest.TestCase):
             "steps_executed": 501,
         }
 
-        result = HolderAccountModel.from_dict(self._TestSolPubKey, 111, json_data)
+        result = HolderAccountModel.from_dict(json_data, address=self._TestSolPubKey, def_chain_id=111)
 
         self.assertTrue(isinstance(result, HolderAccountModel))
         self.assertIs(result.address, self._TestSolPubKey)
@@ -107,7 +107,7 @@ class TestLayout(unittest.TestCase):
             "tx": "bd4186a4a4a4bfbdec837dbfb6c92985e08b37a29c8e44c5e9ccb8dface2e504",
             "steps_executed": 0,
         }
-        result = HolderAccountModel.from_dict(self._TestSolPubKey, 111, json_data)
+        result = HolderAccountModel.from_dict(json_data, address=self._TestSolPubKey, def_chain_id=111)
 
         self.assertTrue(isinstance(result, HolderAccountModel))
         self.assertIs(result.address, self._TestSolPubKey)

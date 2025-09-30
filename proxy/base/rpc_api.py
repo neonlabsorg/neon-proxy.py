@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Self
 
 from pydantic import AliasChoices, Field
-from typing_extensions import Self
 
 from common.ethereum.bin_str import EthBinStrField, EthBinStr
 from common.ethereum.hash import (

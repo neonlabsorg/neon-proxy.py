@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Final
-
-from typing_extensions import Self
+from typing import Final, Self
 
 from .neon_program import NeonProg
 from ..solana.cb_program import SolCbProg

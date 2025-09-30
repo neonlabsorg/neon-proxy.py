@@ -2,7 +2,7 @@ import abc
 import time
 from dataclasses import dataclass
 
-from typing_extensions import Self
+from typing import Self
 
 from ..http.client import HttpClientRequest
 from .api import RpcCallData
@@ -16,7 +16,7 @@ class RpcStatClient(abc.ABC):
 
 @dataclass
 class RpcStatInfo:
-    _stat_client: RpcStatClient
+    _stat_client: RpcStatClient | None
     _stat_name: str
     _method: str
     _start_time_nsec: int
@@ -26,7 +26,7 @@ class RpcStatInfo:
     def from_raw(  # noqa
         cls,
         *,
-        stat_client: RpcStatClient,
+        stat_client: RpcStatClient | None,
         stat_name: str,
         method: str,
         is_modification: bool = False,
@@ -43,6 +43,8 @@ class RpcStatInfo:
         self._start_time_nsec = time.monotonic_ns()
 
     def commit_stat(self, *, error_message: str | None= None, start_timer: bool = False) -> None:
+        if not self._stat_client:
+            return
         if not self._start_time_nsec:
             if start_timer:
                 self.start_timer()
@@ -90,7 +92,7 @@ class RpcClientRequest(HttpClientRequest, RpcStatInfo):
         cls,
         *,
         data: str,
-        stat_client: RpcStatClient,
+        stat_client: RpcStatClient | None,
         stat_name: str,
         method: str,
         is_modification: bool = False,

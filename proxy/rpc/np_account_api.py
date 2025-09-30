@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
-
-from typing_extensions import Self
+from typing import ClassVar, Self
 
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.commit_level import EthCommit
@@ -79,11 +77,18 @@ class NpAccountApi(NeonProxyApi):
     ) -> HexUIntField:
         chain_id = self._validate_layer0_chain_id(ctx, isinstance(address, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-        acct = await self._core_api_client.get_neon_account(NeonAddress.from_raw(address, chain_id), block)
+        neon_addr = NeonAddress.from_raw(address, chain_id)
+        acct = await self._core_api_client.get_neon_account(neon_addr, block)
 
         # custom case for Metamask: allow fee-less txs from accounts without balance
         if not acct.balance:
-            if await self._has_fee_less_tx_permit(ctx, address, EthAddress.default(), acct.state_tx_cnt, 0):
+            if await self._has_fee_less_tx_permit(
+                ctx,
+                neon_addr.eth_address,
+                EthAddress.default(),
+                acct.state_tx_cnt,
+                0,
+            ):
                 return 1
 
         return acct.balance

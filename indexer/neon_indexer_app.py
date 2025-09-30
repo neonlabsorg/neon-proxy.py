@@ -12,8 +12,8 @@ from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
 from common.db.db_connect import DbConnection
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.client import CoreApiClient
-from common.neon_rpc.server import CoreApiServer
+from common.neon_rpc.api_client import CoreApiClient
+from common.neon_rpc.server import CoreServer, ApiInstance
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.not_empty_block import SolNotEmptyBlockFinder
@@ -36,7 +36,7 @@ class NeonIndexerApp:
 
         self._cfg = cfg
         self._msg_filter = LogMsgFilter(cfg)
-        self._core_api_server = CoreApiServer(cfg)
+        self._core_rpc_server = CoreServer(cfg, ApiInstance)
         self._stat_server = StatServer(cfg)
         self._db: IndexerDb | None = None
 
@@ -55,7 +55,7 @@ class NeonIndexerApp:
 
     async def _run(self) -> int:
         try:
-            self._core_api_server.start()
+            self._core_rpc_server.start()
             self._stat_server.start()
             await self._core_api_client.start()
 
@@ -74,7 +74,7 @@ class NeonIndexerApp:
             await self._db.stop()
             await self._core_api_client.stop()
             self._stat_server.stop()
-            self._core_api_server.stop()
+            self._core_rpc_server.stop()
             return 0
 
         except BaseException as exc:

@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import typing
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Sequence, Self
 
 import base58
-from typing_extensions import Self
 
 from .cb_program import SolCuIxCode, SolCbProg
 from .log_tree_decoder import SolTxIxLogInfo, SolTxLogTreeInfo, SolTxLogTreeDecoder

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Final, Annotated, Union, ClassVar
+from typing import Final, Annotated, Union, ClassVar, Self
 
 import eth_account
 import eth_keys
@@ -9,7 +9,6 @@ import eth_utils
 from eth_utils import keccak
 from pydantic.functional_serializers import PlainSerializer
 from pydantic.functional_validators import PlainValidator
-from typing_extensions import Self
 
 from ..ethereum.hash import EthAddress
 from ..solana.pubkey import SolPubKey

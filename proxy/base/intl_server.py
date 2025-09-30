@@ -5,7 +5,7 @@ import asyncio
 from common.app_data.server import AppDataServer, AppDataApi
 from common.config.config import Config
 from common.config.utils import LogMsgFilter
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana_rpc.client import SolClient
 from common.solana_rpc.ws_client import SolWatchSlotSession
 from common.utils.cached import cached_property

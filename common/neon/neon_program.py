@@ -3,9 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import ClassVar, Final, Sequence
-
-from typing_extensions import Self
+from typing import ClassVar, Final, Sequence, Self
 
 from .address import NeonAddress
 from ..config.constants import NEON_EVM_PROGRAM_ID, NEON_PROXY_VER, SOL_SIG_COST, DEFAULT_TOKEN_NAME, LAYER0_TOKEN_NAME
@@ -21,15 +19,15 @@ _LOG = logging.getLogger(__name__)
 
 class NeonEvmProtocol(IntEnum):
     Unknown = -1
-    v1004 = 1004  # 1.4  -> 1.004
-    v1014 = 1014  # 1.14 -> 1.014
-    v1019 = 1019  # 1.19 -> 1.019
-    v1020 = 1020  # 1.20 -> 1.020
+    # Old deprecated protocols
+    _v1004 = 1004  # 1.4  -> 1.004
+    _v1014 = 1014  # 1.14 -> 1.014
+    # Existing protocols
+    v1020 = 1020  # Mainnet: 1.20 -> 1.020
 
 
 # fmt: off
 SUPPORTED_VERSION_SET = frozenset((
-    NeonEvmProtocol.v1019,
     NeonEvmProtocol.v1020,
 ))
 # fmt: on
@@ -67,7 +65,7 @@ class NeonEvmIxCode(IntEnum):
     SkdTxFinish = 0x49                         # 73
     SkdTxCreate = 0x4a                         # 74
     SkdTxCreateMultiple = 0x4b                 # 75
-    SkdTreeDestroy = 0x4c                        # 76
+    SkdTreeDestroy = 0x4c                      # 76
     SkdTxSkipFromAccount = 0x4d                # 77
     SkdTxSkipFromData = 0x4e                   # 78
 
@@ -106,9 +104,12 @@ class NeonIxMode(IntEnum):
 
 @dataclass(frozen=True)
 class NeonBaseTxAccountSet:
-    payer: SolPubKey
-    sender: SolPubKey
-    receiver: SolPubKey
+    raw_payer: SolPubKey
+    raw_payer_container: SolPubKey
+    raw_sender: SolPubKey
+    raw_sender_container: SolPubKey
+    raw_receiver: SolPubKey
+    raw_receiver_container: SolPubKey
     receiver_contract: SolPubKey
     payer_balance: int
 
@@ -118,9 +119,12 @@ class NeonBaseTxAccountSet:
     def default(cls) -> Self:
         if not cls._default:
             cls._default = cls(
-                payer=SolPubKey.default(),
-                sender=SolPubKey.default(),
-                receiver=SolPubKey.default(),
+                raw_payer=SolPubKey.default(),
+                raw_payer_container=SolPubKey.default(),
+                raw_sender=SolPubKey.default(),
+                raw_sender_container=SolPubKey.default(),
+                raw_receiver=SolPubKey.default(),
+                raw_receiver_container=SolPubKey.default(),
                 receiver_contract=SolPubKey.default(),
                 payer_balance=0,
             )
@@ -131,8 +135,22 @@ class NeonBaseTxAccountSet:
         return self.sender.is_empty
 
     @cached_property
+    def payer(self) -> SolPubKey:
+        return self.raw_payer_container if not self.raw_payer_container.is_empty else self.raw_payer
+
+    @cached_property
+    def sender(self) -> SolPubKey:
+        return self.raw_sender_container if not self.raw_sender_container.is_empty else self.raw_sender
+
+    @cached_property
+    def receiver(self) -> SolPubKey:
+        return self.raw_receiver_container if not self.raw_receiver_container.is_empty else self.raw_receiver
+
+    @cached_property
     def account_key_list(self) -> Sequence[SolPubKey]:
-        return tuple([self.payer, self.sender, self.receiver, self.receiver_contract])
+        acct_set = set([self.payer, self.sender, self.receiver, self.receiver_contract])
+        acct_set.discard(SolPubKey.default())
+        return tuple(acct_set)
 
 
 @dataclass(frozen=True)
@@ -300,8 +318,8 @@ class NeonProg:
         setattr(cls, "AccountSeedVersion", cfg.account_seed_version)
         # setattr(cls, "HolderMsgSize", cfg.holder_msg_size)
         setattr(cls, "TreasuryGas", cfg.treasury_payment)
-        setattr(cls, "BaseGas",  cls.SignatureGas + cfg.treasury_payment)
-        setattr(cls, "GasLimitMultiplierWoChainId",  cfg.gas_limit_multiplier_wo_chain_id)
+        setattr(cls, "BaseGas", cls.SignatureGas + cfg.treasury_payment)
+        setattr(cls, "GasLimitMultiplierWoChainId", cfg.gas_limit_multiplier_wo_chain_id)
         setattr(cls, "TreeAccountSlotOut", cfg.tree_account_slot_out)
         setattr(cls, "FinishSkdTxGas", cfg.tree_account_finish_tx_gas)
         setattr(cls, "EvmStepPerIter", cfg.evm_step_cnt)
@@ -566,7 +584,6 @@ class NeonProg:
             acct_meta_list.append(
                 SolAccountMeta(pubkey=self._base_tx_acct_set.payer, is_signer=False, is_writable=True),
             )
-
 
         return SolTxIx(program_id=self.ID, data=bytes().join(ix_data_list), accounts=tuple(acct_meta_list))
 

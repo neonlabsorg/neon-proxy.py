@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 import base58
 from pydantic import (
@@ -11,7 +11,6 @@ from pydantic import (
     PlainValidator,
     PlainSerializer,
 )
-from typing_extensions import Self
 
 from .cached import cached_method, cached_property, reset_cached_method
 from .format import hex_to_uint, str_fmt_object

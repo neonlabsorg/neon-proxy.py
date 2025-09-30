@@ -6,7 +6,7 @@ import logging
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Union, Sequence, Generic, TypeVar, Final, Any
+from typing import Union, Sequence, Generic, TypeVar, Final, Any, Self
 
 import aiohttp as _ws
 import solders.account_decoder as _acct
@@ -14,7 +14,6 @@ import solders.errors as _err
 import solders.rpc.config as _cfg
 import solders.rpc.requests as _req
 import solders.rpc.responses as _resp
-from typing_extensions import Self
 
 from .client import SolClient
 from ..config.config import Config

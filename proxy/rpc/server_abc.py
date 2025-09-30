@@ -27,7 +27,7 @@ from common.http.utils import HttpRequestCtx
 from common.jsonrpc.server import JsonRpcApi
 from common.neon.block import NeonBlockHdrModel
 from common.neon.neon_program import NeonProg
-from common.neon_rpc.client import CoreApiClient
+from common.neon_rpc.api_client import CoreApiClient
 from common.solana.commit_level import SolCommit
 from common.solana_rpc.client import SolClient
 from gas_tank.db.gas_less_accounts_db import GasLessAccountDb

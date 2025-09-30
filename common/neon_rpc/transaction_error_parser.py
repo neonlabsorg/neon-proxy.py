@@ -2,13 +2,24 @@ import logging
 import re
 from typing import Sequence, Final
 
+from .api import EmulSolTxIxMetaModel
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData
-from ..neon.evm_log_decoder import NeonTxErrorLogInfo, NeonTxLogReturnInfo, NeonTxEventModel, NeonEvmLogDecoder
+from ..neon.evm_log_decoder import (
+    NeonTxErrorLogInfo,
+    NeonTxLogReturnInfo,
+    NeonTxEventModel,
+    NeonEvmLogDecoder,
+    NeonTxLogInfo,
+)
 from ..neon.neon_program import NeonProg
 from ..neon.transaction_decoder import SolNeonTxIxMetaInfo, SolNeonTxMetaInfo
 from ..solana.log_tree_decoder import SolTxLogTreeDecoder
-from ..solana.transaction_decoder import SolTxMetaInfo, SolTxIxMetaInfo
-from ..solana.transaction_meta import SolRpcTxSlotInfo, SolRpcSendTxErrorInfo
+from ..solana.transaction_decoder import SolTxMetaInfo
+from ..solana.transaction_meta import (
+    SolRpcTxSlotInfo,
+    SolRpcSendTxErrorInfo,
+    SolRpcTxIxFieldErrorCode,
+)
 from ..solana_rpc.transaction_error_parser import SolTxErrorParser
 from ..utils.cached import cached_method, cached_property
 
@@ -24,6 +35,35 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     _create_neon_acct_re: Final[re.Pattern] = re.compile(
         r"Program log: [a-zA-Z_/.]+:\d+ : Account \w+ - expected system owned"
     )
+    # fmt: off
+    _finalized_error_list: Final[Sequence[NeonTxErrorLogInfo.ErrorCode]] = tuple([
+        NeonTxErrorLogInfo.ErrorCode.StorageAccountFinalized,
+        NeonTxErrorLogInfo.ErrorCode.ScheduledTxAlreadyComplete,
+    ])
+    _done_error_list: Final[Sequence[NeonTxErrorLogInfo.ErrorCode]] = tuple([
+        NeonTxErrorLogInfo.ErrorCode.ScheduledTxAlreadyInProgress,
+        NeonTxErrorLogInfo.ErrorCode.TreeAccountTxInvalidStatus,
+    ])
+    _wrong_holder_error_list: Final[Sequence[NeonTxErrorLogInfo.ErrorCode]] = tuple([
+        NeonTxErrorLogInfo.ErrorCode.NotClassicTransaction,
+    ])
+    _out_of_gas_error_list: Final[Sequence[NeonTxErrorLogInfo.ErrorCode]] = tuple([
+        NeonTxErrorLogInfo.ErrorCode.OutOfGas,
+    ])
+    _missing_acct_error_list: Final[Sequence[NeonTxErrorLogInfo.ErrorCode]] = tuple([
+        NeonTxErrorLogInfo.ErrorCode.AccountMissing,
+    ])
+    _unsupported_prog_error_list: Final[Sequence[SolRpcTxIxFieldErrorCode]] = tuple([
+        SolRpcTxIxFieldErrorCode.InvalidAccountData,
+        SolRpcTxIxFieldErrorCode.IncorrectProgramId,
+    ])
+    # fmt: on
+
+    @cached_method
+    def get_error(self) -> CancelErrorData | None:
+        if error := self.get_evm_error():
+            return error
+        return super().get_error()
 
     @cached_property
     def sol_neon_ix(self) -> SolNeonTxIxMetaInfo | None:
@@ -63,14 +103,7 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         elif self.sol_neon_ix.is_success and (not self.sol_neon_ix.neon_tx_return.is_empty):
             return self.sol_neon_ix.neon_tx_return
 
-        code = NeonTxErrorLogInfo.ErrorCode
-        # fmt: off
-        err_list = tuple([
-            code.StorageAccountFinalized,
-            code.ScheduledTxAlreadyComplete,
-        ])
-        # fmt: on
-        if self._find_evm_error(err_list):
+        if self._find_evm_error(self._finalized_error_list):
             return NeonTxLogReturnInfo(NeonTxEventModel.Type.Lost, 1, NeonTxLogReturnInfo.Failed)
         return NeonTxLogReturnInfo.default()
 
@@ -78,20 +111,22 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     def is_done_error(self) -> bool:
         if not self.sol_neon_ix:
             return False
+        return True if self._find_evm_error(self._done_error_list) else False
 
-        code = NeonTxErrorLogInfo.ErrorCode
-        # fmt: off
-        err_list = tuple([
-            code.ScheduledTxAlreadyInProgress,
-            code.TreeAccountTxInvalidStatus,
-        ])
-        # fmt: on
-        return True if self._find_evm_error(err_list) else False
+    @cached_method
+    def check_if_unsupported_prog(self) -> bool:
+        if super().check_if_unsupported_prog():
+            return True
+        elif self._get_tx_error() not in self._unsupported_prog_error_list:
+            return False
+        elif not (cancel_data := super().get_error()):
+            return False
+
+        return cancel_data.address == NeonProg.ID
 
     @cached_method
     def get_skd_tx_use_wrong_holder_error(self) -> CancelErrorData | None:
-        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.NotClassicTransaction])
-        return self._find_evm_error(err_list)
+        return self._find_evm_error(self._wrong_holder_error_list)
 
     @cached_method
     def get_nonce_error(self) -> tuple[int, int] | None:
@@ -104,13 +139,11 @@ class SolNeonTxErrorParser(SolTxErrorParser):
 
     @cached_method
     def get_out_of_gas_error(self) -> CancelErrorData | None:
-        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.OutOfGas])
-        return self._find_evm_error(err_list)
+        return self._find_evm_error(self._out_of_gas_error_list)
 
     @cached_method
     def get_missing_account_error(self) -> CancelErrorData | None:
-        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountMissing])
-        return self._find_evm_error(err_list)
+        return self._find_evm_error(self._missing_acct_error_list)
 
     @cached_method
     def get_evm_error(self) -> CancelErrorData | None:
@@ -121,25 +154,29 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         _LOG.debug("found %s", err_rec)
         return self._fmt_error(err_rec.code, err_rec.message)
 
-    @cached_property
-    def _evm_error_list(self) -> Sequence[NeonTxErrorLogInfo]:
+    @cached_method
+    def get_evm_log(self) -> NeonTxLogInfo | None:
         if self.sol_neon_ix:
-            return self.sol_neon_ix.neon_tx_error_list
+            return self.sol_neon_ix.neon_log
 
         evm_log_list = self._evm_log_list
-        fake_tx_ix = SolTxIxMetaInfo.default()
-        try:
-            neon_log = NeonEvmLogDecoder().decode(fake_tx_ix, evm_log_list)
-        except (BaseException,):
-            return tuple()
+        return NeonEvmLogDecoder.safe_decode(evm_log_list)
 
-        return tuple(neon_log.tx_error_list)
+    @cached_property
+    def _evm_error_list(self) -> Sequence[NeonTxErrorLogInfo]:
+        if neon_log := self.get_evm_log():
+            return tuple(neon_log.tx_error_list)
+        return tuple()
 
     @cached_property
     def _evm_log_list(self) -> Sequence[str]:
         if self.sol_neon_ix:
             return self.sol_neon_ix.log_msg_list
+        elif isinstance(self._receipt, EmulSolTxIxMetaModel):
+            return self._receipt.log_list
         elif not isinstance(self._receipt, SolRpcSendTxErrorInfo):
+            return tuple()
+        elif self._tx is None:
             return tuple()
 
         rpc_meta = self._receipt

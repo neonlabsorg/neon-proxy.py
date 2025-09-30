@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
-from typing import Any, Annotated, Final, Sequence, ClassVar
+from typing import Any, Annotated, Final, Sequence, ClassVar, Self
 
 from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, ConfigDict
 from strenum import StrEnum
-from typing_extensions import Self
 
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
 from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress, EthHash32Field
@@ -38,7 +36,7 @@ class _BaseRespModel(_BaseModel):
 
 def _gen_unique_id() -> str:
     value = str(uuid.uuid4())
-    _LOG.debug("generate ID %s for core-api", value)
+    _LOG.debug("generate ID %s for core-rpc", value)
     return value
 
 
@@ -127,6 +125,10 @@ class NeonAccountModel(_BaseRespModel):
     contract_sol_address: SolPubKeyField = Field(
         validation_alias=AliasChoices("contract_solana_address", "contract_sol_address")
     )
+    container_sol_address: SolPubKeyField = Field(
+        default=SolPubKey.default(),
+        validation_alias=AliasChoices("container_address", "container_sol_address")
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress | None = None) -> Self:
@@ -142,6 +144,7 @@ class NeonAccountModel(_BaseRespModel):
             status=NeonAccountStatus.Empty,
             sol_address=SolPubKey.default(),
             contract_sol_address=SolPubKey.default(),
+            container_sol_address=SolPubKey.default(),
             state_tx_cnt=0,
             balance=0,
         )
@@ -391,7 +394,7 @@ class CoreApiHexStr(EthBinStr):
 CoreApiHexStrField = Annotated[
     CoreApiHexStr,
     PlainValidator(CoreApiHexStr.from_raw),
-    PlainSerializer(lambda v: v.to_string() or None),
+    PlainSerializer(lambda v: v.to_string()),
 ]
 
 
@@ -512,7 +515,7 @@ class HolderAccountModel(_BaseRespModel):
         )
 
     @classmethod
-    def from_dict(cls, address: SolPubKey, def_chain_id: int, data: dict) -> Self:  # noqa
+    def from_dict(cls, data: dict[str, Any], *, address: NeonAddress, def_chain_id: int) -> Self:
         data["address"] = address
         data["block"] = CoreApiBlockModel.from_raw(data.pop("block_params", None))
         data["chain_id"] = data.get("chain_id", def_chain_id)
@@ -639,9 +642,14 @@ EmulNeonCallExitCodeField = Annotated[EmulNeonCallExitCode, PlainValidator(EmulN
 class EmulAccountMetaModel(_BaseRespModel):
     pubkey: SolPubKeyField
     is_writable: bool
+    is_signer: bool = False
+
+    @classmethod
+    def from_raw(cls, raw: SolAccountMeta) -> Self:
+        return cls(pubkey=raw.pubkey, is_writable=raw.is_writable, is_signer=raw.is_signer)
 
     def to_sol_account_meta(self) -> SolAccountMeta:
-        return SolAccountMeta(pubkey=self.pubkey, is_writable=self.is_writable, is_signer=False)
+        return SolAccountMeta(pubkey=self.pubkey, is_writable=self.is_writable, is_signer=self.is_signer)
 
 
 class EmulNeonCallResp(_BaseRespModel):

@@ -5,11 +5,10 @@ import os
 import random
 import re
 from decimal import Decimal
-from typing import Final, Union, ClassVar, Sequence
+from typing import Final, Union, ClassVar, Sequence, Self
 from urllib.parse import urlparse
 
 from strenum import StrEnum
-from typing_extensions import Self
 
 from .constants import (
     NEON_EVM_PROGRAM_ID,
@@ -170,9 +169,10 @@ class Config:
     # Neon Core API configuration
     sol_key_for_evm_cfg_name: Final[str] = "SOLANA_KEY_FOR_EVM_CONFIG"
     neon_core_api_server_cnt_name: Final[str] = "CORE_API_SERVER_COUNT"
-    neon_core_api_ip_name = "CORE_API_IP"
-    neon_core_api_port_name = "CORE_API_PORT"
-    neon_core_api_server_ver_name = "CORE_API_VERSION"
+    neon_core_api_ip_name: Final[str] = "CORE_API_IP"
+    neon_core_api_port_name: Final[str] = "CORE_API_PORT"
+    neon_core_api_server_ver_name: Final[str] = "CORE_API_VERSION"
+    neon_core_rpc_server_libdir_name: Final[str] = "CORE_RPC_LIBDIR"
     # Postgres DB settings
     pg_host_name: Final[str] = "POSTGRES_HOST"
     pg_db_name: Final[str] = "POSTGRES_DB"
@@ -237,6 +237,7 @@ class Config:
     # Integration Indexer with Tracer API
     slot_processing_delay_name: Final[str] = "SLOT_PROCESSING_DELAY"
     clickhouse_dsn_list_name: Final[str] = "CLICKHOUSE_DSN_LIST"
+    tracerdb_url_name: Final[str] = "TRACERDB_URL"
     # Reindexing settings
     reindex_start_slot_name: Final[str] = "REINDEX_START_SLOT"
     reindex_thread_cnt_name: Final[str] = "REINDEX_THREAD_COUNT"
@@ -473,7 +474,7 @@ class Config:
             + list(self.atlas_fee_url_list)
             + list(self.pyth_ws_url_list)
             + list(self.ch_dsn_list)
-            + [self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
+            + [self.tracerdb_url, self.hvac_url, self.hvac_mount, self.hvac_token, self.hvac_path]
             + [self.pg_host, self.pg_db, self.pg_user, self.pg_password]
         )
         res_set = set([item for item in res_list if item and not item is self._pg_null_value])
@@ -624,11 +625,11 @@ class Config:
         return self._env_num(self.mp_lost_alt_timeout_sec_name, 6 * self._1hour, 1 * self._1hour)
 
     ########################
-    # Neon Core API settings
+    # Neon Core API/RPC settings
 
     @cached_property
     def neon_core_api_ip(self) -> str:
-        return os.environ.get(self.neon_core_api_ip_name, "127.0.0.1")
+        return os.environ.get(self.neon_core_api_ip_name, self.base_service_ip)
 
     @cached_property
     def neon_core_api_port(self) -> int:
@@ -649,10 +650,18 @@ class Config:
 
     @cached_property
     def neon_core_api_server_bin(self) -> str:
-        cmd_bin = "neon-core-api"
+        cmd_bin: Final[str] = "neon-core-api"
         if not (ver := self.neon_core_api_server_ver):
             return cmd_bin
         return cmd_bin + "-" + ver
+
+    @cached_property
+    def neon_core_rpc_server_bin(self) -> str:
+        return "neon-core-rpc"
+
+    @cached_property
+    def neon_core_rpc_server_libdir(self) -> str:
+        return os.environ.get(self.neon_core_rpc_server_libdir_name, "/spl/lib")
 
     @cached_property
     def sol_key_for_evm_cfg(self) -> SolPubKey:
@@ -921,6 +930,11 @@ class Config:
     def ch_dsn_list(self) -> Sequence[str]:
         """List of DSN addresses of clickhouse servers used by Tracer API node"""
         return tuple(self._env_dsn_list(self.clickhouse_dsn_list_name))
+    
+    @cached_property
+    def tracerdb_url(self) -> str | None:
+        """TracerDB URL used by Tracer API node"""
+        return os.environ.get(self.tracerdb_url_name, None)
 
     ###########################
     # ReIndexing configuration
@@ -1020,7 +1034,7 @@ class Config:
             self.neon_core_api_ip_name: self.neon_core_api_ip,
             self.neon_core_api_port_name: self.neon_core_api_port,
             self.neon_core_api_server_ver_name: self.neon_core_api_server_ver,
-            "EXTERNAL_NEON_CORE_API": self.external_neon_core_api,
+            self.neon_core_rpc_server_libdir_name: self.neon_core_rpc_server_libdir,
             # Postgres DB settings
             self.pg_host_name: self.pg_host,
             self.pg_db_name: self.pg_db,
@@ -1072,6 +1086,7 @@ class Config:
             # Integration Indexer with Tracer API
             self.slot_processing_delay_name: self.slot_processing_delay,
             self.clickhouse_dsn_list_name: self.ch_dsn_list,
+            self.tracerdb_url_name: self.tracerdb_url,
             # Reindexing settings
             self.reindex_start_slot_name: self.reindex_start_slot,
             self.reindex_thread_cnt_name: self.reindex_thread_cnt,

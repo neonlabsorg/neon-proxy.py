@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import PlainValidator, PlainSerializer
 from strenum import StrEnum
-from typing_extensions import Self
 
 
 class EthCommit(StrEnum):

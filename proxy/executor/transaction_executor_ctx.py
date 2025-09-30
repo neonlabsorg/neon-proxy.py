@@ -3,9 +3,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import logging
-from typing import Sequence, ClassVar
-
-from typing_extensions import Self
+from typing import Sequence, ClassVar, Self
 
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
@@ -169,12 +167,12 @@ class NeonExecTxCtx(ExecutorComponent):
     def _update_acct_meta_list(self) -> None:
         acct_meta_dict: dict[SolPubKey, SolAccountMeta]
         if not self._emul_resp.sol_account_meta_list:
-            _LOG.warning("emulator result doesn't contain a account list")
+            _LOG.warning("emulator result doesn't contain an account list")
             s = self._base_tx_acct_set
             acct_meta_dict = {
                 s.sender: SolAccountMeta(s.sender, is_signer=False, is_writable=True),
-                s.receiver: SolAccountMeta(s.sender, is_signer=False, is_writable=False),
-                s.receiver_contract: SolAccountMeta(s.sender, is_signer=False, is_writable=True),
+                s.receiver: SolAccountMeta(s.receiver, is_signer=False, is_writable=False),
+                s.receiver_contract: SolAccountMeta(s.receiver_contract, is_signer=False, is_writable=True),
             }
         else:
             # Get metas from the emulator

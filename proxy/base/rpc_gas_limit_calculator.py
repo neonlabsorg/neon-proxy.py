@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-from typing import Sequence, Final, ClassVar
-
-from typing_extensions import Self
+from typing import Sequence, Final, ClassVar, Self
 
 from common.ethereum.errors import EthError
 from common.ethereum.transaction import EthTx, EthTxType

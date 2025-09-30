@@ -27,7 +27,7 @@ class SolBlockhashNotFound(SolError):
         return"Blockhash not found"
 
 
-class SolTxExecuteError(SolError):
+class SolTxExecError(SolError):
     def __init__(self, data: CancelErrorData) -> None:
         super().__init__(data)
         self._data = data
@@ -41,7 +41,7 @@ class SolTxExecuteError(SolError):
         return self._data
 
 
-class SolCbExceededBaseError(SolTxExecuteError):
+class SolCbExceededBaseError(SolTxExecError):
     def __init__(self, cu_consumed: int) -> None:
         msg = f"Compute Budget exceeded: {cu_consumed}"
         super().__init__(
@@ -67,7 +67,7 @@ class SolCbExceededCriticalError(SolCbExceededBaseError):
     pass
 
 
-class SolWritableError(SolTxExecuteError):
+class SolWritableError(SolTxExecError):
     def __init__(self) -> None:
         super().__init__(
             CancelErrorData(
@@ -79,7 +79,19 @@ class SolWritableError(SolTxExecuteError):
         )
 
 
-class SolNoMoreRetriesError(SolTxExecuteError):
+class SolUnsupportedProgError(SolTxExecError):
+    def __init__(self) -> None:
+        super().__init__(
+            CancelErrorData(
+                CancelErrorSource.NeonProxy,
+                SolPubKey.default(),
+                NeonProxyCancelErrorCode.UnsupportedProgError,
+                "Unsupported program error"
+            )
+        )
+
+
+class SolNoMoreRetriesError(SolTxExecError):
     def __init__(self) -> None:
         super().__init__(
             CancelErrorData(
@@ -91,6 +103,6 @@ class SolNoMoreRetriesError(SolTxExecuteError):
         )
 
 
-class SolUnknownReceiptError(SolTxExecuteError):
+class SolUnknownReceiptError(SolTxExecError):
     pass
 

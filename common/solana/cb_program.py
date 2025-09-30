@@ -3,7 +3,7 @@ from typing import Final
 
 import solders.compute_budget as _cb
 
-from ..config.constants import SOLANA_DEFAULT_CU_LIMIT, SOLANA_MAX_CU_LIMIT, SOLANA_MAX_HEAP_SIZE
+from ..config.constants import SOLANA_DEF_HEAP_SIZE, SOLANA_MAX_HEAP_SIZE, SOLANA_DEF_CU_LIMIT, SOLANA_MAX_CU_LIMIT
 
 from .instruction import SolTxIx
 from .pubkey import SolPubKey
@@ -19,8 +19,9 @@ class SolCbProg:
     ID: Final[SolPubKey] = SolPubKey.from_raw(_cb.ID)
     # CUs limit
     MaxCuLimit: Final[int] = SOLANA_MAX_CU_LIMIT
-    DefCuLimit: Final[int] = SOLANA_DEFAULT_CU_LIMIT
+    DefCuLimit: Final[int] = SOLANA_DEF_CU_LIMIT
     # HEAP size
+    DefHeapSize: Final[int] = SOLANA_DEF_HEAP_SIZE
     MaxHeapSize: Final[int] = SOLANA_MAX_HEAP_SIZE
     # CU prices less than 10_000 don't work
     BaseCuPrice: Final[int] = 10_500
