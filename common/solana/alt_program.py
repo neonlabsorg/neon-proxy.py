@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import logging
 from enum import IntEnum
-from typing import Final, Sequence
+from typing import Final, Sequence, Self
 
 import solders.address_lookup_table_account as _alt
 import solders.system_program as _sys
-from typing_extensions import Self
 
 from .account import SolAccountModel
 from .errors import SolAltContentError
-from .instruction import SolTxIx
+from .instruction import SolTxIx, SolAccountMeta
 from .pubkey import SolPubKey, SolPubKeyField
+from .sys_program import SolSysProg
+from ..config.constants import NEON_ALT_PROGRAM_ID
 from ..utils.cached import cached_property
 from ..utils.pydantic import BaseModel
 
@@ -122,6 +123,32 @@ class SolAltProg:
                 authority_address=self._payer,
                 recipient_address=self._payer,
             )
+        )
+
+
+class SolExtAltProg:
+    ID: Final[SolPubKey] = NEON_ALT_PROGRAM_ID
+    CuLimit: Final[int] = 35_000
+
+    def __init__(self, payer: SolPubKey) -> None:
+        self._payer = payer
+
+    def make_update_alt_ix(self, ident: SolAltID, account_key_list: Sequence[SolPubKey]) -> SolTxIx:
+        assert len(account_key_list), "No accounts for ALT updating"
+
+        ix_acct_key_list: list[SolAccountMeta] = [
+            SolAccountMeta(pubkey=ident.address, is_signer=False, is_writable=True),
+            SolAccountMeta(pubkey=self._payer, is_signer=True, is_writable=True),
+            SolAccountMeta(pubkey=SolSysProg.ID, is_signer=False, is_writable=False),
+            SolAccountMeta(pubkey=SolAltProg.ID, is_signer=False, is_writable=False),
+        ]
+        ix_acct_key_list.extend(
+            map(lambda key: SolAccountMeta(pubkey=key, is_signer=False, is_writable=False), account_key_list))
+
+        return SolTxIx(
+            program_id=self.ID,
+            data=ident.recent_slot.to_bytes(8, "little"),
+            accounts=ix_acct_key_list,
         )
 
 
