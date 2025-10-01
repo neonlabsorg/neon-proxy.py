@@ -21,8 +21,6 @@ from common.neon_rpc.api import EmulAccountMetaModel, CoreApiTxModel
 from common.solana.instruction import SolTxIx, SolAccountMeta
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.sys_program import SolSysProg
-from common.solana.transaction import SolTx
-from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property, cached_method
 from common.utils.format import if_none
 from common.utils.pydantic import HexUIntField, RootModel, Base58Field
@@ -179,8 +177,8 @@ class _RpcSolTxModel(BaseJsonRpcModel):
     instructions: list[_RpcSolTxIxModel] = Field(default_factory=list)
 
     @cached_method
-    def to_sol_tx(self) -> SolTx:
-        return SolLegacyTx(name="rpc", ix_list=[ix.to_sol_tx_ix() for ix in self.instructions])
+    def to_sol_ix_list(self) -> Sequence[SolTxIx]:
+        return tuple([ix.to_sol_tx_ix() for ix in self.instructions])
 
     def model_post_init(self, _ctx: Any) -> None:
         if not self.instructions:
@@ -256,8 +254,8 @@ class _RpcNeonSkdTxRequest(BaseEthGasModel):
         ]
 
     @cached_method
-    def to_sol_tx_list(self) -> list[SolTx]:
-        return [tx.to_sol_tx() for tx in self.draft_sol_tx_list]
+    def to_sol_ix_list(self) -> list[SolTxIx]:
+        return list(itertools.chain.from_iterable(tx.to_sol_ix_list() for tx in self.draft_sol_tx_list))
 
 
 class _RpcSkdTxEstimateResp(BaseJsonRpcModel):
@@ -287,8 +285,8 @@ class _RpcNeonCallRequest(BaseJsonRpcModel):
         return cls._default
 
     @cached_method
-    def to_sol_tx_list(self) -> list[SolTx]:
-        return [tx.to_sol_tx() for tx in self.draft_sol_tx_list]
+    def to_sol_ix_list(self) -> list[SolTxIx]:
+        return list(itertools.chain.from_iterable(tx.to_sol_ix_list() for tx in self.draft_sol_tx_list))
 
 
 class NpCallApi(NeonProxyApi):
@@ -325,8 +323,8 @@ class NpCallApi(NeonProxyApi):
     ) -> HexUIntField:
         chain_id = self._validate_layer0_chain_id(ctx, isinstance(call.fromAddress, SolPubKey))
         block = await self.get_block_by_tag(block_tag)
-        sol_tx_list = tuple()
-        gas_limit = await self._gas_limit_calc.estimate(sol_tx_list, call.to_core_tx(chain_id), block)
+        sol_ix_list = tuple()
+        gas_limit = await self._gas_limit_calc.estimate(sol_ix_list, call.to_core_tx(chain_id), block)
         return gas_limit.total_gas
 
     @NeonProxyApi.method(name="neon_estimateGas")
@@ -380,8 +378,8 @@ class NpCallApi(NeonProxyApi):
 
             tx = CoreApiTxModel.from_neon_tx(neon_tx)
 
-        sol_tx_list = neon_call.to_sol_tx_list()
-        gas_limit = await self._gas_limit_calc.estimate(sol_tx_list, tx, block, neon_call.check_result)
+        sol_ix_list = neon_call.to_sol_ix_list()
+        gas_limit = await self._gas_limit_calc.estimate(sol_ix_list, tx, block, neon_call.check_result)
 
         if if_none(neon_call.show_detail, def_show_detail):
             return _RpcEmulatorResp.from_raw(gas_limit)
@@ -437,7 +435,7 @@ class NpCallApi(NeonProxyApi):
     ) -> Sequence[RpcGasLimitResult]:
         tx_list = call.tx_list
         core_tx_list = call.to_core_tx_list(chain_id)
-        sol_tx_list = call.to_sol_tx_list()
+        sol_ix_list = call.to_sol_ix_list()
 
         # build all branches from root txs, because they
         core_tx_branch_list: list[list[tuple[int, CoreApiTxModel]]] = list()
@@ -455,14 +453,14 @@ class NpCallApi(NeonProxyApi):
             core_tx_branch_list.append(core_tx_branch)
 
         if len(core_tx_branch_list) == 1:
-            res_list = await self._gas_limit_calc.estimate_skd_tree(sol_tx_list, core_tx_list, block, call.check_result)
+            res_list = await self._gas_limit_calc.estimate_skd_tree(sol_ix_list, core_tx_list, block, call.check_result)
             return list(res_list)
 
         # run in parallel the gas estimation tasks for all branches
         # fmt: off
         estimate_task_list = [
             self._gas_limit_calc.estimate_skd_tree(
-                sol_tx_list,
+                sol_ix_list,
                 list(map(lambda x: x[1], core_tx_branch)),
                 block,
                 call.check_result,

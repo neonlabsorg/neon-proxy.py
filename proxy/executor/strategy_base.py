@@ -3,16 +3,13 @@ from __future__ import annotations
 import abc
 import dataclasses
 import logging
-from typing import Sequence, Final, ClassVar
-
-from typing_extensions import Self
+from typing import Sequence, Final, ClassVar, Self
 
 from common.neon.cancel_error import CancelErrorData
 from common.neon.cu_cost_packed import CuCostPktData
 from common.neon.neon_program import NeonIxMode, NeonProg
-from common.neon_rpc.api import EmulSolTxInfo
+from common.neon_rpc.api import EmulSolTxIxMetaModel
 from common.solana.cb_program import SolCbProg
-from common.solana.commit_level import SolCommit
 from common.solana.errors import SolError
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -315,31 +312,22 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
         return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
 
-    async def _emulate_tx_list(self, tx_list: Sequence[SolTx] | SolTx) -> Sequence[EmulSolTxInfo] | EmulSolTxInfo:
-        if isinstance(tx_list, SolTx):
+    async def _emulate_ix_list(
+        self,
+        ix_list: Sequence[SolTxIx] | SolTxIx,
+    ) -> Sequence[EmulSolTxIxMetaModel] | EmulSolTxIxMetaModel:
+        if isinstance(ix_list, SolTxIx):
             is_single_tx: Final[bool] = True
-            tx_list = tuple([tx_list])
+            ix_list = tuple([ix_list])
         else:
             is_single_tx: Final[bool] = False
 
-        blockhash, _ = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
-        for tx in tx_list:
-            tx.set_recent_blockhash(blockhash)
-        tx_list = await self._ctx.sol_tx_list_signer.sign_tx_list(tx_list)
-
-        acct_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
-        cu_limit = SolCbProg.MaxCuLimit * len(tx_list)
-        heap_size = SolCbProg.MaxHeapSize
+        cu_limit: Final[int] = SolCbProg.MaxCuLimit * len(ix_list)
+        heap_size: Final[int] = SolCbProg.MaxHeapSize
 
         try:
-            emul_tx_list = await self._core_api_client.emulate_sol_tx_list(
-                cu_limit,
-                heap_size,
-                acct_cnt_limit,
-                blockhash,
-                tx_list,
-            )
-            return emul_tx_list[0] if is_single_tx else emul_tx_list
+            meta_list = await self._core_api_client.emulate_sol_ix_list(cu_limit, heap_size, ix_list)
+            return meta_list[0] if is_single_tx else meta_list
         except SolError:
             raise
         except BaseException as _exc:
@@ -347,28 +335,27 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             raise SolCbExceededError(SolCbProg.MaxCuLimit * 2)
 
     async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
-        base_tx = self._build_cu_tx(ix, base_cfg)
-        emul_tx = await self._emulate_tx_list(base_tx)
-        used_cu_limit: Final[int] = emul_tx.meta.used_cu_limit
+        meta = await self._emulate_ix_list(ix)
+        cu_consumed: Final[int] = meta.cu_consumed
 
         max_cu_limit: Final[int] = base_cfg.cu_limit
-        # let's decrease the available cu-limit on 1% percent, because Solana uses it for ComputeBudget calls
+        # let's decrease the available cu-limit by 1%, because Solana uses it for ComputeBudget calls
         threshold_cu_limit: Final[int] = int(max_cu_limit * 0.99)
 
-        if used_cu_limit > threshold_cu_limit:
+        if cu_consumed > threshold_cu_limit:
             _LOG.debug(
                 "%s: %d CUs is bigger than the upper limit %d",
                 hdr,
-                used_cu_limit,
+                cu_consumed,
                 threshold_cu_limit,
             )
             # in the case of
             #    Program <XXX> failed: instruction modified data of a read-only account
-            # simulator returns the maximum used_cu_limit
+            # simulator returns the maximum cu_consumed
             #
             # raise SolCbExceededError(threshold_cu_limit)
 
-        round_cu_limit = self._round_cu_limit(used_cu_limit, max_cu_limit)
+        round_cu_limit = self._round_cu_limit(cu_consumed, max_cu_limit)
 
         for cu_limit in (round_cu_limit, max_cu_limit):
             cu_price = await self._calc_cu_price(cu_limit)
@@ -389,7 +376,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             (cu_limit // cls._round_cu_limit_coeff) * cls._round_cu_limit_coeff + cls._inc_cu_limit_coeff,
             max_cu_limit,
         )
-        # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, used_cu_limit, round_cu_limit)
+        # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, cu_consumed, round_cu_limit)
         return round_cu_limit
 
     @abc.abstractmethod

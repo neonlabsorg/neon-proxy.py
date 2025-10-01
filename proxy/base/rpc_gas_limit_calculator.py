@@ -13,9 +13,9 @@ from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
 from common.solana.alt_program import SolAltProg
 from common.solana.cb_program import SolCbProg
+from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
-from common.solana.transaction import SolTx
 from common.utils.cached import cached_property
 from .rpc_server_abc import BaseRpcServerComponent
 
@@ -93,12 +93,12 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     async def estimate(
         self,
-        sol_tx_list: Sequence[SolTx],
+        sol_ix_list: Sequence[SolTxIx],
         core_tx: CoreApiTxModel,
         block: NeonBlockHdrModel | None = None,
         check_result: bool = True,
     ) -> RpcGasLimitResult:
-        if not sol_tx_list:
+        if not sol_ix_list:
             resp = await self._core_api_client.emulate_neon_call(
                 core_tx,
                 check_result=check_result,
@@ -106,7 +106,7 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
             )
         else:
             resp_list = await self._core_api_client.emulate_multiple_neon_call(
-                sol_tx_list,
+                sol_ix_list,
                 [core_tx],
                 check_result=check_result,
                 block=block,
@@ -116,13 +116,13 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     async def estimate_skd_tree(
         self,
-        sol_tx_list: Sequence[SolTx],
+        sol_ix_list: Sequence[SolTxIx],
         core_tx_list: Sequence[CoreApiTxModel],
         block: NeonBlockHdrModel | None,
         check_result: bool,
     ) -> Sequence[RpcGasLimitResult]:
         resp_list = await self._core_api_client.emulate_multiple_neon_call(
-            sol_tx_list,
+            sol_ix_list,
             core_tx_list,
             check_result=check_result,
             block=block,

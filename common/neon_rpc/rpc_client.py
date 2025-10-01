@@ -16,7 +16,6 @@ from .api import (
     NeonAccountListRequest,
     EmulNeonCallResp,
     EmulNeonCallRequest,
-    EmulFromHolderRequest,
     EmulMultipleNeonCallRequest,
     EmulMultipleNeonCallResp,
     CoreApiTxModel,
@@ -26,7 +25,6 @@ from .api import (
     NeonContractModel,
     EmulSolTxIxRequest,
     EmulSolTxIxListResp,
-    EmulSolTxRequest,
     EmulSolTxIxMetaModel,
     OpEarnAccountModel,
     NeonAccountStatus,
@@ -46,9 +44,11 @@ from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
 from ..solana.cb_program import SolCbProg
+from ..solana.commit_level import SolCommit
 from ..solana.errors import SolAltError
 from ..solana.instruction import SolTxIx
 from ..solana.pubkey import SolPubKey
+from ..solana.transaction_legacy import SolLegacyTx
 from ..solana_rpc.client import SolClient
 from ..stat.client_rpc import RpcClientRequest
 from ..utils.cached import cached_method
@@ -203,7 +203,7 @@ class CoreRpcClient(JsonRpcClient):
         req = EmulNeonCallRequest(
             tx=tx,
             evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-            evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
+            # evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
             token_list=self._token_list,
             trace_cfg=None,
             preload_sol_address_list=list(),
@@ -229,19 +229,21 @@ class CoreRpcClient(JsonRpcClient):
             return resp
         assert False, "unreached code"
 
-    async def emulate_from_holder(
-        self,
-        holder_address: SolPubKey,
-        block: NeonBlockHdrModel | None = None,
-    ) -> EmulNeonCallResp:
-        req = EmulFromHolderRequest(
-            holder_address=holder_address,
-            evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-            evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
-            token_list=self._token_list,
-            slot=self._get_slot(block),
-        )
-        return await self._emulate_from_holder(req)
+    # >> NEW VERSION
+    # async def emulate_from_holder(
+    #     self,
+    #     holder_address: SolPubKey,
+    #     block: NeonBlockHdrModel | None = None,
+    # ) -> EmulNeonCallResp:
+    #     req = EmulFromHolderRequest(
+    #         holder_address=holder_address,
+    #         evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
+    #         evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
+    #         token_list=self._token_list,
+    #         slot=self._get_slot(block),
+    #     )
+    #     return await self._emulate_from_holder(req)
+    # << NEW VERSION
 
     async def emulate_multiple_neon_call(
         self,
@@ -261,15 +263,14 @@ class CoreRpcClient(JsonRpcClient):
         def _get_full_preload_addr_list(_resp: _RootType) -> list[SolPubKey]:
             return list(set(itertools.chain.from_iterable(x.sol_address_list for x in _resp.root)))
 
-        sol_ix_list = list(map(lambda ix: EmulSolTxIxRequest.from_raw(ix), sol_ix_list))
-        sol_tx_req = EmulSolTxRequest(cu_limit=cu_limit, heap_size=heap_size, ix_list=sol_ix_list)
+        sol_tx_req = await self._create_sol_tx_request(cu_limit, heap_size, sol_ix_list)
 
         for retry in itertools.count():
             req = EmulMultipleNeonCallRequest(
                 sol_tx_request=sol_tx_req,
                 neon_tx_list=neon_tx_list,
                 evm_step_limit=self._cfg.max_emulate_evm_step_cnt,
-                evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
+                # evm_account_limit=self._cfg.max_tx_account_cnt - NeonProg.BaseAccountCnt,
                 token_list=self._token_list,
                 preload_sol_address_list=preload_sol_address_list,
                 slot=self._get_slot(block),
@@ -296,16 +297,40 @@ class CoreRpcClient(JsonRpcClient):
             return resp.root
         assert False, "unreached code"
 
-    async def emulate_sol_tx_list(
+    async def emulate_sol_ix_list(
         self,
         cu_limit: int,
         heap_size: int,
         sol_ix_list: Sequence[SolTxIx],
     ) -> Sequence[EmulSolTxIxMetaModel]:
-        sol_ix_list = list(map(lambda ix: EmulSolTxIxRequest.from_raw(ix), sol_ix_list))
-        req = EmulSolTxRequest(cu_limit=cu_limit, heap_size=heap_size, ix_list=sol_ix_list)
+        req = await self._create_sol_tx_request(cu_limit, heap_size, sol_ix_list)
         resp: EmulSolTxIxListResp = await self._simulate_solana(req)
         return tuple(resp.meta_list)
+
+    async def _create_sol_tx_request(
+        self,
+        cu_limit: int,
+        heap_size: int,
+        sol_ix_list: Sequence[SolTxIx],
+    ) -> EmulSolTxIxRequest:
+        blockhash, _ = await self._sol_client.get_recent_blockhash(SolCommit.Finalized)
+        acct_cnt_limit: Final[int] = 255  # not critical here, it's already tested on the validation step
+
+        # fmt: off
+        tx_list = list(map(
+            lambda ix: SolLegacyTx("Estimate", [ix], blockhash=blockhash).to_bytes(),
+            sol_ix_list
+        ))
+        # fmt: on
+
+        return EmulSolTxIxRequest(
+            cu_limit=cu_limit,
+            heap_size=heap_size,
+            account_cnt_limit=acct_cnt_limit,
+            verify=False,
+            blockhash=blockhash.to_bytes(),
+            tx_list=tx_list,
+        )
 
     @JsonRpcClient.method(name="build_info")
     async def _get_build_info(self) -> CoreApiBuildModel: ...
@@ -331,14 +356,14 @@ class CoreRpcClient(JsonRpcClient):
     @JsonRpcClient.method(name="emulate")
     async def _emulate(self, req: EmulNeonCallRequest) -> EmulNeonCallResp: ...
 
-    @JsonRpcClient.method(name="emulate_from_holder")
-    async def _emulate_from_holder(self, req: EmulFromHolderRequest) -> EmulNeonCallResp: ...
+    # @JsonRpcClient.method(name="emulate_from_holder")
+    # async def _emulate_from_holder(self, req: EmulFromHolderRequest) -> EmulNeonCallResp: ...
 
     @JsonRpcClient.method(name="emulate_multiple")
     async def _emulate_multiple(self, req: EmulMultipleNeonCallRequest) -> EmulMultipleNeonCallResp: ...
 
     @JsonRpcClient.method(name="simulate_solana")
-    async def _simulate_solana(self, req: EmulSolTxRequest) -> EmulSolTxIxListResp: ...
+    async def _simulate_solana(self, req: EmulSolTxIxRequest) -> EmulSolTxIxListResp: ...
 
     async def _get_evm_exec_addr(self) -> SolPubKey:
         # Load the BPF program account to get the address of the BPF executable account

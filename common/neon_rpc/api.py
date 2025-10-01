@@ -16,7 +16,6 @@ from ..neon.transaction_model import NeonTxModel, NeonSkdTxStatusField, NeonSkdT
 from ..solana.account import SolAccountModel
 from ..solana.instruction import SolAccountMeta
 from ..solana.pubkey import SolPubKeyField, SolPubKey
-from ..solana.transaction import SolTx
 from ..utils.cached import cached_property, cached_method
 from ..utils.format import bytes_to_hex, if_none
 from ..utils.pydantic import HexUIntField, DecIntField, BaseModel as _BaseModel, RootModel, DecUIntField
@@ -608,6 +607,7 @@ class EmulTraceCfgModel(_BaseModel):
 class EmulNeonCallRequest(CoreApiRequest):
     tx: CoreApiTxModel
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
+    # evm_account_limit: DecUIntField = Field(serialization_alias="account_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
     trace_cfg: EmulTraceCfgModel | None = Field(serialization_alias="trace_config")
     preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
@@ -615,6 +615,16 @@ class EmulNeonCallRequest(CoreApiRequest):
         serialization_alias="solana_overrides"
     )
     slot: DecUIntField | None
+
+
+# >> NEW VERSION
+# class EmulFromHolderRequest(CoreApiRequest):
+#     holder_address: SolPubKeyField = Field(serialization_alias="holder_pubkey")
+#     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
+#     evm_account_limit: DecUIntField = Field(serialization_alias="account_limit")
+#     token_list: list[TokenModel] = Field(serialization_alias="chains")
+#     slot: DecUIntField | None
+# << NEW VERSION
 
 
 class EmulNeonCallExitCode(StrEnum):
@@ -676,9 +686,10 @@ class EmulNeonCallResp(_BaseRespModel):
 
 
 class EmulMultipleNeonCallRequest(CoreApiRequest):
-    sol_tx_request: EmulSolTxListRequest = Field(serialization_alias="solana_tx")
+    sol_tx_request: EmulSolTxIxRequest = Field(serialization_alias="solana_tx")
     neon_tx_list: list[CoreApiTxModel] = Field(serialization_alias="tx")
     evm_step_limit: DecUIntField = Field(serialization_alias="step_limit")
+    # evm_account_limit: DecUIntField = Field(serialization_alias="account_limit")
     token_list: list[TokenModel] = Field(serialization_alias="chains")
     preload_sol_address_list: list[SolPubKeyField] = Field(serialization_alias="accounts")
     slot: DecUIntField | None
@@ -688,7 +699,29 @@ class EmulMultipleNeonCallResp(RootModel):
     root: list[EmulNeonCallResp] = Field(default_factory=list)
 
 
-class EmulSolTxListRequest(CoreApiRequest):
+# TODO: NEW VERSION
+# class EmulSolTxIxRequest(_BaseModel):
+#     prog_id: SolPubKeyField = Field(serialization_alias="program_id")
+#     account_list: list[EmulAccountMetaModel] = Field(serialization_alias="accounts")
+#     data: CoreApiHexStrField
+#
+#     @classmethod
+#     def from_raw(cls, ix: SolTxIx) -> Self:
+#         return cls(
+#             prog_id=ix.program_id,
+#             account_list=list(map(lambda acct: EmulAccountMetaModel.from_raw(acct), ix.accounts)),
+#             data=ix.data,
+#         )
+#
+#
+# class EmulSolTxRequest(CoreApiRequest):
+#     cu_limit: DecUIntField = Field(serialization_alias="compute_units")
+#     heap_size: DecUIntField = Field(serialization_alias="heap_size")
+#     ix_list: list[EmulSolTxIxRequest] = Field(serialization_alias="instructions")
+# << NEW VERSION
+
+
+class EmulSolTxIxRequest(CoreApiRequest):
     cu_limit: DecUIntField = Field(serialization_alias="compute_units")
     heap_size: DecUIntField = Field(serialization_alias="heap_size")
     account_cnt_limit: DecUIntField = Field(serialization_alias="account_limit")
@@ -697,20 +730,20 @@ class EmulSolTxListRequest(CoreApiRequest):
     tx_list: list[CoreApiHexStrField] = Field(serialization_alias="transactions")
 
 
-class EmulSolTxMetaModel(_BaseRespModel):
-    error: dict | None
+class EmulSolTxIxMetaModel(_BaseRespModel):
+    error: dict | str | None
     log_list: list[str] = Field(default_factory=list, validation_alias="logs")
-    used_cu_limit: DecUIntField = Field(validation_alias="executed_units")
+    cu_consumed: DecUIntField = Field(validation_alias="executed_units")
 
 
-class EmulSolTxListResp(_BaseRespModel):
-    meta_list: list[EmulSolTxMetaModel] = Field(validation_alias="transactions")
+class EmulSolTxIxListResp(_BaseRespModel):
+    meta_list: list[EmulSolTxIxMetaModel] = Field(validation_alias="transactions")
 
 
-@dataclass(frozen=True)
-class EmulSolTxInfo:
-    tx: SolTx
-    meta: EmulSolTxMetaModel
+# >> NEW VERSION
+# class EmulSolTxIxListResp(_BaseRespModel):
+#     meta_list: list[EmulSolTxIxMetaModel] = Field(validation_alias="instructions")
+# << NEW VERSION
 
 
 class NeonSkdTreeRequest(CoreApiRequest):
