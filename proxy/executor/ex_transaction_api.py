@@ -67,7 +67,7 @@ class NeonTxExecApi(ExecutorApi):
                 else:
                     code = await self._exec_neon_tx_retry_loop(request, None)
 
-                neon_acct = await self._core_api_client.get_neon_account(request.sender, None)
+                neon_acct = await self._core_api_client.get_neon_account(request.payer, None)
                 await self._mp_client.done_exec_tx(tx_hash, tx_nonce, code, neon_acct)
 
             if task := self._task_dict.pop(tx_hash, None):
@@ -173,7 +173,7 @@ class NeonTxExecApi(ExecutorApi):
 
     async def _exec_neon_skd_tree(self, request: ExecTxRequest) -> ExecTxDoneCode:
         tx = request.tx
-        skd_tree_parser = NeonSkdTreeParser(self._server, request.sender, tx.nonce)
+        skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, tx.nonce)
         try:
             await skd_tree_parser.start()
             return await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request)

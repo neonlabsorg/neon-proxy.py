@@ -5,7 +5,7 @@ from typing import Annotated, Self
 
 from pydantic import PlainValidator, PlainSerializer
 
-from common.ethereum.hash import EthTxHashField
+from common.ethereum.hash import EthTxHashField, EthTxHash
 from common.neon.address import NeonAddress, NeonAddressField
 from common.solana.alt_program import SolAltID
 from common.solana.pubkey import SolPubKeyField
@@ -35,12 +35,20 @@ class ExecTxRequest(BaseModel):
     token: ExecTokenModel
 
     @cached_property
-    def req_id(self) -> dict:
-        return dict(tx=self.tx.tx_id)
+    def payer(self) -> NeonAddress:
+        return NeonAddress.from_raw(self.tx.payer, self.token.chain_id)
+
+    @property
+    def nonce(self) -> int:
+        return self.tx.nonce
+
+    @property
+    def neon_tx_hash(self) -> EthTxHash:
+        return self.tx.neon_tx_hash
 
     @cached_property
-    def sender(self) -> NeonAddress:
-        return NeonAddress.from_raw(self.tx.sender, self.token.chain_id)
+    def req_id(self) -> dict:
+        return dict(tx=self.tx.tx_id)
 
 
 class ExecTxResp(BaseModel):
@@ -49,6 +57,10 @@ class ExecTxResp(BaseModel):
 
 class CompleteStuckTxRequest(BaseModel):
     stuck_tx: MpStuckTxModel
+
+    @property
+    def neon_tx_hash(self) -> EthTxHash:
+        return self.stuck_tx.neon_tx_hash
 
     @cached_property
     def req_id(self) -> dict:
