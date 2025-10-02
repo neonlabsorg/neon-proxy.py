@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import ClassVar, Callable, Self
+from contextlib import asynccontextmanager
+from typing import ClassVar, Callable, Self, AsyncGenerator
 
 from ..config.config import Config
 from ..neon_rpc.api_client import CoreApiClient
@@ -29,16 +30,22 @@ class BaseCmdHandler:
         return cls(cfg)
 
     async def execute(self, arg_space) -> int:
+        async with self._lock_stop_task_list():
+            try:
+                if not self._subcmd_dict:
+                    subcmd_handler = self._exec_impl
+                elif not (subcmd_handler := self._subcmd_dict.get(arg_space.subcommand, None)):
+                    _LOG.error("unknown command %s %s", self.command, arg_space)
+                    return 1
+                return await subcmd_handler(arg_space)
+            except (BaseException,):
+                _LOG.error("error on command %s %s", self.command, arg_space, exc_info=True)
+        return 1
+
+    @asynccontextmanager
+    async def _lock_stop_task_list(self) -> AsyncGenerator[None, None]:
         try:
-            if not self._subcmd_dict:
-                subcmd_handler = self._exec_impl
-            elif not (subcmd_handler := self._subcmd_dict.get(arg_space.subcommand, None)):
-                _LOG.error("unknown command %s %s", self.command, arg_space)
-                return 1
-            return await subcmd_handler(arg_space)
-        except (BaseException,):
-            _LOG.error("error on command %s %s", self.command, arg_space, exc_info=True)
-            return 1
+            yield
         finally:
             await asyncio.gather(*[task() for task in self._stop_task_list])
 

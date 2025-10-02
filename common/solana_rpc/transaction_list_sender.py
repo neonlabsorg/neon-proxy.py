@@ -85,8 +85,11 @@ class SolTxListSender:
         self._tx_state_list_dict: dict[SolTxSendState.Status, list[SolTxSendState]] = dict()
         self._tx_time_dict: dict[SolTxSig, int] = dict()
 
-    async def send(self, tx_list: Sequence[SolTx]) -> bool:
+    async def send(self, tx_list: SolTx | Sequence[SolTx]) -> bool:
         assert not self._tx_list
+
+        if isinstance(tx_list, SolTx):
+            tx_list = tuple([tx_list])
         if not tx_list:
             return False
 

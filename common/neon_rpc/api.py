@@ -535,6 +535,10 @@ class HolderAccountModel(_BaseRespModel):
         return NeonAddress.from_raw(self.tx.payer, self.chain_id)
 
     @cached_property
+    def nonce(self) -> int:
+        return self.tx.nonce or 0 if self.tx else 0
+
+    @cached_property
     def receiver(self) -> NeonAddress:
         if self.tx is None:
             return NeonAddress.default()
