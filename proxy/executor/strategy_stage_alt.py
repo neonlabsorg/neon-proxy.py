@@ -53,13 +53,13 @@ class AltTxPrepStage(BaseTxPrepStage):
             return list()
 
         actual_alt = await self._extend_alt(actual_alt, alt_list)
-        alt_tx_set = self._alt_builder.build_alt_tx_set(actual_alt)
+        alt_tx_list = self._alt_builder.build_alt_tx_list(actual_alt)
 
         self._alt_dict[actual_alt.address] = actual_alt
         self._ctx.add_alt_id(actual_alt.ident)
 
         self._last_alt = actual_alt
-        return alt_tx_set.tx_list_list
+        return [alt_tx_list]
 
     async def prep_before_exec(self) -> bool:
         return await self._has_valid_tx_size()
