@@ -8,10 +8,12 @@ from typing import ClassVar, Final
 from common.config.constants import ONE_BLOCK_SEC
 from common.ethereum.errors import EthError, EthNonceTooHighError, EthNonceTooLowError
 from common.neon.cancel_error import CancelErrorData
-from common.neon.neon_program import NeonBaseTxAccountSet
+from common.neon.neon_program import NeonBaseTxAccountSet, NeonEvmIxCode
 from common.neon_rpc.errors import SolNeonSkdTxError, SolNeonRequireResizeIterError, SolNeonMissingAccountError
 from common.solana.alt_program import SolAltAccountInfo
+from common.solana.cb_program import SolCbCfg, SolCbProg
 from common.solana.errors import SolTxSizeError, SolError
+from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import (
     SolCbExceededError,
     SolNoMoreRetriesError,
@@ -300,3 +302,40 @@ class NeonTxExecutor(ExecutorComponent):
             payer_balance=payer.balance,
         )
         ctx.set_tx_sol_address(base_tx_acct_set)
+
+    async def _destroy_tree_account_retry_loop(self, ctx: NeonExecTxCtx) -> None:
+        skd_tree: Final = ctx.skd_tree_parser
+        tx_list_sender: Final = ctx.sol_tx_list_sender
+
+        destroy_ix: Final = ctx.neon_prog.make_destroy_skd_tree_ix()
+        destroy_cfg: Final = SolCbCfg(
+            NeonEvmIxCode.SkdTreeDestroy.name,
+            cu_price=self._cfg.def_simple_cu_price,
+            cu_limit=ctx.neon_prog.CuLimitSkdTreeAccountDestroy,
+        )
+        tx: SolLegacyTx | None = None
+
+        while True:
+            if not (await skd_tree.is_exist()):
+                break
+            elif not (await skd_tree.can_be_destroyed()):
+                break
+
+            if not tx:
+                tx = SolCbProg.make_legacy_tx(destroy_cfg, destroy_ix)
+
+            if (not tx.is_signed) or (not tx_list_sender.recheck(tx)):
+                await tx_list_sender.send(tx)
+
+            tx_state_list = tx_list_sender.success_tx_state_list
+            tx = tx_state_list[0] if tx_state_list else None
+
+    async def _delete_tree_account_from_db(self, ctx: NeonExecTxCtx) -> None:
+        skd_tree: Final = ctx.skd_tree_parser
+        try:
+            if await skd_tree.is_exist():
+                raise SolError("tree account is not deleted yet")
+
+            await self._db.destroy_tree_account(skd_tree.address, skd_tree.neon_tx_hash)
+        except BaseException as exc:
+            _LOG.error("error on delete tree row from db", exc_info=exc, extra=self._msg_filter)

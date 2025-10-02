@@ -22,10 +22,19 @@ class BaseNPCmdHandler(BaseCmdHandler):
     async def _get_op_client(self) -> OpResourceClient:
         return await self._new_client(OpResourceClient, self._cfg)
 
-    async def _send_tx_list(self, req_id: dict, payer: SolPubKey, tx_list: Sequence[SolTx], timeout_sec: int) -> None:
+    async def _send_tx_list(
+        self,
+        req_id: dict,
+        payer: SolPubKey,
+        tx_list: SolTx | Sequence[SolTx],
+        timeout_sec: int,
+    ) -> None:
         sol_client: SolClient = await self._get_sol_client()
         op_client: OpResourceClient = await self._get_op_client()
         blockhash, _ = await sol_client.get_recent_blockhash(commit=SolCommit.Finalized)
+
+        if isinstance(tx_list, SolTx):
+            tx_list = tuple([tx_list])
 
         for tx in tx_list:
             tx.set_recent_blockhash(blockhash)

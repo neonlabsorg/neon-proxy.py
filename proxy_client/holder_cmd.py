@@ -1,6 +1,7 @@
 import itertools
 import logging
-from typing import Final, Self
+from contextlib import asynccontextmanager
+from typing import Final, Self, AsyncGenerator
 
 from common.config.config import Config
 from common.neon.cancel_error import CancelErrorSource, NeonProxyCancelErrorCode
@@ -202,37 +203,33 @@ class HolderHandler(BaseNPCmdHandler):
     ) -> bool:
         print("Holder %s has the active NeonTx %s" % (holder.address, holder.neon_tx_hash))
 
-        op_client: OpResourceClient = await self._get_op_client()
         core_api_client: CoreApiClient = await self._get_core_api_client()
 
-        if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder.address)).is_empty:
-            _LOG.error("no available resource to process the NeonTx canceling")
-            return False
+        async with self._get_resource(req_id, holder) as op_res:
+            if op_res.is_empty:
+                return False
 
-        try:
-            for retry in itertools.count():
-                if retry > 10:
-                    print("fail to cancel Holder %s after 10 retries" % holder.address)
-                    return False
+            try:
+                for retry in itertools.count():
+                    if retry > 10:
+                        print("fail to cancel Holder %s after 10 retries" % holder.address)
+                        return False
 
-                cancel_tx = await self._make_cancel_tx(holder, op_res)
-                if not (alt := await self._create_alt(req_id, op_res.owner, cancel_tx, timeout_sec)):
-                    return False
-                cancel_tx = SolV0Tx(name=cancel_tx.name, ix_list=cancel_tx.ix_list, alt_list=tuple([alt]))
-                await self._send_tx_list(req_id, op_res.owner, tuple([cancel_tx]), timeout_sec)
+                    cancel_tx = await self._make_cancel_tx(holder, op_res)
+                    if not (alt := await self._create_alt(req_id, op_res.owner, cancel_tx, timeout_sec)):
+                        return False
+                    cancel_tx = SolV0Tx(name=cancel_tx.name, ix_list=cancel_tx.ix_list, alt_list=tuple([alt]))
+                    await self._send_tx_list(req_id, op_res.owner, cancel_tx, timeout_sec)
 
-                holder = await core_api_client.get_holder_account(holder.address)
-                if holder.status == HolderAccountStatus.Active:
-                    _LOG.warning("Holder %s has the active NeonTx %s", holder.address, holder.neon_tx_hash)
-                    continue
+                    holder = await core_api_client.get_holder_account(holder.address)
+                    if holder.status == HolderAccountStatus.Active:
+                        _LOG.warning("Holder %s has the active NeonTx %s", holder.address, holder.neon_tx_hash)
+                        continue
 
-                print("done canceling Holder %s" % holder.address)
-                return True
-        except BaseException as exc:
-            _LOG.error("got error %s", str(exc))
-
-        finally:
-            await op_client.free_resource(req_id, True, op_res)
+                    print("done canceling Holder %s" % holder.address)
+                    return True
+            except BaseException as exc:
+                _LOG.error("got error %s", str(exc))
 
         return False
 
@@ -314,40 +311,37 @@ class HolderHandler(BaseNPCmdHandler):
     ) -> bool:
         print("Holder %s has the scheduled NeonTx %s" % (holder.address, holder.neon_tx_hash))
 
-        op_client: OpResourceClient = await self._get_op_client()
         core_api_client: CoreApiClient = await self._get_core_api_client()
 
-        if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder.address)).is_empty:
-            _LOG.error("no available resource to process the NeonSkdTx finishing")
-            return False
+        async with self._get_resource(req_id, holder) as op_res:
+            if op_res.is_empty:
+                return False
 
-        try:
-            for retry in itertools.count():
-                if retry > 10:
-                    print("fail to finish NeonSkdTx in the Holder %s after 10 retries" % holder.address)
-                    return False
+            try:
+                for retry in itertools.count():
+                    if retry > 10:
+                        print("fail to finish NeonSkdTx in the Holder %s after 10 retries" % holder.address)
+                        return False
 
-                if not (tx_list := await self._make_finish_skd_tx(holder, op_res)):
+                    if not (tx_list := await self._make_finish_skd_tx(holder, op_res)):
+                        return True
+
+                    finish_tx, destroy_tx = tx_list
+                    await self._send_tx_list(req_id, op_res.owner, finish_tx, timeout_sec)
+
+                    holder = await core_api_client.get_holder_account(holder.address)
+                    if holder.status in (HolderAccountStatus.ScheduledCanceled, HolderAccountStatus.ScheduledFinalized):
+                        _LOG.warning("Holder %s has the active NeonSkdTx %s", holder.address, holder.neon_tx_hash)
+                        continue
+
+                    print("try to destroy Tree...")
+                    await self._send_tx_list(req_id, op_res.owner, destroy_tx, timeout_sec)
+
+                    print("done finish Holder %s" % holder.address)
                     return True
 
-                finish_tx, destroy_tx = tx_list
-                await self._send_tx_list(req_id, op_res.owner, tuple([finish_tx]), timeout_sec)
-
-                holder = await core_api_client.get_holder_account(holder.address)
-                if holder.status in (HolderAccountStatus.ScheduledCanceled, HolderAccountStatus.ScheduledFinalized):
-                    _LOG.warning("Holder %s has the active NeonSkdTx %s", holder.address, holder.neon_tx_hash)
-                    continue
-
-                print("try to destroy Tree...")
-                await self._send_tx_list(req_id, op_res.owner, tuple([destroy_tx]), timeout_sec)
-
-                print("done finish Holder %s" % holder.address)
-                return True
-        except BaseException as exc:
-            _LOG.error("got error %s", str(exc), exc_info=True)
-
-        finally:
-            await op_client.free_resource(req_id, True, op_res)
+            except BaseException as exc:
+                _LOG.error("got error %s", str(exc), exc_info=True)
 
         return False
 
@@ -411,3 +405,16 @@ class HolderHandler(BaseNPCmdHandler):
         )
         destroy_tx = SolCbProg.make_legacy_tx(destroy_cfg, destroy_ix)
         return finish_tx, destroy_tx
+
+    @asynccontextmanager
+    async def _get_resource(self, req_id: dict, holder: HolderAccountModel) -> AsyncGenerator[OpResourceModel, None]:
+        op_client: OpResourceClient = await self._get_op_client()
+
+        if (op_res := await op_client.get_resource(req_id, holder.chain_id, holder.owner, holder.address)).is_empty:
+            _LOG.error("no available resource to process the NeonSkdTx finishing")
+
+        try:
+            yield op_res
+        finally:
+            if not op_res.is_empty:
+                await op_client.free_resource(req_id, True, op_res)
