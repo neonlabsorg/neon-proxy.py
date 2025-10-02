@@ -3,13 +3,13 @@ from __future__ import annotations
 import abc
 import dataclasses
 import logging
-from typing import Sequence, Final, ClassVar, Self
+from typing import Sequence, Final, ClassVar
 
 from common.neon.cancel_error import CancelErrorData
 from common.neon.cu_cost_packed import CuCostPktData
-from common.neon.neon_program import NeonIxMode, NeonProg
+from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EmulSolTxIxMetaModel
-from common.solana.cb_program import SolCbProg
+from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.errors import SolError
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -38,7 +38,7 @@ class BaseTxPrepStage(ExecutorComponent, abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def build_tx_list(self) -> Sequence[Sequence[SolTx]]:
+    async def make_tx_list(self) -> Sequence[Sequence[SolTx]]:
         pass
 
     @abc.abstractmethod
@@ -47,27 +47,16 @@ class BaseTxPrepStage(ExecutorComponent, abc.ABC):
 
 
 @dataclasses.dataclass(frozen=True)
-class SolTxCfg:
-    name: str
-    ix_mode: NeonIxMode
-
-    cu_limit: int
-    cu_price: int
-    heap_size: int
-
-    def to_dict(self) -> dict:
-        return dataclasses.asdict(self)  # noqa
-
-    def update(self, **kwargs) -> Self:
-        return dataclasses.replace(self, **kwargs)
+class SolNeonTxCfg(SolCbCfg):
+    pass
 
 
 class BaseTxStrategy(ExecutorComponent, abc.ABC):
     name: ClassVar[str] = "UNKNOWN STRATEGY"
     is_simple: ClassVar[bool] = True
 
-    _round_cu_limit_coeff: Final[int] = 10_000
-    _inc_cu_limit_coeff: Final[int] = 25_000
+    _RoundCuLimitCoeff: Final[int] = 10_000
+    _IncCuLimitCoeff: Final[int] = 25_000
 
     def __init__(self, server: ExecutorServerAbc, ctx: NeonExecTxCtx) -> None:
         super().__init__(server)
@@ -106,7 +95,7 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         await self._recheck_tx_list(tuple(tx_name_list))
 
         # generate new transactions
-        tx_list_list = await self._build_prep_tx_list()
+        tx_list_list = await self._make_prep_tx_list()
 
         for tx_list in tx_list_list:
             await self._send_tx_list(tx_list)
@@ -127,10 +116,9 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
 
     def _validate_tx_size(self) -> bool:
         with self._ctx.test_mode():
-            base_cfg = self._init_sol_tx_cfg()
-            ix = self._build_tx_ix(base_cfg)
-            tx = self._build_cu_tx(ix, base_cfg)
-            tx.validate(SolSigner.fake())  # <- there can be SolTxSizeError
+            cfg = self._init_sol_neon_tx_cfg()
+            neon_tx = self._make_sol_neon_tx(self._make_neon_ix(cfg), cfg)
+            neon_tx.validate(SolSigner.fake())  # <- there can be SolTxSizeError
         return True
 
     def _validate_has_chain_id(self) -> bool:
@@ -188,11 +176,11 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     def _base_sol_pkt_size(self) -> int:
         return SolTx.PktSize - NeonProg.BaseAccountCnt * SolPubKey.KeySize
 
-    async def _build_prep_tx_list(self) -> list[list[SolTx]]:
+    async def _make_prep_tx_list(self) -> list[list[SolTx]]:
         tx_list_list: list[list[SolTx]] = list()
 
         for stage in self._prep_stage_list:
-            new_tx_list_list = await stage.build_tx_list()
+            new_tx_list_list = await stage.make_tx_list()
 
             while len(new_tx_list_list) > len(tx_list_list):
                 tx_list_list.append(list())
@@ -247,26 +235,26 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
     #         )
     #     )
 
-    def _init_sol_tx_cfg(
+    def _init_sol_neon_tx_cfg(
         self,
-        *,
-        name: str = "",
-        ix_mode: NeonIxMode = NeonIxMode.Default,
+        /,
+        name: str | None = None,
         cu_limit: int = SolCbProg.MaxCuLimit,
         cu_price: int = SolCbProg.BaseCuPrice,
         heap_size: int = SolCbProg.MaxHeapSize,
-    ) -> SolTxCfg:
-        return SolTxCfg(
+    ) -> SolNeonTxCfg:
+        return SolNeonTxCfg(
             name=name or self.name,
-            ix_mode=ix_mode,
             cu_limit=cu_limit,
             cu_price=cu_price,
             heap_size=heap_size,
+            round_cu_coeff=self._RoundCuLimitCoeff,
+            inc_cu_coeff=self._IncCuLimitCoeff,
         )
 
-    async def _calc_cu_price(self, cu_limit: int) -> int:
+    async def _calc_cu_price(self, cu_limit: int, rw_acct_key_list: Sequence[SolPubKey]) -> int:
         # calculate a required cu-price from the Solana statistics
-        req_cu_price = await self._cu_price_client.get_cu_price(self._ctx.rw_account_key_list)
+        req_cu_price = await self._cu_price_client.get_cu_price(rw_acct_key_list)
 
         # for case of fee-less transactions
         tx = self._ctx.holder_tx
@@ -285,9 +273,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             exec_diff_cu_price = int(SolCbProg.MicroLamport * exec_cost_diff / cu_limit)
             avail_cu_price += exec_diff_cu_price
 
-        # cu_price should be more than 0, otherwise the Compute Budget instructions are skipped,
-        # and neon-evm does not digest it.
-        cu_price = max(min(req_cu_price, avail_cu_price), 1)
+        # cu_price < 10'000 isn't included in Solana Priority Queue
+        cu_price = max(min(req_cu_price, avail_cu_price), SolCbProg.BaseCuPrice)
 
         # _LOG.debug(
         #     "use %s CU-price for %s CU-limit, %s accounts",
@@ -298,19 +285,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
         return cu_price
 
     @staticmethod
-    def _build_cu_tx(ix: SolTxIx, tx_cfg: SolTxCfg) -> SolLegacyTx:
-        ix_list: list[SolTxIx] = list()
-
-        if tx_cfg.cu_price:
-            ix_list.append(SolCbProg.make_cu_price_ix(tx_cfg.cu_price))
-        if tx_cfg.cu_limit:
-            ix_list.append(SolCbProg.make_cu_limit_ix(tx_cfg.cu_limit))
-        if tx_cfg.heap_size:
-            ix_list.append(SolCbProg.make_heap_size_ix(tx_cfg.heap_size))
-
-        ix_list.append(ix)
-
-        return SolLegacyTx(name=tx_cfg.name, ix_list=ix_list)
+    def _make_sol_neon_tx(ix: SolTxIx, tx_cfg: SolNeonTxCfg) -> SolLegacyTx:
+        return SolCbProg.make_legacy_tx(tx_cfg, ix)
 
     async def _emulate_ix_list(
         self,
@@ -334,34 +310,36 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
             _LOG.warning("fail on emulate solana tx list")
             raise SolCbExceededError(SolCbProg.MaxCuLimit * 2)
 
-    async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolTxCfg) -> bool:
+    async def _emulate_and_send_single_tx(self, hdr: str, ix: SolTxIx, base_cfg: SolNeonTxCfg) -> bool:
         meta = await self._emulate_ix_list(ix)
         cu_consumed: Final[int] = meta.cu_consumed
 
-        max_cu_limit: Final[int] = base_cfg.cu_limit
-        # let's decrease the available cu-limit by 1%, because Solana uses it for ComputeBudget calls
-        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.99)
-
-        if cu_consumed > threshold_cu_limit:
-            _LOG.debug(
+        if cu_consumed > base_cfg.threshold_cu_limit:
+            _LOG.warning(
                 "%s: %d CUs is bigger than the upper limit %d",
                 hdr,
                 cu_consumed,
-                threshold_cu_limit,
+                base_cfg.threshold_cu_limit,
             )
             # in the case of
             #    Program <XXX> failed: instruction modified data of a read-only account
             # simulator returns the maximum cu_consumed
             #
-            # raise SolCbExceededError(threshold_cu_limit)
+            # raise SolCbExceededError(base_cfg.threshold_cu_limit)
 
-        round_cu_limit = self._round_cu_limit(cu_consumed, max_cu_limit)
+        round_cu_limit = base_cfg.round_cu(cu_consumed)
 
-        for cu_limit in (round_cu_limit, max_cu_limit):
-            cu_price = await self._calc_cu_price(cu_limit)
-            optimal_cfg = base_cfg.update(cu_limit=cu_limit, cu_price=cu_price)
+        base_cfg = base_cfg.clone(cu_limit=round_cu_limit)
+        return await self._send_single_tx(ix, base_cfg, self._ctx.rw_account_key_list)
 
-            optimal_tx = self._build_cu_tx(ix, optimal_cfg)
+    async def _send_single_tx(self, ix: SolTxIx, base_cfg: SolNeonTxCfg, rw_acct_key_list: Sequence[SolPubKey]) -> bool:
+        max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
+
+        for cu_limit in (base_cfg.cu_limit, max_cu_limit):
+            cu_price = await self._calc_cu_price(cu_limit, rw_acct_key_list)
+            optimal_cfg = base_cfg.clone(cu_limit=cu_limit, cu_price=cu_price)
+            optimal_tx = self._make_sol_neon_tx(ix, optimal_cfg)
+
             try:
                 return await self._send_tx_list(optimal_tx)
             except SolCbExceededError:
@@ -370,17 +348,8 @@ class BaseTxStrategy(ExecutorComponent, abc.ABC):
                 # _LOG.debug("%s: try the maximum %d CUs", max_cu_limit)
         return False
 
-    @classmethod
-    def _round_cu_limit(cls, cu_limit: int, max_cu_limit: int) -> int:
-        round_cu_limit = min(
-            (cu_limit // cls._round_cu_limit_coeff) * cls._round_cu_limit_coeff + cls._inc_cu_limit_coeff,
-            max_cu_limit,
-        )
-        # _LOG.debug("%s: %d CUs (round to %d CUs)", hdr, cu_consumed, round_cu_limit)
-        return round_cu_limit
-
     @abc.abstractmethod
-    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+    def _make_neon_ix(self, tx_cfg: SolNeonTxCfg) -> SolTxIx:
         pass
 
     @abc.abstractmethod

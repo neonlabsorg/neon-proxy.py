@@ -10,12 +10,10 @@ from ..config.config import Config
 from ..config.constants import MIN_FINALIZE_SEC
 from ..solana.alt_info import SolAltInfo
 from ..solana.alt_program import SolAltProg, SolExtAltProg, SolAltAccountInfo
-from ..solana.cb_program import SolCbProg
+from ..solana.cb_program import SolCbProg, SolCbCfg
 from ..solana.commit_level import SolCommit
 from ..solana.pubkey import SolPubKey
-from ..solana.transaction import SolTx
 from ..solana.transaction_legacy import SolLegacyTx
-from ..utils.cached import reset_cached_method
 
 _LOG = logging.getLogger(__name__)
 
@@ -41,8 +39,7 @@ class SolAltTxBuilder:
         self._slot_session = slot_session
         self._alt_prog = SolAltProg(owner)
         self._ext_alt_prog = SolExtAltProg(owner)
-        self._cb_prog = SolCbProg()
-        self._cu_price = cu_price
+        self._cb_cfg = SolCbCfg(name=self._update_name, cu_price=cu_price, cu_limit=self._ext_alt_prog.CuLimit)
 
     @property
     def _new_slot(self) -> int:
@@ -85,15 +82,9 @@ class SolAltTxBuilder:
         max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
-            ix_list = tuple(
-                [
-                    self._cb_prog.make_cu_price_ix(self._cu_price),
-                    self._cb_prog.make_cu_limit_ix(self._ext_alt_prog.CuLimit),
-                    self._ext_alt_prog.make_update_alt_ix(alt.ident, acct_list_part),
-                ]
-            )
-            tx = SolLegacyTx(name=self._update_name, ix_list=ix_list)
-            alt_tx_list.append(tx)
+            alt_tx_ix = self._ext_alt_prog.make_update_alt_ix(alt.ident, acct_list_part)
+            alt_tx = SolCbProg.make_legacy_tx(self._cb_cfg, alt_tx_ix)
+            alt_tx_list.append(alt_tx)
 
         return alt_tx_list
 
