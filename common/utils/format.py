@@ -11,10 +11,15 @@ _LOG_OBJECT_INFO_LIMIT = int(os.environ.get("LOG_OBJECT_INFO_LIMIT", str(2**64))
 # fmt: on
 
 
-def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_key_list=None) -> str:
-    def _decode_name(value) -> str:
-        return type(value).__name__
+def _decode_name(name: str, value) -> str:
+    return name or type(value).__name__
 
+
+def str_content_object(obj, content: str, name="") -> str:
+    return _decode_name(name, obj) + "(" + content + ")"
+
+
+def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_key_list=None) -> str:
     def _lookup_dict_as_value(value_type: str, value: dict) -> tuple[bool, str]:
         result = _lookup_dict(value)
         if (not _LOG_FULL_OBJECT_INFO) and (not result):
@@ -74,7 +79,7 @@ def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_key_list=None
             if _LOG_FULL_OBJECT_INFO or len(value):
                 return True, value
         elif hasattr(value, "__dict__"):
-            return _lookup_dict_as_value(_decode_name(value), value.__dict__)
+            return _lookup_dict_as_value(_decode_name("", value), value.__dict__)
         return False, "?"
 
     def _lookup_dict(d: dict) -> str:
@@ -103,9 +108,6 @@ def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_key_list=None
     if obj is None:
         return "None"
 
-    if not name:
-        name = _decode_name(obj)
-
     if hasattr(obj, "__dict__"):
         content = _lookup_dict(obj.__dict__)
     elif isinstance(obj, dict):
@@ -114,7 +116,7 @@ def str_fmt_object(obj, skip_underscore_prefix=True, name="", skip_key_list=None
         _flag, content = _decode_value(obj)
         return content
 
-    return name + "(" + content + ")"
+    return _decode_name(name, obj) + "(" + content + ")"
 
 
 def get_from_dict(src: dict | list | None, path: tuple, default_value):
