@@ -7,7 +7,7 @@ from typing import Sequence, Self
 
 import base58
 
-from .cb_program import SolCuIxCode, SolCbProg
+from .cb_program import SolCbIxCode, SolCbProg
 from .log_tree_decoder import SolTxIxLogInfo, SolTxLogTreeInfo, SolTxLogTreeDecoder
 from .pubkey import SolPubKey, SolPubKeyField
 from .signature import SolTxSig, SolTxSigField
@@ -108,8 +108,8 @@ class SolTxMetaInfo:
         return SolTxCostModel.from_raw(self, self._rpc_meta)
 
     @cached_property
-    def sol_tx_cu(self) -> SolTxCuInfo:
-        return SolTxCuInfo.from_raw(self)
+    def sol_tx_cb(self) -> SolTxCbInfo:
+        return SolTxCbInfo.from_raw(self)
 
     # protected:
 
@@ -239,7 +239,7 @@ class SolTxCostModel(BaseModel):
 
 
 @dataclass(frozen=True)
-class SolTxCuInfo:
+class SolTxCbInfo:
     sol_tx_sig: SolTxSig
     slot: int
 
@@ -261,11 +261,11 @@ class SolTxCuInfo:
                 ix_data = tx_ix.sol_ix_data
                 ix_code = ix_data[0]
                 ix_data = ix_data[1:]
-                if ix_code == SolCuIxCode.HeapSize:
+                if ix_code == SolCbIxCode.HeapSize:
                     heap_size = int.from_bytes(ix_data, "little")
-                elif ix_code == SolCuIxCode.CuLimit:
+                elif ix_code == SolCbIxCode.CuLimit:
                     cu_limit = int.from_bytes(ix_data, "little")
-                elif ix_code == SolCuIxCode.CuPrice:
+                elif ix_code == SolCbIxCode.CuPrice:
                     cu_price = int.from_bytes(ix_data, "little")
             except BaseException as exc:
                 _LOG.error("error on decode ComputeBudget ix", exc_info=exc)

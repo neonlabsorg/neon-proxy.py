@@ -12,13 +12,12 @@ from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import HolderAccountStatus, NeonAccountStatus
 from common.neon_rpc.transaction_list_sender import SolNeonTxListSender
-from common.solana.cb_program import SolCbProg
+from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
 from common.solana.sys_program import SolSysProg
 from common.solana.transaction import SolTx
-from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
 from common.utils.json_logger import log_msg, logging_context
 from .key_info import OpSignerInfo, OpHolderInfo, OpNeonBalanceInfo
@@ -230,7 +229,6 @@ class OpResourceMng(OpResourceComponent):
         return None
 
     async def withdraw(self, owner: SolPubKey, chain_id: int) -> bool:
-        cb_prog = SolCbProg()
         if not (op_signer := self._active_signer_dict.get(owner, None)):
             return False
         elif not (token_sol_addr := op_signer.token_sol_address_dict.get(chain_id, None)):
@@ -241,30 +239,26 @@ class OpResourceMng(OpResourceComponent):
         neon_prog = NeonProg(op_signer.owner).init_token_address(token_sol_addr)
 
         if neon_acct.status == NeonAccountStatus.Empty:
-            # fmt: off
-            ix_list = tuple([
-                cb_prog.make_cu_price_ix(self._cu_price * 2),
-                cb_prog.make_cu_limit_ix(neon_prog.CuLimitOpCreateNeonBalance),
-                neon_prog.make_create_neon_account_ix(
-                    neon_addr,
-                    neon_acct.sol_address,
-                    neon_acct.contract_sol_address,
-                ),
-            ])
-            # fmt: on
-
-            tx = SolLegacyTx("createNeonAccount", ix_list)
+            create_ix = neon_prog.make_create_neon_account_ix(
+                neon_addr,
+                neon_acct.sol_address,
+                neon_acct.contract_sol_address,
+            )
+            create_cfg = SolCbCfg(
+                "createNeonAccount",
+                cu_price=self._cu_price * 2,
+                cu_limit=neon_prog.CuLimitOpCreateNeonBalance,
+            )
+            tx = SolCbProg.make_legacy_tx(create_cfg, create_ix)
             await self._send_tx(op_signer.signer, tx)
 
-        # fmt: off
-        ix_list = tuple([
-            cb_prog.make_cu_price_ix(self._cu_price),
-            cb_prog.make_cu_limit_ix(neon_prog.CuLimitOpWithdraw),
-            neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address),
-        ])
-        # fmt: on
-
-        tx = SolLegacyTx("withdrawOperatorBalance", ix_list)
+        withdraw_ix = neon_prog.make_withdraw_operator_balance_ix(neon_acct.sol_address)
+        withdraw_cfg = SolCbCfg(
+            "withdrawOperatorBalance",
+            cu_price=self._cu_price,
+            cu_limit=neon_prog.CuLimitOpWithdraw,
+        )
+        tx = SolCbProg.make_legacy_tx(withdraw_cfg, withdraw_ix)
         await self._send_tx(op_signer.signer, tx)
         return True
 
@@ -505,14 +499,9 @@ class OpResourceMng(OpResourceComponent):
         )
         _LOG.debug(msg)
 
-        sys_prog = SolSysProg()
-        cb_prog = SolCbProg()
         neon_prog = NeonProg(signer.pubkey).init_holder_address(op_holder.address)
 
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(neon_prog.CuLimitHolderCreate)
-
-        create_acct_ix = sys_prog.make_create_account_with_seed_ix(
+        create_acct_ix = SolSysProg.make_create_account_with_seed_ix(
             address=op_holder.address,
             owner=NeonProg.ID,
             payer=signer.pubkey,
@@ -521,8 +510,12 @@ class OpResourceMng(OpResourceComponent):
             size=self._holder_size,
         )
         create_holder_ix = neon_prog.make_create_holder_ix(op_holder.seed)
-        ix_list = tuple([cu_price_ix, cu_limit_ix, create_acct_ix, create_holder_ix])
-        tx = SolLegacyTx(name="createHolderAccount", ix_list=ix_list)
+        cfg = SolCbCfg(
+            "createHolderAccount",
+            cu_price=self._cu_price,
+            cu_limit=neon_prog.CuLimitHolderCreate,
+        )
+        tx = SolCbProg.make_legacy_tx(cfg, [create_acct_ix, create_holder_ix])
         if result := await self._send_tx(signer, tx):
             self._deleted_holder_addr_set.discard(op_holder.address)
         return result
@@ -548,24 +541,21 @@ class OpResourceMng(OpResourceComponent):
         return await self._delete_holder_by_address(signer, op_holder.address)
 
     async def _delete_holder_by_address(self, signer: SolSigner, holder_address: SolPubKey) -> bool:
-        cb_prog = SolCbProg()
         neon_prog = NeonProg(signer.pubkey).init_holder_address(holder_address)
 
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(neon_prog.CuLimitHolderCreate)
-
         delete_ix = neon_prog.make_delete_holder_ix()
-        tx = SolLegacyTx(name="deleteHolderAccount", ix_list=tuple([cu_price_ix, cu_limit_ix, delete_ix]))
+        cfg = SolCbCfg(
+            "deleteHolderAccount",
+            cu_price=self._cu_price,
+            cu_limit=neon_prog.CuLimitHolderDestroy,
+        )
+        tx = SolCbProg.make_legacy_tx(cfg, delete_ix)
         if result := await self._send_tx(signer, tx):
             self._deleted_holder_addr_set.add(holder_address)
         return result
 
     async def _validate_neon_acct_list(self, op_signer: OpSignerInfo) -> bool:
-        cb_prog = SolCbProg()
         neon_prog = NeonProg(op_signer.owner)
-
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(neon_prog.CuLimitOpCreateBalance)
 
         token_sol_addr_dict: dict[int, SolPubKey] = dict()
         ix_list: list[SolTxIx] = list()
@@ -580,8 +570,12 @@ class OpResourceMng(OpResourceComponent):
                 ix_list.append(ix)
 
         if ix_list:
-            ix_list = [cu_price_ix, cu_limit_ix] + ix_list
-            tx = SolLegacyTx("createOperatorBalance", ix_list=ix_list)
+            cfg = SolCbCfg(
+                "createOperatorBalance",
+                cu_price=self._cu_price,
+                cu_limit=neon_prog.CuLimitOpCreateBalance,
+            )
+            tx = SolCbProg.make_legacy_tx(cfg, ix_list)
             if not (await self._send_tx(op_signer.signer, tx)):
                 return False
 
@@ -708,7 +702,7 @@ class OpResourceMng(OpResourceComponent):
         self,
         op_signer: OpSignerInfo,
         holder_list: deque[OpHolderInfo],
-        holder_address: SolPubKey
+        holder_address: SolPubKey,
     ) -> bool:
         for idx, holder in enumerate(holder_list):
             if holder.address != holder_address:

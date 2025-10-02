@@ -24,7 +24,10 @@ SolTxMessageInfo = Union[_msg.Message, _msg.MessageV0]
 class SolTx(abc.ABC):
     PktSize: Final[int] = SOL_PKT_SIZE
 
-    def __init__(self, name: str, ix_list: Sequence[SolTxIx], *, blockhash: SolBlockHash | None = None) -> None:
+    def __init__(self, name: str, ix_list: Sequence[SolTxIx] | SolTxIx, *, blockhash: SolBlockHash | None = None) -> None:
+        if isinstance(ix_list, SolTxIx):
+            ix_list = tuple([ix_list])
+
         self._name = name
         self._is_signed = False
         self._is_cloned = False
