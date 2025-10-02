@@ -17,17 +17,17 @@ _LOG = logging.getLogger(__name__)
 
 
 class NeonSkdTreeParser(ExecutorComponent):
-    _recheck_sec: Final[float] = ONE_BLOCK_SEC * 3
+    _ReCheckSec: Final[float] = ONE_BLOCK_SEC * 3
 
-    def __init__(self, server: ExecutorServerAbc, payer: NeonAddress, nonce: int) -> None:
+    def __init__(self, server: ExecutorServerAbc, payer: NeonAddress, nonce: int, neon_tx_hash: EthTxHash) -> None:
         super().__init__(server)
         self._payer = payer
         self._nonce = nonce
+        self._neon_tx_hash = neon_tx_hash
 
         self._tree: NeonSkdTreeModel | None = None
-        self._neon_tx_hash = EthTxHash.default()
 
-        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_check_sec=self._recheck_sec)
+        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_check_sec=self._ReCheckSec)
 
     async def start(self) -> None:
         await self._watch_session.subscribe_account(self.address)
@@ -35,6 +35,10 @@ class NeonSkdTreeParser(ExecutorComponent):
 
     async def stop(self) -> None:
         await self._watch_session.safe_disconnect()
+
+    @cached_property
+    def req_id(self) -> dict:
+        return dict(root_tx=self.neon_tx_hash.ident, skd_tree=self.address.ident)
 
     @property
     def neon_tx_hash(self) -> EthTxHash:
@@ -63,21 +67,20 @@ class NeonSkdTreeParser(ExecutorComponent):
             _LOG.debug("NeonSkdTree %s doesn't exist", self.address)
             return
 
-        self._neon_tx_hash = self._tree.root_neon_tx_hash
-
         _LOG.debug(
-            "NeonSkdTree %s for payer %s has status %s, txs %d %s",
+            "NeonSkdTree %s for payer %s:%d has tx-hash %s, status %s, txs %s",
             self.address,
-            self._tree.payer,
+            self._payer,
+            self._nonce,
+            self._tree.root_neon_tx_hash,
             self._tree.status,
-            len(self._tree.node_list),
-            [n.status.value for n in self._tree.node_list],
+            tuple([n.status.value for n in self._tree.node_list]),
         )
 
     async def can_be_destroyed(self) -> bool:
         await self._refresh()
 
-        if not self._tree.is_exist:
+        if not self._is_exist:
             return True
         elif (status := self._tree.active_status) == NeonSkdTxStatus.InProgress:
             return False
@@ -90,21 +93,24 @@ class NeonSkdTreeParser(ExecutorComponent):
 
     async def is_exist(self) -> bool:
         await self._refresh()
-        return self._tree.is_exist
+        return self._is_exist
 
-    async def iter_neon_skd_tx_list(self) -> AsyncGenerator[tuple[NeonSkdTxStatus, NeonSkdTxModel], None]:
+    async def iter_active_neon_skd_tx_list(self) -> AsyncGenerator[tuple[NeonSkdTxStatus, NeonSkdTxModel], None]:
         await self._refresh()
 
-        async def _get_skd_tx(_idx: int, _node: NeonSkdTreeNodeModel) -> NeonSkdTxModel | None:
-            _skd_tx = await self._db.get_neon_skd_tx_by_hash(_node.neon_tx_hash)
-            return _skd_tx if _skd_tx and _skd_tx.rlp_tx else None
+        async def get_skd_tx(node_: NeonSkdTreeNodeModel) -> NeonSkdTxModel | None:
+            tx = await self._db.get_neon_skd_tx_by_hash(node_.neon_tx_hash)
+            return tx if tx and tx.rlp_tx else None
 
         for idx, node in enumerate(self._tree.node_list):
             if (node.parent_cnt == 0) and (node.status in (node.status.NotStarted, node.status.InProgress)):
-                if skd_tx := await _get_skd_tx(idx, node):
+                if skd_tx := await get_skd_tx(node):
                     yield node.status, skd_tx
 
     async def get_neon_skd_status(self, index: int) -> NeonSkdTxStatus:
         await self._refresh()
-        status = self._tree.get_neon_skd_status(index)
-        return status
+        return self._tree.get_neon_skd_status(index)
+
+    @property
+    def _is_exist(self):
+        return self._tree.is_exist and (self._tree.root_neon_tx_hash == self._neon_tx_hash)

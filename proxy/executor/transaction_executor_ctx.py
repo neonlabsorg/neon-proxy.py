@@ -402,13 +402,19 @@ class NeonExecTxCtx(ExecutorComponent):
     def alt_id_list(self) -> Sequence[SolAltID]:
         return tuple(self._alt_id_set)
 
+    def pop_alt_id_list(self) -> Sequence[SolAltID]:
+        alt_id_list, self._alt_id_set = tuple(self._alt_id_set), set()
+        return tuple(alt_id_list)
+
     @property
     def stuck_alt_address_list(self) -> Sequence[SolPubKey]:
         assert self.is_stuck_tx
         return tuple(self._tx_request.stuck_tx.alt_address_list)
 
-    def add_alt_id(self, alt_id: SolAltID) -> None:
-        self._alt_id_set.add(alt_id)
+    def add_alt_id(self, alt_id: SolAltID | Sequence[SolAltID]) -> None:
+        if isinstance(alt_id, SolAltID):
+            alt_id = (alt_id,)
+        self._alt_id_set.update(alt_id)
 
     def good_sol_tx_cnt(self, tx_name_list: str | Sequence[str]) -> int:
         if isinstance(tx_name_list, str):
