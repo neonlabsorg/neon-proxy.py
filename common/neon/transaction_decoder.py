@@ -121,10 +121,10 @@ class SolNeonTxIxMetaInfo:
         return cls(
             neon_ix_code=ix_code,
             neon_ix_data=ix_data,
-            heap_size=sol_tx.sol_tx_cu.heap_size,
-            used_heap_size=sol_tx.sol_tx_cu.heap_size,
-            cu_limit=sol_log.cu_limit or sol_tx.sol_tx_cu.cu_limit,
-            cu_consumed=sol_log.cu_consumed or sol_tx.sol_tx_cu.cu_limit,
+            heap_size=sol_tx.sol_tx_cb.heap_size,
+            used_heap_size=sol_tx.sol_tx_cb.heap_size,
+            cu_limit=sol_log.cu_limit or sol_tx.sol_tx_cb.cu_limit,
+            cu_consumed=sol_log.cu_consumed or sol_tx.sol_tx_cb.cu_limit,
             log_msg_list=sol_log.log_msg_list,
             #
             # protected:

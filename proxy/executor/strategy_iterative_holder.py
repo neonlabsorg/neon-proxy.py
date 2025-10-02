@@ -2,7 +2,7 @@ from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.instruction import SolTxIx
-from .strategy_iterative import IterativeTxStrategy, SolIterListCfg
+from .strategy_iterative import IterativeTxStrategy, SolNeonIterTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_write_holder import WriteHolderTxPrepStage
 
@@ -20,15 +20,15 @@ class HolderTxStrategy(IterativeTxStrategy):
     async def _validate(self) -> bool:
         return self._validate_has_chain_id()
 
-    def _build_tx_ix(self, tx_cfg: SolIterListCfg) -> SolTxIx:
+    def _make_neon_ix(self, tx_cfg: SolNeonIterTxCfg) -> SolTxIx:
         step_cnt = tx_cfg.evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         return self._ctx.neon_prog.make_tx_step_from_account_ix(tx_cfg.ix_mode, step_cnt, uniq_idx)
 
-    def _build_start_skd_tx_ix(self, index: int) -> SolTxIx:
+    def _make_start_skd_tx_ix(self, index: int) -> SolTxIx:
         return self._ctx.neon_prog.make_start_skd_tx_from_account_ix(index)
 
-    def _build_skip_skd_tx_ix(self, index: int) -> SolTxIx:
+    def _make_skip_skd_tx_ix(self, index: int) -> SolTxIx:
         return self._ctx.neon_prog.make_skip_skd_tx_from_account_ix(index)
 
 

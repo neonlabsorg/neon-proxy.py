@@ -2,7 +2,7 @@ from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.instruction import SolTxIx
-from .strategy_iterative import SolIterListCfg
+from .strategy_iterative import SolNeonIterTxCfg
 from .strategy_iterative_holder import HolderTxStrategy
 from .strategy_stage_alt import alt_strategy
 
@@ -16,7 +16,7 @@ class NoChainIdTxStrategy(HolderTxStrategy):
             return False
         return True
 
-    def _build_tx_ix(self, tx_cfg: SolIterListCfg) -> SolTxIx:
+    def _make_neon_ix(self, tx_cfg: SolNeonIterTxCfg) -> SolTxIx:
         step_cnt = tx_cfg.evm_step_cnt
         ix_mode = tx_cfg.ix_mode
         uniq_idx = self._ctx.next_uniq_idx()

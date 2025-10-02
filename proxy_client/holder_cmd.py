@@ -8,8 +8,8 @@ from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountS
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
 from common.neon_rpc.api_client import CoreApiClient
 from common.solana.alt_info import SolAltInfo
-from common.solana.cb_program import SolCbProg
-from common.solana.instruction import SolAccountMeta, SolTxIx
+from common.solana.cb_program import SolCbProg, SolCbCfg
+from common.solana.instruction import SolAccountMeta
 from common.solana.pubkey import SolPubKey
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
@@ -190,13 +190,6 @@ class HolderHandler(BaseNPCmdHandler):
                 return 1
         return 0
 
-    def _get_cb_ix_list(self, cu_limit=SolCbProg.MaxCuLimit // 2) -> list[SolTxIx]:
-        cb_prog = SolCbProg()
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
-        heap_size_ix = cb_prog.make_heap_size_ix(cb_prog.MaxHeapSize)
-        return [cu_price_ix, cu_limit_ix, heap_size_ix]
-
     @cached_property
     def _cu_price(self) -> int:
         return self._cfg.def_simple_cu_price
@@ -278,8 +271,13 @@ class HolderHandler(BaseNPCmdHandler):
         data = CancelErrorSource(CancelErrorSource.NeonProxy, NeonProxyCancelErrorCode.Manual, "Unknown")
         cancel_ix = neon_prog.make_cancel_ix(data.to_bytes())
 
-        ix_list = self._get_cb_ix_list() + [cancel_ix]
-        return SolLegacyTx(NeonEvmIxCode.CancelWithHash.name, ix_list=ix_list)
+        cfg = SolCbCfg(
+            NeonEvmIxCode.CancelWithHash.name,
+            heap_size=SolCbProg.MaxHeapSize,
+            cu_price=self._cu_price,
+            cu_limit=SolCbCfg.MaxCuLimit // 2,
+        )
+        return SolCbProg.make_legacy_tx(cfg, cancel_ix)
 
     async def _create_alt(
         self,
@@ -394,12 +392,22 @@ class HolderHandler(BaseNPCmdHandler):
         # fmt: on
 
         skd_tx_idx = skd_node_idx[0]
+
         finish_ix = neon_prog.make_finish_skd_tx_ix(skd_tx_idx)
+        finish_cfg = SolCbCfg(
+            NeonEvmIxCode.SkdTxFinish.name,
+            heap_size=SolCbProg.MaxHeapSize,
+            cu_price=self._cu_price,
+            cu_limit=SolCbProg.MaxCuLimit // 2,
+        )
+        finish_tx = SolCbProg.make_legacy_tx(finish_cfg, finish_ix)
+
         destroy_ix = neon_prog.make_destroy_skd_tree_ix()
-
-        finish_ix_list = self._get_cb_ix_list() + [finish_ix]
-        finish_tx = SolLegacyTx(NeonEvmIxCode.SkdTxFinish.name, ix_list=finish_ix_list)
-
-        destroy_ix_list = self._get_cb_ix_list(neon_prog.CuLimitSkdTreeAccountDestroy) + [destroy_ix]
-        destroy_tx = SolLegacyTx(NeonEvmIxCode.SkdTreeDestroy.name, ix_list=destroy_ix_list)
+        destroy_cfg = SolCbCfg(
+            NeonEvmIxCode.SkdTreeDestroy.name,
+            heap_size=SolCbProg.MaxHeapSize,
+            cu_price=self._cu_price,
+            cu_limit=neon_prog.CuLimitSkdTreeAccountDestroy,
+        )
+        destroy_tx = SolCbProg.make_legacy_tx(destroy_cfg, destroy_ix)
         return finish_tx, destroy_tx
