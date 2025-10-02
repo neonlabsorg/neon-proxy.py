@@ -10,11 +10,10 @@ from typing import Final, Sequence
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
 from common.solana.alt_program import SolAltID, SolAltProg, SolAltIxCode
-from common.solana.cb_program import SolCbProg
+from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
-from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolNoMoreRetriesError
 from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.utils.cached import cached_property
@@ -165,11 +164,8 @@ class SolAltDestroyer(ExecutorComponent):
     async def _send_tx(self, alt: SolAltID, name: str, cu_limit: int, ix: SolTxIx) -> bool:
         tx_list_signer = OpTxListSigner(dict(alt=alt.ctx_id), alt.owner, self._op_client)
 
-        cb_prog = SolCbProg()
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cfg.def_simple_cu_price)
-        cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
-
-        tx = SolLegacyTx(name=name + "LookupTable", ix_list=[cu_price_ix, cu_limit_ix, ix])
+        cfg = SolCbCfg(name + "LookupTable", cu_price=self._cfg.def_simple_cu_price, cu_limit=cu_limit)
+        tx = SolCbProg.make_legacy_tx(cfg, ix)
         return await SolTxListSender(self._cfg, self._sol_client, tx_list_signer, self._stat_client).send(tuple([tx]))
 
     @staticmethod

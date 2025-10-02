@@ -531,6 +531,17 @@ class NeonProg:
             ),
         )
 
+    def make_write_ix_list(self) -> Sequence[SolTxIx]:
+        tx_ix_list: list[SolTxIx] = list()
+        msg_offset = 0
+        msg = self.holder_msg
+
+        while msg:
+            msg_part, msg = msg[: self.HolderMsgSize], msg[self.HolderMsgSize :]
+            tx_ix_list.append(self.make_write_ix(msg_offset, msg_part))
+            msg_offset += self.HolderMsgSize
+        return tuple(tx_ix_list)
+
     def make_tx_exec_from_data_ix(self) -> SolTxIx:
         return self._make_tx_exec_from_data_ix(NeonEvmIxCode.TxExecFromData)
 
