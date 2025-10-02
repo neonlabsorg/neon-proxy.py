@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Final, Sequence, Annotated, ClassVar, Self
+from typing import Final, Sequence, Annotated, ClassVar, Self, Literal
 
 from eth_bloom import BloomFilter
 from pydantic import PlainValidator, PlainSerializer
@@ -24,13 +24,16 @@ from ..ethereum.hash import (
 )
 from ..solana.signature import SolTxSigField
 from ..solana.transaction_decoder import SolTxIxMetaInfo
-from ..utils.cached import cached_property
+from ..utils.cached import cached_property, cached_method
+from ..utils.format import str_fmt_object, str_content_object
 from ..utils.pydantic import BaseModel
 
 _LOG = logging.getLogger(__name__)
 
 
 class NeonTxEventModelType(enum.IntEnum):
+    Unknown = 0
+
     Log = 1
 
     StepReset = 50
@@ -102,6 +105,7 @@ class NeonTxEventModel(BaseModel):
         iter_list.extend(map(lambda x: x.to_bytes(), self.topic_list))
         bloom = BloomFilter.from_iterable(iter_list)
         return int(bloom)
+
 
 @dataclass(frozen=True)
 class NeonTxErrorLogInfo:
@@ -200,23 +204,24 @@ class NeonTxErrorLogInfo:
         UnsupportedNeonTransactionType = enum.auto()
         InterruptedCall = enum.auto()
         UnknownError = enum.auto()
+
     code: ErrorCode
     data: bytes
     message: str
 
     @classmethod
     def from_raw(cls, code: int, data: bytes, message: str):
-
         if code < cls.ErrorCode.Custom or code >= cls.ErrorCode.UnknownError:
             error_code = cls.ErrorCode.UnknownError
         else:
             error_code = cls.ErrorCode(code)
 
         return cls(
-            code = error_code,
-            data = data[4:],
-            message = message,
+            code=error_code,
+            data=data[4:],
+            message=message,
         )
+
 
 @dataclass(frozen=True)
 class NeonTxLogInfo:
@@ -239,20 +244,33 @@ class NeonTxLogReturnInfo:
     event_type: NeonTxEventModel.Type
     total_gas_used: int
     status: int = 0
-
+    #
     Success: Final[int] = 1
     Failed: Final[int] = 0
-    _default: ClassVar[NeonTxLogReturnInfo | None] = None
+    #
+    _Default: ClassVar[NeonTxLogReturnInfo | None] = None
 
     @classmethod
     def default(cls) -> Self:
-        if cls._default is None:
-            cls._default = cls(event_type=NeonTxEventModel.Type.Lost, total_gas_used=0, status=0)
-        return cls._default
+        if cls._Default is None:
+            cls._Default = cls(event_type=NeonTxEventModel.Type.Unknown, total_gas_used=0, status=0)
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
         return self.total_gas_used == 0
+
+    @cached_method
+    def to_string(self) -> str:
+        if self.is_empty:
+            return str_content_object(self, "Empty")
+        return str_fmt_object(self, skip_key_list=["Success", "Failed"])
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
 
 @dataclass(frozen=True)
@@ -260,13 +278,13 @@ class NeonTxIxLogGasInfo:
     gas_used: int
     total_gas_used: int
 
-    _default: ClassVar[NeonTxIxLogGasInfo | None] = None
+    _Default: ClassVar[NeonTxIxLogGasInfo | None] = None
 
     @classmethod
     def default(cls) -> Self:
-        if cls._default is None:
-            cls._default = cls(gas_used=0, total_gas_used=0)
-        return cls._default
+        if cls._Default is None:
+            cls._Default = cls(gas_used=0, total_gas_used=0)
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
@@ -278,13 +296,13 @@ class NeonTxIxPriorityFeeInfo:
     # Denominated in gas tokens.
     priority_fee_paid: int
 
-    _default: ClassVar[NeonTxIxPriorityFeeInfo | None] = None
+    _Default: ClassVar[NeonTxIxPriorityFeeInfo | None] = None
 
     @classmethod
     def default(cls) -> Self:
-        if cls._default is None:
-            cls._default = cls(priority_fee_paid=0)
-        return cls._default
+        if cls._Default is None:
+            cls._Default = cls(priority_fee_paid=0)
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
@@ -296,13 +314,13 @@ class NeonTxIxBaseFeeInfo:
     # Denominated in gas tokens.
     base_fee_paid: int
 
-    _default: ClassVar[NeonTxIxBaseFeeInfo | None] = None
+    _Default: ClassVar[NeonTxIxBaseFeeInfo | None] = None
 
     @classmethod
     def default(cls) -> Self:
-        if cls._default is None:
-            cls._default = cls(base_fee_paid=0)
-        return cls._default
+        if cls._Default is None:
+            cls._Default = cls(base_fee_paid=0)
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
@@ -314,16 +332,29 @@ class NeonTxBlockInfo:
     slot: int
     timestamp: int
 
-    _default: ClassVar[NeonTxBlockInfo | None] = None
+    _Default: ClassVar[NeonTxBlockInfo | None] = None
+
     @classmethod
     def default(cls) -> Self:
-        if cls._default is None:
-            cls._default = cls(slot=0, timestamp=0)
-        return cls._default
+        if cls._Default is None:
+            cls._Default = cls(slot=0, timestamp=0)
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
         return self.slot == 0
+
+    @cached_method
+    def to_string(self) -> str:
+        if self.is_empty:
+            return str_content_object(self, "Empty")
+        return str_fmt_object(self)
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
 
 @dataclass(frozen=True)
@@ -331,13 +362,13 @@ class NeonTxIxStepInfo:
     step_cnt: int
     total_step_cnt: int
 
-    _default: ClassVar[NeonTxIxStepInfo | None] = None
+    _Default: ClassVar[NeonTxIxStepInfo | None] = None
 
     @classmethod
     def default(cls) -> Self:
-        if cls._default is None:
-            cls._default = cls(step_cnt=0, total_step_cnt=0)
-        return cls._default
+        if cls._Default is None:
+            cls._Default = cls(step_cnt=0, total_step_cnt=0)
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
@@ -381,9 +412,9 @@ class _NeonTxLogDraft:
     def to_clean_copy(self) -> NeonTxLogInfo:
         if self.tx_event_list:
             if self.neon_tx_hash.is_empty:
-                _LOG.error("failed to find %s in the log", _NeonEvmHashLogDecoder.name)
-            if self.tx_ix_gas.is_empty:
-                _LOG.debug("failed to find %s in the log", _NeonEvmGasLogDecoder.name)
+                _LOG.error("failed to find %s in the log", _NeonEvmHashLogDecoder.Name)
+            # if self.tx_ix_gas.is_empty:
+            #     _LOG.debug("failed to find %s in the log", _NeonEvmGasLogDecoder.name)
 
         return NeonTxLogInfo(
             neon_tx_hash=self.neon_tx_hash,
@@ -457,7 +488,8 @@ def _to_b64(s: str) -> str:
 
 
 class _NeonEvmLogDecoder(abc.ABC):
-    _key: ClassVar[str | None] = None
+    _Key: ClassVar[str | None] = None
+    Name: ClassVar[str]
 
     @classmethod
     @abc.abstractmethod
@@ -465,50 +497,97 @@ class _NeonEvmLogDecoder(abc.ABC):
 
     @classmethod
     def get_key(cls) -> str:
-        if not cls._key:
-            cls._key = _to_b64(cls.name)  # noqa
-        return cls._key
+        if not cls._Key:
+            cls._Key = _to_b64(cls.Name)
+        return cls._Key
+
+    @classmethod
+    def _bytes_from_b64(cls, s: str) -> bytes | None:
+        try:
+            return base64.b64decode(s)
+        except BaseException as e:
+            _LOG.error("failed to decode %s: %s", cls.Name, str(e))
+            return None
+
+    @classmethod
+    def _fixed_bytes_from_b64(cls, s: str, expected_len: int) -> bytes | None:
+        if (bs := cls._bytes_from_b64(s)) is None:
+            return None
+        elif len(bs) != expected_len:
+            _LOG.error("failed to decode %s: %s", cls.Name, f"expected {expected_len} bytes, got {len(bs)}")
+            return None
+        return bs
+
+    @classmethod
+    def _utf8_from_b64(cls, s: str) -> str | None:
+        if (bs := cls._bytes_from_b64(s)) is None:
+            return None
+
+        try:
+            return bs.decode("utf-8")
+        except BaseException as e:
+            _LOG.error("failed to decode %s: %s", cls.Name, str(e))
+            return None
+
+    @classmethod
+    def _int_from_b64(cls, s: str, byteorder: Literal["little", "big"] = "little") -> int | None:
+        if (bs := cls._bytes_from_b64(s)) is None:
+            return None
+
+        try:
+            return int.from_bytes(bs, byteorder)
+        except Exception as e:
+            _LOG.error("failed to decode %s: %s", cls.Name, str(e))
+            return None
+
+    @classmethod
+    def _fixed_data_list_len(cls, data_list: Sequence[str], expected_len: int) -> bool:
+        if len(data_list) == expected_len:
+            return True
+
+        _LOG.error("failed to decode %s: should be %d elements in %s", cls.Name, expected_len, data_list)
+        return False
+
+    @classmethod
+    def _range_data_list_len(cls, data_list: Sequence[str], min_len: int, max_len: int) -> bool:
+        if min_len <= len(data_list) <= max_len:
+            return True
+
+        _LOG.error("failed to decode %s: should be (%d, %d) elements in %s", cls.Name, min_len, max_len, data_list)
+        return False
 
 
 class _NeonEvmBlockLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "BLOCK"
+    Name: ClassVar[str] = "BLOCK"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """Unpack block info"""
-        if len(data_list) < 2:
-            _LOG.error("failed to decode %s: less than 2 elements in %s", cls.name, data_list)
+        if not cls._fixed_data_list_len(data_list, 2):
             return
-
-        bs = base64.b64decode(data_list[0])
-        slot = int.from_bytes(bs, "little")
-
-        bs = base64.b64decode(data_list[1])
-        timestamp = int.from_bytes(bs, "little")
+        elif (slot := cls._int_from_b64(data_list[0])) is None:
+            return
+        elif (timestamp := cls._int_from_b64(data_list[1])) is None:
+            return
 
         log.tx_block = NeonTxBlockInfo(slot=slot, timestamp=timestamp)
 
 
 class _NeonEvmReturnLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "RETURN"
+    Name: ClassVar[str] = "RETURN"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """Unpacks base64-encoded return data"""
-        if not log.tx_return.is_empty:
-            _LOG.error("%s is already exist!", cls.name)
+        if not cls._fixed_data_list_len(data_list, 1):
             return
-        elif len(data_list) < 1:
-            _LOG.error("failed to decode %s: less then 1 elements in %s", cls.name, data_list)
+        elif log.tx_ix_gas.is_empty:
+            _LOG.error("failed to decode %s: fail to get total used gas", cls.Name)
+            return
+        elif (raw_exit_status := cls._int_from_b64(data_list[0])) is None:
             return
 
-        bs = base64.b64decode(data_list[0])
-        exit_status = int.from_bytes(bs, "little")
-        exit_status = 0x1 if exit_status < 0xD0 else 0x0
-
-        if log.tx_ix_gas.is_empty:
-            _LOG.error("Failed to decode %s: fail to get total used gas", cls.name)
-            return
+        exit_status = 0x1 if raw_exit_status < 0xD0 else 0x0
 
         log.tx_return = NeonTxLogReturnInfo(
             event_type=NeonTxEventModel.Type.Return,
@@ -518,63 +597,51 @@ class _NeonEvmReturnLogDecoder(_NeonEvmLogDecoder):
 
 
 class _NeonEvmGasLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "GAS"
+    Name: ClassVar[str] = "GAS"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """GAS <32 bytes le iteration gas> <32 bytes le total gas>"""
-        if not log.tx_ix_gas.is_empty:
-            _LOG.warning("%s is already exist!", cls.name)
-
-        if len(data_list) != 2:
-            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
+        if not cls._fixed_data_list_len(data_list, 2):
             return
-
-        bs = base64.b64decode(data_list[0])
-        gas_used = int.from_bytes(bs, "little")
-
-        bs = base64.b64decode(data_list[1])
-        total_gas_used = int.from_bytes(bs, "little")
+        elif (gas_used := cls._int_from_b64(data_list[0])) is None:
+            return
+        elif (total_gas_used := cls._int_from_b64(data_list[1])) is None:
+            return
 
         log.tx_ix_gas = NeonTxIxLogGasInfo(gas_used=gas_used, total_gas_used=total_gas_used)
 
 
 class _NeonEvmPriorityFeeLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "PRIORITYFEE"
+    Name: ClassVar[str] = "PRIORITYFEE"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """PRIORITYFEE <32 bytes le priority fee as paid by the user>"""
-        if not log.tx_ix_priority_fee.is_empty:
-            _LOG.error("%s is specified twice", cls.name)
+        if not cls._fixed_data_list_len(data_list, 1):
             return
-        if len(data_list) != 1:
-            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
+        elif (fee_paid := cls._int_from_b64(data_list[0])) is None:
             return
 
-        bs = base64.b64decode(data_list[0])
-        log.tx_ix_priority_fee = NeonTxIxPriorityFeeInfo(priority_fee_paid=int.from_bytes(bs, "little"))
+        log.tx_ix_priority_fee = NeonTxIxPriorityFeeInfo(priority_fee_paid=fee_paid)
 
 
 class _NeonEvmBaseFeeLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "BASEFEE"
+    Name: ClassVar[str] = "BASEFEE"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """BASEFEE <32 bytes le priority fee as paid by the user>"""
-        if not log.tx_ix_base_fee.is_empty:
-            _LOG.error("%s is specified twice", cls.name)
+        if not cls._fixed_data_list_len(data_list, 1):
             return
-        if len(data_list) != 1:
-            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
+        elif (fee_paid := cls._int_from_b64(data_list[0])) is None:
             return
 
-        bs = base64.b64decode(data_list[0])
-        log.tx_ix_base_fee = NeonTxIxBaseFeeInfo(base_fee_paid=int.from_bytes(bs, "little"))
+        log.tx_ix_base_fee = NeonTxIxBaseFeeInfo(base_fee_paid=fee_paid)
 
 
 class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "STEPS"
+    Name: ClassVar[str] = "STEPS"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
@@ -582,24 +649,18 @@ class _NeonEvmStepLogDecoder(_NeonEvmLogDecoder):
         Unpacks number of evm steps:
         STEP <32-bytes-le - the number of iteration EVM steps> <32-bytes-le - the total number of EVM steps>
         """
-        if not log.tx_ix_step.is_empty:
-            _LOG.error("%s is already exist!", cls.name)
+        if not cls._fixed_data_list_len(data_list, 2):
             return
-        elif len(data_list) != 2:
-            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
+        elif (step_cnt := cls._int_from_b64(data_list[0])) is None:
             return
-
-        bs = base64.b64decode(data_list[1])
-        total_step_cnt = int.from_bytes(bs, "little")
-
-        bs = base64.b64decode(data_list[0])
-        step_cnt = int.from_bytes(bs, "little")
+        elif (total_step_cnt := cls._int_from_b64(data_list[1])) is None:
+            return
 
         log.tx_ix_step = NeonTxIxStepInfo(step_cnt=step_cnt, total_step_cnt=total_step_cnt)
 
 
 class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "ERROR"
+    Name: ClassVar[str] = "ERROR"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: tuple[str, ...]) -> None:
@@ -607,24 +668,21 @@ class _NeonEvmErrorLogDecoder(_NeonEvmLogDecoder):
         Unpacks Neon error data:
         ERROR <32 bytes - code> <bytearray - data> <str - message>
         """
-        if len(data_list) != 3:
-            _LOG.error("failed to decode %s: should be at least 3 element in %s", cls.name, data_list)
+        if not cls._fixed_data_list_len(data_list, 3):
             return
-
-        bs = base64.b64decode(data_list[0])
-        code = int.from_bytes(bs, "little")
-
-        data = base64.b64decode(data_list[1])
-
-        bs = base64.b64decode(data_list[2])
-        msg = bs.decode('utf-8')
+        elif (code := cls._int_from_b64(data_list[0])) is None:
+            return
+        elif (data := cls._bytes_from_b64(data_list[1])) is None:
+            return
+        elif (msg := cls._utf8_from_b64(data_list[2])) is None:
+            return
 
         error = NeonTxErrorLogInfo.from_raw(code, data, msg)
         log.tx_error_list.append(error)
 
 
 class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "RESET"
+    Name: ClassVar[str] = "RESET"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
@@ -632,18 +690,21 @@ class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
         Unpacks Neon reset of all processed EVM steps:
         RESET
         """
-        if data_list:
-            _LOG.error("failed to decode %s: should be 0 element in %s", cls.name, data_list)
+        if not cls._fixed_data_list_len(data_list, 0) is False:
             return
 
         event = _NeonTxEventDraft.from_raw(
-            event_type=NeonTxEventModel.Type.StepReset, is_hidden=True, address=bytes(), topic_list=list(), data=bytes()
+            event_type=NeonTxEventModel.Type.StepReset,
+            is_hidden=True,
+            address=bytes(),
+            topic_list=list(),
+            data=bytes(),
         )
         log.tx_event_list.append(event)
 
 
 class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "INVALID_REVISION"
+    Name: ClassVar[str] = "INVALID_REVISION"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
@@ -651,13 +712,9 @@ class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
         Unpacks Neon event about changed account:
         INVALID_REVISION Solana-address
         """
-        if len(data_list) != 1:
-            _LOG.error("failed to decode %s: should be 0 element in %s", cls.name, data_list)
+        if not cls._fixed_data_list_len(data_list, 1):
             return
-
-        sol_addr = base64.b64decode(data_list[0])
-        if len(sol_addr) != 32:
-            _LOG.error("failed to decode %s: wrong Solana address length %s", cls.name, len(sol_addr))
+        elif (sol_addr := cls._fixed_bytes_from_b64(data_list[0], 32)) is None:
             return
 
         event = _NeonTxEventDraft.from_raw(
@@ -671,7 +728,7 @@ class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
 
 
 class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "HASH"
+    Name: ClassVar[str] = "HASH"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
@@ -679,43 +736,34 @@ class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
         Unpacks Neon transaction hash:
         HASH neon_tx_hash
         """
-        if not log.neon_tx_hash.is_empty:
-            _LOG.error("%s is already exist!", cls.name)
+        if not cls._fixed_data_list_len(data_list, 1):
             return
-        elif len(data_list) != 1:
-            _LOG.error("failed to decode %s: should be 1 element in %s", cls.name, data_list)
-            return
-
-        neon_tx_hash = base64.b64decode(data_list[0])
-        if len(neon_tx_hash) != 32:
-            _LOG.error("failed to decode %s: wrong hash length %s", cls.name, len(neon_tx_hash))
+        elif (neon_tx_hash := cls._fixed_bytes_from_b64(data_list[0], 32)) is None:
             return
 
         log.neon_tx_hash = EthTxHash.from_raw(neon_tx_hash)
 
 
 class _NeonEvmMinerDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "MINER"
+    Name: ClassVar[str] = "MINER"
 
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
-        Unpacks address of the miner of the instruction:
+        Unpacks the miner's address of the instruction:
         MINER address
         """
-        if len(data_list) != 1:
-            _LOG.error("failed to decode %s: should 2 elements in %s, %s", cls.name, len(data_list), data_list)
+        if not cls._fixed_data_list_len(data_list, 1):
+            return
+        elif (addr := cls._fixed_bytes_from_b64(data_list[0], 20)) is None:
             return
 
-        address = base64.b64decode(data_list[0])
-        if len(address) != 20:
-            _LOG.error("failed to decode %s: address has wrong length %s", cls.name, len(address))
-            return
-
-        log.tx_ix_miner = EthAddress.from_raw(address)
+        log.tx_ix_miner = EthAddress.from_raw(addr)
 
 
 class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
+    TopicCnt: ClassVar[int]
+
     @classmethod
     def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
         """
@@ -726,57 +774,62 @@ class _NeonEvmEventLogDecoder(_NeonEvmLogDecoder):
         LOG3 address [3] topic1 topic2 topic3 data
         LOG4 address [4] topic1 topic2 topic3 topic4 data
         """
-
-        if len(data_list) < 3:
-            _LOG.error("failed to decode %s: less 3 elements in %s", cls.name, data_list)  # noqa
+        if not cls._range_data_list_len(data_list, cls.TopicCnt + 2,  cls.TopicCnt + 3):
+            return
+        elif (topic_cnt := cls._int_from_b64(data_list[1], "little")) is None:
+            return
+        elif topic_cnt != cls.TopicCnt:
+            _LOG.error("failed to decode %s: wrong number of topics %s", cls.Name, topic_cnt)
+            return
+        elif (addr := cls._fixed_bytes_from_b64(data_list[0], 20)) is None:
             return
 
-        bs = base64.b64decode(data_list[1])
-        topic_cnt = int.from_bytes(bs, "little")
-        if topic_cnt != cls.topic_cnt:  # noqa
-            _LOG.error("failed to decode %s: wrong number of topics %s", cls.name, topic_cnt) # noqa
+        topic_list = [cls._bytes_from_b64(data_list[2 + i]) for i in range(cls.TopicCnt)]
+        if topic_list.count(None):
             return
 
-        address = base64.b64decode(data_list[0])
-        topic_list = [base64.b64decode(data_list[2 + i]) for i in range(topic_cnt)]
-
-        data_index = 2 + topic_cnt
-        data = base64.b64decode(data_list[data_index]) if data_index < len(data_list) else bytes()
+        data_idx: Final = 2 + cls.TopicCnt
+        if (data := cls._bytes_from_b64(data_list[data_idx]) if data_idx < len(data_list) else bytes()) is None:
+            return
 
         event = _NeonTxEventDraft.from_raw(
-            event_type=NeonTxEventModel.Type.Log, is_hidden=False, address=address, topic_list=topic_list, data=data
+            event_type=NeonTxEventModel.Type.Log,
+            is_hidden=False,
+            address=addr,
+            topic_list=topic_list,
+            data=data,
         )
         log.tx_event_list.append(event)
 
 
 class _NeonEvmEventLog0Decoder(_NeonEvmEventLogDecoder):
-    name: Final[str] = "LOG0"
-    topic_cnt: Final[int] = 0
+    Name: ClassVar[str] = "LOG0"
+    TopicCnt: ClassVar[int] = 0
 
 
 class _NeonEvmEventLog1Decoder(_NeonEvmEventLogDecoder):
-    name: Final[str] = "LOG1"
-    topic_cnt: Final[int] = 1
+    Name: ClassVar[str] = "LOG1"
+    TopicCnt: ClassVar[int] = 1
 
 
 class _NeonEvmEventLog2Decoder(_NeonEvmEventLogDecoder):
-    name: Final[str] = "LOG2"
-    topic_cnt: Final[int] = 2
+    Name: ClassVar[str] = "LOG2"
+    TopicCnt: ClassVar[int] = 2
 
 
 class _NeonEvmEventLog3Decoder(_NeonEvmEventLogDecoder):
-    name: Final[str] = "LOG3"
-    topic_cnt: Final[int] = 3
+    Name: ClassVar[str] = "LOG3"
+    TopicCnt: ClassVar[int] = 3
 
 
 class _NeonEvmEventLog4Decoder(_NeonEvmEventLogDecoder):
-    name: Final[str] = "LOG4"
-    topic_cnt: Final[int] = 4
+    Name: ClassVar[str] = "LOG4"
+    TopicCnt: ClassVar[int] = 4
 
 
 class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "ENTER"
-    _event_dict: Final[dict[str, NeonTxEventModel.Type]] = {
+    Name: ClassVar[str] = "ENTER"
+    _EventDict: Final[dict[str, NeonTxEventModel.Type]] = {
         _to_b64("CALL"): NeonTxEventModel.Type.EnterCall,
         _to_b64("CALLCODE"): NeonTxEventModel.Type.EnterCallCode,
         _to_b64("STATICCALL"): NeonTxEventModel.Type.EnterStaticCall,
@@ -796,29 +849,28 @@ class _NeonEvmEnterLogDecoder(_NeonEvmLogDecoder):
         ENTER CREATE <20 bytes contract address>
         ENTER CREATE2 <20 bytes contract address>
         """
-        if len(data_list) != 2:
-            _LOG.error("failed to decode %s: should 2 elements in %s, %s", cls.name, len(data_list), data_list)
+        if not cls._fixed_data_list_len(data_list, 2):
             return
-
-        if not (event_type := cls._event_dict.get(data_list[0], None)):
-            type_name = str(base64.b64decode(data_list[0]), "utf-8")
-            _LOG.error("failed to decode %s: wrong type %s", cls.name, type_name)
+        elif not (event_type := cls._EventDict.get(data_list[0], None)):
+            type_name = cls._utf8_from_b64(data_list[0])
+            _LOG.error("failed to decode %s: wrong type %s", cls.Name, type_name)
             return
-
-        address = base64.b64decode(data_list[1])
-        if len(address) != 20:
-            _LOG.error("failed to decode %s: address has wrong length %s", cls.name, len(address))
+        elif (addr := cls._fixed_bytes_from_b64(data_list[1], 20)) is None:
             return
 
         event = _NeonTxEventDraft.from_raw(
-            event_type=event_type, is_hidden=True, address=address, topic_list=list(), data=bytes()
+            event_type=event_type,
+            is_hidden=True,
+            address=addr,
+            topic_list=list(),
+            data=bytes(),
         )
         log.tx_event_list.append(event)
 
 
 class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
-    name: Final[str] = "EXIT"
-    _event_dict: Final[dict[str, NeonTxEventModel.Type]] = {
+    Name: ClassVar[str] = "EXIT"
+    _EventDict: Final[dict[str, NeonTxEventModel.Type]] = {
         _to_b64("STOP"): NeonTxEventModel.Type.ExitStop,
         _to_b64("RETURN"): NeonTxEventModel.Type.ExitReturn,
         _to_b64("SELFDESTRUCT"): NeonTxEventModel.Type.ExitSelfDestruct,
@@ -835,38 +887,34 @@ class _NeonEvmExitLogDecoder(_NeonEvmLogDecoder):
         EXIT SELFDESTRUCT
         EXIT REVERT data
         """
-        if len(data_list) < 1:
-            _LOG.error(
-                "Failed to decode %s: should be less that 1 element in %s, %s",
-                cls.name,
-                len(data_list),
-                data_list,
-            )
+        if not cls._range_data_list_len(data_list, 1, 2):
             return
-
-        if (event_type := cls._event_dict.get(data_list[0], None)) is None:
-            type_name = str(base64.b64decode(data_list[0]), "utf-8")
-            _LOG.error("failed to decode %s: wrong type %s", cls.name, type_name)
+        elif (event_type := cls._EventDict.get(data_list[0], None)) is None:
+            type_name = cls._utf8_from_b64(data_list[0])
+            _LOG.error("failed to decode %s: wrong type %s", cls.Name, type_name)
             return
-
-        data = bytes()
-        if len(data_list) > 1:
-            data = base64.b64decode(data_list[1])
+        elif (data := cls._bytes_from_b64(data_list[1]) if len(data_list) == 2 else bytes()) is None:
+            return
 
         event = _NeonTxEventDraft.from_raw(
-            event_type=event_type, is_hidden=True, address=bytes(), data=data, topic_list=list()
+            event_type=event_type,
+            is_hidden=True,
+            address=bytes(),
+            data=data,
+            topic_list=list(),
         )
         log.tx_event_list.append(event)
 
 
 class NeonEvmLogDecoder:
-    _start_line: Final[str] = "Program data: "
-    _re_data: Final[re.Pattern] = re.compile(r"^Program data: (.+)$")
-    _log_truncated_msg: Final[str] = "Log truncated"
-    _is_already_finalized_msg: Final[str] = "Program log: Storage Account is finalized"
+    _StartLine: Final[str] = "Program data: "
+    _ReData: Final[re.Pattern] = re.compile(r"^Program data: (.+)$")
+    _LogTruncatedMsg: Final[str] = "Log truncated"
+    _IsAlreadyFinalizedMsg: Final[str] = "Program log: Storage Account is finalized"
 
-    _log_decoder_dict: dict[str, type[_NeonEvmLogDecoder]] = {
-        cls.get_key(): cls for cls in (
+    _LogDecoderDict: dict[str, type[_NeonEvmLogDecoder]] = {
+        cls.get_key(): cls
+        for cls in (
             _NeonEvmHashLogDecoder,
             _NeonEvmMinerDecoder,
             _NeonEvmResetLogDecoder,
@@ -891,10 +939,15 @@ class NeonEvmLogDecoder:
 
     @classmethod
     def _find_decoder(cls, line: str) -> tuple[_NeonEvmLogDecoder | None, Sequence[str]]:
-        if not line.startswith(cls._start_line):
+        if not line.startswith(cls._StartLine):
             return None, tuple()
 
-        match = cls._re_data.match(line)
+        try:
+            match = cls._ReData.match(line)
+        except BaseException as e:
+            _LOG.error("failed to decode %s: %s", line, e)
+            return None, tuple()
+
         if match is None:
             return None, tuple()
 
@@ -903,7 +956,7 @@ class NeonEvmLogDecoder:
         if len(data_list) < 1:
             return None, tuple()
 
-        if not (decoder := cls._log_decoder_dict.get(data_list[0], None)):
+        if not (decoder := cls._LogDecoderDict.get(data_list[0], None)):
             return None, tuple()
 
         return decoder, data_list[1:]
@@ -914,10 +967,10 @@ class NeonEvmLogDecoder:
 
         log = _NeonTxLogDraft.from_raw(sol_tx_ix)
         for msg in log_list:
-            if msg == cls._log_truncated_msg:
+            if msg == cls._LogTruncatedMsg:
                 log.is_truncated = True
                 continue
-            elif msg == cls._is_already_finalized_msg:
+            elif msg == cls._IsAlreadyFinalizedMsg:
                 log.is_already_finalized = True
                 continue
 
