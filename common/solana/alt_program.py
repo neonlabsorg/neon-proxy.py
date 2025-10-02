@@ -143,7 +143,8 @@ class SolExtAltProg:
             SolAccountMeta(pubkey=SolAltProg.ID, is_signer=False, is_writable=False),
         ]
         ix_acct_key_list.extend(
-            map(lambda key: SolAccountMeta(pubkey=key, is_signer=False, is_writable=False), account_key_list))
+            map(lambda key: SolAccountMeta(pubkey=key, is_signer=False, is_writable=False), account_key_list)
+        )
 
         return SolTxIx(
             program_id=self.ID,
