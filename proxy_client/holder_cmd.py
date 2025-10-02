@@ -296,17 +296,16 @@ class HolderHandler(BaseNPCmdHandler):
         alt_tx_builder = SolAltTxBuilder(self._cfg, sol_client, slot_session, payer, self._cu_price)
         fake_alt: SolAltInfo = alt_tx_builder.build_fake_alt(legacy_tx)
         alt: SolAltInfo = await alt_tx_builder.rebuild_to_real_alt(fake_alt)
-        alt_tx_set = alt_tx_builder.build_alt_tx_set(alt)
-
-        for tx_list in alt_tx_set.tx_list_list:
-            await self._send_tx_list(req_id, payer, tx_list, timeout_sec)
-
-            await alt_tx_builder.update_alt(alt)
-            if not alt.is_exist:
-                _LOG.error("fail to create ALT %s", alt.address)
-                return None
+        alt_tx_list = alt_tx_builder.build_alt_tx_list(alt)
 
         await slot_session.stop()
+
+        await self._send_tx_list(req_id, payer, alt_tx_list, timeout_sec)
+        await alt_tx_builder.update_alt(alt)
+        if not alt.is_exist:
+            _LOG.error("fail to create ALT %s", alt.address)
+            return None
+
         return alt
 
     async def _finish_skd_tx(
