@@ -93,7 +93,7 @@ class SolAltTxBuilder:
 
     @property
     def tx_name_list(self) -> Sequence[str]:
-        return tuple([self._create_name, self._extend_name])
+        return tuple([self._update_name])
 
     def build_fake_alt(self, legacy_tx: SolLegacyTx, *, recent_slot=10) -> SolAltInfo:
         alt_ident = self._alt_prog.derive_alt_address(recent_slot)
