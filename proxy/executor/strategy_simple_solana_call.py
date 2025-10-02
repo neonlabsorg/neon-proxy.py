@@ -2,7 +2,7 @@ from typing import ClassVar
 
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.instruction import SolTxIx
-from .strategy_base import SolTxCfg
+from .strategy_base import SolNeonTxCfg
 from .strategy_simple import SimpleTxStrategy
 from .strategy_stage_alt import alt_strategy
 
@@ -21,7 +21,7 @@ class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
             and self._validate_neon_tx_size()
         )
 
-    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+    def _make_neon_ix(self, tx_cfg: SolNeonTxCfg) -> SolTxIx:
         return self._ctx.neon_prog.make_tx_exec_from_data_solana_call_ix()
 
 

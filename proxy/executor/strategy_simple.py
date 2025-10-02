@@ -6,7 +6,7 @@ from typing import ClassVar
 from common.neon.neon_program import NeonEvmIxCode
 from common.solana.instruction import SolTxIx
 from .errors import WrongStrategyError
-from .strategy_base import BaseTxStrategy, SolTxCfg
+from .strategy_base import BaseTxStrategy, SolNeonTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
 from ..base.ex_api import ExecTxDoneCode
@@ -25,8 +25,8 @@ class SimpleTxStrategy(BaseTxStrategy):
         assert self.is_valid
 
         if not await self._recheck_tx_list(self.name):
-            base_cfg = self._init_sol_tx_cfg(cu_limit=self._cfg.cu_limit)
-            ix = self._build_tx_ix(base_cfg)
+            base_cfg = self._init_sol_neon_tx_cfg()
+            ix = self._make_neon_ix(base_cfg)
             await self._emulate_and_send_single_tx("simple", ix, base_cfg)
 
         tx_send_state_list = self._ctx.sol_tx_list_sender.success_tx_state_list
@@ -41,7 +41,7 @@ class SimpleTxStrategy(BaseTxStrategy):
         _LOG.debug("failed!? NeonTx-Return, try next strategy...")
         raise WrongStrategyError()
 
-    def _build_tx_ix(self, tx_cfg: SolTxCfg) -> SolTxIx:
+    def _make_neon_ix(self, tx_cfg: SolNeonTxCfg) -> SolTxIx:
         return self._ctx.neon_prog.make_tx_exec_from_data_ix()
 
     async def _validate(self) -> bool:

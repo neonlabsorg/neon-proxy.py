@@ -12,7 +12,6 @@ from common.neon.cu_cost_packed import CuCostPktData
 from common.neon.neon_program import NeonProg
 from common.neon_rpc.api import EmulNeonCallResp, CoreApiTxModel
 from common.solana.alt_program import SolAltProg
-from common.solana.cb_program import SolCbProg
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -89,7 +88,6 @@ class RpcNeonGasLimitCalculator(BaseRpcServerComponent):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._cb_prog = SolCbProg()
 
     async def estimate(
         self,

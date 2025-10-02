@@ -4,17 +4,15 @@ import asyncio
 import itertools
 import logging
 import time
-from typing import ClassVar, Final, Sequence
+from typing import ClassVar, Final
 
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
 from common.neon.neon_program import NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon.transaction_model import NeonSkdTxModel
-from common.solana.cb_program import SolCbProg
+from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.commit_level import SolCommit
-from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
-from common.solana.transaction_legacy import SolLegacyTx
 from common.solana_rpc.errors import SolTxExecError
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context
@@ -368,12 +366,13 @@ class NeonTxExecApi(ExecutorApi):
         if not (await ctx.skd_tree_parser.is_exist()):
             return
 
-        name = NeonEvmIxCode.SkdTreeDestroy.name
         destroy_ix = ctx.neon_prog.make_destroy_skd_tree_ix()
-
-        cu_price_ix = SolCbProg.make_cu_price_ix(self._cfg.def_simple_cu_price)
-        cu_limit_ix = SolCbProg.make_cu_limit_ix(ctx.neon_prog.CuLimitSkdTreeAccountDestroy)
-        ix_list: Sequence[SolTxIx] = tuple([cu_price_ix, cu_limit_ix, destroy_ix])
+        destroy_cfg = SolCbCfg(
+            NeonEvmIxCode.SkdTreeDestroy.name,
+            cu_price=self._cfg.def_simple_cu_price,
+            cu_limit=ctx.neon_prog.CuLimitSkdTreeAccountDestroy,
+        )
+        tx = SolCbProg.make_legacy_tx(destroy_cfg, destroy_ix)
 
         tx_list_sender = ctx.sol_tx_list_sender
 
@@ -383,7 +382,6 @@ class NeonTxExecApi(ExecutorApi):
             elif not (await ctx.skd_tree_parser.can_be_destroyed()):
                 return
 
-            tx = SolLegacyTx(name=name, ix_list=ix_list)
             await tx_list_sender.send([tx])
 
     @ttl_cached_method(ttl_sec=10)

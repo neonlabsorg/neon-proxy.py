@@ -22,7 +22,7 @@ from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolWritableError,
 )
-from .strategy_base import BaseTxStrategy, SolTxCfg
+from .strategy_base import BaseTxStrategy, SolNeonTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
 from .transaction_executor_ctx import NeonExecTxState
@@ -32,7 +32,8 @@ _LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class SolIterListCfg(SolTxCfg):
+class SolNeonIterTxCfg(SolNeonTxCfg):
+    ix_mode: NeonIxMode = NeonIxMode.Unknown
     iter_cnt: int = 0
     evm_step_cnt: int = 0
 
@@ -122,7 +123,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         self._reset_to_def()
 
         memo = data.to_bytes()
-        base_cfg = self._init_sol_tx_cfg(name=self._cancel_name)
+        base_cfg = self._init_sol_neon_tx_cfg(name=self._cancel_name)
         for retry in range(2):
             try:
                 ix = self._ctx.neon_prog.make_cancel_ix(memo)
@@ -142,17 +143,17 @@ class IterativeTxStrategy(BaseTxStrategy):
         for _ in itertools.count():
             if (status := await self._get_skd_tx_status()) == status.ToStart:
                 name = self._start_skd_tx_name
-                ix = self._build_start_skd_tx_ix(self._ctx.holder_tx.index)
+                ix = self._make_start_skd_tx_ix(self._ctx.holder_tx.index)
             elif status == status.ToSkip:
                 name = self._skip_skd_tx_name
-                ix = self._build_skip_skd_tx_ix(self._ctx.holder_tx.index)
+                ix = self._make_skip_skd_tx_ix(self._ctx.holder_tx.index)
             else:
                 return status == status.InProgress
 
             if await self._recheck_tx_list(name):
                 return self._start_skd_tx_name == name
 
-            base_cfg = self._init_sol_tx_cfg(name=name)
+            base_cfg = self._init_sol_neon_tx_cfg(name=name)
             await self._emulate_and_send_single_tx("start NeonSkdTx", ix, base_cfg)
         return False
 
@@ -179,7 +180,7 @@ class IterativeTxStrategy(BaseTxStrategy):
                 return
 
             ix = self._ctx.neon_prog.make_finish_skd_tx_ix(tx_idx)
-            base_cfg = self._init_sol_tx_cfg(name=name)
+            base_cfg = self._init_sol_neon_tx_cfg(name=name)
             await self._emulate_and_send_single_tx("finish NeonSkdTx", ix, base_cfg)
 
     def _reset_to_def(self) -> None:
@@ -200,7 +201,7 @@ class IterativeTxStrategy(BaseTxStrategy):
 
                 # fmt: off
                 tx_list = tuple(
-                    self._build_cu_tx(self._build_tx_ix(optimal_cfg), optimal_cfg)
+                    self._make_sol_neon_tx(self._make_neon_ix(optimal_cfg), optimal_cfg)
                     for _ in range(optimal_cfg.iter_cnt)
                 )
                 # fmt: on
@@ -230,11 +231,11 @@ class IterativeTxStrategy(BaseTxStrategy):
                     raise SolCbExceededCriticalError(exc.cu_consumed)
 
     async def _send_single_iter(self, ix_mode=NeonIxMode.Unknown) -> bool:
-        base_cfg = self._init_sol_tx_cfg(ix_mode=ix_mode)
-        ix = self._build_tx_ix(base_cfg)
+        base_cfg = self._init_sol_neon_tx_cfg(ix_mode=ix_mode)
+        ix = self._make_neon_ix(base_cfg)
         return await self._emulate_and_send_single_tx("single", ix, base_cfg)
 
-    async def _get_iter_list_cfg(self) -> SolIterListCfg | None:
+    async def _get_iter_list_cfg(self) -> SolNeonIterTxCfg | None:
         evm_step_cnt_per_iter: Final[int] = self._ctx.neon_prog.EvmStepPerIter
 
         # 7? attempts looks enough for evm steps calculations:
@@ -283,7 +284,7 @@ class IterativeTxStrategy(BaseTxStrategy):
             #    3 iteration: 11'667
             evm_step_cnt = max(total_evm_step_cnt // max(exec_iter_cnt, 1) + 1, evm_step_cnt_per_iter)
 
-            base_cfg = self._init_sol_tx_cfg(evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
+            base_cfg = self._init_sol_neon_tx_cfg(evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
             optimal_cfg = await self._calc_cu_budget(f"retry {retry}", base_cfg)
             if not optimal_cfg.is_empty:
                 return optimal_cfg
@@ -293,31 +294,28 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return await self._get_def_iter_list_cfg()
 
-    async def _calc_cu_budget(self, hdr: str, base_cfg: SolIterListCfg) -> SolIterListCfg:
+    async def _calc_cu_budget(self, hdr: str, base_cfg: SolNeonIterTxCfg) -> SolNeonIterTxCfg:
         evm_step_cnt_per_iter: Final[int] = self._ctx.neon_prog.EvmStepPerIter
 
-        ix_list = tuple(self._build_tx_ix(base_cfg) for _ in range(base_cfg.iter_cnt))
+        ix_list = tuple(self._make_neon_ix(base_cfg) for _ in range(base_cfg.iter_cnt))
         # emulate
         try:
             meta_list = await self._emulate_ix_list(ix_list)
         except SolCbExceededError:
             # _LOG.debug("%s: use default %d EVM steps")
-            return base_cfg.update(evm_step_cnt=evm_step_cnt_per_iter).clear()
+            return base_cfg.clone(evm_step_cnt=evm_step_cnt_per_iter).clear()
 
-        max_cu_limit: Final[int] = SolCbProg.MaxCuLimit
-        # decrease the available CU limit in Neon iteration, because it is used for Compute Budget calls
-        threshold_cu_limit: Final[int] = int(max_cu_limit * 0.99)  # 99% of the maximum
         max_diff: Final[int] = 250_000
         evm_step_cnt: Final[int] = base_cfg.evm_step_cnt
 
         iter_cnt, cu_consumed = 0, 0
         for meta in meta_list:
-            if meta.cu_consumed > threshold_cu_limit:
+            if meta.cu_consumed > base_cfg.threshold_cu_limit:
                 break
             elif meta.error:
                 # last iteration with error
                 if not iter_cnt:
-                    return base_cfg.update(iter_cnt=1)
+                    return base_cfg.clone(iter_cnt=1)
                 break
             elif iter_cnt and abs(meta.cu_consumed - cu_consumed) > max_diff:
                 break
@@ -328,13 +326,13 @@ class IterativeTxStrategy(BaseTxStrategy):
         # not enough CUs
         if not iter_cnt:
             max_cu_consumed = max(map(lambda m: m.cu_consumed, meta_list))
-            ratio = min(threshold_cu_limit / max_cu_consumed, 0.9)  # decrease by 10% in any case
+            ratio = min(base_cfg.threshold_cu_limit / max_cu_consumed, 0.9)  # decrease by 10% in any case
             new_evm_step_cnt = max(int(evm_step_cnt * ratio), evm_step_cnt_per_iter)
 
             _LOG.debug("%s: decrease EVM steps from %d to %d", hdr, evm_step_cnt, new_evm_step_cnt)
-            return base_cfg.update(evm_step_cnt=new_evm_step_cnt).clear()
+            return base_cfg.clone(evm_step_cnt=new_evm_step_cnt).clear()
 
-        round_cu_limit = self._round_cu_limit(cu_consumed, max_cu_limit)
+        round_cu_limit = base_cfg.round_cu(cu_consumed)
         _LOG.debug(
             "%s: %s mode, %d EVM steps, %d CUs, %d iterations",
             hdr,
@@ -344,10 +342,10 @@ class IterativeTxStrategy(BaseTxStrategy):
             iter_cnt,
         )
 
-        optimal_cfg = base_cfg.update(iter_cnt=iter_cnt)
+        optimal_cfg = base_cfg.clone(iter_cnt=iter_cnt)
         return await self._update_cu_price(optimal_cfg, cu_limit=round_cu_limit)
 
-    async def _get_def_iter_list_cfg(self) -> SolIterListCfg:
+    async def _get_def_iter_list_cfg(self) -> SolNeonIterTxCfg:
         cu_limit = SolCbProg.MaxCuLimit // 2
         evm_step_cnt = self._ctx.neon_prog.EvmStepPerIter
         total_evm_step_cnt = self._ctx.total_evm_step_cnt
@@ -355,7 +353,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt, 1)
         iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt()
 
-        base_cfg = self._init_sol_tx_cfg(iter_cnt=iter_cnt, evm_step_cnt=evm_step_cnt)
+        base_cfg = self._init_sol_neon_tx_cfg(iter_cnt=iter_cnt, evm_step_cnt=evm_step_cnt)
         def_cfg = await self._update_cu_price(base_cfg, cu_limit=cu_limit)
 
         _LOG.debug(
@@ -377,27 +375,27 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return True
 
-    def _init_sol_tx_cfg(
+    def _init_sol_neon_tx_cfg(
         self,
-        *,
+        /,
         evm_step_cnt: int = 0,
         iter_cnt: int = 1,
         **kwargs,
-    ) -> SolIterListCfg:
+    ) -> SolNeonIterTxCfg:
         ix_mode = kwargs.pop("ix_mode", NeonIxMode.Unknown) or self._calc_ix_mode()
         cu_limit = kwargs.pop("cu_limit", self._def_cu_limit) or SolCbProg.MaxCuLimit
 
-        tx_cfg = super()._init_sol_tx_cfg(ix_mode=ix_mode, cu_limit=cu_limit, **kwargs)
+        tx_cfg = super()._init_sol_neon_tx_cfg(cu_limit=cu_limit, **kwargs)
 
         evm_step_cnt = max(evm_step_cnt, self._ctx.neon_prog.EvmStepPerIter)
         iter_cnt = max(iter_cnt, 1)
 
-        return SolIterListCfg(**tx_cfg.to_dict(), evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
+        return SolNeonIterTxCfg(**tx_cfg.to_dict(), ix_mode=ix_mode, evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
 
-    async def _update_cu_price(self, base_cfg: SolIterListCfg, *, cu_limit: int) -> SolIterListCfg:
+    async def _update_cu_price(self, base_cfg: SolNeonIterTxCfg, *, cu_limit: int) -> SolNeonIterTxCfg:
         cu_limit = self._def_cu_limit or cu_limit
-        cu_price = await self._calc_cu_price(cu_limit)
-        return base_cfg.update(cu_limit=cu_limit, cu_price=cu_price)
+        cu_price = await self._calc_cu_price(cu_limit, self._ctx.rw_account_key_list)
+        return base_cfg.clone(cu_limit=cu_limit, cu_price=cu_price)
 
     def _calc_wrap_iter_cnt(self) -> int:
         ix_mode = self._calc_ix_mode()
@@ -440,16 +438,16 @@ class IterativeTxStrategy(BaseTxStrategy):
         )
         # fmt: on
 
-    def _build_tx_ix(self, tx_cfg: SolIterListCfg) -> SolTxIx:
+    def _make_neon_ix(self, tx_cfg: SolNeonIterTxCfg) -> SolTxIx:
         step_cnt = tx_cfg.evm_step_cnt
         uniq_idx = self._ctx.next_uniq_idx()
         prog = self._ctx.neon_prog
         return prog.make_tx_step_from_data_ix(tx_cfg.ix_mode, step_cnt, uniq_idx)
 
-    def _build_start_skd_tx_ix(self, index: int) -> SolTxIx:
+    def _make_start_skd_tx_ix(self, index: int) -> SolTxIx:
         return self._ctx.neon_prog.make_start_skd_tx_from_data_ix(index)
 
-    def _build_skip_skd_tx_ix(self, index: int) -> SolTxIx:
+    def _make_skip_skd_tx_ix(self, index: int) -> SolTxIx:
         return self._ctx.neon_prog.make_skip_skd_tx_from_data_ix(index)
 
     def _store_sol_tx_list(self) -> None:

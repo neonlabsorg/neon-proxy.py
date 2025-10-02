@@ -4,11 +4,9 @@ from typing import ClassVar, Final, Sequence, Self
 
 from common.config.config import Config
 from common.solana.alt_program import SolAltProg, SolAltIxCode, SolAltID
-from common.solana.cb_program import SolCbProg
+from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.commit_level import SolCommit
-from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
-from common.solana.transaction_legacy import SolLegacyTx
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
 from .cmd_handler import BaseNPCmdHandler
@@ -137,10 +135,6 @@ class AltHandler(BaseNPCmdHandler):
             _LOG.error("Address Lookup Table %s is too young (%s > %s)", address, alt.last_extended_slot, valid_slot)
             return 1
 
-        cb_prog = SolCbProg()
-
-        cu_price_ix = cb_prog.make_cu_price_ix(self._cu_price)
-
         alt_id = SolAltID(address=alt.address, owner=alt.owner, recent_slot=0, nonce=0)
         if not alt.is_deactivated:
             ix_code = SolAltIxCode.Deactivate
@@ -153,13 +147,11 @@ class AltHandler(BaseNPCmdHandler):
             alt_ix = SolAltProg(alt.owner).make_close_alt_ix(alt_id)
             _LOG.debug("close Address Lookup Table %s", address)
 
-        cu_limit_ix = cb_prog.make_cu_limit_ix(cu_limit)
+        cfg = SolCbCfg(ix_code.name + "LookupTable", cu_price=self._cu_price, cu_limit=cu_limit)
 
-        name = ix_code.name + "LookupTable"
-
-        ix_list: Sequence[SolTxIx] = tuple([cu_price_ix, cu_limit_ix, alt_ix])
+        tx = SolCbProg.make_legacy_tx(cfg, alt_ix)
         blockhash, _ = await sol_client.get_recent_blockhash(SolCommit.Finalized)
-        tx = SolLegacyTx(name=name, ix_list=ix_list, blockhash=blockhash)
+        tx.set_recent_blockhash(blockhash)
 
         tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
         await sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=None)
