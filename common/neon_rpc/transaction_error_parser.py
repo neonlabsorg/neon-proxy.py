@@ -3,6 +3,15 @@ import re
 from typing import Sequence, Final
 
 from .api import EmulSolTxIxMetaModel
+from .errors import (
+    SolNeonSkdTxUseWrongHolderError,
+    SolNeonRequireResizeIterError,
+    SolNeonOutOfMemoryError,
+    SolNeonMissingAccountError,
+    SolNeonOutOfGasError,
+    SolNeonTxExecuteError,
+)
+from ..ethereum.errors import EthNonceTooHighError, EthNonceTooLowError
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData
 from ..neon.evm_log_decoder import (
     NeonTxErrorLogInfo,
@@ -20,6 +29,7 @@ from ..solana.transaction_meta import (
     SolRpcSendTxErrorInfo,
     SolRpcTxIxFieldErrorCode,
 )
+from ..solana_rpc.errors import SolUnsupportedProgError
 from ..solana_rpc.transaction_error_parser import SolTxErrorParser
 from ..utils.cached import cached_method, cached_property
 
@@ -60,10 +70,34 @@ class SolNeonTxErrorParser(SolTxErrorParser):
     # fmt: on
 
     @cached_method
-    def get_error(self) -> CancelErrorData | None:
-        if error := self.get_evm_error():
-            return error
-        return super().get_error()
+    def get_evm_error(self) -> BaseException | None:
+        if self.check_if_neon_account_already_exists():
+            return None
+        if data := self._get_skd_tx_use_wrong_holder_error():
+            return SolNeonSkdTxUseWrongHolderError(data)
+        elif data := self._get_require_resize_iter_error():
+            return SolNeonRequireResizeIterError(data)
+        elif data := self._get_out_of_memory_error():
+            return SolNeonOutOfMemoryError(data)
+        elif data := self._get_missing_account_error():
+            return SolNeonMissingAccountError(data)
+        elif data := self._get_out_of_gas_error():
+            return SolNeonOutOfGasError(data)
+        elif nonce_error := self._get_nonce_error():  # struct which I decode from evm_log_decoder
+            state_tx_cnt, tx_nonce = nonce_error
+            if tx_nonce < state_tx_cnt:
+                # the sender is unknown - should be replaced on the upper stack level
+                return EthNonceTooLowError(tx_nonce, state_tx_cnt)
+            else:
+                return EthNonceTooHighError(tx_nonce, state_tx_cnt)
+        elif self._check_if_unsupported_prog():
+            return SolUnsupportedProgError()
+        elif data := self._get_skd_tx_use_wrong_holder_error():
+            return SolNeonSkdTxUseWrongHolderError(data)
+        elif data := self._get_evm_error():
+            _LOG.debug("EVM fail %s: %d - %s", self._tx, data.code, data.message)
+            return SolNeonTxExecuteError(data)
+        return None
 
     @cached_property
     def sol_neon_ix(self) -> SolNeonTxIxMetaInfo | None:
@@ -75,26 +109,12 @@ class SolNeonTxErrorParser(SolTxErrorParser):
         return next(iter(sol_neon_tx.sol_neon_ix_list()), None)
 
     @cached_method
-    def get_require_resize_iter_error(self) -> CancelErrorData | None:
-        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountSpaceAllocationFailure])
-        return self._find_evm_error(err_list)
-
-    @cached_method
     def check_if_neon_account_already_exists(self) -> bool:
         if any(self._create_neon_acct_re.match(log_rec) for log_rec in self._evm_log_list):
             return True
 
         raw_log_list = self._get_log_list()
         return any(self._create_acct_re.match(log_rec) for log_rec in raw_log_list)
-
-    @cached_method
-    def get_out_of_memory_error(self) -> CancelErrorData | None:
-        log_list: Sequence[str] = self._get_log_list()
-        for log_rec in log_list:
-            if log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg):
-                err_msg = log_rec[idx + 2 :] if (idx := log_rec.rfind(": ")) != -1 else log_rec
-                return self._fmt_error(NeonTxErrorLogInfo.ErrorCode.Custom, err_msg)
-        return None
 
     @cached_method
     def get_neon_tx_return(self) -> NeonTxLogReturnInfo:
@@ -113,23 +133,22 @@ class SolNeonTxErrorParser(SolTxErrorParser):
             return False
         return True if self._find_evm_error(self._done_error_list) else False
 
-    @cached_method
-    def check_if_unsupported_prog(self) -> bool:
-        if super().check_if_unsupported_prog():
-            return True
-        elif self._get_tx_error() not in self._unsupported_prog_error_list:
-            return False
-        elif not (cancel_data := super().get_error()):
-            return False
+    def get_evm_log(self) -> NeonTxLogInfo | None:
+        if self.sol_neon_ix:
+            return self.sol_neon_ix.neon_log
 
-        return cancel_data.address == NeonProg.ID
+        evm_log_list = self._evm_log_list
+        return NeonEvmLogDecoder.safe_decode(evm_log_list)
 
-    @cached_method
-    def get_skd_tx_use_wrong_holder_error(self) -> CancelErrorData | None:
-        return self._find_evm_error(self._wrong_holder_error_list)
+    def _get_evm_error(self) -> CancelErrorData | None:
+        if not self._evm_error_list:
+            return None
 
-    @cached_method
-    def get_nonce_error(self) -> tuple[int, int] | None:
+        err_rec = self._evm_error_list[0]
+        # _LOG.debug("found %s", err_rec)
+        return self._fmt_error(err_rec.code, err_rec.message)
+
+    def _get_nonce_error(self) -> tuple[int, int] | None:
         for log_rec in self._evm_error_list:
             if log_rec.code == log_rec.code.InvalidTransactionNonce:
                 state_tx_cnt = int.from_bytes(log_rec.data[20:27], "little")
@@ -137,30 +156,37 @@ class SolNeonTxErrorParser(SolTxErrorParser):
                 return int(state_tx_cnt), int(tx_nonce)
         return None
 
-    @cached_method
-    def get_out_of_gas_error(self) -> CancelErrorData | None:
+    def _get_out_of_gas_error(self) -> CancelErrorData | None:
         return self._find_evm_error(self._out_of_gas_error_list)
 
-    @cached_method
-    def get_missing_account_error(self) -> CancelErrorData | None:
+    def _get_missing_account_error(self) -> CancelErrorData | None:
         return self._find_evm_error(self._missing_acct_error_list)
 
+    def _get_out_of_memory_error(self) -> CancelErrorData | None:
+        log_list: Sequence[str] = self._get_log_list()
+        for log_rec in log_list:
+            if log_rec in (self._out_of_memory_msg, self._memory_alloc_fail_msg):
+                err_msg = log_rec[idx + 2 :] if (idx := log_rec.rfind(": ")) != -1 else log_rec
+                return self._fmt_error(NeonTxErrorLogInfo.ErrorCode.Custom, err_msg)
+        return None
+
+    def _get_skd_tx_use_wrong_holder_error(self) -> CancelErrorData | None:
+        return self._find_evm_error(self._wrong_holder_error_list)
+
     @cached_method
-    def get_evm_error(self) -> CancelErrorData | None:
-        if not self._evm_error_list:
-            return None
+    def _check_if_unsupported_prog(self) -> bool:
+        if super()._check_if_unsupported_prog():
+            return True
+        elif self._get_tx_error() not in self._unsupported_prog_error_list:
+            return False
+        elif not (cancel_data := super()._get_error()):
+            return False
 
-        err_rec = self._evm_error_list[0]
-        _LOG.debug("found %s", err_rec)
-        return self._fmt_error(err_rec.code, err_rec.message)
+        return cancel_data.address == NeonProg.ID
 
-    @cached_method
-    def get_evm_log(self) -> NeonTxLogInfo | None:
-        if self.sol_neon_ix:
-            return self.sol_neon_ix.neon_log
-
-        evm_log_list = self._evm_log_list
-        return NeonEvmLogDecoder.safe_decode(evm_log_list)
+    def _get_require_resize_iter_error(self) -> CancelErrorData | None:
+        err_list = tuple([NeonTxErrorLogInfo.ErrorCode.AccountSpaceAllocationFailure])
+        return self._find_evm_error(err_list)
 
     @cached_property
     def _evm_error_list(self) -> Sequence[NeonTxErrorLogInfo]:

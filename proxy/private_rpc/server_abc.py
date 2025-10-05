@@ -4,7 +4,7 @@ import abc
 import logging
 
 from common.config.config import Config
-from common.cu_price.client import CuPriceClient
+from common.cu_price.client import SolCuPriceClient
 from common.ethereum.hash import EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.server import JsonRpcApi
@@ -43,7 +43,7 @@ class PrivateRpcServerAbc(BaseRpcServerAbc, abc.ABC):
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
-        cu_price_client: CuPriceClient,
+        cu_price_client: SolCuPriceClient,
         stat_client: StatClient,
         op_client: OpResourceClient,
         db: IndexerDbClient,
