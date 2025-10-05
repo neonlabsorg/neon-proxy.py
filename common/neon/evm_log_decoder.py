@@ -226,6 +226,7 @@ class NeonTxErrorLogInfo:
 @dataclass(frozen=True)
 class NeonTxLogInfo:
     neon_tx_hash: EthTxHash
+    root_neon_tx_hash: EthTxHash
     tx_ix_miner: EthAddress
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
@@ -379,6 +380,7 @@ class NeonTxIxStepInfo:
 class _NeonTxLogDraft:
     sol_tx_ix: SolTxIxMetaInfo
     neon_tx_hash: EthTxHash
+    root_neon_tx_hash: EthTxHash
     tx_ix_miner: EthAddress
     tx_ix_step: NeonTxIxStepInfo
     tx_ix_gas: NeonTxIxLogGasInfo
@@ -396,6 +398,7 @@ class _NeonTxLogDraft:
         return cls(
             sol_tx_ix=sol_tx_ix,
             neon_tx_hash=EthTxHash.default(),
+            root_neon_tx_hash=EthTxHash.default(),
             tx_ix_miner=EthAddress.default(),
             tx_ix_step=NeonTxIxStepInfo.default(),
             tx_ix_gas=NeonTxIxLogGasInfo.default(),
@@ -418,6 +421,7 @@ class _NeonTxLogDraft:
 
         return NeonTxLogInfo(
             neon_tx_hash=self.neon_tx_hash,
+            root_neon_tx_hash=self.root_neon_tx_hash,
             tx_ix_miner=self.tx_ix_miner,
             tx_ix_step=self.tx_ix_step,
             tx_ix_gas=self.tx_ix_gas,
@@ -744,6 +748,23 @@ class _NeonEvmHashLogDecoder(_NeonEvmLogDecoder):
         log.neon_tx_hash = EthTxHash.from_raw(neon_tx_hash)
 
 
+class _NeonEvmRootHashLogDecoder(_NeonEvmLogDecoder):
+    Name: ClassVar[str] = "ROOT_HASH"
+
+    @classmethod
+    def decode(cls, log: _NeonTxLogDraft, data_list: Sequence[str]) -> None:
+        """
+        Unpacks Neon transaction hash:
+        ROOT_HASH neon_tx_hash
+        """
+        if not cls._fixed_data_list_len(data_list, 1):
+            return
+        elif (neon_tx_hash := cls._fixed_bytes_from_b64(data_list[0], 32)) is None:
+            return
+
+        log.root_neon_tx_hash = EthTxHash.from_raw(neon_tx_hash)
+
+
 class _NeonEvmMinerDecoder(_NeonEvmLogDecoder):
     Name: ClassVar[str] = "MINER"
 
@@ -916,6 +937,7 @@ class NeonEvmLogDecoder:
         cls.get_key(): cls
         for cls in (
             _NeonEvmHashLogDecoder,
+            _NeonEvmRootHashLogDecoder,
             _NeonEvmMinerDecoder,
             _NeonEvmResetLogDecoder,
             _NeonEvmInvalidRevisionDecoder,
@@ -938,7 +960,7 @@ class NeonEvmLogDecoder:
     }
 
     @classmethod
-    def _find_decoder(cls, line: str) -> tuple[_NeonEvmLogDecoder | None, Sequence[str]]:
+    def _find_decoder(cls, line: str) -> tuple[type[_NeonEvmLogDecoder] | None, Sequence[str]]:
         if not line.startswith(cls._StartLine):
             return None, tuple()
 

@@ -73,10 +73,18 @@ class NeonSkdTxSigDb(SkdTxDbTable):
 
         activate_sql = DbSql(
             """;
-            INSERT INTO {table_name}
-               (sol_sig, sol_payer, neon_payer, nonce, chain_id, tree_address, neon_sig, block_slot, is_active) 
+            INSERT INTO {table_name} (
+                sol_sig, sol_payer, neon_payer, 
+                nonce, chain_id, 
+                tree_address, root_neon_sig, neon_sig, 
+                block_slot, is_active
+            ) 
             SELECT DISTINCT
-               a.sol_sig, a.sol_payer, a.neon_payer, a.nonce, a.chain_id, a.tree_address, a.neon_sig, {block_slot}, True
+               a.sol_sig, a.sol_payer, a.neon_payer, 
+               a.nonce, a.chain_id, 
+               a.tree_address, a.root_neon_sig, 
+               a.neon_sig, 
+               {block_slot}, True
             FROM 
                {table_name} AS a
             INNER JOIN
@@ -122,8 +130,15 @@ class NeonSkdTxSigDb(SkdTxDbTable):
 
         await asyncio.gather(*task_list)
 
-    async def commit_tx(self, ctx: DbTxCtx, slot: int, tree_address: SolPubKey, neon_tx: NeonTxModel) -> None:
-        rec = _Record.from_neon_tx(slot, tree_address, neon_tx)
+    async def commit_tx(
+        self,
+        ctx: DbTxCtx,
+        slot: int,
+        tree_address: SolPubKey,
+        root_neon_tx_hash: EthTxHash,
+        neon_tx: NeonTxModel,
+    ) -> None:
+        rec = _Record.from_neon_tx(slot, tree_address, root_neon_tx_hash, neon_tx)
         await self._insert_row(ctx, rec)
 
     async def get_skd_tx_sig_dict(
@@ -141,6 +156,7 @@ class NeonSkdTxSigDb(SkdTxDbTable):
 class _Record:
     block_slot: int
     tree_address: str
+    root_neon_sig: str
     neon_sig: str
     sol_sig: str
     sol_payer: str
@@ -154,6 +170,7 @@ class _Record:
         return cls(
             block_slot=slot,
             tree_address=tx.tree_address.to_string(),
+            root_neon_sig=tx.root_neon_tx_hash.to_string(),
             is_active=False,
             neon_sig=tx.neon_tx_hash.to_string(),
             sol_sig=tx.sol_skd_tx_sig.to_string(),
@@ -164,10 +181,11 @@ class _Record:
         )
 
     @classmethod
-    def from_neon_tx(cls, slot: int, tree_address: SolPubKey, tx: NeonTxModel) -> Self:
+    def from_neon_tx(cls, slot: int, tree_address: SolPubKey, root_neon_tx_hash: EthTxHash, tx: NeonTxModel) -> Self:
         return cls(
             block_slot=slot,
             tree_address=tree_address.to_string(),
+            root_neon_sig=root_neon_tx_hash.to_string(),
             is_active=False,
             neon_sig=tx.neon_tx_hash.to_string(),
             sol_sig=tx.sol_skd_tx_sig.to_string(),

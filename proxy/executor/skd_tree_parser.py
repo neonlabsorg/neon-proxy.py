@@ -19,11 +19,11 @@ _LOG = logging.getLogger(__name__)
 class NeonSkdTreeParser(ExecutorComponent):
     _ReCheckSec: Final[float] = ONE_BLOCK_SEC * 3
 
-    def __init__(self, server: ExecutorServerAbc, payer: NeonAddress, nonce: int, neon_tx_hash: EthTxHash) -> None:
+    def __init__(self, server: ExecutorServerAbc, payer: NeonAddress, nonce: int, root_neon_tx_hash: EthTxHash) -> None:
         super().__init__(server)
         self._payer = payer
         self._nonce = nonce
-        self._neon_tx_hash = neon_tx_hash
+        self._root_neon_tx_hash = root_neon_tx_hash
 
         self._tree: NeonSkdTreeModel | None = None
 
@@ -38,11 +38,11 @@ class NeonSkdTreeParser(ExecutorComponent):
 
     @cached_property
     def req_id(self) -> dict:
-        return dict(root_tx=self.neon_tx_hash.ident, skd_tree=self.address.ident)
+        return dict(root_tx=self._root_neon_tx_hash.ident, skd_tree=self.address.ident)
 
     @property
-    def neon_tx_hash(self) -> EthTxHash:
-        return self._neon_tx_hash
+    def root_neon_tx_hash(self) -> EthTxHash:
+        return self._root_neon_tx_hash
 
     @property
     def payer(self) -> NeonAddress:
@@ -66,6 +66,17 @@ class NeonSkdTreeParser(ExecutorComponent):
         if not self._tree.is_exist:
             _LOG.debug("NeonSkdTree %s doesn't exist", self.address)
             return
+
+        # It is possible if the transaction is loaded from a stuck holder
+        if self._root_neon_tx_hash.is_empty:
+            _LOG.debug(
+                "NeonSkdTree %s for payer %s:%d -> root-tx-hash %s",
+                self.address,
+                self._payer,
+                self._nonce,
+                self._tree.root_neon_tx_hash,
+            )
+            self._root_neon_tx_hash = self._tree.root_neon_tx_hash
 
         _LOG.debug(
             "NeonSkdTree %s for payer %s:%d has tx-hash %s, status %s, txs %s",
@@ -113,4 +124,4 @@ class NeonSkdTreeParser(ExecutorComponent):
 
     @property
     def _is_exist(self):
-        return self._tree.is_exist and (self._tree.root_neon_tx_hash == self._neon_tx_hash)
+        return self._tree.is_exist and (self._tree.root_neon_tx_hash == self._root_neon_tx_hash)

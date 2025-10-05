@@ -992,6 +992,7 @@ class SolIndexedAltInfo:
 class NeonIndexedSkdTxInfo:
     neon_tx_hash: EthTxHash
     tree_address: SolPubKey
+    root_neon_tx_hash: EthTxHash
     sol_skd_tx_sig: SolTxSig
     sol_skd_payer: SolPubKey
     neon_payer: EthAddress
@@ -1015,6 +1016,7 @@ class NeonIndexedSkdTxInfo:
 class NeonIndexedSkdTxStatusInfo:
     neon_tx_hash: EthTxHash
     tree_address: SolPubKey
+    root_neon_tx_hash: EthTxHash
     holder_address: SolPubKey
     status: NeonSkdTxStatus
 
@@ -1022,8 +1024,15 @@ class NeonIndexedSkdTxStatusInfo:
 @dataclass(frozen=True)
 class NeonIndexedSkdTxRelationInfo:
     tree_address: SolPubKey
+    root_neon_tx_hash: EthTxHash
     parent_tx_hash: EthTxHash
     child_tx_hash: EthTxHash
+
+
+@dataclass(frozen=True)
+class NeonIndexedDoneSkdTxInfo:
+    tree_address: SolPubKey
+    root_neon_tx_hash: EthTxHash
 
 
 class NeonIndexedBlockInfo:
@@ -1050,7 +1059,7 @@ class NeonIndexedBlockInfo:
         self._neon_skd_tx_list: list[NeonIndexedSkdTxInfo] = list()
         self._neon_skd_tx_status_list: list[NeonIndexedSkdTxStatusInfo] = list()
         self._neon_skd_tx_relation_list: list[NeonIndexedSkdTxRelationInfo] = list()
-        self._neon_skd_tree_done_list: list[SolPubKey] = list()
+        self._neon_skd_tree_done_list: list[NeonIndexedDoneSkdTxInfo] = list()
 
         self._sol_alt_dict: dict[SolIndexedAltInfo.Key, SolIndexedAltInfo] = dict()
 
@@ -1238,8 +1247,8 @@ class NeonIndexedBlockInfo:
     def add_neon_skd_tx_relation(self, tx: NeonIndexedSkdTxRelationInfo) -> None:
         self._neon_skd_tx_relation_list.append(tx)
 
-    def done_neon_skd_tree(self, tree_address: SolPubKey) -> None:
-        self._neon_skd_tree_done_list.append(tree_address)
+    def done_neon_skd_tree(self, tx: NeonIndexedDoneSkdTxInfo) -> None:
+        self._neon_skd_tree_done_list.append(tx)
 
     def iter_stuck_neon_holder(self) -> Iterator[NeonIndexedHolderInfo]:
         # assert self._is_stuck_completed
@@ -1321,7 +1330,7 @@ class NeonIndexedBlockInfo:
     def iter_neon_skd_tx_relation(self) -> Iterator[NeonIndexedSkdTxRelationInfo]:
         return iter(self._neon_skd_tx_relation_list)
 
-    def iter_done_neon_skd_tree(self) -> Iterator[SolPubKey]:
+    def iter_done_neon_skd_tree(self) -> Iterator[NeonIndexedDoneSkdTxInfo]:
         return iter(self._neon_skd_tree_done_list)
 
     def iter_alt(self) -> Iterator[SolIndexedAltInfo]:
