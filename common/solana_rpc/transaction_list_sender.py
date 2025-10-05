@@ -10,20 +10,13 @@ import time
 from typing import Sequence, Final
 
 from .client import SolClient
-from .errors import (
-    SolUnknownReceiptError,
-    SolBlockhashNotFound,
-    SolCbExceededError,
-    SolNoMoreRetriesError,
-    SolWritableError,
-)
+from .errors import SolBlockhashNotFound, SolNoMoreRetriesError
 from .transaction_error_parser import SolTxErrorParser
 from .transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from .ws_client import SolWatchTxSession
 from ..config.config import Config
 from ..config.constants import ONE_BLOCK_SEC
 from ..solana.commit_level import SolCommit
-from ..solana.errors import SolAltError
 from ..solana.hash import SolBlockHash
 from ..solana.signature import SolTxSig
 from ..solana.transaction import SolTx
@@ -88,10 +81,10 @@ class SolTxListSender:
     async def send(self, tx_list: SolTx | Sequence[SolTx]) -> bool:
         assert not self._tx_list
 
-        if isinstance(tx_list, SolTx):
-            tx_list = tuple([tx_list])
         if not tx_list:
             return False
+        elif isinstance(tx_list, SolTx):
+            tx_list = [tx_list]
 
         self._tx_list = list(tx_list)
 
@@ -103,10 +96,12 @@ class SolTxListSender:
 
         return await self._send()
 
-    async def recheck(self, tx_list: Sequence[SolTx]) -> bool:
+    async def recheck(self, tx_list: SolTx | Sequence[SolTx]) -> bool:
         assert not self._tx_list
         if not tx_list:
             return False
+        elif isinstance(tx_list, SolTx):
+            tx_list = [tx_list]
         # _LOG.debug("recheck txs: %s", tx_list)
 
         # The Sender should check all (failed too) txs again, because the state may have changed
@@ -285,7 +280,7 @@ class SolTxListSender:
     async def _fuzz_send_tx_list(self) -> None:
         fuzz_fail_pct = self._cfg.fuzz_fail_pct
 
-        # Fuzz testing of skipping of txs by Solana node
+        # Fuzz testing of skipped by Solana node txs
         if self._tx_list:
             skip_flag_list = [random.randint(1, 100) <= fuzz_fail_pct for _ in self._tx_list]
             skip_tx_list = [tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if skip_flag]
@@ -365,27 +360,15 @@ class SolTxListSender:
 
         if num_slots_behind := tx_error_parser.get_num_slots_behind():
             self._num_slots_behind = max(self._num_slots_behind, num_slots_behind)
-            _LOG.debug("slots behind %s", self._num_slots_behind)
+            # _LOG.debug("slots behind %s", self._num_slots_behind)
             tx_status = status.ResubmitReceipt
         elif tx_error_parser.check_if_blockhash_notfound():
             if tx.recent_blockhash not in self._bad_blockhash_set:
-                _LOG.debug("bad blockhash: %s", tx.recent_blockhash)
+                # _LOG.debug("bad blockhash: %s", tx.recent_blockhash)
                 self._bad_blockhash_set.add(tx.recent_blockhash)
             tx_status = status.ResubmitReceipt
-        elif tx_error_parser.check_if_alt_error():
-            tx_status, tx_error = status.ErrorReceipt, SolAltError("Bad ALT on send tx")
-        elif tx_error_parser.check_if_writable_error():
-            tx_status, tx_error = status.ErrorReceipt, SolWritableError()
-        elif tx_error_parser.check_if_cb_exceeded():
-            # if cu_consumed := tx_error_parser.cu_consumed:
-            #     _LOG.debug("CUs consumed: %s", cu_consumed)
-            tx_status, tx_error = status.ErrorReceipt, SolCbExceededError(tx_error_parser.cu_consumed)
-        elif data := tx_error_parser.get_error():
-            if data.address.is_empty:
-                _LOG.debug("unknown Solana receipt %s: %s", tx, tx_receipt)
-            else:
-                _LOG.debug("unknown Solana Program fail %s: %s - %s", tx, data.address, data.message)
-            tx_status, tx_error = status.ErrorReceipt, SolUnknownReceiptError(data)
+        elif tx_error := tx_error_parser.get_error():
+            tx_status = status.ErrorReceipt
 
         return SolTxSendState(tx_status, tx, tx_receipt, tx_error)
 

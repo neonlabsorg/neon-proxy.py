@@ -19,7 +19,7 @@ from common.config.constants import (
     ROLLUP_GENESIS_TIME,
     UNKNOWN_GENESIS_HASH,
 )
-from common.cu_price.client import CuPriceClient
+from common.cu_price.client import SolCuPriceClient
 from common.ethereum.commit_level import EthCommit
 from common.ethereum.errors import EthError
 from common.ethereum.hash import EthAddress, EthBlockHash
@@ -94,7 +94,7 @@ class NeonProxyAbc(BaseRpcServerAbc, abc.ABC):
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
-        cu_price_client: CuPriceClient,
+        cu_price_client: SolCuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
         gas_tank: GasLessAccountDb,

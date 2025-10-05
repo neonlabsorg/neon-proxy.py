@@ -54,5 +54,5 @@ class SolLegacyTx(SolTx):
     def _sign(self, signer: SolSigner) -> None:
         self._solders_legacy_tx.sign((signer.keypair,), self._solders_legacy_tx.message.recent_blockhash)
 
-    def _clone(self) -> SolLegacyTx:
+    def _clone(self) -> Self:
         return SolLegacyTx(self.name, self._decode_ix_list())

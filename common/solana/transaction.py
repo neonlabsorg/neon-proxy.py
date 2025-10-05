@@ -92,17 +92,19 @@ class SolTx(abc.ABC):
         self._build_legacy_tx(recent_blockhash=blockhash, ix_list=ix_list)
         return self
 
-    @reset_cached_method
     def serialize(self) -> bytes:
         assert self._is_signed, "transaction has not been signed"
-        result = self._serialize()
-        if len(result) > self.PktSize:
-            raise SolTxSizeError(len(result), self.PktSize)
-        return result
+        if (sz := self.size()) > self.PktSize:
+            raise SolTxSizeError(sz, self.PktSize)
+        return self.to_bytes()
 
+    @reset_cached_method
     def to_bytes(self) -> bytes:
         """Serialization which ignores signing and size"""
         return self._serialize()
+
+    def size(self) -> int:
+        return len(self.to_bytes())
 
     def sign(self, signer: SolSigner) -> None:
         self._sign(signer)
@@ -135,7 +137,7 @@ class SolTx(abc.ABC):
         self._get_blockhash.reset_cache(self)
         self._get_account_key_list.reset_cache(self)
         self._decode_ix_list.reset_cache(self)
-        self.serialize.reset_cache(self)
+        self.to_bytes.reset_cache(self)
 
     @reset_cached_method
     def _get_blockhash(self) -> SolBlockHash | None:
