@@ -71,6 +71,7 @@ class NeonSkdTxStatusDb(SkdTxDbTable):
 class _Record:
     block_slot: int
     tree_address: str
+    root_neon_sig: str
     is_active: bool
     neon_sig: str
     holder_address: str
@@ -81,6 +82,7 @@ class _Record:
         return cls(
             neon_sig=tx.neon_tx_hash.to_string(),
             tree_address=tx.tree_address.to_string(),
+            root_neon_sig=tx.root_neon_tx_hash.to_string(),
             is_active=False,
             holder_address=tx.holder_address.to_string(),
             status=tx.status.value,

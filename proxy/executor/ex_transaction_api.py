@@ -104,14 +104,14 @@ class NeonTxExecApi(ExecutorApi):
 
         async def _new_task() -> None:
             with logging_context(**request.req_id):
-                skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce)
+                skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce, request.neon_tx_hash)
                 try:
                     await skd_tree_parser.start()
                     await self._destroy_tree_account(skd_tree_parser)
 
                     if request.tree_address != skd_tree_parser.address:
                         _LOG.warning("tree address mismatch: %s != %s", request.tree_address, skd_tree_parser.address)
-                        await self._db.destroy_tree_account(request.tree_address)
+                        await self._db.destroy_tree_account(request.tree_address, request.neon_tx_hash)
                 finally:
                     await skd_tree_parser.stop()
 
@@ -172,8 +172,7 @@ class NeonTxExecApi(ExecutorApi):
         assert False, "unreached code"
 
     async def _exec_neon_skd_tree(self, request: ExecTxRequest) -> ExecTxDoneCode:
-        tx = request.tx
-        skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, tx.nonce)
+        skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce, request.neon_tx_hash)
         try:
             await skd_tree_parser.start()
             return await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request)
@@ -226,7 +225,7 @@ class NeonTxExecApi(ExecutorApi):
                 if (now - last_good_time) > MIN_FINALIZE_SEC:
                     await self._destroy_tree_account(skd_tree_parser)
                     break
-            elif skd_tree_parser.neon_tx_hash != skd_request.tx.neon_tx_hash:
+            elif not await skd_tree_parser.is_exist():
                 break
             else:
                 last_good_time = time.monotonic()
@@ -235,8 +234,8 @@ class NeonTxExecApi(ExecutorApi):
             #     _LOG.debug("retry %d to execute NeonSkdTx %s", retry, skd_tree_parser.neon_tx_hash)
 
             task_list: list[asyncio.Task] = list()
-            async for status, skd_tx in skd_tree_parser.iter_neon_skd_tx_list():
-                if skd_tree_parser.neon_tx_hash != skd_request.tx.neon_tx_hash:
+            async for status, skd_tx in skd_tree_parser.iter_active_neon_skd_tx_list():
+                if not await skd_tree_parser.is_exist():
                     break
                 elif status == status.InProgress:
                     task = asyncio.create_task(_complete_neon_tx(skd_tx))
@@ -265,7 +264,9 @@ class NeonTxExecApi(ExecutorApi):
         is_new_skd_tree_parser = False
         if (not skd_tree_parser) and holder_acct.is_scheduled_tx:
             is_new_skd_tree_parser = True
-            skd_tree_parser = NeonSkdTreeParser(self._server, holder_acct.payer, holder_acct.tx.nonce)
+            root_tx_hash = EthTxHash.default()
+            skd_tree_parser = NeonSkdTreeParser(self._server, holder_acct.payer, holder_acct.tx.nonce, root_tx_hash)
+            await skd_tree_parser.start()
             if not (await skd_tree_parser.is_exist()):
                 return ExecTxDoneCode.Failed
 
@@ -328,7 +329,7 @@ class NeonTxExecApi(ExecutorApi):
 
     async def _destroy_tree_account(self, skd_tree_parser: NeonSkdTreeParser) -> None:
         try:
-            stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.neon_tx_hash, SolPubKey.default())
+            stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.root_neon_tx_hash, SolPubKey.default())
             stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
             op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
             payer_acct = await self._core_api_client.get_neon_account(skd_tree_parser.payer, None)
@@ -353,7 +354,7 @@ class NeonTxExecApi(ExecutorApi):
 
                 acct = await self._sol_client.get_account(skd_tree_parser.address, 1, SolCommit.Finalized)
                 if acct.is_empty:
-                    await self._db.destroy_tree_account(skd_tree_parser.address)
+                    await self._db.destroy_tree_account(skd_tree_parser.address, skd_tree_parser.root_neon_tx_hash)
                     break
 
         except SolTxExecError:

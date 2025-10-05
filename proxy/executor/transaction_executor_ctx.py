@@ -98,7 +98,7 @@ class NeonExecTxCtx(ExecutorComponent):
     @cached_property
     def holder_validator(self) -> HolderAccountValidator:
         neon_tx_hash = self.neon_tx_hash
-        base_tx_hash = self._skd_tree_parser.neon_tx_hash if self._skd_tree_parser else neon_tx_hash
+        base_tx_hash = self._skd_tree_parser.root_neon_tx_hash if self._skd_tree_parser else neon_tx_hash
         return HolderAccountValidator(self._server, base_tx_hash, neon_tx_hash, self._holder_addr, self.is_stuck_tx)
 
     @property

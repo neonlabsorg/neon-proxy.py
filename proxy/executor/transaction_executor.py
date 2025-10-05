@@ -336,6 +336,6 @@ class NeonTxExecutor(ExecutorComponent):
             if await skd_tree.is_exist():
                 raise SolError("tree account is not deleted yet")
 
-            await self._db.destroy_tree_account(skd_tree.address, skd_tree.neon_tx_hash)
+            await self._db.destroy_tree_account(skd_tree.address, skd_tree.root_neon_tx_hash)
         except BaseException as exc:
             _LOG.error("error on delete tree row from db", exc_info=exc, extra=self._msg_filter)
