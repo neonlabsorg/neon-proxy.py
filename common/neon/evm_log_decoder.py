@@ -57,6 +57,15 @@ class NeonTxEventModelType(enum.IntEnum):
     Lost = 302
 
 
+class NeonTxStage(enum.IntEnum):
+    Unknown = 0
+
+    Begin = 1
+    Execute = 2
+    Resize = 3
+    Finalize = 4
+
+
 NeonTxEventModelTypeField = Annotated[
     NeonTxEventModelType,
     PlainValidator(lambda v: NeonTxEventModelType(v)),
@@ -236,8 +245,19 @@ class NeonTxLogInfo:
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[NeonTxEventModel]
     tx_error_list: list[NeonTxErrorLogInfo]
+    has_reset: bool
     is_truncated: bool
     is_already_finalized: bool
+
+    @cached_property
+    def ix_stage(self) -> NeonTxStage:
+        if not self.tx_return.is_empty:
+            return NeonTxStage.Finalize
+        elif self.tx_ix_step.step_cnt:
+            return NeonTxStage.Execute
+        elif not self.tx_ix_step.total_step_cnt:
+            return NeonTxStage.Begin
+        return NeonTxStage.Resize
 
 
 @dataclass(frozen=True)
@@ -248,24 +268,35 @@ class NeonTxLogReturnInfo:
     #
     Success: Final[int] = 1
     Failed: Final[int] = 0
+    Unknown: Final[int] = -1
     #
     _Default: ClassVar[NeonTxLogReturnInfo | None] = None
 
     @classmethod
     def default(cls) -> Self:
         if cls._Default is None:
-            cls._Default = cls(event_type=NeonTxEventModel.Type.Unknown, total_gas_used=0, status=0)
+            cls._Default = cls(event_type=NeonTxEventModel.Type.Unknown, total_gas_used=0, status=cls.Unknown)
         return cls._Default
 
     @property
     def is_empty(self) -> bool:
-        return self.total_gas_used == 0
+        return self.status == self.Unknown
+
+    @cached_property
+    def status_name(self) -> str:
+        if self.is_empty:
+            return "Empty"
+        elif self.status == self.Success:
+            return "Success"
+        elif self.status == self.Failed:
+            return "Failed"
+        return "Unknown"
 
     @cached_method
     def to_string(self) -> str:
         if self.is_empty:
-            return str_content_object(self, "Empty")
-        return str_fmt_object(self, skip_key_list=["Success", "Failed"])
+            return str_content_object(self, "Empty", name="NeonTx.Return")
+        return str_fmt_object(self, skip_key_list=["Success", "Failed"], name="NeonTx.Return")
 
     def __str__(self) -> str:
         return self.to_string()
@@ -289,7 +320,7 @@ class NeonTxIxLogGasInfo:
 
     @property
     def is_empty(self) -> bool:
-        return self.gas_used == 0
+        return self.total_gas_used == 0
 
 
 @dataclass(frozen=True)
@@ -348,8 +379,8 @@ class NeonTxBlockInfo:
     @cached_method
     def to_string(self) -> str:
         if self.is_empty:
-            return str_content_object(self, "Empty")
-        return str_fmt_object(self)
+            return str_content_object(self, "Empty", name="NeonTx.Block")
+        return str_fmt_object(self, name="NeonTx.Block")
 
     def __str__(self) -> str:
         return self.to_string()
@@ -371,10 +402,6 @@ class NeonTxIxStepInfo:
             cls._Default = cls(step_cnt=0, total_step_cnt=0)
         return cls._Default
 
-    @property
-    def is_empty(self) -> bool:
-        return self.step_cnt == 0
-
 
 @dataclass
 class _NeonTxLogDraft:
@@ -390,6 +417,7 @@ class _NeonTxLogDraft:
     tx_return: NeonTxLogReturnInfo
     tx_event_list: list[_NeonTxEventDraft]
     tx_error_list: list[NeonTxErrorLogInfo]
+    has_reset: bool
     is_truncated: bool
     is_already_finalized: bool
 
@@ -408,6 +436,7 @@ class _NeonTxLogDraft:
             tx_return=NeonTxLogReturnInfo.default(),
             tx_event_list=list(),
             tx_error_list=list(),
+            has_reset=False,
             is_truncated=False,
             is_already_finalized=False,
         )
@@ -431,6 +460,7 @@ class _NeonTxLogDraft:
             tx_return=self.tx_return,
             tx_event_list=[e.to_clean_copy(self) for e in self.tx_event_list],
             tx_error_list=self.tx_error_list,
+            has_reset=self.has_reset,
             is_truncated=self.is_truncated,
             is_already_finalized=self.is_already_finalized,
         )
@@ -585,9 +615,9 @@ class _NeonEvmReturnLogDecoder(_NeonEvmLogDecoder):
         """Unpacks base64-encoded return data"""
         if not cls._fixed_data_list_len(data_list, 1):
             return
-        elif log.tx_ix_gas.is_empty:
-            _LOG.error("failed to decode %s: fail to get total used gas", cls.Name)
-            return
+        # elif log.tx_ix_gas.is_empty:
+        #     _LOG.error("failed to decode %s: fail to get total used gas", cls.Name)
+        #     return
         elif (raw_exit_status := cls._int_from_b64(data_list[0])) is None:
             return
 
@@ -705,6 +735,7 @@ class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
             data=bytes(),
         )
         log.tx_event_list.append(event)
+        log.has_reset = True
 
 
 class _NeonEvmInvalidRevisionDecoder(_NeonEvmLogDecoder):
