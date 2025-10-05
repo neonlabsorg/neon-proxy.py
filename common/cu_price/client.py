@@ -27,7 +27,7 @@ class _Item:
         return hash(tuple(sorted(map(lambda x: hash(x), account_key_list))))
 
 
-class CuPriceClient:
+class SolCuPriceClient:
     _clear_time_sec: Final[int] = int(ONE_BLOCK_SEC * 32)
 
     def __init__(self, cfg: Config) -> None:

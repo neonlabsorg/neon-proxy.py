@@ -4,8 +4,10 @@ import logging
 import re
 from typing import Sequence, Final
 
+from .errors import SolUnknownReceiptError, SolCbExceededError, SolWritableError
 from ..neon.cancel_error import CancelErrorSource, CancelErrorData, SolCancelErrorCode
 from ..neon_rpc.api import EmulSolTxIxMetaModel
+from ..solana.errors import SolAltError
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import (
@@ -55,55 +57,20 @@ class SolTxErrorParser:
         self._receipt = receipt
 
     @cached_method
-    def get_error(self) -> CancelErrorData | None:
-        log_list = self._get_log_list()
-        for log_rec in log_list:
-            if failed_match := self._prog_fail_re.match(log_rec):
-                addr = SolPubKey.from_string(failed_match.group(1))
-                msg = failed_match.group(2)
-
-                code_match = self._custom_err_re.match(msg)
-                code = int(code_match.group(1), 16) if code_match else SolCancelErrorCode.Unknown
-                return CancelErrorData(CancelErrorSource.Solana, addr, code, msg)
-
-        if msg := self._get_error_msg():
-            _LOG.warning("fail on get error from meta %s", self._receipt)
-            return CancelErrorData.from_str(msg)
+    def get_error(self) -> BaseException | None:
+        if self._check_if_alt_error():
+            return SolAltError("Bad ALT on send tx")
+        elif self._check_if_writable_error():
+            return SolWritableError()
+        elif self._check_if_cb_exceeded():
+            return SolCbExceededError(self.cu_consumed)
+        elif data := self._get_error():
+            if data.address.is_empty:
+                _LOG.debug("unknown Solana receipt %s: %s", self._tx, self._receipt)
+            else:
+                _LOG.debug("unknown Solana Program fail %s: %s - %s", self._tx, data.address, data.message)
+            return SolUnknownReceiptError(data)
         return None
-
-    @cached_method
-    def check_if_alt_error(self) -> bool:
-        if not (tx_error := self._get_tx_error()):
-            return False
-        elif tx_error in self._alt_tx_error_list:
-            return True
-        elif tx_error not in self._alt_ix_error_list:
-            return False
-
-        log_list = self._get_log_list()
-        for log in log_list:
-            if log.startswith(self._alt_fail_msg):
-                return True
-        return False
-
-    @cached_method
-    def check_if_cb_exceeded(self) -> bool:
-        if self._get_tx_error() == SolRpcTxIxFieldErrorCode.ComputationalBudgetExceeded:
-            return True
-
-        log_list = self._get_log_list()
-        for log_rec in log_list:
-            if log_rec == self._log_truncated_msg:
-                return True
-            elif log_rec.find(self._cb_exceeded_msg) != -1:
-                return True
-            elif log_rec.find(self._cb_exceeded_msg_v2) != -1:
-                return True
-        return False
-
-    @cached_method
-    def check_if_unsupported_prog(self) -> bool:
-        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.UnsupportedProgramId
 
     @cached_property
     def cu_consumed(self) -> int | None:
@@ -123,18 +90,60 @@ class SolTxErrorParser:
         return self._get_tx_error() == SolRpcTxFieldErrorCode.BlockhashNotFound
 
     @cached_method
-    def check_if_preprocessed_error(self) -> bool:
-        return isinstance(self._receipt, SolRpcSendTxErrorInfo)
-
-    @cached_method
-    def check_if_writable_error(self) -> bool:
-        return self._get_tx_error() in self._writable_error_list
-
-    @cached_method
     def get_num_slots_behind(self) -> int | None:
         if isinstance(self._receipt, SolRpcNodeUnhealthyErrorInfo):
             return self._receipt.num_slots_behind
         return None
+
+    def _get_error(self) -> CancelErrorData | None:
+        log_list = self._get_log_list()
+        for log_rec in log_list:
+            if failed_match := self._prog_fail_re.match(log_rec):
+                addr = SolPubKey.from_string(failed_match.group(1))
+                msg = failed_match.group(2)
+
+                code_match = self._custom_err_re.match(msg)
+                code = int(code_match.group(1), 16) if code_match else SolCancelErrorCode.Unknown
+                return CancelErrorData(CancelErrorSource.Solana, addr, code, msg)
+
+        if msg := self._get_error_msg():
+            _LOG.warning("fail on get error from meta %s", self._receipt)
+            return CancelErrorData.from_str(msg)
+        return None
+
+    def _check_if_writable_error(self) -> bool:
+        return self._get_tx_error() in self._writable_error_list
+
+    def _check_if_alt_error(self) -> bool:
+        if not (tx_error := self._get_tx_error()):
+            return False
+        elif tx_error in self._alt_tx_error_list:
+            return True
+        elif tx_error not in self._alt_ix_error_list:
+            return False
+
+        log_list = self._get_log_list()
+        for log in log_list:
+            if log.startswith(self._alt_fail_msg):
+                return True
+        return False
+
+    def _check_if_cb_exceeded(self) -> bool:
+        if self._get_tx_error() == SolRpcTxIxFieldErrorCode.ComputationalBudgetExceeded:
+            return True
+
+        log_list = self._get_log_list()
+        for log_rec in log_list:
+            if log_rec == self._log_truncated_msg:
+                return True
+            elif log_rec.find(self._cb_exceeded_msg) != -1:
+                return True
+            elif log_rec.find(self._cb_exceeded_msg_v2) != -1:
+                return True
+        return False
+
+    def _check_if_unsupported_prog(self) -> bool:
+        return self._get_tx_error() == SolRpcTxIxFieldErrorCode.UnsupportedProgramId
 
     def _get_tx_error(self) -> SolRpcTxErrorInfo | SolRpcTxIxFieldErrorCode | None:
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
