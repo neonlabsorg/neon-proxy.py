@@ -18,7 +18,6 @@ class NeonSkdTxDb(SkdTxDbTable):
     def __init__(self, db: DbConnection):
         super().__init__(db, "neon_scheduled_transactions", _Record, key_list=("neon_sig", "block_slot"))
         self._select_top_tx_query = DbQueryBody()
-        self._select_by_tx_hash_query = DbQueryBody()
         self._select_by_new_slot_query = DbQueryBody()
         self._select_by_old_slot_query = DbQueryBody()
 
@@ -91,35 +90,25 @@ class NeonSkdTxDb(SkdTxDbTable):
             limit=DbSqlParam("limit"),
         )
 
-        select_by_tx_hash_sql = base_hdr_sql
-        select_by_tx_hash_sql += DbSql(
-            """
-            WHERE 
-              a.neon_sig = {neon_tx_hash}
-            """
-        ).format(
-            neon_tx_hash=DbSqlParam("neon_tx_hash"),
-        )
-
         select_top_tx_sql = base_hdr_sql
         select_top_tx_sql += DbSql(
             """
             WHERE 
               a.tree_address = {tree_address}
+              AND a.root_neon_sig = {root_neon_sig}
               AND a.index = 0
             """
         ).format(
             tree_address=DbSqlParam("tree_address"),
+            root_neon_sig=DbSqlParam("root_neon_sig"),
         )
 
         (
             self._select_top_tx_query,
-            self._select_by_tx_hash_query,
             self._select_by_new_slot_query,
             self._select_by_old_slot_query,
         ) = await self._db.sql_to_query(
             select_top_tx_sql,
-            select_by_tx_hash_sql,
             select_by_new_slot_sql,
             select_by_old_slot_sql,
         )
@@ -130,6 +119,7 @@ class NeonSkdTxDb(SkdTxDbTable):
             _Record.from_tx(b.slot, tx)
             for b in block_list
             for tx in b.iter_neon_skd_tx()
+            if not tx.index  # only top txs
         ]
         # fmt: on
         await self._insert_row_list(ctx, rec_list)
@@ -153,26 +143,27 @@ class NeonSkdTxDb(SkdTxDbTable):
         )
         return tuple([rec.to_neon_skd_tx() for rec in rec_list if rec])
 
-    async def get_tx_by_hash(self, ctx: DbTxCtx, neon_tx_hash: EthTxHash) -> NeonSkdTxModel | None:
-        rec = await self._fetch_one(
-            ctx,
-            self._select_by_tx_hash_query,
-            _ByNeonTxHash(neon_tx_hash=neon_tx_hash.to_string()),
-            record_type=_RecordWithPayer,
-        )
-        return rec.to_neon_skd_tx() if rec else None
-
-    async def get_top_tx(self, ctx: DbTxCtx, tree_address: SolPubKey) -> NeonSkdTxModel:
+    async def get_top_tx(self, ctx: DbTxCtx, tree_address: SolPubKey, root_neon_tx_hash: EthTxHash) -> NeonSkdTxModel:
         rec = await self._fetch_one(
             ctx,
             self._select_top_tx_query,
-            _ByTree(tree_address=tree_address.to_string()),
+            _ByTreeAddrAndTxHash(
+                tree_address=tree_address.to_string(),
+                root_neon_sig=root_neon_tx_hash.to_string(),
+            ),
             record_type=_RecordWithPayer,
         )
         return rec.to_neon_skd_tx() if rec else None
 
-    async def commit_tx(self, ctx: DbTxCtx, slot: int, tree_address: SolPubKey, neon_tx: NeonTxModel) -> None:
-        rec = _Record.from_neon_tx(slot, tree_address, neon_tx)
+    async def commit_tx(
+        self,
+        ctx: DbTxCtx,
+        slot: int,
+        tree_address: SolPubKey,
+        root_neon_tx_hash: EthTxHash,
+        neon_tx: NeonTxModel,
+    ) -> None:
+        rec = _Record.from_neon_tx(slot, tree_address, root_neon_tx_hash, neon_tx)
         await self._insert_row(ctx, rec)
 
 
@@ -180,6 +171,7 @@ class NeonSkdTxDb(SkdTxDbTable):
 class _Record:
     block_slot: int
     tree_address: str
+    root_neon_sig: str
     is_active: bool
     neon_sig: str
     index: int
@@ -189,16 +181,18 @@ class _Record:
         return cls(
             block_slot=slot,
             tree_address=tx.tree_address.to_string(),
+            root_neon_sig=tx.root_neon_tx_hash.to_string(),
             is_active=False,
             neon_sig=tx.neon_tx_hash.to_string(),
             index=tx.index,
         )
 
     @classmethod
-    def from_neon_tx(cls, slot: int, tree_address: SolPubKey, tx: NeonTxModel) -> Self:
+    def from_neon_tx(cls, slot: int, tree_address: SolPubKey, root_neon_tx_hash: EthTxHash, tx: NeonTxModel) -> Self:
         return cls(
             block_slot=slot,
             tree_address=tree_address.to_string(),
+            root_neon_sig=root_neon_tx_hash.to_string(),
             is_active=False,
             neon_sig=tx.neon_tx_hash.to_string(),
             index=tx.index,
@@ -235,10 +229,6 @@ class _BySlot:
 
 
 @dataclass(frozen=True)
-class _ByNeonTxHash:
-    neon_tx_hash: str
-
-
-@dataclass(frozen=True)
-class _ByTree:
+class _ByTreeAddrAndTxHash:
     tree_address: str
+    root_neon_sig: str

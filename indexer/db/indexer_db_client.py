@@ -197,34 +197,38 @@ class IndexerDbClient:
         return await self._neon_skd_tx_db.get_old_tx_list_by_slot(None, min_slot, limit)
 
     async def get_neon_skd_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonSkdTxModel | None:
-        return await self._neon_skd_tx_db.get_tx_by_hash(None, neon_tx_hash)
+        return await self._neon_skd_tx_body_db.get_tx_by_hash(None, neon_tx_hash)
 
     async def get_neon_skd_tx_holder_address(self, neon_tx_hash: EthTxHash) -> SolPubKey | None:
         return await self._neon_skd_tx_status_db.get_holder_address(None, neon_tx_hash)
 
-    async def commit_neon_skd_tx(self, slot: int, tree_address: SolPubKey, neon_tx: NeonTxModel) -> None:
+    async def commit_neon_skd_tx(
+        self,
+        slot: int,
+        tree_address: SolPubKey,
+        root_neon_tx_hash: EthTxHash,
+        neon_tx: NeonTxModel,
+    ) -> None:
         async def _tx(ctx: DbTxCtx) -> None:
-            await self._neon_skd_tx_body_db.commit_tx(ctx, slot, tree_address, neon_tx)
-            await self._neon_skd_tx_sig_db.commit_tx(ctx, slot, tree_address, neon_tx)
-            await self._neon_skd_tx_db.commit_tx(ctx, slot, tree_address, neon_tx)
-            if (neon_tx.index != 0) and (await self._neon_skd_tx_db.get_top_tx(ctx, tree_address)):
+            await self._neon_skd_tx_body_db.commit_tx(ctx, slot, tree_address, root_neon_tx_hash, neon_tx)
+            await self._neon_skd_tx_sig_db.commit_tx(ctx, slot, tree_address, root_neon_tx_hash, neon_tx)
+            if (neon_tx.index != 0) and (await self._neon_skd_tx_db.get_top_tx(ctx, tree_address, root_neon_tx_hash)):
                 return
 
             # if no a top transaction -> insert it -> for correct destroying of tree accounts
-            rand_tx_hash = bytes().join(
-                [
-                    b"\xff\xff\xff\xff\xff\xff",
-                    neon_tx.neon_tx_hash.to_bytes()[6:]
-                ]
-            )
-            idx_info = dict(neon_tx_hash=EthTxHash.from_raw(rand_tx_hash), index=0, rlp_tx=bytes())
+            idx_info = dict(neon_tx_hash=root_neon_tx_hash, index=0, rlp_tx=bytes())
             top_neon_tx = neon_tx.model_copy(update=idx_info)
 
-            await self._neon_skd_tx_db.commit_tx(ctx, slot, tree_address, top_neon_tx)
-            await self._neon_skd_tx_sig_db.commit_tx(ctx, slot, tree_address, top_neon_tx)
+            await self._neon_skd_tx_db.commit_tx(ctx, slot, tree_address, root_neon_tx_hash, top_neon_tx)
+            await self._neon_skd_tx_sig_db.commit_tx(ctx, slot, tree_address, root_neon_tx_hash, top_neon_tx)
 
         await self._db_conn.run_tx(_tx)
 
-    async def destroy_tree_account(self, tree_address: SolPubKey) -> None:
-        tree_addr_list = [tree_address]
-        await asyncio.gather(*[db.destroy_tree_list(None, tree_addr_list) for db in self._skd_tree_db_list])
+    async def destroy_tree_account(self, tree_address: SolPubKey, neon_tx_hash: EthTxHash) -> None:
+        finalized_slot: Final = await self.get_finalized_slot()
+        # fmt: off
+        await asyncio.gather(*[
+            db.destroy_tree_account(None, finalized_slot, tree_address, neon_tx_hash)
+            for db in self._skd_tree_db_list
+        ])
+        # fmt: on

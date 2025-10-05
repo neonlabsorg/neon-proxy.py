@@ -57,9 +57,13 @@ class NpExecTxApi(NeonProxyApi):
                 return neon_tx.neon_tx_hash
 
             # keep information about Solana scheduled Tx
-            if neon_skd_tx:
+            if neon_skd_tx and (not neon_skd_tx.sol_skd_tx_sig.is_empty):
                 skd_info = dict(sol_skd_tx_sig=neon_skd_tx.sol_skd_tx_sig, sol_skd_payer=neon_skd_tx.sol_skd_payer)
-                neon_tx = neon_tx.model_copy(update=skd_info)
+            else:
+                root_skd_tx = await self._db.get_neon_skd_tx_by_hash(tree.root_neon_tx_hash)
+                skd_info = dict(sol_skd_tx_sig=root_skd_tx.sol_skd_tx_sig, sol_skd_payer=root_skd_tx.sol_skd_payer)
 
-            await self._db.commit_neon_skd_tx(tree.last_slot, tree.address, neon_tx)
+            neon_tx = neon_tx.model_copy(update=skd_info)
+
+            await self._db.commit_neon_skd_tx(tree.last_slot, tree.address, tree.root_neon_tx_hash, neon_tx)
             return neon_tx.neon_tx_hash
