@@ -1,26 +1,19 @@
 import dataclasses
-import logging
 from typing import Sequence, cast as tp_cast
 
-from .errors import (
-    SolNeonOutOfMemoryError,
-    SolNeonRequireResizeIterError,
-    SolNeonMissingAccountError,
-    SolNeonSkdTxUseWrongHolderError,
-    SolNeonOutOfGasError,
-    SolNeonTxExecuteError,
-)
 from .transaction_error_parser import SolNeonTxErrorParser
-from ..ethereum.errors import EthNonceTooLowError, EthNonceTooHighError
+from ..config.config import Config
 from ..neon.evm_log_decoder import NeonTxLogReturnInfo
 from ..neon.transaction_decoder import SolNeonTxIxMetaInfo
 from ..solana.transaction import SolTx
 from ..solana.transaction_meta import SolRpcTxReceiptInfo
-from ..solana_rpc.errors import SolUnsupportedProgError
-from ..solana_rpc.transaction_list_sender import SolTxListSender, SolTxSendState
+from ..solana_rpc.client import SolClient
+from ..solana_rpc.transaction_list_sender import SolTxListSender, SolTxSendState, SolTxListSigner
+from ..solana_rpc.transaction_list_sender_stat import SolTxStatClient
 from ..utils.cached import cached_property, reset_cached_method
 
-_LOG = logging.getLogger(__name__)
+
+# _LOG = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -38,8 +31,13 @@ class SolNeonTxSendState(SolTxSendState):
 
 
 class SolNeonTxListSender(SolTxListSender):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self,
+        cfg: Config,
+        sol_client: SolClient,
+        sol_tx_signer: SolTxListSigner,
+        stat_client: SolTxStatClient
+    ) -> None:
+        super().__init__(cfg, sol_client, sol_tx_signer, stat_client)
         self._done_ret_cnt = 0
 
     def clear(self) -> None:
@@ -74,31 +72,11 @@ class SolNeonTxListSender(SolTxListSender):
         elif tx_error_parser.is_done_error():
             tx_status = status.GoodReceipt
             self._done_ret_cnt += 1
-        elif data := tx_error_parser.get_skd_tx_use_wrong_holder_error():
-            tx_status, tx_error = status.ErrorReceipt, SolNeonSkdTxUseWrongHolderError(data)
-        elif tx_error_parser.check_if_unsupported_prog():
-            tx_status, tx_error = status.ErrorReceipt, SolUnsupportedProgError()
         elif tx_error_parser.check_if_neon_account_already_exists():
             # no exception: the neon account exists - the goal is reached
             tx_status = status.GoodReceipt
-        elif data := tx_error_parser.get_require_resize_iter_error():
-            tx_status, tx_error = status.ErrorReceipt, SolNeonRequireResizeIterError(data)
-        elif data := tx_error_parser.get_out_of_memory_error():
-            tx_status, tx_error = status.ErrorReceipt, SolNeonOutOfMemoryError(data)
-        elif data := tx_error_parser.get_missing_account_error():
-            tx_status, tx_error = status.ErrorReceipt, SolNeonMissingAccountError(data)
-        elif data := tx_error_parser.get_out_of_gas_error():
-            tx_status, tx_error = status.ErrorReceipt, SolNeonOutOfGasError(data)
-        elif nonce_error := tx_error_parser.get_nonce_error():  # struct which I decode from evm_log_decoder
-            state_tx_cnt, tx_nonce = nonce_error
-            if tx_nonce < state_tx_cnt:
-                # the sender is unknown - should be replaced on the upper stack level
-                tx_status, tx_error = status.ErrorReceipt, EthNonceTooLowError(tx_nonce, state_tx_cnt)
-            else:
-                tx_status, tx_error = status.ErrorReceipt, EthNonceTooHighError(tx_nonce, state_tx_cnt)
-        elif data := tx_error_parser.get_evm_error():
-            _LOG.debug("EVM fail %s: %d - %s", tx, data.code, data.message)
-            tx_status, tx_error = status.ErrorReceipt, SolNeonTxExecuteError(data)
+        elif tx_error := tx_error_parser.get_evm_error():
+            tx_status = status.ErrorReceipt
         else:
             tx_state = super()._decode_tx_status(tx, tx_receipt)
             tx_status, tx_error = tx_state.status, tx_state.error

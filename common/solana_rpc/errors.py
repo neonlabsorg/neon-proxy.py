@@ -59,12 +59,10 @@ class SolCbExceededBaseError(SolTxExecError):
         return self._cu_consumed
 
 
-class SolCbExceededError(SolCbExceededBaseError):
-    pass
+class SolCbExceededError(SolCbExceededBaseError): ...
 
 
-class SolCbExceededCriticalError(SolCbExceededBaseError):
-    pass
+class SolCbExceededCriticalError(SolCbExceededBaseError): ...
 
 
 class SolWritableError(SolTxExecError):
@@ -103,6 +101,5 @@ class SolNoMoreRetriesError(SolTxExecError):
         )
 
 
-class SolUnknownReceiptError(SolTxExecError):
-    pass
+class SolUnknownReceiptError(SolTxExecError): ...
 

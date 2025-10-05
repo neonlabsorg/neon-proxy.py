@@ -2,7 +2,7 @@ import logging
 import signal
 import time
 
-from common.cu_price.client import CuPriceClient
+from common.cu_price.client import SolCuPriceClient
 from common.config.config import Config
 from common.config.constants import NEON_PROXY_VER
 from common.config.utils import LogMsgFilter
@@ -54,7 +54,7 @@ class NeonProxyApp:
         op_client = OpResourceClient(cfg)
         mp_client = MempoolClient(cfg)
         exec_client = ExecutorClient(cfg)
-        cu_price_client = CuPriceClient(cfg)
+        cu_price_client = SolCuPriceClient(cfg)
 
         # Init Executor server
         self._exec_server = ExecutorServer(
@@ -75,6 +75,7 @@ class NeonProxyApp:
             sol_client=sol_client,
             mp_client=mp_client,
             stat_client=self._stat_client,
+            cu_price_client=cu_price_client,
         )
 
         # Init Mempool
