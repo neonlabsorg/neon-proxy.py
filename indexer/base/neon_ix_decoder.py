@@ -18,6 +18,7 @@ from .objects import (
     NeonIndexedSkdTxStatusInfo,
     NeonIndexedSkdTxRelationInfo,
     NeonIndexedSkdTxInfo,
+    NeonIndexedDoneSkdTxInfo,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -532,9 +533,12 @@ class BaseSkdTxIxDecoder(BaseTxIxDecoder):
             _LOG.debug("%s: compete NeonSkdTx with status %s - %s", self._done_hdr, status.name, tx)
             self._decoding_done(tx)
 
+        ix = self.state.sol_neon_ix
+
         skd_tx = NeonIndexedSkdTxStatusInfo(
-            neon_tx_hash=self.state.sol_neon_ix.neon_tx_hash,
+            neon_tx_hash=ix.neon_tx_hash,
             tree_address=tree_addr,
+            root_neon_tx_hash=ix.root_neon_tx_hash,
             holder_address=holder_addr,
             status=status,
         )
@@ -568,6 +572,9 @@ class SkdTxCreateDecoder(BaseSkdTxIxDecoder):
             )
             return False
 
+        # Historically, CreateSkd and CreateMultipleSkd log the HASH of the first tx.
+        root_neon_tx_hash = ix.neon_tx_hash
+
         skd_tx = NeonIndexedSkdTxInfo(
             neon_tx_hash=ix.neon_tx_hash,
             sol_skd_tx_sig=ix.sol_tx_sig,
@@ -578,6 +585,7 @@ class SkdTxCreateDecoder(BaseSkdTxIxDecoder):
             index=0,
             rlp_tx=neon_tx.rlp_tx.to_bytes(),
             tree_address=tree_addr,
+            root_neon_tx_hash=root_neon_tx_hash,
         )
         self.state.neon_block.add_neon_skd_tx(skd_tx)
 
@@ -622,6 +630,9 @@ class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
         sol_payer = ix.sol_payer
         neon_payer = NeonAddress.from_raw(ix.sol_payer, NeonProg.Layer0ChainId)
 
+        # Historically, CreateSkd and CreateMultipleSkd log the HASH of the first tx.
+        root_neon_tx_hash = ix.neon_tx_hash
+
         tx_hash_list: list[EthTxHash] = list()
         child_idx_list: list[int] = list()
         while list_data:
@@ -649,6 +660,7 @@ class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
                 index=index,
                 rlp_tx=bytes(),
                 tree_address=tree_addr,
+                root_neon_tx_hash=root_neon_tx_hash,
             )
             block.add_neon_skd_tx(skd_tx)
             index += 1
@@ -659,6 +671,7 @@ class SkdTxCreateMultipleDecoder(BaseSkdTxIxDecoder):
             if child_idx < len(tx_hash_list):
                 skd_tx = NeonIndexedSkdTxRelationInfo(
                     tree_address=tree_addr,
+                    root_neon_tx_hash=root_neon_tx_hash,
                     parent_tx_hash=tx_hash_list[parent_idx],
                     child_tx_hash=tx_hash_list[child_idx],
                 )
@@ -702,15 +715,17 @@ class SkdTxFinishDecoder(BaseSkdTxIxDecoder):
     is_deprecated: ClassVar[bool] = False
 
     def execute(self) -> bool:
-        if self.state.sol_neon_ix.neon_tx_hash.is_empty:
+        ix = self.state.sol_neon_ix
+        if ix.neon_tx_hash.is_empty:
             _LOG.warning("Unknown NeonTx.Hash")
             return False
         elif not (holder_addr := self._get_holder_address()) or not (tree_addr := self._get_tree_address(1)):
             return False
 
         skd_tx = NeonIndexedSkdTxStatusInfo(
-            neon_tx_hash=self.state.sol_neon_ix.neon_tx_hash,
+            neon_tx_hash=ix.neon_tx_hash,
             tree_address=tree_addr,
+            root_neon_tx_hash=ix.root_neon_tx_hash,
             holder_address=holder_addr,
             status=NeonSkdTxStatus.Success,
         )
@@ -766,15 +781,24 @@ class SkdTreeDestroyDecoder(BaseSkdTxIxDecoder):
         if not (tree_addr := self._get_tree_address(2)):
             return False
 
+        ix = self.state.sol_neon_ix
+        root_neon_tx_hash = ix.root_neon_tx_hash
+
         skd_tx = NeonIndexedSkdTxStatusInfo(
-            neon_tx_hash=self.state.sol_neon_ix.neon_tx_hash,
+            neon_tx_hash=root_neon_tx_hash,
             tree_address=tree_addr,
+            root_neon_tx_hash=root_neon_tx_hash,
             holder_address=SolPubKey.default(),
             status=NeonSkdTxStatus.Destroyed,
         )
         self.state.neon_block.add_neon_skd_tx_status(skd_tx)
 
-        self.state.neon_block.done_neon_skd_tree(tree_addr)
+        done_tx = NeonIndexedDoneSkdTxInfo(
+            tree_address=tree_addr,
+            root_neon_tx_hash=root_neon_tx_hash,
+        )
+
+        self.state.neon_block.done_neon_skd_tree(done_tx)
         _LOG.debug("%s: destroy NeonTree.Account %s", self._success_hdr, tree_addr)
         return True
 

@@ -174,6 +174,10 @@ class SolNeonTxIxMetaInfo:
         return self.neon_log.neon_tx_hash
 
     @property
+    def root_neon_tx_hash(self) -> EthTxHash:
+        return self.neon_log.root_neon_tx_hash
+
+    @property
     def neon_tx_ix_miner(self) -> EthAddress:
         return self.neon_log.tx_ix_miner
 

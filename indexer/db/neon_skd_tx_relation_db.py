@@ -89,9 +89,9 @@ class NeonSkdTxRelationDb(SkdTxDbTable):
         activate_sql = DbSql(
             """;
             INSERT INTO {table_name}
-               (parent_neon_sig, child_neon_sig, tree_address, block_slot, is_active) 
+               (parent_neon_sig, child_neon_sig, tree_address, root_neon_sig, block_slot, is_active) 
             SELECT DISTINCT
-               a.parent_neon_sig, a.child_neon_sig, a.tree_address, {block_slot}, True
+               a.parent_neon_sig, a.child_neon_sig, a.tree_address, a.root_neon_sig, {block_slot}, True
             FROM 
                {table_name} AS a
             INNER JOIN
@@ -168,6 +168,7 @@ class NeonSkdTxRelationDb(SkdTxDbTable):
 class _Record:
     block_slot: int
     tree_address: str
+    root_neon_sig: str
     parent_neon_sig: str
     child_neon_sig: str
     is_active: bool
@@ -177,6 +178,7 @@ class _Record:
         return cls(
             block_slot=slot,
             tree_address=tx.tree_address.to_string(),
+            root_neon_sig=tx.root_neon_tx_hash.to_string(),
             is_active=False,
             parent_neon_sig=tx.parent_tx_hash.to_string(),
             child_neon_sig=tx.child_tx_hash.to_string(),
