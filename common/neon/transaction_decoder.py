@@ -11,6 +11,7 @@ from .evm_log_decoder import (
     NeonTxEventModel,
     NeonTxBlockInfo,
     NeonTxErrorLogInfo,
+    NeonTxStage,
 )
 from .neon_program import NeonProg
 from ..ethereum.hash import EthTxHash, EthTxHashField, EthAddress, EthAddressField
@@ -234,6 +235,10 @@ class SolNeonTxIxMetaInfo:
     @property
     def neon_tx_return(self) -> NeonTxLogReturnInfo:
         return self.neon_log.tx_return
+
+    @property
+    def neon_tx_stage(self) -> NeonTxStage:
+        return self.neon_log.ix_stage
 
     @property
     def iter_neon_tx_event(self) -> Iterator[NeonTxEventModel]:
