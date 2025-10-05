@@ -5,6 +5,7 @@ from typing import Sequence, Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config
+from common.cu_price.client import SolCuPriceClient
 from common.neon_rpc.api_client import CoreApiClient
 from common.solana.signer import SolSigner
 from common.solana_rpc.client import SolClient
@@ -28,6 +29,10 @@ class OpResourceComponent(BaseIntlProxyComponent):
     def _mp_client(self) -> MempoolClient:
         return self._server._mp_client  # noqa
 
+    @cached_property
+    def _cu_price_client(self) -> SolCuPriceClient:
+        return self._server._cu_price_client  # noqa
+
 
 class OpResourceApi(OpResourceComponent, AppDataApi):
     def __init__(self, server: OpResourceServerAbc) -> None:
@@ -43,10 +48,12 @@ class OpResourceServerAbc(BaseIntlProxyServer, abc.ABC):
         sol_client: SolClient,
         mp_client: MempoolClient,
         stat_client: StatClient,
+        cu_price_client: SolCuPriceClient,
     ) -> None:
         super().__init__(cfg, core_api_client, sol_client)
         self._mp_client = mp_client
         self._stat_client = stat_client
+        self._cu_price_client = cu_price_client
 
     @abc.abstractmethod
     async def get_signer_list(self) -> Sequence[SolSigner]: ...

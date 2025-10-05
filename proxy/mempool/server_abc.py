@@ -6,7 +6,7 @@ from typing import Self
 
 from common.app_data.server import AppDataApi
 from common.config.config import Config
-from common.cu_price.client import CuPriceClient
+from common.cu_price.client import SolCuPriceClient
 from common.neon_rpc.api import EvmConfigModel
 from common.neon_rpc.api_client import CoreApiClient
 from common.solana_rpc.client import SolClient
@@ -41,7 +41,7 @@ class MempoolComponent(BaseIntlProxyComponent):
         return self._server._stat_client  # noqa
 
     @cached_property
-    def _cu_price_client(self) -> CuPriceClient:
+    def _cu_price_client(self) -> SolCuPriceClient:
         return self._server._cu_price_client  # noqa
 
     @property
@@ -63,7 +63,7 @@ class MempoolServerAbc(BaseIntlProxyServer, abc.ABC):
         sol_client: SolClient,
         exec_client: ExecutorClient,
         op_client: OpResourceClient,
-        cu_price_client: CuPriceClient,
+        cu_price_client: SolCuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
     ) -> None:

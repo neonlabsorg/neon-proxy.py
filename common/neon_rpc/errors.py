@@ -1,20 +1,17 @@
-from ..neon.cancel_error import CancelErrorData, CancelErrorSource
+from ..neon.cancel_error import CancelErrorData, CancelErrorSource, NeonProxyCancelErrorCode
 from ..neon.evm_log_decoder import NeonTxErrorLogInfo
 from ..neon.neon_program import NeonProg
 from ..neon.transaction_model import NeonSkdTxStatus
 from ..solana_rpc.errors import SolTxExecError
 
 
-class SolNeonTxExecuteError(SolTxExecError):
-    pass
+class SolNeonTxExecuteError(SolTxExecError): ...
 
 
-class SolNeonRequireResizeIterError(SolNeonTxExecuteError):
-    pass
+class SolNeonRequireResizeIterError(SolNeonTxExecuteError): ...
 
 
-class SolNeonSkdTxError(SolNeonTxExecuteError):
-    pass
+class SolNeonSkdTxError(SolNeonTxExecuteError): ...
 
 
 class SolNeonSkdTxUseWrongHolderError(SolNeonSkdTxError):
@@ -41,13 +38,11 @@ class SolNeonSkdTxWrongStateError(SolNeonSkdTxError):
         return self._msg
 
 
-class SolNeonOutOfMemoryError(SolNeonTxExecuteError):
-    pass
+class SolNeonOutOfMemoryError(SolNeonTxExecuteError): ...
 
 
-class SolNeonOutOfGasError(SolNeonTxExecuteError):
-    pass
+class SolNeonOutOfGasError(SolNeonTxExecuteError): ...
 
 
-class SolNeonMissingAccountError(SolNeonTxExecuteError):
-    pass
+class SolNeonMissingAccountError(SolNeonTxExecuteError): ...
+

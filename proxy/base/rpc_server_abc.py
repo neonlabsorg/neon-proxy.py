@@ -8,7 +8,7 @@ from typing import Callable, ClassVar, Self
 
 from common.config.config import Config
 from common.config.utils import LogMsgFilter
-from common.cu_price.client import CuPriceClient
+from common.cu_price.client import SolCuPriceClient
 from common.ethereum.errors import EthError, EthWrongChainIdError
 from common.ethereum.hash import EthAddress
 from common.http.errors import HttpRouteError
@@ -52,7 +52,7 @@ class BaseRpcServerComponent:
         return self._server._mp_client  # noqa
 
     @cached_property
-    def _cu_price_client(self) -> CuPriceClient:
+    def _cu_price_client(self) -> SolCuPriceClient:
         return self._server._cu_price_client  # noqa
 
     @cached_property
@@ -115,7 +115,7 @@ class BaseRpcServerAbc(JsonRpcServer, abc.ABC):
         core_api_client: CoreApiClient,
         sol_client: SolClient,
         mp_client: MempoolClient,
-        cu_price_client: CuPriceClient,
+        cu_price_client: SolCuPriceClient,
         stat_client: StatClient,
         db: IndexerDbClient,
     ) -> None:
