@@ -6,6 +6,7 @@ from ..solana.pubkey import SolPubKey
 ######################################
 # Solana general settings:
 ONE_BLOCK_SEC: Final[float] = float(os.environ.get("SOLANA_BLOCK_SEC", "0.4"))
+ONE_BLOCK_MSEC: Final[int] = int(ONE_BLOCK_SEC * 1000.0)
 MIN_FINALIZE_BLOCK: Final[int] = 32
 MIN_FINALIZE_SEC: Final[float] = ONE_BLOCK_SEC * MIN_FINALIZE_BLOCK
 SOL_PKT_SIZE: Final[int] = 1280 - 40 - 8
