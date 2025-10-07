@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence, ClassVar
+from typing import Sequence, ClassVar, Final
 
 from common.neon.neon_program import NeonProg
 from common.solana.alt_info import SolAltInfo
@@ -10,7 +10,6 @@ from common.solana.errors import SolTxSizeError
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
-from common.solana.transaction import SolTx
 from common.solana.transaction_legacy import SolLegacyTx
 from common.solana.transaction_v0 import SolV0Tx
 from common.solana_rpc.alt_builder import SolAltTxBuilder
@@ -23,93 +22,72 @@ class AltTxPrepStage(BaseTxPrepStage):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._legacy_tx: SolLegacyTx | None = None
-        self._last_alt: SolAltInfo | None = None
         self._alt_dict: dict[SolPubKey, SolAltInfo] = dict()
         self._alt_builder = SolAltTxBuilder(
             self._cfg,
             self._sol_client,
             self._slot_session,
             self._ctx.sol_payer,
-            self._cu_price,
         )
-
-    def get_tx_name_list(self) -> Sequence[str]:
-        return self._alt_builder.tx_name_list
 
     def set_legacy_tx(self, legacy_tx: SolLegacyTx) -> None:
         self._legacy_tx = legacy_tx
 
-    async def make_tx_list(self) -> Sequence[Sequence[SolTx]]:
-        self._last_alt = None
+    async def make_ix_list(self) -> Sequence[SolTxIx]:
         self._alt_dict.clear()
 
         actual_alt = self._alt_builder.build_fake_alt(self._legacy_tx)
-        small_alt = self._alt_builder.rebuild_to_small_alt(actual_alt)
-        if self._tx_has_valid_size(self._legacy_tx, tuple([small_alt])):
-            actual_alt = small_alt
+        await self._filter_valid_alt_list(actual_alt)
+        if self._tx_has_valid_size():
+            return tuple()
 
-        alt_list = await self._filter_valid_alt_list(actual_alt)
-        if self._alt_dict and self._tx_has_valid_size(self._legacy_tx, alt_list):
-            return list()
-
-        actual_alt = await self._extend_alt(actual_alt, alt_list)
-        alt_tx_list = self._alt_builder.build_alt_tx_list(actual_alt)
-
+        actual_alt = await self._extend_alt(actual_alt)
         self._alt_dict[actual_alt.address] = actual_alt
         self._ctx.add_alt_id(actual_alt.ident)
 
-        self._last_alt = actual_alt
-        return [alt_tx_list]
+        return self._alt_builder.build_alt_ix_list(actual_alt)
 
-    async def prep_before_exec(self) -> bool:
-        return await self._has_valid_tx_size()
-
-    def make_sol_neon_tx(self, legacy_tx: SolLegacyTx, alt_list: Sequence[SolAltInfo] | None = None) -> SolV0Tx:
-        if not alt_list:
-            alt_list = self._alt_list
-        return SolV0Tx(name=legacy_tx.name, ix_list=legacy_tx.ix_list, alt_list=alt_list)
-
-    def validate_v0_tx_size(self, legacy_tx: SolLegacyTx) -> bool:
-        test_alt = self._alt_builder.build_fake_alt(legacy_tx)  # <- SolAltError
-        self.make_sol_neon_tx(legacy_tx, tuple([test_alt])).validate(SolSigner.fake())  # <- SolTxSize?
-        return True
-
-    # protected:
-
-    async def _has_valid_tx_size(self) -> bool:
-        await self._alt_builder.update_alt(self._alt_list)
-        if not self._tx_has_valid_size(self._legacy_tx):
+    async def prep_execution(self) -> bool:
+        await self._alt_builder.update_alt(self.alt_list)
+        if not self._tx_has_valid_size():
             # _LOG.debug("ALT %s isn't synced yet")
             return False
         return True
 
-    @property
-    def _alt_list(self) -> list[SolAltInfo]:
-        return list(self._alt_dict.values())
+    def make_fake_sol_neon_tx(self) -> SolV0Tx:
+        actual_alt: Final = self._alt_builder.build_fake_alt(self._legacy_tx)
+        return SolV0Tx(name=self._legacy_tx.name, ix_list=self._legacy_tx.ix_list, alt_list=tuple([actual_alt]))
 
-    def _tx_has_valid_size(self, legacy_tx: SolLegacyTx, alt_list: Sequence[SolAltInfo] | None = None) -> bool:
+    @property
+    def alt_list(self) -> tuple[SolAltInfo]:
+        return tuple(self._alt_dict.values())
+
+    # protected:
+
+    def _get_ix_name_list(self) -> Sequence[str]:
+        return self._alt_builder.ix_name_list
+
+    def _tx_has_valid_size(self) -> bool:
+        if not (alt_list := self.alt_list):
+            return False
+
         try:
-            with self._ctx.test_mode():
-                self.make_sol_neon_tx(legacy_tx, alt_list).validate(SolSigner.fake())
+            tx: Final = SolV0Tx(name=self._legacy_tx.name, ix_list=self._legacy_tx.ix_list, alt_list=alt_list)
+            tx.validate(SolSigner.fake())
             return True
         except SolTxSizeError:
             return False
 
-    async def _filter_valid_alt_list(self, actual_alt: SolAltInfo) -> list[SolAltInfo]:
+    async def _filter_valid_alt_list(self, actual_alt: SolAltInfo) -> None:
         new_alt_list = tuple([SolAltInfo(ident) for ident in self._ctx.alt_id_list])
         await self._alt_builder.update_alt(new_alt_list)
-        new_alt_list = list(filter(lambda x: x.is_exist, new_alt_list))
 
-        alt_list: list[SolAltInfo] = list()
         for alt in new_alt_list:
-            if actual_alt.remove_account_key_list(alt.account_key_list):
+            if alt.is_exist and actual_alt.remove_account_key_list(alt.account_key_list):
                 self._alt_dict[alt.address] = alt
-                alt_list.append(alt)
 
-        return alt_list
-
-    async def _extend_alt(self, actual_alt: SolAltInfo, alt_list: Sequence[SolAltInfo]) -> SolAltInfo:
-        for alt in alt_list:
+    async def _extend_alt(self, actual_alt: SolAltInfo) -> SolAltInfo:
+        for alt in self.alt_list:
             if alt.owner != self._ctx.sol_payer:
                 continue
             elif not self._alt_builder.can_merge_alt(alt, actual_alt):
@@ -125,19 +103,17 @@ class AltTxPrepStage(BaseTxPrepStage):
 
 def alt_strategy(cls):
     class AltStrategy(cls):
-        name: ClassVar[str] = "ALT+" + cls.name
+        Name: ClassVar[str] = "ALT+" + cls.Name
 
         def __init__(self, *args, **kwargs) -> None:
             cls.__init__(self, *args, **kwargs)
             self._alt_stage = AltTxPrepStage(*args, **kwargs)
             self._prep_stage_list.append(self._alt_stage)
+            self._copy_legacy_tx()
 
-        async def prep_before_exec(self) -> bool:
-            # It isn't critical to pass a fake signer.
-            # The signer isn't included in ALT, so the fake signer will be excluded from the ALT lists,
-            #  and in the final version of tx it will be replaced with the real signer
-            self._alt_stage.set_legacy_tx(self._make_test_legacy_tx())
-            return await cls.prep_before_exec(self)
+        async def prep_execution(self) -> bool:
+            self._copy_legacy_tx()
+            return await cls.prep_execution(self)
 
         async def _validate(self) -> bool:
             return self._validate_account_list_len() and await cls._validate(self)
@@ -151,16 +127,16 @@ def alt_strategy(cls):
                 return False
             return True
 
-        def _validate_tx_size(self) -> bool:
-            return self._alt_stage.validate_v0_tx_size(self._make_test_legacy_tx())
+        async def _send_sol_tx_list(self, ix_list: SolTxIx | Sequence[SolTxIx], tx_cfg: SolNeonTxCfg) -> bool:
+            return await self._ctx.send_sol_tx_list(ix_list, cb_cfg=tx_cfg, alt_list=self._alt_stage.alt_list)
 
-        def _make_test_legacy_tx(self) -> SolLegacyTx:
-            with self._ctx.test_mode():
-                tx_cfg = self._init_sol_neon_tx_cfg()
-                ix = cls._make_neon_ix(self, tx_cfg)
-                return cls._make_sol_neon_tx(ix, tx_cfg)
+        def _copy_legacy_tx(self) -> None:
+            # It isn't critical to pass a fake signer.
+            # The signer isn't included in ALT, so the fake signer will be excluded from the ALT lists,
+            #  and in the final version of tx it will be replaced with the real signer
+            self._alt_stage.set_legacy_tx(cls._make_fake_sol_neon_tx(self))
 
-        def _make_sol_neon_tx(self, ix: SolTxIx, tx_cfg: SolNeonTxCfg) -> SolV0Tx:
-            return self._alt_stage.make_sol_neon_tx(cls._make_sol_neon_tx(ix, tx_cfg))
+        def _make_fake_sol_neon_tx(self) -> SolV0Tx:
+            return self._alt_stage.make_fake_sol_neon_tx()
 
     return AltStrategy

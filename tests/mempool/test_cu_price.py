@@ -122,7 +122,6 @@ class TestCuPriceCalculator(unittest.IsolatedAsyncioTestCase):
         cu_price_level=CuPriceLevel.High,
         cu_price_block_cnt=50,
         def_cu_price=100500,
-        def_simple_cu_price=10500,
     )
 
     _start_slot = 3000

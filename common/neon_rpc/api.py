@@ -422,6 +422,8 @@ class CoreApiTxModel(_BaseRespModel):
     max_priority_fee_per_gas: HexUIntField = Field(default=0)
 
     chain_id: DecUIntField | None = None
+    #
+    _Default: ClassVar[CoreApiTxModel | None] = None
 
     @classmethod
     def from_neon_tx(cls, tx: NeonTxModel) -> Self:
@@ -439,6 +441,12 @@ class CoreApiTxModel(_BaseRespModel):
             max_priority_fee_per_gas=tx.max_priority_fee_per_gas or 0,
             chain_id=tx.chain_id,
         )
+
+    @classmethod
+    def default(cls) -> Self:
+        if cls._Default is None:
+            cls._Default = cls.from_neon_tx(NeonTxModel.default())
+        return cls._Default
 
     @property
     def has_chain_id(self) -> bool:
@@ -502,7 +510,10 @@ class HolderAccountModel(_BaseRespModel):
 
     chain_id: DecUIntField = Field(default=0)
     evm_step_cnt: DecUIntField = Field(default=0, validation_alias="steps_executed")
+    gas_used: HexUIntField = Field(default=0)
     account_key_list: list[SolPubKeyField] = Field(default_factory=list, validation_alias="accounts")
+
+    _Default: ClassVar[HolderAccountModel | None] = None
 
     @classmethod
     def new_empty(cls, address: SolPubKey) -> Self:
@@ -510,8 +521,15 @@ class HolderAccountModel(_BaseRespModel):
             address=address,
             status=HolderAccountStatus.Empty,
             owner=SolPubKey.default(),
+            tx_data=CoreApiTxModel.default(),
             block=CoreApiBlockModel.default(),
         )
+
+    @classmethod
+    def default(cls) -> Self:
+        if cls._Default is None:
+            cls._Default = HolderAccountModel.new_empty(SolPubKey.default())
+        return cls._Default
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, address: NeonAddress, def_chain_id: int) -> Self:
@@ -553,15 +571,20 @@ class HolderAccountModel(_BaseRespModel):
     def is_scheduled_tx(self) -> bool:
         return NeonTxType.is_scheduled_tx(self.tx_type)
 
-    @property
+    @cached_property
     def is_empty(self) -> bool:
         s = HolderAccountStatus
         return self.status in (s.Empty, s.Error)
 
-    @property
+    @cached_property
     def is_active(self) -> bool:
         s = HolderAccountStatus
         return self.status in (s.Active, s.ScheduledFinalized, s.ScheduledCanceled)
+
+    @cached_property
+    def is_finalized(self) -> bool:
+        s = HolderAccountStatus
+        return self.status in (s.Finalized, s.ScheduledFinalized, s.ScheduledCanceled)
 
 
 class _CrateModel(_BaseRespModel):
@@ -677,6 +700,7 @@ class EmulNeonCallResp(_BaseRespModel):
     evm_step_cnt: DecUIntField = Field(validation_alias="steps_executed")
     used_gas: DecUIntField
     iter_cnt: DecUIntField = Field(alias="iterations")
+    resize_iter_cnt: DecUIntField = Field(alias="realloc_iterations")
 
     raw_meta_list: list[EmulAccountMetaModel] = Field(validation_alias="solana_accounts", default_factory=list)
 

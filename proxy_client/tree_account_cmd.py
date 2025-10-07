@@ -5,11 +5,10 @@ from typing import ClassVar, Final, Self
 from common.config.config import Config
 from common.ethereum.hash import EthAddress
 from common.neon.address import NeonAddress
-from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
+from common.neon.neon_program import NeonProg, NeonBaseTxAccountSet
 from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon_rpc.api import NeonSkdTreeModel
 from common.neon_rpc.api_client import CoreApiClient
-from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.pubkey import SolPubKey
 from common.utils.json_logger import logging_context
 from proxy.base.op_client import OpResourceClient
@@ -65,13 +64,6 @@ class TreeAccountHandler(BaseNPCmdHandler):
         self._destroy_parser = self._cmd_parser.add_parser(cls._destroy, help="destroy tree-account")
         self._subcmd_dict[cls._destroy] = self._destroy_cmd
         _add_tree_opt(self._destroy_parser)
-        self._destroy_parser.add_argument(
-            "timeout",
-            type=int,
-            default=3,
-            nargs="?",
-            help="timeout in seconds to wait the result from Solana",
-        )
 
         return self
 
@@ -147,15 +139,7 @@ class TreeAccountHandler(BaseNPCmdHandler):
             # fmt: on
 
             destroy_ix = neon_prog.make_destroy_skd_tree_ix()
-
-            cfg = SolCbCfg(
-                NeonEvmIxCode.SkdTreeDestroy.name,
-                cu_price=self._cfg.def_simple_cu_price,
-                cu_limit=neon_prog.CuLimitSkdTreeAccountDestroy,
-            )
-
-            destroy_tx = SolCbProg.make_legacy_tx(cfg, destroy_ix)
-            await self._send_tx_list(req_id, op_res.owner, tuple([destroy_tx]), arg_space.timeout)
+            await self._send_tx(req_id, op_res.owner, destroy_ix)
 
         return 0
 

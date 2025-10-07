@@ -43,7 +43,7 @@ from ..jsonrpc.client import JsonRpcClient
 from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
-from ..solana.cb_program import SolCbProg
+from ..solana.cb_program import SolCbProg, SolCbCfg
 from ..solana.commit_level import SolCommit
 from ..solana.errors import SolAltError
 from ..solana.instruction import SolTxIx
@@ -299,11 +299,11 @@ class CoreRpcClient(JsonRpcClient):
 
     async def emulate_sol_ix_list(
         self,
-        cu_limit: int,
-        heap_size: int,
+        sol_cb_cfg: SolCbCfg,
         sol_ix_list: Sequence[SolTxIx],
     ) -> Sequence[EmulSolTxIxMetaModel]:
-        req = await self._create_sol_tx_request(cu_limit, heap_size, sol_ix_list)
+        cu_limit: Final[int] = sol_cb_cfg.cu_limit or sol_cb_cfg.max_cu_limit
+        req = await self._create_sol_tx_request(cu_limit, sol_cb_cfg.heap_size, sol_ix_list)
         resp: EmulSolTxIxListResp = await self._simulate_solana(req)
         return tuple(resp.meta_list)
 

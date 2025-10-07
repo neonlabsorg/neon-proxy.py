@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Sequence, Final, ClassVar, Self
+from typing import Sequence, Final, ClassVar
 
 from .client import SolClient
 from .ws_client import SolWatchAccountSession, SolWatchSlotSession
@@ -10,8 +10,8 @@ from ..config.config import Config
 from ..config.constants import MIN_FINALIZE_SEC
 from ..solana.alt_info import SolAltInfo
 from ..solana.alt_program import SolAltProg, SolExtAltProg, SolAltAccountInfo
-from ..solana.cb_program import SolCbProg, SolCbCfg
 from ..solana.commit_level import SolCommit
+from ..solana.instruction import SolTxIx
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction_legacy import SolLegacyTx
 
@@ -19,10 +19,6 @@ _LOG = logging.getLogger(__name__)
 
 
 class SolAltTxBuilder:
-    _create_name: Final[str] = "CreateLookupTable"
-    _extend_name: Final[str] = "ExtendLookupTable"
-    _update_name: Final[str] = "UpdateLookupTable"
-
     _wait_nsec: Final[int] = int(MIN_FINALIZE_SEC * 1e9)
     _recent_slot_dict: ClassVar[dict[SolPubKey, int]] = dict()
 
@@ -32,14 +28,12 @@ class SolAltTxBuilder:
         sol_client: SolClient,
         slot_session: SolWatchSlotSession,
         owner: SolPubKey,
-        cu_price: int,
     ) -> None:
         self._cfg = cfg
         self._sol_client = sol_client
         self._slot_session = slot_session
         self._alt_prog = SolAltProg(owner)
         self._ext_alt_prog = SolExtAltProg(owner)
-        self._cb_cfg = SolCbCfg(name=self._update_name, cu_price=cu_price, cu_limit=self._ext_alt_prog.CuLimit)
 
     @property
     def _new_slot(self) -> int:
@@ -53,8 +47,8 @@ class SolAltTxBuilder:
         return new_slot
 
     @property
-    def tx_name_list(self) -> Sequence[str]:
-        return tuple([self._update_name])
+    def ix_name_list(self) -> Sequence[str]:
+        return self._ext_alt_prog.ix_name_list
 
     def build_fake_alt(self, legacy_tx: SolLegacyTx, *, recent_slot=10) -> SolAltInfo:
         alt_ident = self._alt_prog.derive_alt_address(recent_slot)
@@ -73,20 +67,19 @@ class SolAltTxBuilder:
     def can_merge_alt(dst_alt: SolAltInfo, src_alt: SolAltInfo) -> bool:
         return len(dst_alt.account_key_list) + len(src_alt.account_key_list) < SolAltProg.MaxAltAccountCnt
 
-    def build_alt_tx_list(self, alt: SolAltInfo) -> Sequence[SolLegacyTx]:
+    def build_alt_ix_list(self, alt: SolAltInfo) -> Sequence[SolTxIx]:
         # List of accounts to write to the Address Lookup Table
         acct_list = list(alt.new_account_key_set)
 
         # List of txs to create or update the Address Lookup Table using the external Alt Updater program
-        alt_tx_list: list[SolLegacyTx] = list()
+        alt_ix_list: list[SolTxIx] = list()
         max_tx_acct_cnt = SolAltProg.MaxTxAccountCnt
         while acct_list:
             acct_list_part, acct_list = acct_list[:max_tx_acct_cnt], acct_list[max_tx_acct_cnt:]
-            alt_tx_ix = self._ext_alt_prog.make_update_alt_ix(alt.ident, acct_list_part)
-            alt_tx = SolCbProg.make_legacy_tx(self._cb_cfg, alt_tx_ix)
-            alt_tx_list.append(alt_tx)
+            alt_ix = self._ext_alt_prog.make_update_alt_ix(alt.ident, acct_list_part)
+            alt_ix_list.append(alt_ix)
 
-        return alt_tx_list
+        return alt_ix_list
 
     async def update_alt(self, alt_list: SolAltInfo | Sequence[SolAltInfo]) -> None:
         # Account keys in Account Lookup Table can be reordered because ExtendLookup txs can be committed in any order
@@ -107,7 +100,7 @@ class SolAltTxBuilder:
             for addr in new_addr_set:
                 await acct_session.subscribe_account(addr)
 
-            # wait for confirmation of all ALTs
+            # wait the confirmation of all ALTs
             #  it is required for solana simulations
             now_nsec = time.monotonic_ns()
             stop_time_nsec = now_nsec + self._wait_nsec

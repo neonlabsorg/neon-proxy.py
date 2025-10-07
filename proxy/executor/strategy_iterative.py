@@ -3,18 +3,16 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import logging
-from dataclasses import dataclass
-from typing import Final, ClassVar, Self
+from typing import Final, ClassVar, Self, Sequence
 
 from common.neon.cancel_error import CancelErrorData
-from common.neon.evm_log_decoder import NeonTxBlockInfo
+from common.neon.evm_log_decoder import NeonTxBlockInfo, NeonTxStage, NeonTxLogReturnInfo
 from common.neon.neon_program import NeonEvmIxCode, NeonIxMode
 from common.neon.transaction_decoder import SolNeonTxIxMetaInfo
-from common.neon.transaction_model import NeonSkdTxStatus
-from common.neon_rpc.errors import SolNeonSkdTxWrongStateError
-from common.solana.cb_program import SolCbProg
+from common.solana.cb_program import SolCbProg, SolCbCfg
 from common.solana.errors import SolTxSizeError
 from common.solana.instruction import SolTxIx
+from common.solana.signer import SolSigner
 from common.solana_rpc.errors import (
     SolNoMoreRetriesError,
     SolCbExceededError,
@@ -22,6 +20,7 @@ from common.solana_rpc.errors import (
     SolUnknownReceiptError,
     SolWritableError,
 )
+from common.utils.cached import cached_property
 from .strategy_base import BaseTxStrategy, SolNeonTxCfg
 from .strategy_stage_alt import alt_strategy
 from .strategy_stage_new_account import NewAccountTxPrepStage
@@ -31,11 +30,19 @@ from ..base.ex_api import ExecTxDoneCode
 _LOG = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class SolNeonIterTxCfg(SolNeonTxCfg):
     ix_mode: NeonIxMode = NeonIxMode.Unknown
     iter_cnt: int = 0
     evm_step_cnt: int = 0
+    #
+    _Default: ClassVar[SolNeonIterTxCfg | None] = None
+
+    @classmethod
+    def default(cls) -> Self:
+        if not cls._Default:
+            cls._Default = cls()
+        return cls._Default
 
     @property
     def is_empty(self) -> bool:
@@ -46,65 +53,47 @@ class SolNeonIterTxCfg(SolNeonTxCfg):
 
 
 class IterativeTxStrategy(BaseTxStrategy):
-    name: ClassVar[str] = NeonEvmIxCode.TxStepFromData.name
-    is_simple: ClassVar[bool] = False
-    _cancel_name: Final[str] = NeonEvmIxCode.CancelWithHash.name
-    _start_skd_tx_name: ClassVar[str] = NeonEvmIxCode.SkdTxStartFromData.name
-    _skip_skd_tx_name: ClassVar[str] = NeonEvmIxCode.SkdTxSkipFromData.name
-    _finish_skd_tx_name: Final[str] = NeonEvmIxCode.SkdTxFinish.name
+    Name: ClassVar[str] = NeonEvmIxCode.TxStepFromData.name
+    IsSimple: ClassVar[bool] = False
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._prep_stage_list.append(NewAccountTxPrepStage(*args, **kwargs))
+        self._uniq_idx = itertools.count()
         self._def_ix_mode = NeonIxMode.Unknown
         self._def_cu_limit = 0
-
-    async def prep_before_exec(self) -> bool:
-        result = await super().prep_before_exec()
-
-        if self._ctx.is_scheduled_tx:
-            if not await self._start_skd_tx():
-                return result
-
-        return result
 
     async def execute(self) -> ExecTxDoneCode:
         assert self.is_valid
 
-        if await self._is_skipped_tx():
-            return ExecTxDoneCode.Done
-
-        evm_step_cnt = -1
+        total_gas_used = -1
         fail_retry_cnt = 0
 
         for retry in itertools.count():
-            if evm_step_cnt == self._ctx.completed_evm_step_cnt:
-                fail_retry_cnt += 1
-                if fail_retry_cnt > self._cfg.retry_on_fail:
+            if total_gas_used == self._ctx.gas_used:
+                if (fail_retry_cnt := fail_retry_cnt + 1) > self._cfg.retry_on_fail:
                     raise SolNoMoreRetriesError()
-
-            elif evm_step_cnt != -1:
+            elif total_gas_used != -1:
                 _LOG.debug(
-                    "retry %d: the number of completed EVM steps has changed (%d != %d)",
+                    "retry %d: gasUsed has changed (%d != %d)",
                     retry,
-                    evm_step_cnt,
-                    self._ctx.completed_evm_step_cnt,
+                    total_gas_used,
+                    self._ctx.gas_used,
                 )
                 fail_retry_cnt = 0
-
-            evm_step_cnt = self._ctx.completed_evm_step_cnt
+            total_gas_used = self._ctx.gas_used
 
             try:
-                await self._recheck_tx_list(self.name)
-                if self._ctx.is_completed_tx:
+                await self._recheck_neon_tx()
+                if await self._ctx.is_finalized_tx():
                     return ExecTxDoneCode.Done
 
-                await self._emulate_and_send_tx_list()
-                if self._ctx.is_completed_tx:
+                await self._exec_neon_tx()
+                if await self._ctx.is_finalized_tx():
                     return ExecTxDoneCode.Done
 
             except BaseException as exc:
-                if self._ctx.is_completed_tx:
+                if await self._ctx.is_finalized_tx():
                     return ExecTxDoneCode.Done
                 elif isinstance(exc, SolNoMoreRetriesError):
                     pass
@@ -113,99 +102,60 @@ class IterativeTxStrategy(BaseTxStrategy):
         return ExecTxDoneCode.Failed
 
     async def cancel(self, data: CancelErrorData) -> ExecTxDoneCode | None:
-        if not await self._ctx.holder_validator.is_active():
-            return ExecTxDoneCode.Done
-        elif await self._recheck_tx_list(self._cancel_name):
-            # cancel is completed
-            return ExecTxDoneCode.Done
+        ix_name: Final = NeonEvmIxCode.CancelWithHash.name
+
+        # memo
+        ix_memo: bytes = data.to_bytes()
+        with self._ctx.test_mode():
+            try:
+                # tx size validation
+                test_cfg: Final = self._init_fake_sol_neon_tx_cfg()
+                test_ix: Final = self._ctx.neon_prog.make_cancel_ix(ix_memo)
+                test_tx: Final = self._make_sol_neon_tx(test_cfg, test_ix)
+                test_tx.validate(SolSigner.fake())  # <- there can be SolTxSizeError
+            except SolTxSizeError:
+                _LOG.debug("skip the cancel memo due to the Solana transaction size limit: %s:", data)
+                ix_memo = bytes()
 
         # generate cancel tx with the default CU budget
         self._reset_to_def()
+        cancel_cfg: Final = self._init_sol_neon_tx_cfg()
+        cancel_ix: Final = self._ctx.neon_prog.make_cancel_ix(ix_memo)
 
-        memo = data.to_bytes()
-        base_cfg = self._init_sol_neon_tx_cfg(name=self._cancel_name)
-        for retry in range(2):
-            try:
-                ix = self._ctx.neon_prog.make_cancel_ix(memo)
-                await self._emulate_and_send_single_tx("cancel", ix, base_cfg)
-                break
-            except SolTxSizeError:
-                _LOG.debug("skip cancel memo")
-                memo = bytes()
+        while True:
+            if await self._ctx.is_finalized_tx():
+                return ExecTxDoneCode.Done
+            elif await self._ctx.recheck_sol_tx_list(ix_name):
+                # cancel is completed
+                return ExecTxDoneCode.Done
+            elif await self._ctx.send_sol_tx(cancel_ix, cancel_cfg):
+                return ExecTxDoneCode.Done
 
-        return ExecTxDoneCode.Done
+    async def done_execution(self) -> None: ...  # do nothing
 
-    async def done_execution(self) -> None:
-        if self._ctx.is_scheduled_tx:
-            await self._finish_skd_tx()
-
-    async def _start_skd_tx(self) -> bool:
-        for _ in itertools.count():
-            if (status := await self._get_skd_tx_status()) == status.ToStart:
-                name = self._start_skd_tx_name
-                ix = self._make_start_skd_tx_ix(self._ctx.holder_tx.index)
-            elif status == status.ToSkip:
-                name = self._skip_skd_tx_name
-                ix = self._make_skip_skd_tx_ix(self._ctx.holder_tx.index)
-            else:
-                return status == status.InProgress
-
-            if await self._recheck_tx_list(name):
-                return self._start_skd_tx_name == name
-
-            base_cfg = self._init_sol_neon_tx_cfg(name=name)
-            await self._emulate_and_send_single_tx("start NeonSkdTx", ix, base_cfg)
-        return False
-
-    async def _is_skipped_tx(self) -> bool:
-        if not self._ctx.is_scheduled_tx:
-            return False
-        return (status := await self._get_skd_tx_status()) in (status.Skipped, status.ToSkip)
-
-    async def _get_skd_tx_status(self) -> NeonSkdTxStatus:
-        status = await self._ctx.skd_tree_parser.get_neon_skd_status(self._ctx.holder_tx.index)
-        if status in (status.InProgress, status.ToStart, status.ToSkip, status.Skipped):
-            return status
-
-        raise SolNeonSkdTxWrongStateError(status)
-
-    async def _finish_skd_tx(self) -> None:
-        name = self._finish_skd_tx_name
-        tx_idx = self._ctx.holder_tx.index
-
-        for _ in itertools.count():
-            if (status := await self._ctx.skd_tree_parser.get_neon_skd_status(tx_idx)) != status.InProgress:
-                return
-            elif await self._recheck_tx_list(name):
-                return
-
-            ix = self._ctx.neon_prog.make_finish_skd_tx_ix(tx_idx)
-            base_cfg = self._init_sol_neon_tx_cfg(name=name)
-            await self._emulate_and_send_single_tx("finish NeonSkdTx", ix, base_cfg)
+    async def _recheck_neon_tx(self) -> None:
+        try:
+            await self._ctx.recheck_sol_tx_list(self._ix_name_list)
+        finally:
+            await self._find_neon_tx_status()
 
     def _reset_to_def(self) -> None:
         self._def_ix_mode = NeonIxMode.Unknown
         self._def_cu_limit = 0
 
-    async def _emulate_and_send_tx_list(self) -> bool:
+    async def _exec_neon_tx(self) -> bool:
         self._reset_to_def()
 
         while True:
             try:
                 if self._has_one_iter():
                     # _LOG.debug("just 1 iteration")
-                    return await self._send_single_iter()
-
+                    optimal_cfg = self._init_sol_neon_tx_cfg()
                 elif not (optimal_cfg := await self._get_iter_list_cfg()):
                     return False
 
-                # fmt: off
-                tx_list = tuple(
-                    self._make_sol_neon_tx(self._make_neon_ix(optimal_cfg), optimal_cfg)
-                    for _ in range(optimal_cfg.iter_cnt)
-                )
-                # fmt: on
-                return await self._send_tx_list(tx_list)
+                ix_list = tuple(self._make_neon_ix(optimal_cfg) for _ in range(optimal_cfg.iter_cnt))
+                return await self._send_sol_tx_list(ix_list, optimal_cfg)
 
             except (SolWritableError, SolUnknownReceiptError):
                 if self._def_ix_mode != NeonIxMode.Writable:
@@ -229,11 +179,6 @@ class IterativeTxStrategy(BaseTxStrategy):
                         self._def_cu_limit,
                     )
                     raise SolCbExceededCriticalError(exc.cu_consumed)
-
-    async def _send_single_iter(self, ix_mode=NeonIxMode.Unknown) -> bool:
-        base_cfg = self._init_sol_neon_tx_cfg(ix_mode=ix_mode)
-        ix = self._make_neon_ix(base_cfg)
-        return await self._emulate_and_send_single_tx("single", ix, base_cfg)
 
     async def _get_iter_list_cfg(self) -> SolNeonIterTxCfg | None:
         evm_step_cnt_per_iter: Final[int] = self._ctx.neon_prog.EvmStepPerIter
@@ -342,25 +287,28 @@ class IterativeTxStrategy(BaseTxStrategy):
             iter_cnt,
         )
 
-        optimal_cfg = base_cfg.clone(iter_cnt=iter_cnt)
-        return await self._update_cu_price(optimal_cfg, cu_limit=round_cu_limit)
+        return base_cfg.clone(iter_cnt=iter_cnt, cu_limit=round_cu_limit)
+
+    async def _emulate_ix_list(self, ix_list: Sequence[SolTxIx]) -> Sequence[EmulSolTxIxMetaModel]:
+        cb_cfg = SolCbCfg(
+            max_cu_limit=SolCbProg.MaxCuLimit * len(ix_list),
+            heap_size=SolCbProg.MaxHeapSize,
+        )
+        return await self._core_api_client.emulate_sol_ix_list(cb_cfg, ix_list)
 
     async def _get_def_iter_list_cfg(self) -> SolNeonIterTxCfg:
-        cu_limit = SolCbProg.MaxCuLimit // 2
         evm_step_cnt = self._ctx.neon_prog.EvmStepPerIter
         total_evm_step_cnt = self._ctx.total_evm_step_cnt
 
         exec_iter_cnt = max((total_evm_step_cnt + evm_step_cnt - 1) // evm_step_cnt, 1)
         iter_cnt = exec_iter_cnt + self._calc_wrap_iter_cnt()
 
-        base_cfg = self._init_sol_neon_tx_cfg(iter_cnt=iter_cnt, evm_step_cnt=evm_step_cnt)
-        def_cfg = await self._update_cu_price(base_cfg, cu_limit=cu_limit)
+        def_cfg = self._init_sol_neon_tx_cfg(iter_cnt=iter_cnt, evm_step_cnt=evm_step_cnt)
 
         _LOG.debug(
-            "default: %s mode, %s EVM steps, %s CUs, %s iterations (%s total EVM steps, %s completed EVM steps)",
+            "default: %s mode, %s EVM steps, %s iterations (%s total EVM steps, %s completed EVM steps)",
             def_cfg.ix_mode.name,
             def_cfg.evm_step_cnt,
-            def_cfg.cu_limit,
             def_cfg.iter_cnt,
             total_evm_step_cnt,
             self._ctx.completed_evm_step_cnt,
@@ -368,7 +316,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         return def_cfg
 
     def _has_one_iter(self) -> bool:
-        if self._ctx.is_stuck_tx or self._def_cu_limit:
+        if self._def_cu_limit:
             pass
         elif self._ctx.total_evm_step_cnt > 1:
             return False
@@ -383,7 +331,7 @@ class IterativeTxStrategy(BaseTxStrategy):
         **kwargs,
     ) -> SolNeonIterTxCfg:
         ix_mode = kwargs.pop("ix_mode", NeonIxMode.Unknown) or self._calc_ix_mode()
-        cu_limit = kwargs.pop("cu_limit", self._def_cu_limit) or SolCbProg.MaxCuLimit
+        cu_limit = kwargs.pop("cu_limit", self._def_cu_limit)
 
         tx_cfg = super()._init_sol_neon_tx_cfg(cu_limit=cu_limit, **kwargs)
 
@@ -392,14 +340,9 @@ class IterativeTxStrategy(BaseTxStrategy):
 
         return SolNeonIterTxCfg(**tx_cfg.to_dict(), ix_mode=ix_mode, evm_step_cnt=evm_step_cnt, iter_cnt=iter_cnt)
 
-    async def _update_cu_price(self, base_cfg: SolNeonIterTxCfg, *, cu_limit: int) -> SolNeonIterTxCfg:
-        cu_limit = self._def_cu_limit or cu_limit
-        cu_price = await self._calc_cu_price(cu_limit, self._ctx.rw_account_key_list)
-        return base_cfg.clone(cu_limit=cu_limit, cu_price=cu_price)
-
     def _calc_wrap_iter_cnt(self) -> int:
         ix_mode = self._calc_ix_mode()
-        base_iter_cnt = self._ctx.wrap_iter_cnt
+        base_iter_cnt = 2 + self._ctx.resize_iter_cnt
         if ix_mode == NeonIxMode.Readable:
             # Finalization should be in the Writable mode
             base_iter_cnt -= 1
@@ -418,9 +361,6 @@ class IterativeTxStrategy(BaseTxStrategy):
         elif not self._ctx.total_evm_step_cnt:
             ix_mode = NeonIxMode.Writable
             # _LOG.debug("no EVM steps, ix-mode %s", ix_mode.name)
-        elif self._ctx.is_stuck_tx:
-            ix_mode = NeonIxMode.Readable
-            # _LOG.debug("stuck NeonTx, ix-mode %s", ix_mode.name)
         elif self._ctx.resize_iter_cnt > 0:
             ix_mode = NeonIxMode.Writable
             # _LOG.debug("resize iterations, ix-mode %s", ix_mode.name)
@@ -432,62 +372,71 @@ class IterativeTxStrategy(BaseTxStrategy):
     async def _validate(self) -> bool:
         # fmt: off
         return (
-            self._validate_not_stuck_tx()
+            self._validate_not_skd_tx()
             and self._validate_has_chain_id()
             and self._validate_neon_tx_size()
         )
         # fmt: on
 
-    def _make_neon_ix(self, tx_cfg: SolNeonIterTxCfg) -> SolTxIx:
-        step_cnt = tx_cfg.evm_step_cnt
-        uniq_idx = self._ctx.next_uniq_idx()
-        prog = self._ctx.neon_prog
-        return prog.make_tx_step_from_data_ix(tx_cfg.ix_mode, step_cnt, uniq_idx)
+    def _make_neon_ix(self, ix_cfg: SolNeonIterTxCfg) -> SolTxIx:
+        uniq_idx: Final = next(self._uniq_idx)
+        return self._ctx.neon_prog.make_tx_step_from_data_ix(ix_cfg.ix_mode, ix_cfg.evm_step_cnt, uniq_idx)
 
-    def _make_start_skd_tx_ix(self, index: int) -> SolTxIx:
-        return self._ctx.neon_prog.make_start_skd_tx_from_data_ix(index)
-
-    def _make_skip_skd_tx_ix(self, index: int) -> SolTxIx:
-        return self._ctx.neon_prog.make_skip_skd_tx_from_data_ix(index)
-
-    def _store_sol_tx_list(self) -> None:
-        super()._store_sol_tx_list()
-
-        status = None
-        total_gas_used, completed_evm_step_cnt, completed_iter_cnt = 0, 0, 0
+    async def _find_neon_tx_status(self) -> None:
+        tx_return = NeonTxLogReturnInfo.default()
+        gas_used, evm_step_cnt, iter_cnt, resize_iter_cnt = 0, 0, 0, 0
         tx_block, tx_block_gas_used = NeonTxBlockInfo.default(), 0
 
-        tx_state_list = self._ctx.sol_tx_list_sender.success_tx_state_list
+        tx_state_list = self._ctx.get_sol_tx_state_list(self._ix_name_list)
         for tx_state in tx_state_list:
             if not tx_state.has_sol_neon_ix:
                 continue
             elif tx_state.is_finalized:
-                status = tx_state.neon_tx_return.status
-                _LOG.debug("found NeonTx.Return(%d) in %s", status, tx_state.tx)
+                tx_return = tx_state.neon_tx_return
+                _LOG.debug("found %s in %s", tx_return, tx_state.tx)
                 continue
             elif tx_state.status != tx_state.status.GoodReceipt:
                 continue
 
-            completed_iter_cnt += 1
+            iter_cnt += 1
 
             ix: SolNeonTxIxMetaInfo = tx_state.sol_neon_ix
-            if total_gas_used < ix.neon_total_gas_used:
-                total_gas_used, completed_evm_step_cnt = ix.neon_total_gas_used, ix.neon_total_step_cnt
+            if gas_used < ix.neon_total_gas_used:
+                gas_used, evm_step_cnt = ix.neon_total_gas_used, ix.neon_total_step_cnt
+
+            if ix.neon_tx_stage == NeonTxStage.Resize:
+                resize_iter_cnt += 1
 
             if (not ix.neon_tx_block.is_empty) and (tx_block_gas_used < ix.neon_total_gas_used):
                 tx_block, tx_block_gas_used = ix.neon_tx_block, ix.neon_total_gas_used
-                _LOG.debug("found NeonTx.Block(%d, %d) in %s", tx_block.timestamp, tx_block.slot, tx_state.tx)
 
         state = NeonExecTxState(
-            total_used_gas=total_gas_used,
-            completed_evm_step_cnt=completed_evm_step_cnt,
-            completed_iter_cnt=completed_iter_cnt,
-            status=status,
+            gas_used=gas_used,
+            evm_step_cnt=evm_step_cnt,
+            iter_cnt=iter_cnt,
+            resize_iter_cnt=resize_iter_cnt,
+            tx_return=tx_return,
             tx_block=tx_block,
         )
-        self._ctx.set_tx_exec_state(state)
+
+        _LOG.debug(
+            "NeonTx %s: status %s, slot %d, timestamp %d, iters %d, resizes %d, steps %d, gas_used %d",
+            self._ctx.neon_tx_hash,
+            tx_return.status_name,
+            tx_block.slot,
+            tx_block.timestamp,
+            iter_cnt,
+            resize_iter_cnt,
+            evm_step_cnt,
+            gas_used,
+        )
+
+        await self._ctx.set_tx_exec_state(state)
+
+    @cached_property
+    def _ix_name_list(self) -> Sequence[str]:
+        return tuple([self.Name])
 
 
 @alt_strategy
-class AltIterativeTxStrategy(IterativeTxStrategy):
-    pass
+class AltIterativeTxStrategy(IterativeTxStrategy): ...

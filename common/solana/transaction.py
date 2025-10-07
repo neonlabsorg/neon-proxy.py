@@ -201,7 +201,8 @@ class SolTx(abc.ABC):
                 acct_meta = SolAccountMeta(acct_key_list[idx], _is_signer(idx), _is_writable(idx))
                 acct_meta_list.append(acct_meta)
 
-            ix_list.append(SolTxIx(prog_id, ix_data, acct_meta_list))
+            ix = SolTxIx(program_id=prog_id, data=ix_data, accounts=acct_meta_list)
+            ix_list.append(ix)
         return ix_list
 
     @abc.abstractmethod

@@ -89,7 +89,7 @@ class MpSkdTxLoader(MempoolComponent):
             return
 
         min_exec_gas_price = token_gas_price.min_executable_gas_price
-        token = ExecTokenModel.from_raw(self._gas_price, token_gas_price)
+        token = ExecTokenModel.from_raw(token_gas_price)
 
         slot_out = NeonProg.TreeAccountSlotOut
         current_slot = self._slot_session.confirmed_slot

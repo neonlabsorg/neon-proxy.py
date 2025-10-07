@@ -426,7 +426,7 @@ class TestCbExceeded(unittest.TestCase):
 
     def test_error_parser(self):
         error_parser = SolTxErrorParser(self._get_tx(), self._test_meta_tx)
-        self.assertTrue(error_parser.check_if_cb_exceeded)
+        self.assertTrue(error_parser._check_if_cb_exceeded)
 
     def test_tx_sender(self):
         class _Cfg:

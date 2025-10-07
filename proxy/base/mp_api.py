@@ -199,7 +199,6 @@ class MpGasPriceModel(BaseModel):
     operator_fee: int
     cu_price: int
     cu_price_pct: int
-    simple_cu_price: int
 
     min_wo_chain_id_acceptable_gas_price: int
 

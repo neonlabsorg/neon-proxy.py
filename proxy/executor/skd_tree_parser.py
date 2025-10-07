@@ -1,7 +1,7 @@
 import logging
 from typing import Final, AsyncGenerator
 
-from common.config.constants import ONE_BLOCK_SEC
+from common.config.constants import ONE_BLOCK_SEC, ONE_BLOCK_MSEC
 from common.ethereum.hash import EthTxHash
 from common.neon.address import NeonAddress
 from common.neon.neon_program import NeonProg
@@ -9,8 +9,7 @@ from common.neon.skd_tree import NeonSkdTreeAddress
 from common.neon.transaction_model import NeonSkdTxModel, NeonSkdTxStatus
 from common.neon_rpc.api import NeonSkdTreeModel, NeonSkdTreeNodeModel
 from common.solana.pubkey import SolPubKey
-from common.solana_rpc.ws_client import SolWatchAccountSession
-from common.utils.cached import cached_property
+from common.utils.cached import cached_property, ttl_cached_method
 from .server_abc import ExecutorServerAbc, ExecutorComponent
 
 _LOG = logging.getLogger(__name__)
@@ -27,14 +26,10 @@ class NeonSkdTreeParser(ExecutorComponent):
 
         self._tree: NeonSkdTreeModel | None = None
 
-        self._watch_session = SolWatchAccountSession(self._cfg, self._sol_client, force_check_sec=self._ReCheckSec)
-
     async def start(self) -> None:
-        await self._watch_session.subscribe_account(self.address)
         await self._refresh()
 
-    async def stop(self) -> None:
-        await self._watch_session.safe_disconnect()
+    async def stop(self) -> None: ...
 
     @cached_property
     def req_id(self) -> dict:
@@ -56,12 +51,8 @@ class NeonSkdTreeParser(ExecutorComponent):
     def address(self) -> SolPubKey:
         return NeonSkdTreeAddress.from_raw(self._payer, self._nonce).address
 
+    @ttl_cached_method(ttl_msec=ONE_BLOCK_MSEC)
     async def _refresh(self) -> None:
-        await self._watch_session.update()
-
-        if not self._watch_session.pop_changed_key_list():
-            return
-
         self._tree = await self._core_api_client.get_neon_skd_tree(self._payer, self._nonce)
         if not self._tree.is_exist:
             _LOG.debug("NeonSkdTree %s doesn't exist", self.address)
