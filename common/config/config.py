@@ -206,7 +206,6 @@ class Config:
     cu_price_level_name: Final[str] = "CU_PRICE_LEVEL"
     cu_price_block_cnt_name: Final[str] = "CU_PRICE_BLOCK_COUNT"
     def_cu_price_name: Final[str] = "DEFAULT_CU_PRICE"
-    def_simple_cu_price_name: Final[str] = "DEFAULT_SIMPLE_CU_PRICE"
     dynamic_fee_cfg_url_name: Final[str] = "DYNAMIC_FEE_CFG_URL"
     atlas_fee_url_name: Final[str] = "ATLAS_PRIORITY_FEE_URL"
     min_gas_price_name: Final[str] = "MINIMAL_GAS_PRICE"
@@ -785,10 +784,6 @@ class Config:
         return self._env_num(self.def_cu_price_name, SolCbProg.BaseCuPrice, 1, (10**9))
 
     @cached_property
-    def def_simple_cu_price(self) -> int:
-        return self._env_num(self.def_simple_cu_price_name, SolCbProg.BaseCuPrice, 1, (10**9))
-
-    @cached_property
     def dynamic_fee_cfg_url_list(self) -> Sequence[str]:
         dynamic_url_list = self._split_str(os.environ.get(self.dynamic_fee_cfg_url_name, ""))
         if not dynamic_url_list:
@@ -1049,7 +1044,6 @@ class Config:
             self.cu_price_mode_name: self.cu_price_mode,
             self.cu_price_level_name: self.cu_price_level,
             self.def_cu_price_name: self.def_cu_price,
-            self.def_simple_cu_price_name: self.def_simple_cu_price,
             self.dynamic_fee_cfg_url_name: self.dynamic_fee_cfg_url_list,
             self.atlas_fee_url_name: self.atlas_fee_url_list,
             self.min_gas_price_name: self.min_gas_price,

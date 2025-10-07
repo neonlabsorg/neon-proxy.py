@@ -29,7 +29,7 @@ class SolSysProg:
         balance: int,
         size: int,
     ) -> SolTxIx:
-        return _sys.create_account_with_seed(
+        ix = _sys.create_account_with_seed(
             _sys.CreateAccountWithSeedParams(
                 from_pubkey=payer,
                 to_pubkey=address,
@@ -40,3 +40,4 @@ class SolSysProg:
                 owner=owner,
             )
         )
+        return SolTxIx.clone(ix, name="CreateAccountWithSeed")

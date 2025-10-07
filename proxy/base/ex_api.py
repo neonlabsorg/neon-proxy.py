@@ -18,14 +18,12 @@ EXECUTOR_ENDPOINT = "/api/v1/executor/"
 
 class ExecTokenModel(BaseModel):
     chain_id: int
-    simple_cu_price: int
     profitable_gas_price: int
 
     @classmethod
-    def from_raw(cls, gas_price: MpGasPriceModel, token: MpTokenGasPriceModel) -> Self:
+    def from_raw(cls, token: MpTokenGasPriceModel) -> Self:
         return cls(
             chain_id=token.chain_id,
-            simple_cu_price=gas_price.simple_cu_price,
             profitable_gas_price=token.profitable_gas_price,
         )
 

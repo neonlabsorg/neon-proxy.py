@@ -9,7 +9,7 @@ from .strategy_stage_write_holder import WriteHolderTxPrepStage
 
 
 class SimpleHolderTxStrategy(SimpleTxStrategy):
-    name: ClassVar[str] = NeonEvmIxCode.TxExecFromAccount.name
+    Name: ClassVar[str] = NeonEvmIxCode.TxExecFromAccount.name
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -20,8 +20,7 @@ class SimpleHolderTxStrategy(SimpleTxStrategy):
 
     async def _validate(self) -> bool:
         return (
-            self._validate_not_stuck_tx()
-            and self._validate_not_scheduled_tx()
+            self._validate_not_skd_tx()
             and self._validate_no_sol_call()
             and self._validate_has_chain_id()
             and self._validate_no_resize_iter()
@@ -29,5 +28,4 @@ class SimpleHolderTxStrategy(SimpleTxStrategy):
 
 
 @alt_strategy
-class AltSimpleHolderTxStrategy(SimpleHolderTxStrategy):
-    pass
+class AltSimpleHolderTxStrategy(SimpleHolderTxStrategy): ...

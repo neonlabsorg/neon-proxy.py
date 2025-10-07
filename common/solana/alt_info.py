@@ -110,10 +110,13 @@ class SolAltInfo:
 
         old_len = len(self._acct_key_list)
         for acct_key in account_key_list:
-            if (idx := next((idx for idx, value in enumerate(self._acct_key_list) if value == acct_key), -1)) == -1:
-                continue
-            self._acct_key_list.pop(idx)
-            self._new_acct_key_set.discard(acct_key)
+            try:
+                idx = self._acct_key_list.index(acct_key)
+                self._acct_key_list.pop(idx)
+                self._new_acct_key_set.discard(acct_key)
+            except ValueError:
+                pass
+
         return old_len != len(self._acct_key_list)
 
     def add_account_key_list(self, account_key_list: Sequence[SolPubKey]) -> None:
@@ -121,7 +124,7 @@ class SolAltInfo:
             raise SolAltContentError(self.address, "trying to add account to not-existing lookup table")
 
         for acct_key in account_key_list:
-            if next((idx for idx, value in enumerate(self._acct_key_list) if value == acct_key), -1) != -1:
+            if acct_key in self._acct_key_list:
                 continue
             self._acct_key_list.append(acct_key)
             self._new_acct_key_set.add(acct_key)
