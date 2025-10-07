@@ -9,13 +9,12 @@ from typing import Final, Sequence
 
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
-from common.solana.alt_program import SolAltID, SolAltProg, SolAltIxCode
-from common.solana.cb_program import SolCbProg, SolCbCfg
+from common.neon_rpc.transaction_list_sender import SolNeonTxListSender
+from common.solana.alt_program import SolAltID, SolAltProg
 from common.solana.commit_level import SolCommit
 from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana_rpc.errors import SolNoMoreRetriesError
-from common.solana_rpc.transaction_list_sender import SolTxListSender
 from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context, log_msg
 from .server_abc import ExecutorComponent
@@ -155,18 +154,22 @@ class SolAltDestroyer(ExecutorComponent):
 
     async def _deactivate_alt(self, alt: SolAltID) -> bool:
         ix = SolAltProg(alt.owner).make_deactivate_alt_ix(alt)
-        return await self._send_tx(alt, SolAltIxCode.Deactivate.name, SolAltProg.CuLimitDeactivate, ix)
+        return await self._send_tx(alt, ix)
 
     async def _close_alt(self, alt: SolAltID) -> bool:
         ix = SolAltProg(alt.owner).make_close_alt_ix(alt)
-        return await self._send_tx(alt, SolAltIxCode.Close.name, SolAltProg.CuLimitClose, ix)
+        return await self._send_tx(alt, ix)
 
-    async def _send_tx(self, alt: SolAltID, name: str, cu_limit: int, ix: SolTxIx) -> bool:
-        tx_list_signer = OpTxListSigner(dict(alt=alt.ctx_id), alt.owner, self._op_client)
-
-        cfg = SolCbCfg(name + "LookupTable", cu_price=self._cfg.def_simple_cu_price, cu_limit=cu_limit)
-        tx = SolCbProg.make_legacy_tx(cfg, ix)
-        return await SolTxListSender(self._cfg, self._sol_client, tx_list_signer, self._stat_client).send(tuple([tx]))
+    async def _send_tx(self, alt: SolAltID, ix: SolTxIx) -> bool:
+        tx_list_sender = SolNeonTxListSender(
+            self._cfg,
+            self._sol_client,
+            OpTxListSigner(dict(alt=alt.ctx_id), alt.owner, self._op_client),
+            self._stat_client,
+            self._core_api_client,
+            self._cu_price_client,
+        )
+        await tx_list_sender.send_tx(ix)
 
     @staticmethod
     def _get_now() -> int:

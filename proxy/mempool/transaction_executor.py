@@ -324,20 +324,18 @@ class MpTxExecutor(MempoolComponent):
 
                 tx_schedule.acquire_tx(tx)
                 self._exec_tx_set.add(tx.neon_tx_hash)
-                self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(
-                    self._exec_scheduled_tx(tx, gas_price, token)
-                )
+                self._exec_task_dict[tx.neon_tx_hash] = asyncio.create_task(self._exec_scheduled_tx(tx, token))
             return True
 
         return False
 
-    async def _exec_scheduled_tx(self, tx: MpTxModel, gas_price: MpGasPriceModel, token: MpTokenGasPriceModel) -> None:
+    async def _exec_scheduled_tx(self, tx: MpTxModel, token: MpTokenGasPriceModel) -> None:
         def _fail_tx():
             self._done_exec_tx(tx, ExecTxDoneRequest(neon_tx_hash=tx.neon_tx_hash, code=ExecTxDoneCode.Failed))
 
         with logging_context(tx=tx.tx_id):
             try:
-                resp = await self._exec_client.exec_tx(tx, ExecTokenModel.from_raw(gas_price, token))
+                resp = await self._exec_client.exec_tx(tx, ExecTokenModel.from_raw(token))
                 if not resp.result:
                     _fail_tx()
             except BaseException as exc:
