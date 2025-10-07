@@ -9,7 +9,7 @@ from .strategy_stage_write_holder import WriteHolderTxPrepStage
 
 
 class SimpleHolderTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
-    name: ClassVar[str] = NeonEvmIxCode.TxExecFromAccountSolanaCall.name
+    Name: ClassVar[str] = NeonEvmIxCode.TxExecFromAccountSolanaCall.name
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -20,9 +20,7 @@ class SimpleHolderTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
 
     async def _validate(self) -> bool:
         return (
-            self._validate_not_stuck_tx()
-            and self._validate_not_scheduled_tx()
-            and self._validate_gas_price()
+            self._validate_not_skd_tx()
             and self._validate_has_chain_id()
             and self._validate_has_sol_call()
             and self._validate_no_resize_iter()
@@ -30,5 +28,4 @@ class SimpleHolderTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
 
 
 @alt_strategy
-class AltSimpleHolderTxSolanaCallStrategy(SimpleHolderTxSolanaCallStrategy):
-    pass
+class AltSimpleHolderTxSolanaCallStrategy(SimpleHolderTxSolanaCallStrategy): ...

@@ -66,27 +66,30 @@ class SolTxListSender:
         self._stat_client = stat_client
         self._sol_client = sol_client
         self._tx_signer = sol_tx_signer
+        self._skip_preflight: Final[bool] = False
         self._num_slots_behind: int | None
 
         self._blockhash: SolBlockHash | None = None
         self._valid_block_height = 0
 
-        self._max_retry_cnt = int(cfg.commit_timeout_sec // ONE_BLOCK_SEC)
+        self._max_retry_cnt: Final[int] = int(cfg.commit_timeout_sec // ONE_BLOCK_SEC)
         self._bad_blockhash_set: set[SolBlockHash] = set()
-        self._tx_list: list[SolTx] = list()
+        self._tx_list: Sequence[SolTx] = tuple()
         self._tx_state_dict: dict[SolTxSig, SolTxSendState] = dict()
         self._tx_state_list_dict: dict[SolTxSendState.Status, list[SolTxSendState]] = dict()
         self._tx_time_dict: dict[SolTxSig, int] = dict()
 
-    async def send(self, tx_list: SolTx | Sequence[SolTx]) -> bool:
+    async def send_tx_list(self, tx_list: SolTx | Sequence[SolTx]) -> bool:
         assert not self._tx_list
 
         if not tx_list:
             return False
         elif isinstance(tx_list, SolTx):
-            tx_list = [tx_list]
+            tx_list = tuple([tx_list])
+        else:
+            tx_list = tuple(tx_list)
 
-        self._tx_list = list(tx_list)
+        self._tx_list = tx_list
 
         # save tx start time
         now = time.monotonic_ns()
@@ -98,10 +101,14 @@ class SolTxListSender:
 
     async def recheck(self, tx_list: SolTx | Sequence[SolTx]) -> bool:
         assert not self._tx_list
+
         if not tx_list:
             return False
         elif isinstance(tx_list, SolTx):
-            tx_list = [tx_list]
+            tx_list = tuple([tx_list])
+        else:
+            tx_list = tuple(tx_list)
+
         # _LOG.debug("recheck txs: %s", tx_list)
 
         # The Sender should check all (failed too) txs again, because the state may have changed
@@ -113,7 +120,7 @@ class SolTxListSender:
 
     def clear(self) -> None:
         self._blockhash = None
-        self._tx_list.clear()
+        self._tx_list = tuple()
         self._tx_state_dict.clear()
         self._tx_state_list_dict.clear()
 
@@ -254,37 +261,45 @@ class SolTxListSender:
                 tx.set_recent_blockhash(blockhash)
             not_signed_tx_list.append(tx)
 
-        self._tx_list = signed_tx_list
+        self._tx_list = tuple(signed_tx_list)
         if not not_signed_tx_list:
             return
 
         new_signed_tx_list = await self._tx_signer.sign_tx_list(not_signed_tx_list)
-        self._tx_list.extend(new_signed_tx_list)
 
         # save tx time
         now = time.monotonic_ns()
         for tx in new_signed_tx_list:
             self._tx_time_dict[tx.sig] = now
 
+        signed_tx_list.extend(new_signed_tx_list)
+        self._tx_list = tuple(signed_tx_list)
+
     async def _send_tx_list(self) -> None:
         if not (tx_list := self._tx_list):
             return
-        max_retry_cnt = self._max_retry_cnt
 
-        _LOG.debug("send transactions: %s", self._FmtTxNameStat(tx_list))
-        tx_sig_list = await self._sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=max_retry_cnt)
+        _LOG.debug("send transactions: %s", _FmtTxNameStat(tx_list))
+
+        max_retry_cnt: Final = self._max_retry_cnt
+        skip_preflight: Final = self._skip_preflight
+        tx_sig_list = await self._sol_client.send_tx_list(
+            tx_list,
+            skip_preflight=skip_preflight,
+            max_retry_cnt=max_retry_cnt,
+        )
 
         tx_receipt_list = list(map(lambda x: x if not isinstance(x, SolTxSig) else None, tx_sig_list))
-        await self._add_tx_receipt_list(self._tx_list, tx_receipt_list, SolTxSendState.Status.WaitForReceipt)
+        await self._add_tx_receipt_list(tx_list, tx_receipt_list, SolTxSendState.Status.WaitForReceipt)
 
     async def _fuzz_send_tx_list(self) -> None:
         fuzz_fail_pct = self._cfg.fuzz_fail_pct
 
         # Fuzz testing of skipped by Solana node txs
         if self._tx_list:
-            skip_flag_list = [random.randint(1, 100) <= fuzz_fail_pct for _ in self._tx_list]
-            skip_tx_list = [tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if skip_flag]
-            self._tx_list = [tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if not skip_flag]
+            skip_flag_list = tuple([random.randint(1, 100) <= fuzz_fail_pct for _ in self._tx_list])
+            skip_tx_list = tuple([tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if skip_flag])
+            self._tx_list = tuple([tx for tx, skip_flag in zip(self._tx_list, skip_flag_list) if not skip_flag])
 
             skip_tx_receipt_list = [None] * len(skip_tx_list)
             await self._add_tx_receipt_list(skip_tx_list, skip_tx_receipt_list, SolTxSendState.Status.WaitForReceipt)
@@ -292,23 +307,8 @@ class SolTxListSender:
 
         await self._send_tx_list()
 
-    class _FmtTxNameStat:
-        def __init__(self, tx_list: Sequence[SolTx]) -> None:
-            self._tx_list = tx_list
-
-        def to_string(self) -> str:
-            tx_name_dict: dict[str, int] = dict()
-            for tx in self._tx_list:
-                tx_name = tx.name or "Unknown"
-                tx_name_dict[tx_name] = tx_name_dict.get(tx_name, 0) + 1
-
-            return " + ".join(f"{name}({cnt})" for name, cnt in tx_name_dict.items())
-
-        def __repr__(self) -> str:
-            return self.to_string()
-
     def _get_tx_list_for_send(self) -> None:
-        self._tx_list.clear()
+        self._tx_list = tuple()
 
         if self._is_done():
             return
@@ -318,8 +318,11 @@ class SolTxListSender:
             raise tx_state_list[0].error
 
         # Resend txs with the resubmitted status
+        tx_list: list[SolTx] = list()
         if tx_state_list := self._tx_state_list_dict.pop(SolTxSendState.Status.ResubmitReceipt, None):
-            self._tx_list.extend(map(lambda x: x.tx, tx_state_list))
+            tx_list.extend(map(lambda x: x.tx, tx_state_list))
+
+        self._tx_list = tuple(tx_list)
 
     async def _refresh_tx_receipt_list(self) -> None:
         tx_list = tuple(map(lambda tx_state: tx_state.tx, self._tx_state_dict.values()))
@@ -403,3 +406,19 @@ class SolTxListSender:
             self._stat_client.commit_sol_tx_fail(SolTxFailData(time_nsec=process_time_nsec))
         else:
             self._stat_client.commit_sol_tx_done(SolTxDoneData(time_nsec=process_time_nsec))
+
+
+class _FmtTxNameStat:
+    def __init__(self, tx_list: Sequence[SolTx]) -> None:
+        self._tx_list = tx_list
+
+    def to_string(self) -> str:
+        tx_name_dict: dict[str, int] = dict()
+        for tx in self._tx_list:
+            tx_name = tx.name or "Unknown"
+            tx_name_dict[tx_name] = tx_name_dict.get(tx_name, 0) + 1
+
+        return " + ".join(f"{name}({cnt})" for name, cnt in tx_name_dict.items())
+
+    def __repr__(self) -> str:
+        return self.to_string()

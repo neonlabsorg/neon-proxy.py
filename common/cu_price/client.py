@@ -63,7 +63,7 @@ class SolCuPriceClient:
     async def get_cu_price(self, account_key_list: Sequence[SolPubKey]) -> int:
         key = _Item.calc_key(account_key_list)
         if item := self._cu_price_dict.get(key, None):
-            _LOG.debug("use cached %s CU-price", item.cu_price)
+            # _LOG.debug("use cached %s CU-price", item.cu_price)
             return item.cu_price
 
         req = await self._get_cu_price_req(account_key_list)

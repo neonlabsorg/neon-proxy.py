@@ -48,7 +48,7 @@ from ..http.utils import HttpURL
 from ..neon.address import NeonAddress
 from ..neon.block import NeonBlockHdrModel
 from ..neon.neon_program import NeonProg
-from ..solana.cb_program import SolCbProg
+from ..solana.cb_program import SolCbProg, SolCbCfg
 from ..solana.errors import SolAltError
 from ..solana.instruction import SolTxIx
 from ..solana.pubkey import SolPubKey
@@ -286,8 +286,7 @@ class CoreApiClient(HttpClient):
         sol_ix_list: Sequence[SolTxIx],
         neon_tx_list: Sequence[CoreApiTxModel],
         *,
-        cu_limit=SolCbProg.MaxCuLimit,
-        heap_size=SolCbProg.MaxHeapSize,
+        sol_cb_cfg: SolCbCfg | None = None,
         check_result: bool,
         block: NeonBlockHdrModel | None = None,
     ) -> Sequence[EmulNeonCallResp]:
@@ -297,6 +296,9 @@ class CoreApiClient(HttpClient):
 
         def _get_full_preload_addr_list(_resp: _RootType) -> list[SolPubKey]:
             return list(set(itertools.chain.from_iterable(x.sol_address_list for x in _resp.root)))
+
+        cu_limit: Final[int] = sol_cb_cfg.cu_limit if sol_cb_cfg else SolCbProg.MaxCuLimit
+        heap_size: Final[int] = sol_cb_cfg.heap_size if sol_cb_cfg else SolCbProg.MaxHeapSize
 
         sol_ix_list = list(map(lambda ix: EmulSolTxIxRequest.from_raw(ix), sol_ix_list))
         sol_tx_req = EmulSolTxRequest(cu_limit=cu_limit, heap_size=heap_size, ix_list=sol_ix_list)
@@ -328,12 +330,13 @@ class CoreApiClient(HttpClient):
             return resp.root
         assert False, "unreached code"
 
-    async def emulate_sol_tx_list(
+    async def emulate_sol_ix_list(
         self,
-        cu_limit: int,
-        heap_size: int,
+        sol_cb_cfg: SolCbCfg,
         sol_ix_list: Sequence[SolTxIx],
     ) -> Sequence[EmulSolTxIxMetaModel]:
+        cu_limit: Final[int] = sol_cb_cfg.cu_limit or sol_cb_cfg.max_cu_limit
+        heap_size: Final[int] = sol_cb_cfg.heap_size or SolCbProg.MaxHeapSize
         sol_ix_list = list(map(lambda ix: EmulSolTxIxRequest.from_raw(ix), sol_ix_list))
         req = EmulSolTxRequest(cu_limit=cu_limit, heap_size=heap_size, ix_list=sol_ix_list)
         resp: EmulSolTxIxListResp = await self._send_request("simulate_solana", req, EmulSolTxIxListResp)
