@@ -1,13 +1,10 @@
-import asyncio
 import logging
 from typing import ClassVar, Final, Sequence, Self
 
 from common.config.config import Config
-from common.solana.alt_program import SolAltProg, SolAltIxCode, SolAltID
-from common.solana.cb_program import SolCbProg, SolCbCfg
+from common.solana.alt_program import SolAltProg, SolAltID
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKey
-from common.utils.cached import cached_property
 from common.utils.json_logger import logging_context
 from .cmd_handler import BaseNPCmdHandler
 from .common_alt import SolAltFunc
@@ -66,10 +63,6 @@ class AltHandler(BaseNPCmdHandler):
 
         return self
 
-    @cached_property
-    def _cu_price(self) -> int:
-        return self._cfg.def_simple_cu_price
-
     async def _list_cmd(self, arg_space) -> int:
         req_id = self._gen_req_id()
         with logging_context(**req_id):
@@ -118,7 +111,6 @@ class AltHandler(BaseNPCmdHandler):
         address: SolPubKey,
     ) -> int:
         sol_client = await self._get_sol_client()
-        op_client = await self._get_op_client()
 
         if not (alt := await sol_client.get_alt_account(address)).is_exist:
             _LOG.error("Address Lookup Table %s doesn't exist", address)
@@ -137,24 +129,11 @@ class AltHandler(BaseNPCmdHandler):
 
         alt_id = SolAltID(address=alt.address, owner=alt.owner, recent_slot=0, nonce=0)
         if not alt.is_deactivated:
-            ix_code = SolAltIxCode.Deactivate
-            cu_limit =  SolAltProg.CuLimitDeactivate
-            alt_ix = SolAltProg(alt.owner).make_deactivate_alt_ix(alt_id)
             _LOG.debug("deactivate Address Lookup Table %s", address)
+            alt_ix = SolAltProg(alt.owner).make_deactivate_alt_ix(alt_id)
         else:
-            ix_code = SolAltIxCode.Close
-            cu_limit = SolAltProg.CuLimitClose
-            alt_ix = SolAltProg(alt.owner).make_close_alt_ix(alt_id)
             _LOG.debug("close Address Lookup Table %s", address)
+            alt_ix = SolAltProg(alt.owner).make_close_alt_ix(alt_id)
 
-        cfg = SolCbCfg(ix_code.name + "LookupTable", cu_price=self._cu_price, cu_limit=cu_limit)
-
-        tx = SolCbProg.make_legacy_tx(cfg, alt_ix)
-        blockhash, _ = await sol_client.get_recent_blockhash(SolCommit.Finalized)
-        tx.set_recent_blockhash(blockhash)
-
-        tx_list = await op_client.sign_sol_tx_list(req_id, alt.owner, [tx])
-        await sol_client.send_tx_list(tx_list, skip_preflight=False, max_retry_cnt=None)
-        await asyncio.sleep(1)
-
+        await self._send_tx(req_id, alt.owner, alt_ix)
         return 0

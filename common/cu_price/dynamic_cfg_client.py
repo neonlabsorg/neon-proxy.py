@@ -32,7 +32,6 @@ class DynamicFeeCfgClient(HttpClient):
             cu_price_level=self._cfg.cu_price_level,
             cu_price_block_cnt=self._cfg.cu_price_block_cnt,
             def_cu_price=self._cfg.def_cu_price,
-            def_simple_cu_price=self._cfg.def_simple_cu_price,
         )
 
     @ttl_cached_method(ttl_sec=60)
@@ -57,7 +56,6 @@ class DynamicFeeCfgClient(HttpClient):
                     resp.cu_price_block_cnt if resp.cu_price_block_cnt is not None else self._cfg.cu_price_block_cnt
                 ),
                 def_cu_price=resp.def_cu_price or self._cfg.def_cu_price,
-                def_simple_cu_price=resp.def_simple_cu_price or self._cfg.def_simple_cu_price,
             )
             return cfg
 

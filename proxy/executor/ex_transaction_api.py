@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import time
-from typing import ClassVar, Final
+from contextlib import asynccontextmanager, contextmanager
+from typing import ClassVar, Final, AsyncGenerator, Callable, Generator, Sequence
 
 from common.config.constants import ONE_BLOCK_SEC, MIN_FINALIZE_SEC
 from common.ethereum.hash import EthTxHash
-from common.neon.neon_program import NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon.transaction_model import NeonSkdTxModel
-from common.solana.cb_program import SolCbProg, SolCbCfg
-from common.solana.commit_level import SolCommit
+from common.neon_rpc.api import HolderAccountModel
+from common.solana.alt_program import SolAltID
 from common.solana.pubkey import SolPubKey
-from common.solana_rpc.errors import SolTxExecError
 from common.utils.cached import cached_property, ttl_cached_method
 from common.utils.json_logger import logging_context
 from .alt_destroyer import SolAltDestroyer
@@ -52,132 +50,82 @@ class NeonTxExecApi(ExecutorApi):
 
     @BaseProxyApi.method(name="executeNeonTransaction")
     async def exec_neon_tx(self, request: ExecTxRequest) -> ExecTxResp:
-        await self._complete_task_list()
+        async def new_task() -> None:
+            if request.tx.neon_tx.is_scheduled_tx:
+                async with self._acquire_neon_skd_tree(request) as skd_tree_parser:
+                    code = await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request)
+            else:
+                code = await self._exec_neon_tx_retry_loop(request, None)
 
-        tx_hash, tx_nonce = request.tx.neon_tx_hash, request.tx.neon_tx.nonce
-        if tx_hash in self._task_dict:
-            return ExecTxResp(result=False)
+            neon_acct = await self._core_api_client.get_neon_account(request.payer, None)
+            await self._mp_client.done_exec_tx(request.neon_tx_hash, request.tx.nonce, code, neon_acct)
 
-        async def _new_task() -> None:
-            nonlocal tx_hash
-
-            with logging_context(**request.req_id):
-                if request.tx.neon_tx.is_scheduled_tx:
-                    code = await self._exec_neon_skd_tree(request)
-                else:
-                    code = await self._exec_neon_tx_retry_loop(request, None)
-
-                neon_acct = await self._core_api_client.get_neon_account(request.payer, None)
-                await self._mp_client.done_exec_tx(tx_hash, tx_nonce, code, neon_acct)
-
-            if task := self._task_dict.pop(tx_hash, None):
-                self._completed_task_list.append(task)
-
-        self._task_dict[tx_hash] = asyncio.create_task(_new_task())
-        return ExecTxResp(result=True)
+        result = await self._run_task(request, new_task)
+        return ExecTxResp(result=result)
 
     @BaseProxyApi.method(name="completeStuckNeonTransaction")
     async def complete_stuck_neon_tx(self, request: CompleteStuckTxRequest) -> CompleteStuckTxResp:
-        await self._complete_task_list()
+        async def new_task() -> None:
+            code = await self._validate_stuck_neon_tx(request, None, None)
+            await self._mp_client.done_complete_stuck_tx(request.neon_tx_hash, code)
 
-        tx_hash = request.stuck_tx.neon_tx_hash
-        if tx_hash in self._task_dict:
-            return CompleteStuckTxResp(result=False)
-
-        async def _new_task() -> None:
-            nonlocal tx_hash
-            with logging_context(**request.req_id):
-                code = await self._complete_stuck_neon_tx_retry_loop(request, None)
-                await self._mp_client.done_complete_stuck_tx(tx_hash, code)
-
-            if task := self._task_dict.pop(tx_hash, None):
-                self._completed_task_list.append(task)
-
-        self._task_dict[tx_hash] = asyncio.create_task(_new_task())
-        return CompleteStuckTxResp(result=True)
+        result = await self._run_task(request, new_task)
+        return CompleteStuckTxResp(result=result)
 
     @BaseProxyApi.method(name="destroyTreeAccount")
     async def destroy_neon_skd_tree(self, request: DestroyTreeAccountRequest) -> DestroyTreeAccountResp:
-        tx_hash = request.neon_tx_hash
-        if tx_hash in self._task_dict:
-            return DestroyTreeAccountResp(result=False)
+        async def new_task() -> None:
+            async with self._acquire_neon_skd_tree(request) as skd_tree_parser:
+                stuck_tx = MpStuckTxModel.from_raw(request.neon_tx_hash, SolPubKey.default())
+                stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
+                await self._destroy_tree_account(stuck_req, request.token, skd_tree_parser)
 
-        async def _new_task() -> None:
-            with logging_context(**request.req_id):
-                skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce, request.neon_tx_hash)
-                try:
-                    await skd_tree_parser.start()
-                    await self._destroy_tree_account(skd_tree_parser)
-
-                    if request.tree_address != skd_tree_parser.address:
-                        _LOG.warning("tree address mismatch: %s != %s", request.tree_address, skd_tree_parser.address)
-                        await self._db.destroy_tree_account(request.tree_address, request.neon_tx_hash)
-                finally:
-                    await skd_tree_parser.stop()
-
-                    if task := self._task_dict.pop(tx_hash, None):
-                        self._completed_task_list.append(task)
-
-        self._task_dict[tx_hash] = asyncio.create_task(_new_task())
-        return DestroyTreeAccountResp(result=True)
+        result = await self._run_task(request, new_task)
+        return DestroyTreeAccountResp(result=result)
 
     async def _exec_neon_tx_retry_loop(
         self,
         request: ExecTxRequest,
         skd_tree_parser: NeonSkdTreeParser | None,
     ) -> ExecTxDoneCode:
-
-        async def _free_res(req_id: dict, _op_res: OpResourceModel | None, _ctx: NeonExecTxCtx | None) -> None:
-            if _ctx:
-                self._destroy_alt_list(_ctx)
-            if _op_res:
-                await self._op_client.free_resource(req_id, True, _op_res)
-
-        async def _complete_stuck_neon_tx(_op_res: OpResourceModel, _ctx: NeonExecTxCtx, _exc: StuckTxError) -> None:
-            stuck_tx = MpStuckTxModel.from_raw(_exc.neon_tx_hash, _exc.holder_address)
-
-            stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
-            with logging_context(**stuck_req.req_id):
-                await self._complete_stuck_neon_tx_retry_loop(stuck_req, None)
-                await _free_res(stuck_req.req_id, _op_res, _ctx)
-
-            if _task := self._task_dict.pop(_exc.neon_tx_hash, None):
-                self._completed_task_list.append(_task)
-
-        for _retry in itertools.count():
-            op_res = await self._acquire_op_resource(request)
-            ctx = NeonExecTxCtx(self._server, op_res, request, request.token, skd_tree_parser)
-
-            # if retry > 0:
-            #     _LOG.debug("retry %d to execute NeonTx %s", retry, request.tx.neon_tx_hash)
-
+        async def complete_stuck_neon_tx(stuck_req_: CompleteStuckTxRequest, op_res_: OpResourceModel) -> None:
             try:
-                return await self._neon_tx_executor.exec_neon_tx(ctx)
-
-            except StuckTxError as exc:
-                if exc.neon_tx_hash not in self._task_dict:
-                    _LOG.debug("switch to complete the stuck NeonTx %s", exc.neon_tx_hash)
-                    task = asyncio.create_task(_complete_stuck_neon_tx(op_res, ctx, exc))
-                    self._task_dict[exc.neon_tx_hash] = task
-
-                    op_res, ctx = None, None
-                    _LOG.debug("return back to the execution of NeonTx %s", request.tx.neon_tx_hash)
-
-            except BaseException as exc:
-                _LOG.error("unexpected error on execute NeonTx", exc_info=exc, extra=self._msg_filter)
-                return ExecTxDoneCode.Failed
-
+                await self._validate_stuck_neon_tx(stuck_req_, op_res_, None)
             finally:
-                await _free_res(request.req_id, op_res, ctx)
-        assert False, "unreached code"
+                await self._free_op_resource(stuck_req_.req_id, op_res_)
 
-    async def _exec_neon_skd_tree(self, request: ExecTxRequest) -> ExecTxDoneCode:
-        skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce, request.neon_tx_hash)
-        try:
-            await skd_tree_parser.start()
-            return await self._exec_neon_skd_tree_retry_loop(skd_tree_parser, request)
-        finally:
-            await skd_tree_parser.stop()
+        alt_id_list: Sequence[SolAltID] = tuple()
+        while True:
+            op_res = await self._acquire_op_resource(request)
+            with self._create_ctx(op_res, request, request.token, skd_tree_parser) as ctx:
+                # if retry > 0:
+                #     _LOG.debug("retry %d to execute NeonTx %s", retry, request.neon_tx_hash)
+
+                try:
+                    # reuse already created ALTs
+                    ctx.add_alt_id(alt_id_list)
+                    alt_id_list = tuple()
+
+                    code = await self._neon_tx_executor.exec_neon_tx(ctx)
+                    await self._free_op_resource(request.req_id, op_res)
+                    return code
+
+                except StuckTxError as exc:
+                    _LOG.debug("switch to complete the stuck NeonTx %s", exc.neon_tx_hash)
+
+                    stuck_tx = MpStuckTxModel.from_raw(exc.neon_tx_hash, exc.holder_address)
+                    stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
+                    if not self._run_task(stuck_req, complete_stuck_neon_tx, stuck_req, op_res):
+                        await self._free_op_resource(request.req_id, op_res)
+
+                    _LOG.debug("return back to the execution of NeonTx %s", request.neon_tx_hash)
+                    # reuse already created ALTs
+                    alt_id_list = ctx.pop_alt_id_list()
+
+                except BaseException as exc:
+                    _LOG.error("unexpected error on execute NeonTx", exc_info=exc, extra=self._msg_filter)
+                    await self._free_op_resource(request.req_id, op_res)
+                    return ExecTxDoneCode.Failed
 
     async def _exec_neon_skd_tree_retry_loop(
         self,
@@ -187,43 +135,33 @@ class NeonTxExecApi(ExecutorApi):
         token = skd_request.token
         resp_code = ExecTxDoneCode.Failed
 
-        async def _exec_neon_tx(_skd_tx: NeonSkdTxModel) -> None:
-            nonlocal skd_tree_parser
-            nonlocal token
+        async def exec_neon_tx(skd_tx_: NeonSkdTxModel) -> None:
             nonlocal resp_code
 
-            try:
-                mp_tx = MpTxModel.from_skd_tx(_skd_tx)
-                request = ExecTxRequest(tx=mp_tx, token=token)
+            mp_tx = MpTxModel.from_skd_tx(skd_tx_)
+            request = ExecTxRequest(tx=mp_tx, token=token)
 
-                with logging_context(**request.req_id, skd_tree=_skd_tx.tree_address.ident):
-                    _resp_code = await self._exec_neon_tx_retry_loop(request, skd_tree_parser)
-                    if _skd_tx.neon_tx_hash == skd_request.tx.neon_tx_hash:
-                        resp_code = _resp_code
-            except BaseException as exc:
-                _LOG.error("unexpected error on execute NeonSkdTx", exc_info=exc, extra=self._msg_filter)
+            with logging_context(**request.req_id):
+                code = await self._exec_neon_tx_retry_loop(request, skd_tree_parser)
+                if skd_tx_.neon_tx_hash == skd_request.neon_tx_hash:
+                    resp_code = code
 
-        async def _complete_neon_tx(_skd_tx: NeonSkdTxModel) -> None:
-            nonlocal token
-            try:
-                with logging_context(tx=_skd_tx.neon_tx_hash.ident, skd_tree=_skd_tx.tree_address.ident):
-                    if not (holder_addr := await self._db.get_neon_skd_tx_holder_address(_skd_tx.neon_tx_hash)):
-                        # _LOG.debug("no holder for NeonSkdTx %s", _skd_tx.neon_tx_hash)
-                        return
+        async def complete_neon_tx(skd_tx_: NeonSkdTxModel) -> None:
+            if not (holder_addr := await self._db.get_neon_skd_tx_holder_address(skd_tx_.neon_tx_hash)):
+                # _LOG.debug("no holder for NeonSkdTx %s", _skd_tx.neon_tx_hash)
+                return
 
-                    stuck_tx = MpStuckTxModel.from_raw(_skd_tx.neon_tx_hash, holder_addr)
-                    stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
+            stuck_tx = MpStuckTxModel.from_raw(skd_tx_.neon_tx_hash, holder_addr)
+            stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
 
-                    await self._complete_stuck_neon_tx_retry_loop(stuck_req, skd_tree_parser)
-            except BaseException as exc:
-                _LOG.error("unexpected error on complete NeonSkdTx", exc_info=exc, extra=self._msg_filter)
+            await self._validate_stuck_neon_tx(stuck_req, None, skd_tree_parser)
 
         last_good_time = time.monotonic()
-        for _retry in itertools.count():
+        while True:
             if await skd_tree_parser.can_be_destroyed():
                 now = time.monotonic()
                 if (now - last_good_time) > MIN_FINALIZE_SEC:
-                    await self._destroy_tree_account(skd_tree_parser)
+                    await self._destroy_tree_account(skd_request, skd_request.token, skd_tree_parser)
                     break
             elif not await skd_tree_parser.is_exist():
                 break
@@ -238,9 +176,11 @@ class NeonTxExecApi(ExecutorApi):
                 if not await skd_tree_parser.is_exist():
                     break
                 elif status == status.InProgress:
-                    task = asyncio.create_task(_complete_neon_tx(skd_tx))
+                    if skd_tx.neon_tx_hash in self._task_dict:
+                        continue
+                    task = asyncio.create_task(complete_neon_tx(skd_tx))
                 elif status == status.NotStarted:
-                    task = asyncio.create_task(_exec_neon_tx(skd_tx))
+                    task = asyncio.create_task(exec_neon_tx(skd_tx))
                 else:
                     continue
                 task_list.append(task)
@@ -252,50 +192,44 @@ class NeonTxExecApi(ExecutorApi):
 
         return resp_code
 
-    async def _complete_stuck_neon_tx_retry_loop(
+    async def _validate_stuck_neon_tx(
         self,
         request: CompleteStuckTxRequest,
+        op_resource: OpResourceModel | None,
         skd_tree_parser: NeonSkdTreeParser | None,
     ) -> ExecTxDoneCode:
-        holder_acct = await self._core_api_client.get_holder_account(request.stuck_tx.holder_address)
-        if holder_acct.neon_tx_hash != request.stuck_tx.neon_tx_hash:
-            return ExecTxDoneCode.Failed
-
-        is_new_skd_tree_parser = False
-        if (not skd_tree_parser) and holder_acct.is_scheduled_tx:
-            is_new_skd_tree_parser = True
-            root_tx_hash = EthTxHash.default()
-            skd_tree_parser = NeonSkdTreeParser(self._server, holder_acct.payer, holder_acct.tx.nonce, root_tx_hash)
-            await skd_tree_parser.start()
-            if not (await skd_tree_parser.is_exist()):
+        try:
+            holder_acct = await self._core_api_client.get_holder_account(request.stuck_tx.holder_address)
+            if holder_acct.neon_tx_hash != request.neon_tx_hash:
                 return ExecTxDoneCode.Failed
 
+            if not op_resource:
+                op_resource = await self._acquire_op_key(request.req_id, holder_acct.chain_id)
+
+            if (not skd_tree_parser) and holder_acct.is_scheduled_tx:
+                async with self._acquire_neon_skd_tree(holder_acct) as skd_tree_parser:
+                    if not (await skd_tree_parser.is_exist()):
+                        return ExecTxDoneCode.Failed
+                    return await self._complete_stuck_neon_tx(request, op_resource, skd_tree_parser)
+
+            return await self._complete_stuck_neon_tx(request, op_resource, skd_tree_parser)
+
+        except BaseException as exc:
+            _LOG.error("unexpected error on complete stuck NeonTx", exc_info=exc, extra=self._msg_filter)
+            return ExecTxDoneCode.Failed
+
+    async def _complete_stuck_neon_tx(
+        self,
+        request: CompleteStuckTxRequest,
+        op_resource: OpResourceModel,
+        skd_tree_parser: NeonSkdTreeParser | None,
+    ) -> ExecTxDoneCode:
         gas_price = await self._get_gas_price()
-        token = gas_price.chain_dict.get(holder_acct.chain_id)
-        exec_token = ExecTokenModel.from_raw(gas_price, token)
-        op_res = await self._acquire_op_key(request.req_id, holder_acct.chain_id)
-        ctx = NeonExecTxCtx(self._server, op_res, request, exec_token, skd_tree_parser)
+        token = gas_price.chain_dict.get(op_resource.chain_id)
+        exec_token = ExecTokenModel.from_raw(token)
 
-        try:
-            for _retry in itertools.count():
-                # if retry > 0:
-                #     _LOG.debug("retry %d to complete stuck NeonTx %s", retry, request.tx.neon_tx_hash)
-
-                try:
-                    return await self._neon_tx_executor.complete_stuck_neon_tx(ctx)
-
-                except BaseException as exc:
-                    _LOG.error("unexpected error on complete stuck NeonTx", exc_info=exc, extra=self._msg_filter)
-                    return ExecTxDoneCode.Failed
-        finally:
-            self._destroy_alt_list(ctx)
-            if is_new_skd_tree_parser:
-                await skd_tree_parser.stop()
-
-    def _destroy_alt_list(self, ctx: NeonExecTxCtx) -> None:
-        if ctx.alt_id_list:
-            alt_list = tuple(map(lambda x: NeonAltModel(neon_tx_hash=ctx.neon_tx_hash, sol_alt_id=x), ctx.alt_id_list))
-            self._sol_alt_destroyer.destroy_alt_list(alt_list)
+        with self._create_ctx(op_resource, request, exec_token, skd_tree_parser) as ctx:
+            return await self._neon_tx_executor.complete_stuck_neon_tx(ctx)
 
     @cached_property
     def _neon_tx_executor(self) -> NeonTxExecutor:
@@ -305,85 +239,104 @@ class NeonTxExecApi(ExecutorApi):
     def _sol_alt_destroyer(self) -> SolAltDestroyer:
         return self._server._sol_alt_destroyer  # noqa
 
+    @asynccontextmanager
+    async def _acquire_neon_skd_tree(
+        self,
+        request: ExecTxRequest | HolderAccountModel | DestroyTreeAccountRequest,
+    ) -> AsyncGenerator[NeonSkdTreeParser, None]:
+        skd_tree_parser = NeonSkdTreeParser(self._server, request.payer, request.nonce, request.neon_tx_hash)
+        with logging_context(**skd_tree_parser.req_id):
+            try:
+                await skd_tree_parser.start()
+                yield skd_tree_parser
+            except BaseException as exc:
+                _LOG.error("unexpected error on acquire NeonSkdTree", exc_info=exc, extra=self._msg_filter)
+                raise
+            finally:
+                await skd_tree_parser.stop()
+
+    @contextmanager
+    def _create_ctx(
+        self,
+        op_resource: OpResourceModel,
+        tx_request: ExecTxRequest | CompleteStuckTxRequest,
+        token: ExecTokenModel | None,
+        skd_tree_parser: NeonSkdTreeParser | None,
+    ) -> Generator[NeonExecTxCtx, None]:
+        ctx = NeonExecTxCtx(self._server, op_resource, tx_request, token, skd_tree_parser)
+        try:
+            yield ctx
+        finally:
+            if not ctx.alt_id_list:
+                return
+
+            alt_list = tuple(map(lambda x: NeonAltModel(neon_tx_hash=ctx.neon_tx_hash, sol_alt_id=x), ctx.alt_id_list))
+            self._sol_alt_destroyer.destroy_alt_list(alt_list)
+
     async def _acquire_op_resource(self, request: ExecTxRequest) -> OpResourceModel:
-        # _LOG.debug("acquire holder for %s", request.tx.neon_tx_hash)
-        for _ in itertools.count():
-            op_res = await self._op_client.get_resource(request.req_id, request.token.chain_id)
-            if not op_res.is_empty:
-                return op_res
+        # _LOG.debug("acquire holder for %s", request.neon_tx_hash)
+        while True:
+            try:
+                op_res = await self._op_client.get_resource(request.req_id, request.token.chain_id)
+                if not op_res.is_empty:
+                    return op_res
+            except BaseException as exc:
+                _LOG.error("unexpected error on get resource", exc_info=exc, extra=self._msg_filter)
             await asyncio.sleep(self._fail_sleep_sec)
-        assert False, "unreached code"
+
+    async def _free_op_resource(self, req_id: dict, op_res: OpResourceModel) -> None:
+        try:
+            await self._op_client.free_resource(req_id, True, op_res)
+        except BaseException as exc:
+            _LOG.error("unexpected error on free resource", exc_info=exc, extra=self._msg_filter)
 
     async def _acquire_op_key(self, req_id: dict, chain_id) -> OpResourceModel:
-        for _ in itertools.count():
-            op_res = await self._op_client.get_active_key(req_id, chain_id)
-            if not op_res.is_empty:
-                return op_res
+        while True:
+            try:
+                op_res = await self._op_client.get_active_key(req_id, chain_id)
+                if not op_res.is_empty:
+                    return op_res
+            except BaseException as exc:
+                _LOG.error("unexpected error on get active key", exc_info=exc, extra=self._msg_filter)
             await asyncio.sleep(self._fail_sleep_sec)
-        assert False, "unreached code"
 
-    async def _complete_task_list(self) -> None:
+    async def _run_task(
+        self,
+        request: ExecTxRequest | CompleteStuckTxRequest | DestroyTreeAccountRequest,
+        func: Callable,
+        *args,
+    ) -> bool:
+        # free memory of completed asyncio tasks
         task_list, self._completed_task_list = self._completed_task_list, list()
         if task_list:
             await asyncio.gather(*task_list)
 
-    async def _destroy_tree_account(self, skd_tree_parser: NeonSkdTreeParser) -> None:
-        try:
-            stuck_tx = MpStuckTxModel.from_raw(skd_tree_parser.root_neon_tx_hash, SolPubKey.default())
-            stuck_req = CompleteStuckTxRequest(stuck_tx=stuck_tx)
-            op_res = await self._acquire_op_key(stuck_req.req_id, skd_tree_parser.chain_id)
-            payer_acct = await self._core_api_client.get_neon_account(skd_tree_parser.payer, None)
+        tx_hash = request.neon_tx_hash
+        if tx_hash in self._task_dict:
+            return False
 
-            ctx = NeonExecTxCtx(self._server, op_res, stuck_req, None, skd_tree_parser)
+        async def new_task() -> None:
+            with logging_context(**request.req_id):
+                try:
+                    await func(*args)
+                except BaseException as exc:
+                    _LOG.error("unexpected error on run task", exc_info=exc, extra=self._msg_filter)
+                finally:
+                    if task := self._task_dict.pop(tx_hash, None):
+                        self._completed_task_list.append(task)
 
-            base_tx_acct_set = NeonBaseTxAccountSet(
-                raw_payer=payer_acct.sol_address,
-                raw_payer_container=payer_acct.container_sol_address,
-                raw_sender=payer_acct.sol_address,
-                raw_sender_container=payer_acct.container_sol_address,
-                raw_receiver=SolPubKey.default(),
-                raw_receiver_container=SolPubKey.default(),
-                receiver_contract=SolPubKey.default(),
-                payer_balance=payer_acct.balance,
-            )
-            ctx.set_tx_sol_address(base_tx_acct_set)
+        self._task_dict[tx_hash] = asyncio.create_task(new_task())
+        return True
 
-            for _ in itertools.count():
-                await self._destroy_tree_account_retry_loop(ctx)
-                await asyncio.sleep(1)
-
-                acct = await self._sol_client.get_account(skd_tree_parser.address, 1, SolCommit.Finalized)
-                if acct.is_empty:
-                    await self._db.destroy_tree_account(skd_tree_parser.address, skd_tree_parser.root_neon_tx_hash)
-                    break
-
-        except SolTxExecError:
-            pass
-
-        except BaseException as exc:
-            _LOG.error("error on destroy tree account: %s", str(exc))
-
-    async def _destroy_tree_account_retry_loop(self, ctx: NeonExecTxCtx) -> None:
-        if not (await ctx.skd_tree_parser.is_exist()):
-            return
-
-        destroy_ix = ctx.neon_prog.make_destroy_skd_tree_ix()
-        destroy_cfg = SolCbCfg(
-            NeonEvmIxCode.SkdTreeDestroy.name,
-            cu_price=self._cfg.def_simple_cu_price,
-            cu_limit=ctx.neon_prog.CuLimitSkdTreeAccountDestroy,
-        )
-        tx = SolCbProg.make_legacy_tx(destroy_cfg, destroy_ix)
-
-        tx_list_sender = ctx.sol_tx_list_sender
-
-        for _ in itertools.count():
-            if not (await ctx.skd_tree_parser.is_exist()):
-                return
-            elif not (await ctx.skd_tree_parser.can_be_destroyed()):
-                return
-
-            await tx_list_sender.send([tx])
+    async def _destroy_tree_account(
+        self,
+        request: ExecTxRequest | CompleteStuckTxRequest,
+        token: ExecTokenModel,
+        skd_tree_parser: NeonSkdTreeParser,
+    ) -> None:
+        op_res = await self._acquire_op_key(request.req_id, skd_tree_parser.chain_id)
+        with self._create_ctx(op_res, request, token, skd_tree_parser) as ctx:
+            await self._neon_tx_executor.destroy_tree_account(ctx)
 
     @ttl_cached_method(ttl_sec=10)
     async def _get_gas_price(self) -> MpGasPriceModel:

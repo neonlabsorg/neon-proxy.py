@@ -16,7 +16,6 @@ class PriorityFeeCfg:
     cu_price_level: CuPriceLevel
     cu_price_block_cnt: int
     def_cu_price: int
-    def_simple_cu_price: int
 
 
 @dataclasses.dataclass(frozen=True)

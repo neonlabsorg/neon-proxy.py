@@ -58,12 +58,6 @@ class SolAltProg:
     MaxTxAccountCnt: Final[int] = 27
     MaxAltAccountCnt: Final[int] = _alt.LOOKUP_TABLE_MAX_ADDRESSES
 
-    # CU limits for instructions
-    CuLimitCreate: Final[int] = 25_000
-    CuLimitExtend: Final[int] = 20_000
-    CuLimitDeactivate: Final[int] = 10_000
-    CuLimitClose: Final[int] = 10_000
-
     def __init__(self, payer: SolPubKey) -> None:
         self._payer = payer
 
@@ -95,11 +89,12 @@ class SolAltProg:
         assert (
             addr == ident.address
         ), "The parameters for creating ALT don't satisfy conditions for generating the address of ALT"
-        return ix
+
+        return SolTxIx.clone(ix, name="CreateLookupTable")
 
     def make_extend_alt_ix(self, ident: SolAltID, account_key_list: Sequence[SolPubKey]) -> SolTxIx:
         assert len(account_key_list), "No accounts for ALT extending"
-        return _sys.extend_lookup_table(
+        ix = _sys.extend_lookup_table(
             _sys.ExtendLookupTableParams(
                 payer_address=self._payer,
                 lookup_table_address=ident.address,
@@ -107,31 +102,38 @@ class SolAltProg:
                 new_addresses=list(account_key_list),
             )
         )
+        return SolTxIx.clone(ix, name="UpdateLookupTable")
 
     def make_deactivate_alt_ix(self, ident: SolAltID) -> SolTxIx:
-        return _sys.deactivate_lookup_table(
+        ix = _sys.deactivate_lookup_table(
             _sys.DeactivateLookupTableParams(
                 lookup_table_address=ident.address,
                 authority_address=self._payer,
             )
         )
+        return SolTxIx.clone(ix, name="DeactivateLookupTable")
 
     def make_close_alt_ix(self, ident: SolAltID) -> SolTxIx:
-        return _sys.close_lookup_table(
+        ix = _sys.close_lookup_table(
             _sys.CloseLookupTableParams(
                 lookup_table_address=ident.address,
                 authority_address=self._payer,
                 recipient_address=self._payer,
             )
         )
+        return SolTxIx.clone(ix, name="CloseLookupTable")
 
 
 class SolExtAltProg:
     ID: Final[SolPubKey] = NEON_ALT_PROGRAM_ID
-    CuLimit: Final[int] = 35_000
+    UpdateIxName: Final[str] = "UpdateLookupTable"
 
     def __init__(self, payer: SolPubKey) -> None:
         self._payer = payer
+
+    @cached_property
+    def ix_name_list(self) -> Sequence[str]:
+        return tuple([self.UpdateIxName])
 
     def make_update_alt_ix(self, ident: SolAltID, account_key_list: Sequence[SolPubKey]) -> SolTxIx:
         assert len(account_key_list), "No accounts for ALT updating"
@@ -150,6 +152,7 @@ class SolExtAltProg:
             program_id=self.ID,
             data=ident.recent_slot.to_bytes(8, "little"),
             accounts=ix_acct_key_list,
+            name=self.UpdateIxName,
         )
 
 

@@ -49,6 +49,11 @@ class SolCbProg:
     def make_legacy_tx(cls, cfg: SolCbCfg, ix_list: SolTxIx | Sequence[SolTxIx]) -> SolLegacyTx:
         res_ix_list: list[SolTxIx] = list()
 
+        if isinstance(ix_list, SolTxIx):
+            ix_list = tuple([ix_list])
+
+        tx_name = "+".join(set(map(lambda x: x.name, ix_list)))
+
         if cfg.cu_price >= 0:
             res_ix_list.append(cls.make_cu_price_ix(cfg.cu_price))
         if cfg.cu_limit not in (0, cls.DefCuLimit):
@@ -56,16 +61,12 @@ class SolCbProg:
         if cfg.heap_size > cls.DefHeapSize:
             res_ix_list.append(cls.make_heap_size_ix(cfg.heap_size))
 
-        if isinstance(ix_list, SolTxIx):
-            res_ix_list.append(ix_list)
-        else:
-            res_ix_list.extend(ix_list)
-        return SolLegacyTx(name=cfg.name, ix_list=res_ix_list)
+        res_ix_list.extend(ix_list)
+        return SolLegacyTx(name=tx_name, ix_list=res_ix_list)
 
 
 @dataclasses.dataclass(frozen=True)
 class SolCbCfg:
-    name: str | None = None
     # Compute Unit limit
     cu_limit: int = 0
     max_cu_limit: int = SolCbProg.MaxCuLimit
@@ -76,7 +77,6 @@ class SolCbCfg:
     max_priority_fee: int = 0  # lamports
     # Heap Frame Size
     heap_size: int = SolCbProg.DefHeapSize
-    max_heap_size: int = SolCbProg.MaxHeapSize
 
     _Default: ClassVar[SolCbCfg | None] = None
 

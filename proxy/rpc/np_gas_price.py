@@ -10,6 +10,7 @@ from common.ethereum.hash import EthAddressField, EthAddress
 from common.http.utils import HttpRequestCtx
 from common.jsonrpc.api import BaseJsonRpcModel
 from common.neon.address import NeonAddress
+from common.solana.cb_program import SolCbProg
 from common.solana.pubkey import SolPubKeyField
 from common.utils.pydantic import HexUIntField
 from proxy.rpc.api import RpcBlockRequest
@@ -55,6 +56,7 @@ class _RpcDefaultGasPriceModel(_RpcGasPriceModel):
         if def_gas_price is None:
             def_gas_price = token_price.suggested_gas_price
 
+        sol_priority_fee = (price.cu_price * SolCbProg.MaxCuLimit)
         kwargs = dict(
             tokenName=token_price.token_name,
             chainId=token_price.chain_id,
@@ -66,9 +68,9 @@ class _RpcDefaultGasPriceModel(_RpcGasPriceModel):
             chainTokenPriceUsd=price.chain_token_price_usd,
             tokenPriceUsd=token_price.token_price_usd,
             operatorFee=price.operator_fee,
-            solanaCUPriorityFee=price.cu_price,
+            solanaCUPriorityFee=sol_priority_fee,
             solanaCUPriorityFeePercentile=price.cu_price_pct,
-            solanaSimpleCUPriorityFee=price.simple_cu_price,
+            solanaSimpleCUPriorityFee=sol_priority_fee,
         )
         if token_price.is_default_token:
             neon_kwargs = dict(

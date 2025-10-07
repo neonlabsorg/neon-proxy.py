@@ -1,16 +1,24 @@
 from __future__ import annotations
 
-import asyncio
+import logging
 from typing import Sequence
 
 from common.cmd_client.cmd_handler import BaseCmdHandler
-from common.solana.commit_level import SolCommit
+from common.cu_price.client import SolCuPriceClient
+from common.neon_rpc.api_client import CoreApiClient
+from common.neon_rpc.transaction_list_sender import SolNeonTxListSender
+from common.solana.alt_info import SolAltInfo
+from common.solana.cb_program import SolCbCfg, SolCbProg
+from common.solana.instruction import SolTxIx
 from common.solana.pubkey import SolPubKey
-from common.solana.transaction import SolTx
 from common.solana_rpc.client import SolClient
+from common.solana_rpc.transaction_list_sender_stat import SolTxStatClient, SolTxDoneData, SolTxFailData
 from common.utils.cached import cached_method
 from proxy.base.mp_client import MempoolClient
 from proxy.base.op_client import OpResourceClient
+from proxy.executor.transaction_list_signer import OpTxListSigner
+
+_LOG = logging.getLogger(__name__)
 
 
 class BaseNPCmdHandler(BaseCmdHandler):
@@ -22,23 +30,44 @@ class BaseNPCmdHandler(BaseCmdHandler):
     async def _get_op_client(self) -> OpResourceClient:
         return await self._new_client(OpResourceClient, self._cfg)
 
-    async def _send_tx_list(
+    @cached_method
+    async def _get_cu_price_client(self) -> SolCuPriceClient:
+        return await self._new_client(SolCuPriceClient, self._cfg)
+
+    async def _send_tx(
         self,
         req_id: dict,
         payer: SolPubKey,
-        tx_list: SolTx | Sequence[SolTx],
-        timeout_sec: int,
-    ) -> None:
+        ix_list: SolTxIx | Sequence[SolTxIx],
+        alt_list: Sequence[SolAltInfo] = tuple(),
+    ) -> bool:
         sol_client: SolClient = await self._get_sol_client()
+        cu_price_client: SolCuPriceClient = await self._get_cu_price_client()
         op_client: OpResourceClient = await self._get_op_client()
-        blockhash, _ = await sol_client.get_recent_blockhash(commit=SolCommit.Finalized)
+        core_api_client: CoreApiClient = await self._get_core_api_client()
 
-        if isinstance(tx_list, SolTx):
-            tx_list = tuple([tx_list])
+        stat_client = _FakeTxStatClient()
+        tx_list_signer = OpTxListSigner(req_id, payer, op_client)
 
-        for tx in tx_list:
-            tx.set_recent_blockhash(blockhash)
+        tx_list_sender = SolNeonTxListSender(
+            self._cfg,
+            sol_client,
+            tx_list_signer,
+            stat_client,
+            core_api_client,
+            cu_price_client,
+        )
 
-        tx_list = await op_client.sign_sol_tx_list(req_id, payer, tx_list)
-        await sol_client.send_tx_list(tx_list, skip_preflight=True, max_retry_cnt=None)
-        await asyncio.sleep(timeout_sec)
+        cb_cfg = SolCbCfg(heap_size=SolCbProg.MaxHeapSize)
+
+        try:
+            return await tx_list_sender.send_tx(ix_list, cb_cfg, alt_list)
+        except BaseException as exc:
+            _LOG.error("got error %s", str(exc))
+
+        return False
+
+
+class _FakeTxStatClient(SolTxStatClient):
+    def commit_sol_tx_done(self, data: SolTxDoneData) -> None: ...
+    def commit_sol_tx_fail(self, data: SolTxFailData) -> None: ...

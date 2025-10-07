@@ -8,13 +8,11 @@ from .strategy_stage_alt import alt_strategy
 
 
 class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
-    name: ClassVar[str] = NeonEvmIxCode.TxExecFromDataSolanaCall.name
+    Name: ClassVar[str] = NeonEvmIxCode.TxExecFromDataSolanaCall.name
 
     async def _validate(self) -> bool:
         return (
-            self._validate_not_stuck_tx()
-            and self._validate_not_scheduled_tx()
-            and self._validate_gas_price()
+            self._validate_not_skd_tx()
             and self._validate_has_chain_id()
             and self._validate_has_sol_call()
             and self._validate_no_resize_iter()
@@ -26,5 +24,4 @@ class SimpleTxSolanaCallStrategy(SimpleTxStrategy):
 
 
 @alt_strategy
-class AltSimpleTxSolanaCallStrategy(SimpleTxSolanaCallStrategy):
-    pass
+class AltSimpleTxSolanaCallStrategy(SimpleTxSolanaCallStrategy): ...
