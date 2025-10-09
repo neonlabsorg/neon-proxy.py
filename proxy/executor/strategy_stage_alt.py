@@ -56,7 +56,7 @@ class AltTxPrepStage(BaseTxPrepStage):
 
     def make_fake_sol_neon_tx(self) -> SolV0Tx:
         actual_alt: Final = self._alt_builder.build_fake_alt(self._legacy_tx)
-        return SolV0Tx(name=self._legacy_tx.name, ix_list=self._legacy_tx.ix_list, alt_list=tuple([actual_alt]))
+        return SolV0Tx.from_legacy_tx(self._legacy_tx, alt_list=tuple([actual_alt]))
 
     @property
     def alt_list(self) -> tuple[SolAltInfo]:
@@ -72,7 +72,7 @@ class AltTxPrepStage(BaseTxPrepStage):
             return False
 
         try:
-            tx: Final = SolV0Tx(name=self._legacy_tx.name, ix_list=self._legacy_tx.ix_list, alt_list=alt_list)
+            tx: Final = SolV0Tx.from_legacy_tx(self._legacy_tx, alt_list=alt_list)
             tx.validate(SolSigner.fake())
             return True
         except SolTxSizeError:

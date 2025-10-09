@@ -14,6 +14,7 @@ from .pubkey import SolPubKey
 from .signature import SolTxSig
 from .signer import SolSigner
 from .transaction import SolTx
+from .transaction_legacy import SolLegacyTx
 from ..utils.pydantic import BaseModel, Base64Field
 
 _SoldersMsgALT = _msg.MessageAddressTableLookup
@@ -51,6 +52,11 @@ class SolV0Tx(SolTx):
         self._is_signed = model.is_signed
         self._is_cloned = model.is_cloned
         return self
+
+    @classmethod
+    def from_legacy_tx(cls, legacy_tx: SolLegacyTx, alt_list: Sequence[SolAltInfo]) -> Self:
+        name = "Alt+" + legacy_tx.name if legacy_tx.name else ""
+        return cls(name, legacy_tx.ix_list, alt_list)
 
     def to_dict(self) -> dict:
         return self._Model(
@@ -184,5 +190,5 @@ class SolV0Tx(SolTx):
 
         self._solders_v0_tx = _SoldersV0Tx(msg, (signer.keypair,))
 
-    def _clone(self) -> SolV0Tx:
-        return SolV0Tx(self._name, self._decode_ix_list(), self._alt_list)
+    def _clone(self) -> Self:
+        return self.__class__(self._name, self._decode_ix_list(), self._alt_list)
