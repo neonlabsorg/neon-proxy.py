@@ -158,7 +158,7 @@ class SolNeonTxListSender(SolTxListSender):
         if not alt_list:
             return legacy_tx
 
-        return SolV0Tx(name=legacy_tx.name, ix_list=legacy_tx.ix_list, alt_list=alt_list)
+        return SolV0Tx.from_legacy_tx(legacy_tx, alt_list=alt_list)
 
     async def _calc_sum_cu_limit(self, cb_cfg, ix_list: Sequence[SolTxIx]) -> int:
         if cb_cfg.cu_limit:
