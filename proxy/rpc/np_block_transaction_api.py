@@ -30,6 +30,7 @@ from common.neon.evm_log_decoder import NeonTxEventModel
 from common.neon.neon_program import NeonEvmIxCode
 from common.neon.transaction_decoder import SolNeonAltTxIxModel, SolNeonTxIxMetaModel
 from common.neon.transaction_meta_model import NeonTxMetaModel
+from common.neon.transaction_model import NeonTxType
 from common.neon_rpc.api import NeonSkdTreeModel, NeonSkdTreeNodeModel
 from common.solana.commit_level import SolCommit
 from common.solana.pubkey import SolPubKeyField, SolPubKey, SolNotNonePubKeyField
@@ -316,7 +317,7 @@ class _RpcNeonTxReceiptResp(_RpcEthTxReceiptResp):
 
         cancel: _RpcNeonCancelResp | None = None
         revert: _RpcNeonRevertResp | None = None
-        if neon_tx_meta.neon_tx_rcpt.is_failed:
+        if rcpt.is_failed:
             for idx, e in enumerate(reversed(rcpt.event_list)):
                 if idx > 5:
                     break
@@ -509,6 +510,7 @@ class _RpcNeonTxStatusModel(BaseJsonRpcModel):
     status: _RpcNeonTxStatusField
     executionPercentage: HexUIntField
     age: HexUIntField
+    index: int = Field(default=0, exclude=True)
 
 
 class _RpcNeonTreeNodeModel(BaseJsonRpcModel):
@@ -773,23 +775,33 @@ class NpBlockTxApi(NeonProxyApi):
 
         tree_dict: dict[int, NeonSkdTreeModel] = dict()
 
-        async def _get_tree(_nonce: int) -> NeonSkdTreeModel:
+        async def load_tree_(root_neon_tx_hash_: EthTxHash) -> NeonSkdTreeModel:
+            if not (tx_hash_list_ := await self._db.get_neon_skd_tx_hash_list_by_root_hash(root_neon_tx_hash_)):
+                return NeonSkdTreeModel.new_empty()
+            return NeonSkdTreeModel.from_tx_hash_list(tx_hash_list_)
+
+        async def get_tree_(tx_type_: int, nonce_: int) -> NeonSkdTreeModel:
             nonlocal tree_dict
             nonlocal sender_addr
 
-            if _tree := tree_dict.get(_nonce, None):
-                return _tree
-            _tree = await self._core_api_client.get_neon_skd_tree(sender_addr, _nonce, None)
-            tree_dict[_nonce] = _tree
-            return _tree
+            if tree_ := tree_dict.get(nonce_, None):
+                return tree_
+            elif NeonTxType.is_scheduled_tx(tx_type_):
+                tree_ = await self._core_api_client.get_neon_skd_tree(sender_addr, nonce_, None)
+            else:
+                tree_ = NeonSkdTreeModel.new_empty()
+
+            tree_dict[nonce_] = tree_
+            return tree_
 
         tx_status_list = resp.tx_status_list
         if not tx_status_list:
-            tree = await _get_tree(sender_acct.state_tx_cnt)
+            tree = await get_tree_(NeonTxType.Scheduled, sender_acct.state_tx_cnt)
             if tree.is_exist:
                 node = tree.node_list[0]
                 tx_status = MpTxStatusModel(
                     neon_tx_hash=node.neon_tx_hash,
+                    tx_type=NeonTxType.Scheduled,
                     nonce=sender_acct.state_tx_cnt,
                     exec_pct_list=list(),
                 )
@@ -798,61 +810,103 @@ class NpBlockTxApi(NeonProxyApi):
         if not tx_status_list:
             return dict()
 
-        def _get_status(_tx: MpTxStatusModel) -> _RpcNeonTxStatus:
+        def get_status_(tx_: MpTxStatusModel) -> _RpcNeonTxStatus:
             nonlocal resp
 
-            if _tx.nonce > resp.state_tx_cnt:
+            if tx_.nonce > resp.state_tx_cnt:
                 return _RpcNeonTxStatus.HighNonce
-            elif _tx.nonce < resp.state_tx_cnt:
+            elif tx_.nonce < resp.state_tx_cnt:
                 return _RpcNeonTxStatus.Done
             elif resp.in_processing:
                 return _RpcNeonTxStatus.InProgress
-            elif _tx.gas_price < resp.min_exec_gas_price:
+            elif tx_.gas_price < resp.min_exec_gas_price:
                 return _RpcNeonTxStatus.LowGasPrice
-            elif _tx.cost < resp.balance:
+            elif tx_.cost < resp.balance:
                 return _RpcNeonTxStatus.InsufficientBalance
             return _RpcNeonTxStatus.NotStarted
 
-        async def _get_status_pct(
-            _tx: MpTxStatusModel, _tree: NeonSkdTreeModel, idx: int
-        ) -> tuple[_RpcNeonTxStatus, int]:
-            if not _tree.is_exist:
-                return _get_status(_tx), _tx.get_exec_pct(_tx.neon_tx_hash)
+        async def get_node_status_(tx_: MpTxStatusModel, tree_: NeonSkdTreeModel, idx_: int) -> _RpcNeonTxStatus:
+            status_ = tree_.get_neon_skd_status(idx_)
 
-            _node = _tree.node_list[idx]
-            _status = _tree.get_neon_skd_status(idx)
-            if _status in (_status.Success, _status.Failed):
-                return _RpcNeonTxStatus.Done, 100
-            elif _status == _status.Skipped:
-                return _RpcNeonTxStatus.Skipped, 100
-            elif _status == _status.InProgress:
-                return _RpcNeonTxStatus.InProgress, _tx.get_exec_pct(_node.neon_tx_hash)
-            elif _status == _status.NotStarted:
-                return _RpcNeonTxStatus.WaitForParentTx, 0
+            if status_ in (status_.Success, status_.Failed):
+                return _RpcNeonTxStatus.Done
+            elif status_ == status_.Skipped:
+                return _RpcNeonTxStatus.Skipped
+            elif status_ == status_.InProgress:
+                return _RpcNeonTxStatus.InProgress
+            elif status_ == status_.NotStarted:
+                return _RpcNeonTxStatus.WaitForParentTx
 
-            _skd_tx = await self._db.get_neon_skd_tx_by_hash(_node.neon_tx_hash)
+            status_ = get_status_(tx_) if idx_ == 0 else _RpcNeonTxStatus.NotStarted
 
-            if (not _skd_tx) or (not _skd_tx.rlp_tx):
-                return _RpcNeonTxStatus.NoTxBody, 0
-            elif idx == 0:
-                return _get_status(_tx), _tx.get_exec_pct(_tx.neon_tx_hash)
+            if status_ == _RpcNeonTxStatus.NotStarted:
+                skd_tx_ = await self._db.get_neon_skd_tx_by_hash(tree_.node_list[idx_].neon_tx_hash)
+                if (not skd_tx_) or (not skd_tx_.rlp_tx):
+                    status_ = _RpcNeonTxStatus.NoTxBody
 
-            return _RpcNeonTxStatus.NotStarted, 0
+            return status_
 
-        async def _new_tx_status(_tx: MpTxStatusModel, _tree: NeonSkdTreeModel, idx: int) -> _RpcNeonTxStatusModel:
-            if not _tree.is_exist:
-                status, exec_pct, tx_hash = _RpcNeonTxStatus.Done, _tx.get_exec_pct(_tx.neon_tx_hash), _tx.neon_tx_hash
+        def get_exec_pct_(tx_: MpTxStatusModel, tx_hash_: EthTxHash, status_: _RpcNeonTxStatus) -> int:
+            if status_ == status_.InProgress:
+                return tx_.get_exec_pct(tx_hash_)
+            elif status_ in (status_.Done, status_.Skipped):
+                return 100
+            return 0
+
+        def is_tx_skipped_(tx_: NeonTxMetaModel) -> bool:
+            rcpt_: Final = tx_.neon_tx_rcpt
+            if not rcpt_.is_canceled:
+                return False
+            for event_ in rcpt_.event_list:
+                if event_.event_type != event_.event_type.Cancel:
+                    continue
+
+                raw_data = event_.data.to_bytes()
+                error_data = raw_data[1:]  # skip status(0x01 or 0x00)
+                data = CancelErrorData.from_bytes(error_data)
+                return data.is_skipped
+            return False
+
+        async def new_tx_status_(tx_: MpTxStatusModel, tree_: NeonSkdTreeModel, idx_: int) -> _RpcNeonTxStatusModel:
+            if not tree_.is_exist:
+                tx_hash_: Final = tx_.neon_tx_hash
             else:
-                tx_hash = _tree.node_list[idx].neon_tx_hash
-                status, exec_pct = await _get_status_pct(_tx, _tree, idx)
+                tx_hash_: Final = tree_.node_list[idx_].neon_tx_hash
 
-            return _RpcNeonTxStatusModel(txHash=tx_hash, status=status, executionPercentage=exec_pct, age=_tx.age_sec)
+            index_ = idx_
+            if db_tx := await self._db.get_tx_by_neon_tx_hash(tx_hash_):
+                status_: Final = _RpcNeonTxStatus.Skipped if is_tx_skipped_(db_tx) else _RpcNeonTxStatus.Done
+                index_ = db_tx.neon_tx.index
+            elif tree_.is_exist:
+                status_: Final = await get_node_status_(tx_, tree_, idx_)
+            elif NeonTxType.is_scheduled_tx(tx_.tx_type):
+                status_: Final = _RpcNeonTxStatus.Skipped
+            else:
+                status_: Final = get_status_(tx_)
 
-        async def _new_tx_status_list(_tx: MpTxStatusModel) -> list[_RpcNeonTxStatusModel]:
-            _tree = await _get_tree(_tx.nonce)
-            return [(await _new_tx_status(_tx, _tree, idx)) for idx in range(max(len(_tree.node_list), 1))]
+            exec_pct_ = get_exec_pct_(tx_, tx_hash_, status_)
 
-        return {tx.nonce: await _new_tx_status_list(tx) for tx in tx_status_list}
+            return _RpcNeonTxStatusModel(
+                txHash=tx_hash_,
+                status=status_,
+                executionPercentage=exec_pct_,
+                age=tx_.age_sec,
+                index=index_,
+            )
+
+        async def new_tx_status_list_(tx_: MpTxStatusModel) -> list[_RpcNeonTxStatusModel]:
+            tree_ = await get_tree_(tx_.tx_type, tx_.nonce)
+            if NeonTxType.is_scheduled_tx(tx_.tx_type) and (not tree_.is_exist):
+                tree_ = await load_tree_(tx_.neon_tx_hash)
+
+            status_list_: list[_RpcNeonTxStatusModel] = list()
+            for idx_ in range(max(len(tree_.node_list), 1)):
+                status_ = await new_tx_status_(tx_, tree_, idx_)
+                status_list_.append(status_)
+            status_list_.sort(key=lambda x: x.index)
+            return status_list_
+
+        return {tx.nonce: await new_tx_status_list_(tx) for tx in tx_status_list}
 
     @NeonProxyApi.method(name="neon_getScheduledTreeAccount")
     async def get_neon_skd_tree(

@@ -595,18 +595,18 @@ class MpTxSchedule:
         balance: int,
         min_exec_gas_price: int,
     ) -> MpTxStatusListResp:
-        def _get_exec_pct_list(_tx: MpTxModel, is_done: bool) -> list[MpTxExecPctModel]:
+        def get_exec_pct_list_(tx_: MpTxModel, is_done_: bool) -> list[MpTxExecPctModel]:
             nonlocal state_tx_cnt
             nonlocal in_processing
 
-            if (_tx.nonce == state_tx_cnt) and in_processing:
-                return self._global_tx_dict.get_exec_pct_list(_tx.neon_tx_hash)
-            elif is_done:
-                return [MpTxExecPctModel(neon_tx_hash=_tx.neon_tx_hash, exec_pct=100)]
+            if (tx_.nonce == state_tx_cnt) and in_processing:
+                return self._global_tx_dict.get_exec_pct_list(tx_.neon_tx_hash)
+            elif is_done_:
+                return [MpTxExecPctModel(neon_tx_hash=tx_.neon_tx_hash, exec_pct=100)]
             return list()
 
-        def _new_tx_status(_tx: MpTxModel, is_done: bool) -> MpTxStatusModel:
-            return MpTxStatusModel.from_raw(_tx, _get_exec_pct_list(_tx, is_done))
+        def new_tx_status_(tx_: MpTxModel, is_done_: bool) -> MpTxStatusModel:
+            return MpTxStatusModel.from_raw(tx_, get_exec_pct_list_(tx_, is_done_))
 
         tx_status_list: list[MpTxStatusModel] = list()
         in_processing = False
@@ -615,15 +615,15 @@ class MpTxSchedule:
             if not pool.is_empty:
                 state_tx_cnt = pool.state_tx_cnt
                 in_processing = pool.is_processing
-                tx_status_list = [_new_tx_status(tx, False) for tx in pool.tx_list()]
+                tx_status_list = [new_tx_status_(tx, False) for tx in pool.tx_list()]
 
-        # Add last 2 processed txs from the cache
+        # Add the last 2 processed txs from the cache
         tx_nonce = (tx_status_list[-1].nonce if tx_status_list else state_tx_cnt) - 1
         min_tx_nonce = max(tx_nonce - 1, 0)
         sender = NeonAddress.from_raw(sender, self._chain_id)
         while tx_nonce >= min_tx_nonce:
             if tx := self._global_tx_dict.get_tx_by_sender_nonce(sender, tx_nonce):
-                tx_status_list.append(_new_tx_status(tx, True))
+                tx_status_list.append(new_tx_status_(tx, True))
                 tx_nonce -= 1
             else:
                 break

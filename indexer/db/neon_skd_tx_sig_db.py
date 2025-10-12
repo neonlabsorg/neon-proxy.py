@@ -46,6 +46,7 @@ class NeonSkdTxSigDb(SkdTxDbTable):
         )
 
         self._select_by_tx_hash_query = DbQueryBody()
+        self._select_tx_hash_list_by_root_tx_hash_query = DbQueryBody()
         self._activate_query = DbQueryBody()
 
     async def start(self) -> None:
@@ -106,11 +107,32 @@ class NeonSkdTxSigDb(SkdTxDbTable):
             neon_sig=DbSqlParam("neon_sig"),
         )
 
+        select_tx_hash_list_by_root_tx_hash_sql = DbSql(
+            """;
+            SELECT DISTINCT
+              a.neon_sig
+            FROM
+              {table_name} AS a
+            INNER JOIN
+              {block_table_name} AS b
+              ON b.block_slot = a.block_slot
+              AND b.is_active = True
+            WHERE
+              a.root_neon_sig = {root_neon_tx_hash}
+            """
+        ).format(
+            table_name=self._table_name,
+            block_table_name=self._block_table_name,
+            root_neon_tx_hash=DbSqlParam("root_neon_tx_hash"),
+        )
+
         (
             self._select_by_tx_hash_query,
+            self._select_tx_hash_list_by_root_tx_hash_query,
             self._activate_query,
         ) = await self._db.sql_to_query(
             select_by_tx_hash_sql,
+            select_tx_hash_list_by_root_tx_hash_sql,
             activate_sql,
         )
 
@@ -150,6 +172,21 @@ class NeonSkdTxSigDb(SkdTxDbTable):
         rec_list = await self._fetch_all(ctx, self._select_by_tx_hash_query, _ByTxHash(neon_tx_hash=tx_hash_list))
         skd_tx_list = tuple([r.to_clean_copy() for r in rec_list if r])
         return {m.neon_tx_hash: m for m in skd_tx_list}
+
+    async def get_neon_skd_tx_hash_list_by_root_hash(
+        self,
+        ctx: DbTxCtx,
+        root_neon_tx_hash: EthTxHash,
+    ) -> Sequence[EthTxHash]:
+        root_tx_hash = root_neon_tx_hash.to_string()
+        rec_list: list[_RecordSig] = await self._fetch_all(
+            ctx,
+            self._select_tx_hash_list_by_root_tx_hash_query,
+            _ByRootTxHash(root_neon_tx_hash=root_tx_hash),
+            record_type=_RecordSig,
+        )
+        tx_hash_list = [r.neon_tx_hash for r in rec_list if r != root_tx_hash]
+        return tuple([root_tx_hash] + tx_hash_list)
 
 
 @dataclass(frozen=True)
@@ -219,5 +256,19 @@ class _Activate:
 
 
 @dataclass(frozen=True)
+class _RecordSig:
+    neon_sig: str
+
+    @property
+    def neon_tx_hash(self) -> EthTxHash:
+        return EthTxHash.from_raw(self.neon_sig)
+
+
+@dataclass(frozen=True)
 class _ByTxHash:
     neon_tx_hash: list[str]
+
+
+@dataclass(frozen=True)
+class _ByRootTxHash:
+    root_neon_tx_hash: str

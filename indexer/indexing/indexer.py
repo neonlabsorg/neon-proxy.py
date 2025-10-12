@@ -265,7 +265,8 @@ class Indexer:
         check_sec = float(self._cfg.indexer_check_msec) / 1000
         while not self._is_done_parsing:
             if not (await self._has_new_blocks()):
-                await asyncio.sleep(check_sec)
+                if self._db.is_reindexing_mode:
+                    await asyncio.sleep(check_sec)
                 continue
 
             if not self._db.is_reindexing_mode:

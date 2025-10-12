@@ -199,6 +199,9 @@ class IndexerDbClient:
     async def get_neon_skd_tx_by_hash(self, neon_tx_hash: EthTxHash) -> NeonSkdTxModel | None:
         return await self._neon_skd_tx_body_db.get_tx_by_hash(None, neon_tx_hash)
 
+    async def get_neon_skd_tx_hash_list_by_root_hash(self, root_neon_tx_hash: EthTxHash) -> Sequence[EthTxHash]:
+        return await self._neon_skd_tx_sig_db.get_neon_skd_tx_hash_list_by_root_hash(None, root_neon_tx_hash)
+
     async def get_neon_skd_tx_holder_address(self, neon_tx_hash: EthTxHash) -> SolPubKey | None:
         return await self._neon_skd_tx_status_db.get_holder_address(None, neon_tx_hash)
 
