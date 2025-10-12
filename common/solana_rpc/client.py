@@ -17,6 +17,7 @@ import solders.transaction_status as _tx
 
 from .errors import SolRpcError
 from ..config.config import Config
+from ..config.constants import ONE_BLOCK_MSEC
 from ..http.client import HttpClient, HttpClientRequest
 from ..http.utils import HttpURL
 from ..jsonrpc.errors import InternalJsonRpcError
@@ -260,6 +261,10 @@ class SolClient(HttpClient):
         resp = await self._send_request(req, _SoldersGetSlotResp)
         return resp.value
 
+    @ttl_cached_method(ttl_msec=ONE_BLOCK_MSEC)
+    async def get_finalized_slot(self) -> int:
+        return await self.get_slot(SolCommit.Finalized)
+
     async def get_first_slot(self) -> int:
         req = _SoldersGetFirstSlot(self._get_next_id())
         resp = await self._send_request(req, _SoldersGetFirstSlotResp)
@@ -351,7 +356,7 @@ class SolClient(HttpClient):
         return block.block_hash
 
     async def get_block_status(self, slot: int) -> SolBlockStatus:
-        finalized_slot = await self.get_slot(SolCommit.Finalized)
+        finalized_slot = await self.get_finalized_slot()
         if finalized_slot >= slot:
             return SolBlockStatus(slot, SolCommit.Finalized)
 

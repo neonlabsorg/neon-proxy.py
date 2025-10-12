@@ -101,7 +101,7 @@ class SolNotEmptyBlockFinder:
 
     @cached_method
     async def _get_stop_slot(self) -> int:
-        finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        finalized_slot = await self._sol_client.get_finalized_slot()
         return min(if_none(self._def_stop_slot, finalized_slot), finalized_slot)
 
 

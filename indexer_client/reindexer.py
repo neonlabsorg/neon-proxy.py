@@ -72,7 +72,7 @@ class ReIndexHandler(BaseCmdHandler):
                 )
                 return 1
 
-            finalized_slot = await sol_client.get_slot(SolCommit.Finalized)
+            finalized_slot = await sol_client.get_finalized_slot()
             if finalized_slot < arg_space.to_slot:
                 _LOG.error(
                     "to-slot %s is bigger than the finalized slot on Solana %s",
