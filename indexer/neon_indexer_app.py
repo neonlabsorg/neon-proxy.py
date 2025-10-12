@@ -87,7 +87,7 @@ class NeonIndexerApp:
         _LOG.debug("default ChainID: %s, layer0 ChainID: %s", NeonProg.DefaultChainId, NeonProg.Layer0ChainId)
 
     async def _init_finalized_slot(self) -> None:
-        self._finalized_slot = await self._sol_client.get_slot(SolCommit.Finalized)
+        self._finalized_slot = await self._sol_client.get_finalized_slot()
         _LOG.debug("finalize slot: %s", self._finalized_slot)
 
     async def _init_db(self) -> None:
