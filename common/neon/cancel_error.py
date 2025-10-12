@@ -56,6 +56,16 @@ class CancelErrorData:
             cls._skipped = cls(CancelErrorSource.NeonEVM, NeonProg.ID, NeonTxErrorLogInfo.ErrorCode.Custom, "Skipped")
         return cls._skipped
 
+    @property
+    def is_skipped(self) -> bool:
+        skip: Final = self.skipped()
+        # fmt: off
+        return (
+            (self.source, self.address, self.code, self.message) ==
+            (skip.source, skip.address, skip.code, skip.message)
+        )
+        # fmt: on
+
     @classmethod
     def from_str(cls, message: str) -> Self:
         return cls(CancelErrorSource.Solana, SolPubKey.default(), SolCancelErrorCode.Unknown, message)

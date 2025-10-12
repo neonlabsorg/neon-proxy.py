@@ -9,7 +9,7 @@ from pydantic import Field, PlainValidator, PlainSerializer
 from common.ethereum.bin_str import EthBinStrField
 from common.ethereum.hash import EthTxHashField, EthTxHash, EthAddress
 from common.neon.address import NeonAddressField
-from common.neon.transaction_model import NeonTxModel, NeonSkdTxModel
+from common.neon.transaction_model import NeonTxModel, NeonSkdTxModel, NeonTxType
 from common.solana.pubkey import SolPubKeyField, SolPubKey
 from common.solana.signature import SolTxSigField, SolTxSig
 from common.utils.cached import cached_property, cached_method
@@ -293,6 +293,7 @@ class MpTxExecPctModel(BaseModel):
 
 class MpTxStatusModel(BaseModel):
     neon_tx_hash: EthTxHashField
+    tx_type: int = NeonTxType.Legacy
     gas_price: int = 0
     nonce: int = 0
     cost: int = 0
@@ -303,6 +304,7 @@ class MpTxStatusModel(BaseModel):
     def from_raw(cls, tx: MpTxModel, exec_pct_list: list[MpTxExecPctModel]) -> Self:
         return cls(
             neon_tx_hash=tx.neon_tx_hash,
+            tx_type=tx.neon_tx.tx_type,
             gas_price=tx.neon_tx.effective_gas_price,
             nonce=tx.nonce,
             cost=tx.neon_tx.cost,

@@ -129,6 +129,7 @@ class SolBlockStatus:
 
 class SolClient(HttpClient):
     name: ClassVar[str] = "Solana"
+    _MaxRpcAcctCnt: Final[int] = 99
 
     def __init__(self, cfg: Config, stat_client: RpcStatClient) -> None:
         super().__init__(cfg)
@@ -240,9 +241,13 @@ class SolClient(HttpClient):
             data_slice=data_slice,
             commitment=commit.to_rpc_commit(),
         )
-        req = _SoldersGetAcctInfoList(address_list, cfg, self._get_next_id())
-        resp = await self._send_request(req, _SoldersGetAcctInfoListResp)
-        return tuple([SolAccountModel.from_raw(addr, raw) for addr, raw in zip(address_list, resp.value)])
+        acct_list: list[SolAccountModel] = list()
+        while address_list:
+            addr_list, address_list= address_list[:self._MaxRpcAcctCnt], address_list[self._MaxRpcAcctCnt:]
+            req = _SoldersGetAcctInfoList(addr_list, cfg, self._get_next_id())
+            resp = await self._send_request(req, _SoldersGetAcctInfoListResp)
+            acct_list.extend([SolAccountModel.from_raw(addr, raw) for addr, raw in zip(addr_list, resp.value)])
+        return tuple(acct_list)
 
     async def get_slot_list(self, start_slot: int, stop_slot, commit=SolCommit.Confirmed) -> Sequence[int]:
         req = _SoldersGetSlotList(start_slot, stop_slot, commit.to_rpc_commit(), self._get_next_id())
