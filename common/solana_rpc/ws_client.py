@@ -548,7 +548,7 @@ class SolWatchSlotSession(_SolWsSession[int, None]):
         if self._data or init_start_slot:
             confirmed_slot, finalized_slot = await asyncio.gather(*[
                 self._sol_client.get_slot(SolCommit.Confirmed),
-                self._sol_client.get_slot(SolCommit.Finalized),
+                self._sol_client.get_finalized_slot(),
             ])
         self._data = _SoldersSlotInfo(confirmed_slot, 0, finalized_slot)
 

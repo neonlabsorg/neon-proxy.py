@@ -120,7 +120,7 @@ class AltHandler(BaseNPCmdHandler):
             _LOG.error("Address Lookup Table %s has unknown owner %s", address, alt.owner)
             return 1
 
-        valid_slot = await sol_client.get_slot(SolCommit.Finalized)
+        valid_slot = await sol_client.get_finalized_slot()
         valid_slot -= 10_000
 
         if alt.last_extended_slot > valid_slot:
