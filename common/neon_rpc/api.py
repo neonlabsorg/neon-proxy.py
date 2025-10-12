@@ -8,7 +8,15 @@ from pydantic import Field, PlainValidator, AliasChoices, PlainSerializer, Confi
 from strenum import StrEnum
 
 from ..ethereum.bin_str import EthBinStrField, EthBinStr
-from ..ethereum.hash import EthTxHashField, EthTxHash, EthAddressField, EthZeroAddressField, EthAddress, EthHash32Field
+from ..ethereum.hash import (
+    EthTxHashField,
+    EthTxHash,
+    EthAddressField,
+    EthZeroAddressField,
+    EthAddress,
+    EthHash32Field,
+    EthHash32,
+)
 from ..ethereum.transaction import EthTx
 from ..neon.address import NeonAddress, NeonAddressField
 from ..neon.neon_program import NeonProgCfg, NeonProg, TokenInfo
@@ -126,7 +134,7 @@ class NeonAccountModel(_BaseRespModel):
     )
     container_sol_address: SolPubKeyField = Field(
         default=SolPubKey.default(),
-        validation_alias=AliasChoices("container_address", "container_sol_address")
+        validation_alias=AliasChoices("container_address", "container_sol_address"),
     )
 
     @classmethod
@@ -779,6 +787,19 @@ class NeonSkdTreeNodeModel(_BaseRespModel):
     success_exec_limit: DecUIntField = Field(validation_alias="success_execute_limit")
     parent_cnt: DecUIntField = Field(validation_alias="parent_count")
 
+    @classmethod
+    def from_tx_hash(cls, tx_hash: EthTxHash) -> Self:
+        return cls(
+            status=NeonSkdTxStatus.Success,
+            result_hash=EthHash32.default(),
+            transaction_hash=tx_hash,
+            gas_limit=0,
+            value=0,
+            child_transaction=0,
+            success_execute_limit=0,
+            parent_count=0,
+        )
+
 
 class NeonSkdTreeStatus(StrEnum):
     Empty = "Empty"
@@ -830,6 +851,21 @@ class NeonSkdTreeModel(_BaseRespModel):
             balance=0,
             last_idx=0,
             node_list=list(),
+        )
+
+    @classmethod
+    def from_tx_hash_list(cls, tx_hash_list: Sequence[EthTxHash]) -> Self:
+        return cls(
+            status=NeonSkdTreeStatus.Ok,
+            address=SolPubKey.default(),
+            payer=EthAddress.default(),
+            last_slot=0,
+            chain_id=0,
+            max_fee_per_gas=0,
+            max_priority_fee_per_gas=0,
+            balance=0,
+            last_idx=0,
+            node_list=[NeonSkdTreeNodeModel.from_tx_hash(h) for h in tx_hash_list],
         )
 
     @cached_property
