@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Sequence, Final
@@ -145,8 +146,12 @@ class SolTxErrorParser:
     def _check_if_unsupported_prog(self) -> bool:
         return self._get_tx_error() == SolRpcTxIxFieldErrorCode.UnsupportedProgramId
 
+    @cached_method
     def _get_tx_error(self) -> SolRpcTxErrorInfo | SolRpcTxIxFieldErrorCode | None:
+        send_error: SolRpcSendTxErrorInfo | None = None
         if isinstance(self._receipt, SolRpcSendTxErrorInfo):
+            send_error =  self._receipt
+        elif isinstance(self._receipt, SolRpcSendTxErrorInfo):
             if isinstance(self._receipt.err, SolRpcTxFieldErrorCode):
                 return self._receipt.err
             elif isinstance(self._receipt.err, SolRpcTxIxErrorInfo):
@@ -156,6 +161,23 @@ class SolTxErrorParser:
                 return self._receipt.transaction.meta.err
             elif isinstance(self._receipt.transaction.meta.err, SolRpcTxIxErrorInfo):
                 return self._receipt.transaction.meta.err.err
+        elif isinstance(self._receipt, EmulSolTxIxMetaModel):
+            try:
+                raw_dict = dict(
+                    err=self._receipt.error,
+                    logs=self._receipt.log_list,
+                )
+                raw_json = json.dumps(raw_dict)
+                send_error = SolRpcSendTxErrorInfo.from_json(raw_json)
+            except (BaseException,):
+                pass
+
+        if send_error:
+            if isinstance(send_error.err, SolRpcTxFieldErrorCode):
+                return send_error.err
+            elif isinstance(send_error.err, SolRpcTxIxErrorInfo):
+                return send_error.err.err
+
         return None
 
     @cached_method

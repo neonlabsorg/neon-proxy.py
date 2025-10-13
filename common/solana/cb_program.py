@@ -54,9 +54,9 @@ class SolCbProg:
 
         tx_name = "+".join(set(map(lambda x: x.name, ix_list)))
 
-        if cfg.cu_price >= 0:
+        if cfg.cu_price > 0:
             res_ix_list.append(cls.make_cu_price_ix(cfg.cu_price))
-        if cfg.cu_limit not in (0, cls.DefCuLimit):
+        if cfg.cu_limit > 0 and cfg.cu_limit != cls.DefCuLimit:
             res_ix_list.append(cls.make_cu_limit_ix(cfg.cu_limit))
         if cfg.heap_size > cls.DefHeapSize:
             res_ix_list.append(cls.make_heap_size_ix(cfg.heap_size))
@@ -74,7 +74,7 @@ class SolCbCfg:
     inc_cu_coeff: int = 3_000
     # Compute Unit Price
     cu_price: int = 0  # micro lamports
-    max_priority_fee: int = 0  # lamports
+    max_priority_fee: int = SolCbProg.MaxPriorityFee  # lamports
     # Heap Frame Size
     heap_size: int = SolCbProg.DefHeapSize
 
