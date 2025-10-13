@@ -724,7 +724,7 @@ class _NeonEvmResetLogDecoder(_NeonEvmLogDecoder):
         Unpacks Neon reset of all processed EVM steps:
         RESET
         """
-        if not cls._fixed_data_list_len(data_list, 0) is False:
+        if not cls._fixed_data_list_len(data_list, 0):
             return
 
         event = _NeonTxEventDraft.from_raw(
