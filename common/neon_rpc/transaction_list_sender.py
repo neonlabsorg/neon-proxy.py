@@ -3,6 +3,7 @@ import logging
 import typing
 from typing import Sequence, Final
 
+from .api import EmulSolTxIxMetaModel
 from .api_client import CoreApiClient
 from .transaction_error_parser import SolNeonTxErrorParser
 from ..config.config import Config
@@ -14,6 +15,7 @@ from ..solana.cb_program import SolCbProg, SolCbCfg
 from ..solana.instruction import SolTxIx
 from ..solana.pubkey import SolPubKey
 from ..solana.transaction import SolTx
+from ..solana.transaction_legacy import SolLegacyTx
 from ..solana.transaction_meta import SolRpcTxReceiptInfo
 from ..solana.transaction_v0 import SolV0Tx
 from ..solana_rpc.client import SolClient
@@ -78,7 +80,7 @@ class SolNeonTxListSender(SolTxListSender):
         if not (ix_list := self._prep_ix_list(ix_list)):
             return False
         elif isinstance(ix_list[0], SolTx):
-            return await self.send_tx_list(ix_list)
+            return await super().send_tx_list(ix_list)
 
         if not cb_cfg:
             cb_cfg = SolCbCfg.default()
@@ -109,7 +111,7 @@ class SolNeonTxListSender(SolTxListSender):
         if not (ix_list := self._prep_ix_list(ix_list)):
             return False
         elif isinstance(ix_list[0], SolTx):
-            return await self.send_tx_list(ix_list)
+            return await super().send_tx_list(ix_list)
 
         if not cb_cfg:
             cb_cfg = SolCbCfg.default()
@@ -177,10 +179,10 @@ class SolNeonTxListSender(SolTxListSender):
         cu_info_list: Final = await self._make_cu_info_list(cb_cfg, ix_list)
         cu_info_dict: dict[str, int] = dict()
         for ix in cu_info_list:
-            if (cu_info := max(ix.cu_limit, cu_info_dict.get(ix.name, 0))) > cb_cfg.threshold_cu_limit:
+            if (cu_limit := max(ix.cu_limit, cu_info_dict.get(ix.name, 0))) > cb_cfg.threshold_cu_limit:
                 raise SolCbExceededError(cb_cfg.max_cu_limit)
 
-            cu_info_dict[ix.name] = cu_info
+            cu_info_dict[ix.name] = cu_limit
 
         return cu_info_dict
 
@@ -189,11 +191,23 @@ class SolNeonTxListSender(SolTxListSender):
 
         cu_info_list = list()
         for ix, meta in zip(ix_list, meta_list):
-            # if meta.error:
+            self._raise_if_meta_error(cb_cfg, ix, meta)
             cu_info = self._SolTxIxCuInfo(name=ix.name, cu_limit=cb_cfg.round_cu(meta.cu_consumed))
             cu_info_list.append(cu_info)
 
         return tuple(cu_info_list)
+
+    @staticmethod
+    def _raise_if_meta_error(cb_cfg: SolCbCfg, ix: SolTxIx, meta: EmulSolTxIxMetaModel) -> None:
+        if (meta.cu_consumed <= cb_cfg.threshold_cu_limit) or (not meta.error):
+            return
+
+        tx: Final = SolLegacyTx(name="Unknown", ix_list=tuple([ix]))
+        error_parser: Final = SolNeonTxErrorParser(tx, meta)
+        if tx_error := error_parser.get_evm_error():
+            raise tx_error
+        elif tx_error := error_parser.get_error():
+            raise tx_error
 
     async def _calc_cu_price(
         self,
@@ -204,14 +218,14 @@ class SolNeonTxListSender(SolTxListSender):
         if cb_cfg.cu_price:
             return cb_cfg.cu_price
         # no reason to calculate the cu-price if priority-fee or cu-limit isn't defined
-        elif (not cb_cfg.max_priority_fee) or (not cb_cfg.cu_limit):
+        elif (cb_cfg.max_priority_fee >= SolCbProg.MaxPriorityFee) or (not cb_cfg.cu_limit):
             fee_cfg = await self._cu_price_client.get_fee_cfg()
             return fee_cfg.def_cu_price
 
         rw_acct_key_list: Final = self._filter_rw_acct_key_list(ix_list)
         req_cu_price: Final = await self._cu_price_client.get_cu_price(rw_acct_key_list)
         max_cu_price: Final = cb_cfg.max_priority_fee * SolCbProg.MicroLamport // cb_cfg.cu_limit
-        return max(min(req_cu_price, max_cu_price), SolCbProg.BaseCuPrice)
+        return max(min(req_cu_price, max_cu_price), 0)
 
     @staticmethod
     def _filter_rw_acct_key_list(ix_list: Sequence[SolTxIx]) -> Sequence[SolPubKey]:
