@@ -133,7 +133,7 @@ def specify_image_tags(git_sha,
 
     # test_image_tag
     if is_proxy_release:
-        neon_test_tag = proxy_tag
+        neon_test_tag = "v1.21.x" #proxy_tag
         if not is_image_exist(NEON_TESTS_IMAGE, neon_test_tag):
             raise RuntimeError(f"{NEON_TESTS_IMAGE} image with {neon_test_tag} tag isn't found")
     elif evm_tag and is_image_exist(NEON_TESTS_IMAGE, evm_tag):
