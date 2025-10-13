@@ -838,11 +838,9 @@ class NpBlockTxApi(NeonProxyApi):
                 return _RpcNeonTxStatus.WaitForParentTx
 
             status_ = get_status_(tx_) if idx_ == 0 else _RpcNeonTxStatus.NotStarted
-
-            if status_ == _RpcNeonTxStatus.NotStarted:
-                skd_tx_ = await self._db.get_neon_skd_tx_by_hash(tree_.node_list[idx_].neon_tx_hash)
-                if (not skd_tx_) or (not skd_tx_.rlp_tx):
-                    status_ = _RpcNeonTxStatus.NoTxBody
+            skd_tx_ = await self._db.get_neon_skd_tx_by_hash(tree_.node_list[idx_].neon_tx_hash)
+            if (not skd_tx_) or (not skd_tx_.rlp_tx):
+                return _RpcNeonTxStatus.NoTxBody
 
             return status_
 
