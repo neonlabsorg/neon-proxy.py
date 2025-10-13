@@ -116,7 +116,7 @@ class CuCostPktData:
 
     @cached_property
     def priority_fee(self) -> int:
-        return self.cu_price * SolCbProg.MaxCuLimit * SolCbProg.MicroLamport
+        return self.cu_price * SolCbProg.MaxCuLimit // SolCbProg.MicroLamport
 
     @cached_property
     def tx_cost(self) -> int:

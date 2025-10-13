@@ -16,7 +16,7 @@ from common.neon_rpc.errors import SolNeonSkdTxWrongStateError
 from common.neon_rpc.transaction_list_sender import SolNeonTxListSender, SolNeonTxSendState
 from common.solana.alt_info import SolAltInfo
 from common.solana.alt_program import SolAltID
-from common.solana.cb_program import SolCbCfg
+from common.solana.cb_program import SolCbCfg, SolCbProg
 from common.solana.instruction import SolAccountMeta, SolTxIx
 from common.solana.pubkey import SolPubKey
 from common.solana.signer import SolSigner
@@ -122,7 +122,7 @@ class NeonExecTxCtx(ExecutorComponent):
     def max_sol_priority_fee(self) -> int:
         # if the Proxy accepts fee less transactions, it pays the maximum REQUIRED cu-price
         if self.holder_tx.is_fee_less:
-            return 0
+            return SolCbProg.MaxPriorityFee
 
         # get cu-price from the gas-limit
         pkt: Final = CuCostPktData.unpack(self.holder_tx.gas_limit)
@@ -133,8 +133,8 @@ class NeonExecTxCtx(ExecutorComponent):
         if (gas_price_diff := tx_gas_price - profitable_gas_price) <= 0:
             return pkt.priority_fee
 
-        priory_fee_from_gas_price: Final = NeonProg.BaseGas * gas_price_diff // profitable_gas_price
-        return pkt.priority_fee + priory_fee_from_gas_price
+        priority_fee_from_gas_price: Final = NeonProg.BaseGas * gas_price_diff // profitable_gas_price
+        return pkt.priority_fee + priority_fee_from_gas_price
 
     @cached_property
     def skd_tree_parser(self) -> NeonSkdTreeParser | None:
