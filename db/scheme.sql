@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS neon_scheduled_transactions(
     neon_sig TEXT,
     index INT
 );
-ALTER TABLE neon_scheduled_transactions ADD COLUMN IF NOT EXIST root_neon_sig TEXT;
+ALTER TABLE neon_scheduled_transactions ADD COLUMN IF NOT EXISTS root_neon_sig TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_txs_slot ON neon_scheduled_transactions(block_slot, neon_sig);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_tree ON neon_scheduled_transactions(tree_address, is_active);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_root ON neon_scheduled_transactions(root_neon_sig, is_active);
@@ -307,7 +307,7 @@ CREATE TABLE IF NOT EXISTS neon_scheduled_transactions_body(
     neon_sig TEXT,
     rlp_body BYTEA
 );
-ALTER TABLE neon_scheduled_transactions_body ADD COLUMN IF NOT EXIST root_neon_sig TEXT;
+ALTER TABLE neon_scheduled_transactions_body ADD COLUMN IF NOT EXISTS root_neon_sig TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_txs_body_sig ON neon_scheduled_transactions_body(neon_sig);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_body_slot ON neon_scheduled_transactions_body(block_slot, neon_sig);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_body_tree ON neon_scheduled_transactions_body(tree_address, is_active);
@@ -325,7 +325,7 @@ CREATE TABLE IF NOT EXISTS neon_scheduled_transactions_status(
     holder_address TEXT,
     status INT
 );
-ALTER TABLE neon_scheduled_transactions_status ADD COLUMN IF NOT EXIST root_neon_sig TEXT;
+ALTER TABLE neon_scheduled_transactions_status ADD COLUMN IF NOT EXISTS root_neon_sig TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_txs_status_slot ON neon_scheduled_transactions_status(block_slot, neon_sig, status);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_status_tree ON neon_scheduled_transactions_status(tree_address, is_active);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_status_root ON neon_scheduled_transactions_status(root_neon_sig, is_active);
@@ -345,7 +345,7 @@ CREATE TABLE IF NOT EXISTS neon_scheduled_transactions_signature(
     nonce BIGINT,
     chain_id BIGINT
 );
-ALTER TABLE neon_scheduled_transactions_signature ADD COLUMN IF NOT EXIST root_neon_sig TEXT;
+ALTER TABLE neon_scheduled_transactions_signature ADD COLUMN IF NOT EXISTS root_neon_sig TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_txs_sig_neon_sig_slot ON neon_scheduled_transactions_signature(neon_sig, block_slot, is_active);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_sig_slot ON neon_scheduled_transactions_signature(block_slot);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_sig_tree ON neon_scheduled_transactions_signature(tree_address, is_active);
@@ -361,7 +361,7 @@ CREATE TABLE IF NOT EXISTS neon_scheduled_transactions_relation (
     parent_neon_sig TEXT,
     child_neon_sig TEXT
 );
-ALTER TABLE neon_scheduled_transactions_relation ADD COLUMN IF NOT EXIST root_neon_sig TEXT;
+ALTER TABLE neon_scheduled_transactions_relation ADD COLUMN IF NOT EXISTS root_neon_sig TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_txs_rel_parents ON neon_scheduled_transactions_relation(parent_neon_sig, child_neon_sig, block_slot, is_active);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_rel_childs ON neon_scheduled_transactions_relation(child_neon_sig, parent_neon_sig, block_slot);
 CREATE INDEX IF NOT EXISTS idx_scheduled_txs_rel_slot ON neon_scheduled_transactions_relation(block_slot);
