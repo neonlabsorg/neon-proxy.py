@@ -23,13 +23,13 @@ class NeonEvmProtocol(IntEnum):
     _v1004 = 1004  # 1.4  -> 1.004
     _v1014 = 1014  # 1.14 -> 1.014
     # Existing protocols
-    v1020 = 1020  # Mainnet: 1.20 -> 1.020
     v1021 = 1021  # Devnet:  1.21 -> 1.021
+    v1022 = 1022  # Mainnet: 1.22 -> 1.022
 
 
 # fmt: off
 SUPPORTED_VERSION_SET = frozenset((
-    NeonEvmProtocol.v1021,
+    NeonEvmProtocol.v1022,
 ))
 # fmt: on
 
