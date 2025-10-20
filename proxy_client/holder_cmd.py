@@ -6,6 +6,7 @@ from typing_extensions import Self
 
 from common.config.config import Config
 from common.neon.cancel_error import CancelErrorSource, NeonProxyCancelErrorCode, CancelErrorData
+from common.neon.evm_log_decoder import NeonTxErrorLogInfo
 from common.neon.neon_program import NeonProg, NeonEvmIxCode, NeonBaseTxAccountSet
 from common.neon_rpc.api import HolderAccountStatus, HolderAccountModel
 from common.neon_rpc.client import CoreApiClient
@@ -274,7 +275,7 @@ class HolderHandler(BaseNPCmdHandler):
         )
         # fmt: on
 
-        data = CancelErrorData(CancelErrorSource.NeonProxy, NeonProxyCancelErrorCode.Manual, "Unknown")
+        data = CancelErrorData(CancelErrorSource.NeonProxy, NeonProxyCancelErrorCode.Manual, NeonTxErrorLogInfo.ErrorCode.Custom, "Unknown")
         cancel_ix = neon_prog.make_cancel_ix(data.to_bytes())
 
         ix_list = self._get_cb_ix_list() + [cancel_ix]
