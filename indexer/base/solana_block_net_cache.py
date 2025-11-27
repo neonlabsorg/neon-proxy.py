@@ -106,7 +106,10 @@ class SolBlockNetCache:
             idx = self._calc_idx(block.slot)
             if not block.is_empty:
                 self._block_list[idx] = block
-                #  _LOG.debug("load block: %s", block.slot)
+                _LOG.debug("load block %s (with %s txs)", block.slot, len(block.tx_list))
+            else:
+                _LOG.debug("empty block %s", block.slot)
+
         return slot_list
 
     def _extend_cache_with_empty_blocks(

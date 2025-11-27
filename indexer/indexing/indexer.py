@@ -250,6 +250,9 @@ class Indexer:
                             # _LOG.debug("failed tx")
                             continue
                         sol_neon_ix_decoder.execute()
+            else:
+                _LOG.debug("no neon txs in block %s", sol_block.slot)
+
             self._complete_neon_block(dctx)
             await self._add_neon_block_to_queue(dctx)
 

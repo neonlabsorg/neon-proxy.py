@@ -341,6 +341,7 @@ class SolClient(HttpClient):
             rpc_cu_price_list.append(cu_price)
 
         if not tx_sig_list:
+            _LOG.debug("no neon txs in block %s", slot)
             return _new_block()
 
         rpc_tx_meta_list = await self.get_tx_list(tx_sig_list, commit)
