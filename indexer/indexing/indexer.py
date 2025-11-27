@@ -274,6 +274,8 @@ class Indexer:
                 if await self._check_for_fast_reindexing():
                     continue
 
+            last_processed_slot = self._last_processed_slot
+
             self._decoder_stat.start_timer()
             try:
                 await self._process_solana_blocks()
@@ -281,6 +283,10 @@ class Indexer:
                 _LOG.error("error on transactions decoding", exc_info=exc, extra=self._msg_filter)
             finally:
                 self._decoder_stat.commit_timer()
+
+            if not self._db.is_reindexing_mode:
+                if last_processed_slot == self._last_processed_slot:
+                    await asyncio.sleep(check_sec)
 
         await self._slot_session.stop()
         if self._db.is_reindexing_mode:
