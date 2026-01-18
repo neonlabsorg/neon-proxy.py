@@ -233,6 +233,9 @@ class SolBlockDb(HistoryDbTable):
 
     @staticmethod
     def _generate_fake_block_hash(slot: int) -> str:
+        # SOVEREIGN INTEGRITY GUARD: Log critical indexing lag
+        _LOG.critical(f"Sovereign Alert: Indexing gap detected at slot {slot}. Generating synthetic block hash.")
+        
         if slot < 0:
             return "0x" + "00" * EthBlockHash.HashSize
 
