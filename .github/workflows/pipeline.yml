@@ -251,6 +251,8 @@ jobs:
           docker_key: ${{ steps.prepare-docker-instance.outputs.docker_key }}
           docker_containers_wait_for_ready_seconds: 30
           docker_compose: ${{ steps.read_compose_file.outputs.value }}
+          docker_username: ${{secrets.DOCKER_USERNAME}}
+          docker_password: ${{secrets.DOCKER_PASSWORD}}
     outputs:
       ssh_user: ${{ steps.create-instance.outputs.ssh-user }}
       ssh_key: ${{ steps.create-instance.outputs.ssh-key }}
