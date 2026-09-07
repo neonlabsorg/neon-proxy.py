@@ -278,7 +278,7 @@ class SolClient(HttpClient):
             transaction_details=_SoldersTxDet.Accounts if with_tx_list else _SoldersTxDet.None_,
             rewards=False,
             commitment=commit.to_rpc_commit(),
-            max_supported_transaction_version=0,
+            max_supported_transaction_version=1,
         )
         req = _SoldersGetBlock(slot, cfg, self._get_next_id())
         try:
@@ -404,7 +404,7 @@ class SolClient(HttpClient):
         cfg = _SoldersTxCfg(
             _SoldersTxEnc.JsonParsed if json_format else _SoldersTxEnc.Base64,
             commitment=commit.to_rpc_commit(),
-            max_supported_transaction_version=0,
+            max_supported_transaction_version=1,
         )
         req = _SoldersGetTx(tx_sig, cfg, self._get_next_id())
         resp = await self._send_request(req, _SoldersGetTxResp)
