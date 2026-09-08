@@ -17,7 +17,7 @@ eth-account==0.13.7
 eth-hash==0.8.0
 eth-utils==6.0.0
 safe-pysha3==1.0.5
-ecdsa==0.19.1
+ecdsa==0.19.2
 rlp==5.0.0
 rusty-rlp==0.4.0
 
