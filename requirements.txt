@@ -18,7 +18,7 @@ eth-hash==0.7.1
 eth-utils==5.3.1
 safe-pysha3==1.0.5
 ecdsa==0.19.1
-rlp==4.1.0
+rlp==5.0.0
 rusty-rlp==0.4.0
 
 strenum==0.4.15
