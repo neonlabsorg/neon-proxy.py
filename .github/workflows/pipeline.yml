@@ -375,25 +375,25 @@ jobs:
             python3 ./clickfile.py dapps save_dapps_cost_report_to_md \
             --directory reports/cost_reports && \
           docker exec -i ${{ env.CONTAINER }} cat cost_reports.md >> $GITHUB_STEP_SUMMARY
-      - name: "Save Cost Report to DB"
-        id: save-cost-report-to-db
-        if: ${{ env.GENERATE_COST_REPORT == 'true' }}
-        run: |
-          docker exec -i \
-            -e NETWORK=${{ env.NETWORK }} \
-            -e TEST_RESULTS_DB_HOST=${{ env.TEST_RESULTS_DB_HOST }} \
-            -e TEST_RESULTS_DB_PORT=${{ env.TEST_RESULTS_DB_PORT }} \
-            -e TEST_RESULTS_DB_NAME=${{ env.TEST_RESULTS_DB_NAME }} \
-            -e TEST_RESULTS_DB_USER=${{ env.TEST_RESULTS_DB_USER }} \
-            -e TEST_RESULTS_DB_PASSWORD=${{ env.TEST_RESULTS_DB_PASSWORD }} \
-            ${{ env.CONTAINER }} \
-            python3 ./clickfile.py dapps save_dapps_cost_report_to_db \
-            --directory="reports/cost_reports" \
-            --repo="${{ needs.build-image.outputs.evm_sha_tag == '' && 'proxy' || 'evm' }}" \
-            --evm_tag="${{ needs.build-image.outputs.evm_tag }}" \
-            --proxy_tag="${{ needs.build-image.outputs.proxy_tag }}" \
-            --evm_commit_sha="${{ needs.build-image.outputs.evm_sha_tag }}" \
-            --proxy_commit_sha="${{ needs.build-image.outputs.proxy_sha_tag }}"
+      # - name: "Save Cost Report to DB"
+      #   id: save-cost-report-to-db
+      #   if: ${{ env.GENERATE_COST_REPORT == 'true' }}
+      #   run: |
+      #     docker exec -i \
+      #       -e NETWORK=${{ env.NETWORK }} \
+      #       -e TEST_RESULTS_DB_HOST=${{ env.TEST_RESULTS_DB_HOST }} \
+      #       -e TEST_RESULTS_DB_PORT=${{ env.TEST_RESULTS_DB_PORT }} \
+      #       -e TEST_RESULTS_DB_NAME=${{ env.TEST_RESULTS_DB_NAME }} \
+      #       -e TEST_RESULTS_DB_USER=${{ env.TEST_RESULTS_DB_USER }} \
+      #       -e TEST_RESULTS_DB_PASSWORD=${{ env.TEST_RESULTS_DB_PASSWORD }} \
+      #       ${{ env.CONTAINER }} \
+      #       python3 ./clickfile.py dapps save_dapps_cost_report_to_db \
+      #       --directory="reports/cost_reports" \
+      #       --repo="${{ needs.build-image.outputs.evm_sha_tag == '' && 'proxy' || 'evm' }}" \
+      #       --evm_tag="${{ needs.build-image.outputs.evm_tag }}" \
+      #       --proxy_tag="${{ needs.build-image.outputs.proxy_tag }}" \
+      #       --evm_commit_sha="${{ needs.build-image.outputs.evm_sha_tag }}" \
+      #       --proxy_commit_sha="${{ needs.build-image.outputs.proxy_sha_tag }}"
       - name: Remove docker container
         if: always()
         run: docker rm -f ${{ env.CONTAINER }}
@@ -435,7 +435,7 @@ jobs:
       - dapps-tests
       - openzeppelin-tests
     if: |
-      always() && 
+      always() &&
       contains(fromJSON('["success", "skipped"]'), needs.openzeppelin-tests.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.dapps-tests.result)
     runs-on: ["gha-runner-scale-set"]
@@ -448,7 +448,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10.12'
-      - run: pip install -r ./.github/workflows/requirements.txt   
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Request report
         id: request_report
         run: |
