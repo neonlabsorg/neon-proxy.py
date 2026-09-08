@@ -12,7 +12,7 @@ uvloop==0.22.1
 aiochclient[aiohttp]==2.7.0
 
 eth-bloom==4.0.0
-eth-keys==0.7.0
+eth-keys==0.8.0
 eth-account==0.13.7
 eth-hash==0.8.0
 eth-utils==5.3.1
